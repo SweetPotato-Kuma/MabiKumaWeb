@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { colorPartLabel, groupItemOptions, parseRgb, splitEffects } from './itemOptions';
+import {
+  colorPartLabel,
+  formatOptionValue,
+  groupItemOptions,
+  isCurrentMaxOption,
+  parseRgb,
+  splitEffects,
+} from './itemOptions';
 import type { ItemOption } from './types';
 
 function option(type: string, value?: string, desc?: string): ItemOption {
@@ -53,9 +60,45 @@ describe('splitEffects', () => {
 });
 
 describe('colorPartLabel', () => {
-  it('파트 글자만 남긴다', () => {
-    expect(colorPartLabel(option('아이템 색상 파트 A'))).toBe('A');
-    expect(colorPartLabel(option('아이템 색상 파트 E'))).toBe('E');
+  it('파트 이름을 남긴다', () => {
+    expect(colorPartLabel(option('아이템 색상 파트 A'))).toBe('파트 A');
+    expect(colorPartLabel(option('아이템 색상 파트 E'))).toBe('파트 E');
+  });
+});
+
+describe('formatOptionValue', () => {
+  it('최소와 최대 대미지는 범위로 잇는다', () => {
+    const value = { option_type: '공격', option_value: '292', option_value2: '353' };
+
+    expect(formatOptionValue(value)).toBe('292 ~ 353');
+  });
+
+  it('현재와 최대인 값은 범위처럼 보이지 않게 잇는다', () => {
+    /**
+     * 내구력 26~26 은 26 에서 26 사이가 아니라 26 중 26 이다. 개조도 마찬가지로
+     * 쓴 칸과 전체 칸이다. 물결로 이으면 값이 폭을 가진 것처럼 읽힌다.
+     */
+    expect(formatOptionValue({ option_type: '내구력', option_value: '26', option_value2: '26' })).toBe('26 / 26');
+    expect(formatOptionValue({ option_type: '일반 개조', option_value: '5', option_value2: '5' })).toBe('5 / 5');
+    expect(formatOptionValue({ option_type: '에르그 S', option_value: '50', option_value2: '50' })).toBe('50 / 50');
+  });
+
+  it('값이 하나면 그대로 둔다', () => {
+    expect(formatOptionValue({ option_type: '크리티컬', option_value: '26%' })).toBe('26%');
+    expect(formatOptionValue({ option_type: '보석 개조', option_value: '1' })).toBe('1');
+  });
+
+  it('값이 없으면 빈 칸을 티 낸다', () => {
+    expect(formatOptionValue({ option_type: '공격' })).toBe('-');
+  });
+});
+
+describe('isCurrentMaxOption', () => {
+  it('범위인 것과 현재/최대인 것을 가른다', () => {
+    expect(isCurrentMaxOption('공격')).toBe(false);
+    expect(isCurrentMaxOption('부상률')).toBe(false);
+    expect(isCurrentMaxOption('내구력')).toBe(true);
+    expect(isCurrentMaxOption('특별 개조 R')).toBe(true);
   });
 });
 
@@ -73,6 +116,14 @@ describe('groupItemOptions', () => {
     option('세트 효과 1', '파이널 히트 강화 ~ 5'),
   ];
 
+  it('보호는 따로 빼낸다', () => {
+    const { protections, groups } = groupItemOptions(OPTIONS);
+
+    // 값이 "상태" 가 아니라 "막아 주는 상황" 이라 표의 한 칸에 두면 상태처럼 읽힌다.
+    expect(protections.map((item) => item.option_value)).toEqual(['인챈트 실패']);
+    expect(groups.find((group) => group.title === '기타')).toBeUndefined();
+  });
+
   it('색상은 따로 빼낸다', () => {
     const { colors } = groupItemOptions(OPTIONS);
 
@@ -82,16 +133,21 @@ describe('groupItemOptions', () => {
   it('정해진 순서대로 묶는다', () => {
     const { groups } = groupItemOptions(OPTIONS);
 
-    expect(groups.map((group) => group.title)).toEqual(['기본 능력', '인챈트', '개조', '세공', '세트 효과', '기타']);
+    expect(groups.map((group) => group.title)).toEqual(['기본 능력', '인챈트', '개조', '세공', '세트 효과']);
   });
 
-  it('규칙에 없는 옵션도 잃지 않는다', () => {
-    const { groups, colors } = groupItemOptions(OPTIONS);
-    const kept = groups.flatMap((group) => group.options).length + colors.length;
+  it('어느 옵션도 잃지 않는다', () => {
+    const { groups, colors, protections } = groupItemOptions(OPTIONS);
+    const kept = groups.flatMap((group) => group.options).length + colors.length + protections.length;
 
     // 규칙에 없다고 버리면 사용자는 그 옵션에 영영 닿지 못한다.
     expect(kept).toBe(OPTIONS.length);
-    expect(groups.find((group) => group.title === '기타')?.options[0]?.option_type).toBe('아이템 보호');
+  });
+
+  it('규칙에 없는 옵션은 기타로 모은다', () => {
+    const { groups } = groupItemOptions([option('처음 보는 옵션', '1')]);
+
+    expect(groups.map((group) => group.title)).toEqual(['기타']);
   });
 
   it('빈 묶음은 내보내지 않는다', () => {
@@ -101,6 +157,6 @@ describe('groupItemOptions', () => {
   });
 
   it('옵션이 없어도 터지지 않는다', () => {
-    expect(groupItemOptions(undefined)).toEqual({ groups: [], colors: [] });
+    expect(groupItemOptions(undefined)).toEqual({ groups: [], colors: [], protections: [] });
   });
 });

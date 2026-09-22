@@ -46,6 +46,38 @@ const GROUP_RULES: { title: string; prefixes: string[]; dense: boolean }[] = [
 ];
 
 const COLOR_PREFIX = '아이템 색상';
+const PROTECTION_PREFIX = '아이템 보호';
+
+/**
+ * 두 값이 "범위" 가 아니라 "현재와 최대" 인 옵션.
+ *
+ * 공격 292~353 은 최소와 최대 대미지라 물결이 맞다. 그런데 내구력 26~26 이나
+ * 일반 개조 5~5 는 범위가 아니라 26 중 26, 5 중 5 다. 같은 물결로 그리면 값이
+ * 폭을 가진 것처럼 읽힌다. 넥슨 스펙에 명시된 구분이 아니라 게임 안의 뜻을 따른
+ * 해석이므로, 틀렸다면 이 목록만 고치면 된다.
+ */
+const CURRENT_MAX_PREFIXES = ['내구력', '일반 개조', '보석 개조', '특별 개조', '에르그'];
+
+export function isCurrentMaxOption(optionType: string): boolean {
+  return CURRENT_MAX_PREFIXES.some((prefix) => optionType.startsWith(prefix));
+}
+
+/** 아이템을 지켜 주는 항목인지. 값이 "상태" 가 아니라 "막아 주는 상황" 이라 따로 그린다. */
+export function isProtectionOption(option: ItemOption): boolean {
+  return option.option_type.startsWith(PROTECTION_PREFIX);
+}
+
+/** 값 두 개를 무슨 기호로 이을지까지 정해서 돌려준다. */
+export function formatOptionValue(option: ItemOption): string {
+  const first = option.option_value?.trim();
+  const second = option.option_value2?.trim();
+
+  if (!first && !second) return '-';
+  if (!second) return first ?? '-';
+  if (!first) return second;
+
+  return isCurrentMaxOption(option.option_type) ? `${first} / ${second}` : `${first} ~ ${second}`;
+}
 
 /** rgb 세 값. 넥슨이 "255,255,255" 형태로 준다. */
 export interface Rgb {
@@ -82,9 +114,9 @@ export function isColorOption(option: ItemOption): boolean {
   return option.option_type.startsWith(COLOR_PREFIX);
 }
 
-/** "아이템 색상 파트 A" 에서 "A" 만 남긴다. 한 줄에 다섯 개를 놓을 때 쓴다. */
+/** "아이템 색상 파트 A" 에서 "파트 A" 를 남긴다. 한 줄에 다섯 개를 놓을 때 쓴다. */
 export function colorPartLabel(option: ItemOption): string {
-  return option.option_type.slice(COLOR_PREFIX.length).replace('파트', '').trim() || option.option_type;
+  return option.option_type.slice(COLOR_PREFIX.length).trim() || option.option_type;
 }
 
 /**
@@ -129,14 +161,21 @@ export function splitEffects(description: string | undefined): string[] {
 export function groupItemOptions(options: readonly ItemOption[] | undefined): {
   groups: OptionGroup[];
   colors: ItemOption[];
+  protections: ItemOption[];
 } {
   const colors: ItemOption[] = [];
+  const protections: ItemOption[] = [];
   const buckets = new Map<string, ItemOption[]>();
   const others: ItemOption[] = [];
 
   for (const option of options ?? []) {
     if (isColorOption(option)) {
       colors.push(option);
+      continue;
+    }
+
+    if (isProtectionOption(option)) {
+      protections.push(option);
       continue;
     }
 
@@ -164,5 +203,5 @@ export function groupItemOptions(options: readonly ItemOption[] | undefined): {
     groups.push({ title: '기타', options: others, dense: false });
   }
 
-  return { groups, colors };
+  return { groups, colors, protections };
 }

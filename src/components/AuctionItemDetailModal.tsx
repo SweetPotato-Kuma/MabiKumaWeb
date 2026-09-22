@@ -1,6 +1,7 @@
 import { Descriptions, Empty, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
 import {
   colorPartLabel,
+  formatOptionValue,
   groupItemOptions,
   parseRgb,
   rgbToCss,
@@ -45,11 +46,6 @@ function optionLabel(option: ItemOption): string {
   return `${option.option_type} ${option.option_sub_type}`;
 }
 
-function optionValue(option: ItemOption): string {
-  const range = [option.option_value, option.option_value2].filter(Boolean).join(' ~ ');
-  return range || '-';
-}
-
 /**
  * 옵션 한 칸의 값.
  *
@@ -61,7 +57,7 @@ function OptionValue({ option }: { option: ItemOption }) {
 
   return (
     <Flex vertical gap={effects.length > 0 ? 4 : 0}>
-      <span className="tnum">{optionValue(option)}</span>
+      <span className="tnum">{formatOptionValue(option)}</span>
       {effects.length > 0 ? (
         <Flex vertical gap={2} component="ul" style={{ margin: 0, paddingInlineStart: 16 }}>
           {effects.map((effect, index) => (
@@ -77,6 +73,34 @@ function OptionValue({ option }: { option: ItemOption }) {
   );
 }
 
+/**
+ * 아이템 보호.
+ *
+ * 값이 "인챈트 실패" 처럼 오는데, 이건 아이템이 그 상태라는 뜻이 아니라 그 상황에서
+ * 아이템을 지켜 준다는 뜻으로 읽힌다. 표의 한 칸에 "아이템 보호 | 인챈트 실패" 로
+ * 두면 상태처럼 읽히므로 문장으로 풀어 둔다. 넥슨 스펙에 정의된 문구가 아니라
+ * 게임 안의 뜻을 따른 해석이다.
+ */
+function ProtectionTags({ protections }: { protections: ItemOption[] }) {
+  return (
+    <Flex vertical gap={6}>
+      <Text strong style={{ fontSize: 13 }}>
+        아이템 보호
+      </Text>
+      <Flex gap={8} wrap>
+        {protections.map((protection, index) => (
+          <Tag key={`${protection.option_type}-${index}`} color="success" style={{ marginInlineEnd: 0 }}>
+            {formatOptionValue(protection)} 시 보호
+          </Tag>
+        ))}
+      </Flex>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        적힌 상황에서 아이템을 지켜 줍니다. 아이템이 그 상태라는 뜻이 아닙니다.
+      </Text>
+    </Flex>
+  );
+}
+
 /** 색상 다섯 줄은 한 줄로 모은다. 숫자 셋보다 칠해진 네모가 빠르다. */
 function ColorSwatches({ colors }: { colors: ItemOption[] }) {
   const { token } = theme.useToken();
@@ -84,7 +108,7 @@ function ColorSwatches({ colors }: { colors: ItemOption[] }) {
   return (
     <Flex gap={12} wrap>
       {colors.map((color, index) => {
-        const value = optionValue(color);
+        const value = formatOptionValue(color);
         const rgb = parseRgb(color.option_value);
 
         return (
@@ -142,8 +166,8 @@ function OptionGroupTable({ group }: { group: OptionGroup }) {
 }
 
 export function AuctionItemDetailModal({ detail, onClose }: Props) {
-  const { groups, colors } = groupItemOptions(detail?.options);
-  const hasOptions = groups.length > 0 || colors.length > 0;
+  const { groups, colors, protections } = groupItemOptions(detail?.options);
+  const hasOptions = groups.length > 0 || colors.length > 0 || protections.length > 0;
 
   return (
     <Modal open={detail !== null} onCancel={onClose} footer={null} width={860} title={null} destroyOnHidden>
@@ -201,6 +225,8 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
 
           {hasOptions ? (
             <Flex vertical gap={16}>
+              {protections.length > 0 ? <ProtectionTags protections={protections} /> : null}
+
               {groups.map((group) => (
                 <OptionGroupTable key={group.title} group={group} />
               ))}
@@ -211,6 +237,10 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
                     아이템 색상
                   </Text>
                   <ColorSwatches colors={colors} />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    파트 A 부터 E 까지는 염색이 칠해지는 구역입니다. 어느 구역인지는 아이템마다 달라서 API 가
+                    알려 주지 않습니다.
+                  </Text>
                 </Flex>
               ) : null}
             </Flex>
