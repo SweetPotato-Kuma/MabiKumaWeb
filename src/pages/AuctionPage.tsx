@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
@@ -18,6 +18,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
+import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { ItemOptionList } from '@/components/ItemOptionList';
@@ -28,6 +29,7 @@ import { calculatePriceStats } from '@/features/auction/stats';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 const { Title, Text } = Typography;
 
@@ -35,6 +37,9 @@ type Tab = 'items' | 'history';
 
 /** 카테고리를 고르지 않은 상태. 트리의 '전체' 노드가 이 값을 가리킨다. */
 const ALL_CATEGORIES = '';
+
+/** 자동완성 목록을 다시 만들기 전에 기다리는 시간. 타이핑이 밀리지 않는 선으로 잡았다. */
+const SUGGEST_DELAY_MS = 100;
 
 const EMPTY_INPUT: AuctionSearchInput = {
   category: ALL_CATEGORIES,
@@ -97,9 +102,17 @@ export function AuctionPage() {
 
   // 자동완성은 고른 카테고리의 사전만 읽는다. 전체 사전은 15,000개가 넘는다.
   const dictionaryQuery = useCategoryItemNamesQuery(form.category);
+
+  /**
+   * 자동완성 계산은 한 박자 늦춘다.
+   *
+   * 큰 카테고리는 이름이 1,800개가 넘어서 한 글자마다 전부 훑으면 타이핑이 밀린다.
+   * 입력칸은 form.keyword 로 즉시 반응하고, 목록만 여기서 따라온다.
+   */
+  const suggestKeyword = useDebouncedValue(form.keyword, SUGGEST_DELAY_MS);
   const suggestions = useMemo(
-    () => matchItemNames(dictionaryQuery.data ?? [], form.keyword).map((name) => ({ value: name })),
-    [dictionaryQuery.data, form.keyword],
+    () => matchItemNames(dictionaryQuery.data ?? [], suggestKeyword).map((name) => ({ value: name })),
+    [dictionaryQuery.data, suggestKeyword],
   );
 
   const canSubmit = isAuctionSearchReady(form);
@@ -111,7 +124,7 @@ export function AuctionPage() {
    * tabIndex 를 주고 Enter 와 Space 를 같이 받는다. 줄이 눌리게 됐으니 줄 안의 옵션
    * 칸에서는 따로 펼치는 버튼을 뺐다.
    */
-  function rowInteraction(build: () => AuctionItemDetail) {
+  const rowInteraction = useCallback((build: () => AuctionItemDetail) => {
     return {
       tabIndex: 0,
       style: { cursor: 'pointer' },
@@ -122,8 +135,7 @@ export function AuctionPage() {
         setDetail(build());
       },
     };
-  }
-
+  }, []);
 
   function runSearch(next: AuctionSearchInput) {
     if (!isAuctionSearchReady(next)) return;
@@ -156,7 +168,7 @@ export function AuctionPage() {
     <CategoryPicker value={form.category} onChange={selectCategory} />
   );
 
-  const itemColumns: TableColumnsType<AuctionItem> = [
+  const itemColumns: TableColumnsType<AuctionItem> = useMemo(() => [
     {
       title: '아이템',
       dataIndex: 'item_display_name',
@@ -165,23 +177,21 @@ export function AuctionPage() {
     },
     { title: '카테고리', dataIndex: 'auction_item_category', width: 130 },
     {
-      title: '수량',
-      dataIndex: 'item_count',
-      width: 90,
-      align: 'right',
-      className: 'tnum',
-      sorter: (a, b) => a.item_count - b.item_count,
-      render: (value: number) => formatNumber(value),
-    },
-    {
-      title: '개당 가격',
+      /**
+       * 수량은 따로 두지 않는다. 장비는 한 칸에 하나씩 올라오는 경우가 태반이라
+       * "1" 만 적힌 칸이 표 하나를 통째로 차지했다. 여러 개 묶인 매물에서만
+       * 가격 칸 안에서 개수를 말한다.
+       */
+      title: '가격',
       dataIndex: 'auction_price_per_unit',
-      width: 140,
+      width: 170,
       align: 'right',
-      className: 'tnum',
       defaultSortOrder: 'ascend',
+      // 매물끼리 견주는 기준은 개당 가격이다. 묶음 크기가 달라도 이쪽이 비교가 된다.
       sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
-      render: (value: number) => <Text strong>{formatGold(value)}</Text>,
+      render: (_value, record) => (
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+      ),
     },
     {
       title: '만료',
@@ -204,9 +214,10 @@ export function AuctionPage() {
       dataIndex: 'item_option',
       render: (_value, record) => <ItemOptionList options={record.item_option} expandable={false} />,
     },
-  ];
+  ], []);
 
-  const historyColumns: TableColumnsType<AuctionHistoryItem> = [
+  /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
+  const historyColumns: TableColumnsType<AuctionHistoryItem> = useMemo(() => [
     {
       title: '아이템',
       dataIndex: 'item_display_name',
@@ -215,22 +226,14 @@ export function AuctionPage() {
     },
     { title: '카테고리', dataIndex: 'auction_item_category', width: 130 },
     {
-      title: '수량',
-      dataIndex: 'item_count',
-      width: 90,
-      align: 'right',
-      className: 'tnum',
-      sorter: (a, b) => a.item_count - b.item_count,
-      render: (value: number) => formatNumber(value),
-    },
-    {
-      title: '개당 가격',
+      title: '가격',
       dataIndex: 'auction_price_per_unit',
-      width: 140,
+      width: 170,
       align: 'right',
-      className: 'tnum',
       sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
-      render: (value: number) => <Text strong>{formatGold(value)}</Text>,
+      render: (_value, record) => (
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+      ),
     },
     {
       title: '거래 시각',
@@ -245,9 +248,15 @@ export function AuctionPage() {
       dataIndex: 'item_option',
       render: (_value, record) => <ItemOptionList options={record.item_option} expandable={false} />,
     },
-  ];
+  ], []);
 
-  const itemsPanel = (
+  /**
+   * 결과 영역은 검색어 타이핑과 분리한다.
+   *
+   * 한 글자 칠 때마다 500줄짜리 표까지 다시 그리면 입력이 밀린다. 패널이 쓰는 값에는
+   * form 이 없으므로, 메모해 두면 타이핑 중에는 이 아래가 통째로 멈춰 있는다.
+   */
+  const itemsPanel = useMemo(() => (
     <Flex vertical gap={16}>
       {stats ? (
         <Card variant="outlined" size="small">
@@ -318,9 +327,9 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  );
+  ), [enabled, itemColumns, items, itemsLoaded, itemsQuery, rowInteraction, stats]);
 
-  const historyPanel = (
+  const historyPanel = useMemo(() => (
     <QueryState
       isLoading={historyQuery.isPending && enabled}
       error={historyQuery.error}
@@ -367,7 +376,7 @@ export function AuctionPage() {
         ) : null}
       </Flex>
     </QueryState>
-  );
+  ), [enabled, history, historyColumns, historyLoaded, historyQuery, rowInteraction]);
 
   return (
     <Flex vertical gap={16}>
