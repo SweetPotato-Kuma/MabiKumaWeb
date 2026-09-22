@@ -34,6 +34,18 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       sourcemap: mode !== 'production',
+      rollupOptions: {
+        output: {
+          /**
+           * antd 가 번들의 대부분이다. 앱 코드와 한 덩어리로 두면 화면을 한 줄 고칠 때마다
+           * 방문자가 라이브러리까지 다시 받는다. 잘 안 바뀌는 것끼리 따로 묶어 캐시를 살린다.
+           */
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-router-dom'],
+            antd: ['antd', '@ant-design/icons'],
+          },
+        },
+      },
     },
     test: {
       environment: 'jsdom',

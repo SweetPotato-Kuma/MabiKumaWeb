@@ -1,23 +1,59 @@
 import { useMemo, useState } from 'react';
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Col,
+  Flex,
+  Form,
+  Input,
+  Row,
+  Select,
+  Statistic,
+  Table,
+  Tabs,
+  Typography,
+  type TableColumnsType,
+} from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
 import { AUCTION_ITEM_CATEGORIES, KEYWORD_MAX_COUNT } from '@/features/auction/constants';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
 import { calculatePriceStats } from '@/features/auction/stats';
-import type { AuctionSearchInput, AuctionSearchMode } from '@/features/auction/types';
+import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
-import { NexonApiError } from '@/lib/nexonClient';
 import { useCanQuery } from '@/lib/settings';
+
+const { Title, Text } = Typography;
 
 type Tab = 'items' | 'history';
 
 const EMPTY_INPUT: AuctionSearchInput = {
-  mode: 'list',
   category: '',
-  itemName: '',
   keyword: '',
 };
+
+const CATEGORY_OPTIONS = [
+  { value: '', label: '전체' },
+  ...AUCTION_ITEM_CATEGORIES.map((category) => ({ value: category, label: category })),
+];
+
+/** 이름 열은 표시 이름과 원래 이름이 다를 때만 두 줄이 된다. */
+function ItemNameCell({ displayName, rawName }: { displayName: string; rawName: string }) {
+  return (
+    <Flex vertical gap={0}>
+      <Text strong style={{ fontSize: 14 }}>
+        {displayName}
+      </Text>
+      {displayName !== rawName ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {rawName}
+        </Text>
+      ) : null}
+    </Flex>
+  );
+}
 
 export function AuctionPage() {
   const canQuery = useCanQuery();
@@ -29,324 +65,291 @@ export function AuctionPage() {
   const enabled = canQuery && submitted !== null && isAuctionSearchReady(query);
 
   const itemsQuery = useAuctionItemsQuery(query, enabled && tab === 'items');
-  const historyQuery = useAuctionHistoryQuery(query, enabled && tab === 'history' && query.mode === 'list');
+  const historyQuery = useAuctionHistoryQuery(query, enabled && tab === 'history');
 
-  const items = itemsQuery.data?.items ?? [];
-  const history = historyQuery.data?.items ?? [];
+  // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
+  const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
+  const history = useMemo(() => historyQuery.data?.items ?? [], [historyQuery.data]);
   const stats = useMemo(() => calculatePriceStats(items), [items]);
 
   const canSubmit = isAuctionSearchReady(form);
 
   /**
-   * 넥슨 API 의 item_name 은 정확한 전체 이름만 받는다. "검" 처럼 일부만 넣으면
-   * 결과가 0건이 아니라 OPENAPI00004 로 거절당한다. 그 경우 같은 말을 키워드
-   * 검색으로 넘겨 주는 편이 사용자가 할 일을 하나 줄여 준다.
+   * 키워드 검색은 카테고리를 서버에서 걸러 주지 않아 화면에서 거른다.
+   * 그래서 "불러온 수"와 "보이는 수"가 달라질 수 있고, 그 사실을 숨기지 않는다.
    */
-  const rejectedItemName =
-    query.mode === 'list' && query.itemName.trim().length > 0 ? query.itemName.trim() : '';
+  const itemsLoaded = itemsQuery.data?.loadedCount ?? 0;
+  const historyLoaded = historyQuery.data?.loadedCount ?? 0;
 
-  function keywordFallback(error: unknown) {
-    if (!rejectedItemName) return null;
-    if (!(error instanceof NexonApiError) || error.code !== 'OPENAPI00004') return null;
+  const itemColumns: TableColumnsType<AuctionItem> = [
+    {
+      title: '아이템',
+      dataIndex: 'item_display_name',
+      width: 220,
+      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} />,
+    },
+    { title: '카테고리', dataIndex: 'auction_item_category', width: 130 },
+    {
+      title: '수량',
+      dataIndex: 'item_count',
+      width: 90,
+      align: 'right',
+      className: 'tnum',
+      sorter: (a, b) => a.item_count - b.item_count,
+      render: (value: number) => formatNumber(value),
+    },
+    {
+      title: '개당 가격',
+      dataIndex: 'auction_price_per_unit',
+      width: 140,
+      align: 'right',
+      className: 'tnum',
+      defaultSortOrder: 'ascend',
+      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      render: (value: number) => <Text strong>{formatGold(value)}</Text>,
+    },
+    {
+      title: '만료',
+      dataIndex: 'date_auction_expire',
+      width: 160,
+      sorter: (a, b) => Date.parse(a.date_auction_expire) - Date.parse(b.date_auction_expire),
+      render: (value: string) => (
+        <Flex vertical gap={0}>
+          <Text className="tnum" style={{ fontSize: 14 }}>
+            {formatRemaining(value)}
+          </Text>
+          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+            {formatDateTime(value)}
+          </Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '옵션',
+      dataIndex: 'item_option',
+      render: (_value, record) => <ItemOptionList options={record.item_option} />,
+    },
+  ];
 
-    return (
-      <>
-        <p className="state__body">
-          아이템 이름은 <strong>정확한 전체 이름</strong>이어야 합니다. 이름 일부로 찾으려면 키워드
-          검색을 쓰세요.
-        </p>
-        <button
-          type="button"
-          className="button"
-          onClick={() => {
-            const next: AuctionSearchInput = {
-              ...EMPTY_INPUT,
-              mode: 'keyword',
-              keyword: rejectedItemName,
-            };
-            setForm(next);
-            setSubmitted(next);
-            setTab('items');
-          }}
-        >
-          ‘{rejectedItemName}’ 으로 키워드 검색
-        </button>
-      </>
-    );
-  }
+  const historyColumns: TableColumnsType<AuctionHistoryItem> = [
+    {
+      title: '아이템',
+      dataIndex: 'item_display_name',
+      width: 220,
+      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} />,
+    },
+    { title: '카테고리', dataIndex: 'auction_item_category', width: 130 },
+    {
+      title: '수량',
+      dataIndex: 'item_count',
+      width: 90,
+      align: 'right',
+      className: 'tnum',
+      sorter: (a, b) => a.item_count - b.item_count,
+      render: (value: number) => formatNumber(value),
+    },
+    {
+      title: '개당 가격',
+      dataIndex: 'auction_price_per_unit',
+      width: 140,
+      align: 'right',
+      className: 'tnum',
+      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      render: (value: number) => <Text strong>{formatGold(value)}</Text>,
+    },
+    {
+      title: '거래 시각',
+      dataIndex: 'date_auction_buy',
+      width: 170,
+      defaultSortOrder: 'descend',
+      sorter: (a, b) => Date.parse(a.date_auction_buy) - Date.parse(b.date_auction_buy),
+      render: (value: string) => <span className="tnum">{formatDateTime(value)}</span>,
+    },
+    {
+      title: '옵션',
+      dataIndex: 'item_option',
+      render: (_value, record) => <ItemOptionList options={record.item_option} />,
+    },
+  ];
+
+  const itemsPanel = (
+    <Flex vertical gap={16}>
+      {stats ? (
+        <Card variant="outlined" size="small">
+          <Row gutter={[16, 16]} aria-label="개당 가격 통계">
+            {(
+              [
+                ['매물 수', formatNumber(stats.count)],
+                ['최저', formatGold(stats.min)],
+                ['중위', formatGold(stats.median)],
+                ['평균', formatGold(stats.average)],
+                ['최고', formatGold(stats.max)],
+              ] as const
+            ).map(([label, value]) => (
+              <Col key={label} flex="1 1 140px">
+                <Statistic title={label} value={value} valueStyle={{ fontVariantNumeric: 'tabular-nums' }} />
+              </Col>
+            ))}
+          </Row>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            지금 보고 있는 매물 {formatNumber(stats.count)}건만으로 계산한 값입니다. 더 불러오면 값이 바뀝니다.
+          </Text>
+        </Card>
+      ) : null}
+
+      <QueryState
+        isLoading={itemsQuery.isPending && enabled}
+        error={itemsQuery.error}
+        isEmpty={items.length === 0}
+        emptyMessage={
+          itemsLoaded > 0
+            ? `불러온 ${formatNumber(itemsLoaded)}건 중 ${query.category} 카테고리는 없습니다. 더 불러오거나 카테고리를 풀어 보세요.`
+            : '조건에 맞는 매물이 없습니다. 검색어를 줄이거나 카테고리를 바꿔 보세요.'
+        }
+      >
+        <Flex vertical gap={12}>
+          {items.length !== itemsLoaded ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              불러온 {formatNumber(itemsLoaded)}건 가운데 {query.category} 카테고리 {formatNumber(items.length)}건을
+              보고 있습니다.
+            </Text>
+          ) : null}
+          <Table<AuctionItem>
+            columns={itemColumns}
+            dataSource={items}
+            rowKey={(record, index) => `${record.item_display_name}-${record.date_auction_expire}-${index ?? 0}`}
+            size="small"
+            pagination={false}
+            scroll={{ x: 980 }}
+            sticky
+          />
+          {itemsQuery.hasNextPage ? (
+            <Button
+              block
+              loading={itemsQuery.isFetchingNextPage}
+              onClick={() => void itemsQuery.fetchNextPage()}
+            >
+              500개 더 불러오기
+            </Button>
+          ) : null}
+        </Flex>
+      </QueryState>
+    </Flex>
+  );
+
+  const historyPanel = (
+    <QueryState
+      isLoading={historyQuery.isPending && enabled}
+      error={historyQuery.error}
+      isEmpty={history.length === 0}
+      emptyMessage={
+        historyLoaded > 0
+          ? `최근 1시간 거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 없습니다. 더 불러오거나 검색어를 줄여 보세요.`
+          : '최근 1시간 안에 거래된 내역이 없습니다.'
+      }
+    >
+      <Flex vertical gap={12}>
+        {history.length !== historyLoaded ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            최근 1시간 거래 {formatNumber(historyLoaded)}건 가운데 {formatNumber(history.length)}건이 검색어와
+            맞습니다.
+          </Text>
+        ) : null}
+        <Table<AuctionHistoryItem>
+          columns={historyColumns}
+          dataSource={history}
+          rowKey={(record) => record.auction_buy_id}
+          size="small"
+          pagination={false}
+          scroll={{ x: 980 }}
+          sticky
+        />
+        {historyQuery.hasNextPage ? (
+          <Button
+            block
+            loading={historyQuery.isFetchingNextPage}
+            onClick={() => void historyQuery.fetchNextPage()}
+          >
+            더 불러오기
+          </Button>
+        ) : null}
+      </Flex>
+    </QueryState>
+  );
 
   return (
-    <div className="page">
-      <h1>경매장 조회</h1>
+    <Flex vertical gap={20}>
+      <Title level={3} style={{ margin: 0 }}>
+        경매장 조회
+      </Title>
+
       <ApiKeyNotice />
 
-      <form
-        className="panel search-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!canSubmit) return;
-          setSubmitted({ ...form });
-        }}
-      >
-        <fieldset className="field-row">
-          <legend>검색 방식</legend>
-          {(
-            [
-              ['list', '카테고리 / 이름'],
-              ['keyword', '키워드'],
-            ] as const
-          ).map(([mode, label]) => (
-            <label key={mode} className="radio">
-              <input
-                type="radio"
-                name="mode"
-                value={mode}
-                checked={form.mode === mode}
-                onChange={() => {
-                  setForm((prev) => ({ ...prev, mode: mode as AuctionSearchMode }));
-                  if (mode === 'keyword') setTab('items');
-                }}
-              />
-              {label}
-            </label>
-          ))}
-        </fieldset>
-
-        {form.mode === 'list' ? (
-          <div className="field-row">
-            <label className="field">
-              <span>카테고리</span>
-              <select
-                value={form.category}
-                onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+      <Card variant="outlined">
+        <Form
+          layout="vertical"
+          onFinish={() => {
+            if (!canSubmit) return;
+            setSubmitted({ ...form });
+          }}
+        >
+          {/* 2단 폼. 768px 미만에서는 한 단으로 떨어진다. */}
+          <Row gutter={[16, 0]}>
+            <Col xs={24} md={14}>
+              <Form.Item
+                label="검색어"
+                extra={`이름 일부만 넣어도 됩니다. 여러 단어는 쉼표나 공백으로 최대 ${KEYWORD_MAX_COUNT}개까지 넣을 수 있고, 모두 포함된 아이템을 찾습니다.`}
               >
-                <option value="">전체</option>
-                {AUCTION_ITEM_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <Input
+                  value={form.keyword}
+                  placeholder="예: 소드"
+                  allowClear
+                  onChange={(event) => setForm((prev) => ({ ...prev, keyword: event.target.value }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={10}>
+              <Form.Item label="카테고리" extra="검색어 없이 카테고리만 골라도 전체 매물을 볼 수 있습니다.">
+                <Select
+                  value={form.category}
+                  onChange={(category) => setForm((prev) => ({ ...prev, category }))}
+                  options={CATEGORY_OPTIONS}
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="전체"
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
-            <label className="field">
-              <span>아이템 이름 (정확히 일치)</span>
-              <input
-                type="text"
-                value={form.itemName}
-                placeholder="예: 롱 소드"
-                onChange={(event) => setForm((prev) => ({ ...prev, itemName: event.target.value }))}
-              />
-              <small className="muted">
-                전체 이름을 그대로 넣어야 합니다. 이름 일부로 찾으려면 키워드 검색을 쓰세요.
-              </small>
-            </label>
-          </div>
-        ) : (
-          <div className="field-row">
-            <label className="field field--wide">
-              <span>키워드 (쉼표로 최대 {KEYWORD_MAX_COUNT}개)</span>
-              <input
-                type="text"
-                value={form.keyword}
-                placeholder="예: 숏,소드"
-                onChange={(event) => setForm((prev) => ({ ...prev, keyword: event.target.value }))}
-              />
-              <small className="muted">
-                입력한 단어가 이름에 모두 포함된 아이템을 찾습니다. 단어는 정확히 일치해야 합니다.
-              </small>
-            </label>
-          </div>
-        )}
-
-        <div className="field-row field-row--actions">
-          <button type="submit" className="button button--primary" disabled={!canSubmit || !canQuery}>
-            검색
-          </button>
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              setForm(EMPTY_INPUT);
-              setSubmitted(null);
-            }}
-          >
-            초기화
-          </button>
-        </div>
-      </form>
+          <Flex gap={10} wrap style={{ marginTop: 8 }}>
+            <Button type="primary" htmlType="submit" icon={<SearchOutlined />} disabled={!canSubmit || !canQuery}>
+              검색
+            </Button>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => {
+                setForm(EMPTY_INPUT);
+                setSubmitted(null);
+              }}
+            >
+              초기화
+            </Button>
+          </Flex>
+        </Form>
+      </Card>
 
       {submitted === null ? null : (
-        <>
-          <div className="tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'items'}
-              className={tab === 'items' ? 'tab is-active' : 'tab'}
-              onClick={() => setTab('items')}
-            >
-              판매 중 매물
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'history'}
-              className={tab === 'history' ? 'tab is-active' : 'tab'}
-              disabled={query.mode === 'keyword'}
-              title={query.mode === 'keyword' ? '거래 내역은 카테고리/이름 검색에서만 조회됩니다.' : undefined}
-              onClick={() => setTab('history')}
-            >
-              최근 1시간 거래 내역
-            </button>
-          </div>
-
-          {tab === 'items' ? (
-            <>
-              {stats ? (
-                <section className="stat-grid" aria-label="개당 가격 통계">
-                  <div className="stat">
-                    <span className="stat__label">매물 수</span>
-                    <strong className="stat__value">{formatNumber(stats.count)}</strong>
-                  </div>
-                  <div className="stat">
-                    <span className="stat__label">최저</span>
-                    <strong className="stat__value">{formatGold(stats.min)}</strong>
-                  </div>
-                  <div className="stat">
-                    <span className="stat__label">중위</span>
-                    <strong className="stat__value">{formatGold(stats.median)}</strong>
-                  </div>
-                  <div className="stat">
-                    <span className="stat__label">평균</span>
-                    <strong className="stat__value">{formatGold(stats.average)}</strong>
-                  </div>
-                  <div className="stat">
-                    <span className="stat__label">최고</span>
-                    <strong className="stat__value">{formatGold(stats.max)}</strong>
-                  </div>
-                </section>
-              ) : null}
-
-              <QueryState
-                isLoading={itemsQuery.isPending && enabled}
-                error={itemsQuery.error}
-                isEmpty={items.length === 0}
-                errorAction={keywordFallback(itemsQuery.error)}
-              >
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th scope="col">아이템</th>
-                        <th scope="col">카테고리</th>
-                        <th scope="col" className="align-right">
-                          수량
-                        </th>
-                        <th scope="col" className="align-right">
-                          개당 가격
-                        </th>
-                        <th scope="col">만료</th>
-                        <th scope="col">옵션</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item, index) => (
-                        <tr key={`${item.item_display_name}-${item.date_auction_expire}-${index}`}>
-                          <td>
-                            <span className="item-name">{item.item_display_name}</span>
-                            {item.item_display_name !== item.item_name ? (
-                              <small className="muted">{item.item_name}</small>
-                            ) : null}
-                          </td>
-                          <td>{item.auction_item_category}</td>
-                          <td className="align-right">{formatNumber(item.item_count)}</td>
-                          <td className="align-right">{formatGold(item.auction_price_per_unit)}</td>
-                          <td>
-                            <span>{formatRemaining(item.date_auction_expire)}</span>
-                            <small className="muted">{formatDateTime(item.date_auction_expire)}</small>
-                          </td>
-                          <td>
-                            <ItemOptionList options={item.item_option} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {itemsQuery.hasNextPage ? (
-                  <button
-                    type="button"
-                    className="button button--block"
-                    disabled={itemsQuery.isFetchingNextPage}
-                    onClick={() => void itemsQuery.fetchNextPage()}
-                  >
-                    {itemsQuery.isFetchingNextPage ? '불러오는 중…' : '500개 더 불러오기'}
-                  </button>
-                ) : null}
-              </QueryState>
-            </>
-          ) : (
-            <QueryState
-              isLoading={historyQuery.isPending && enabled}
-              error={historyQuery.error}
-              isEmpty={history.length === 0}
-              emptyMessage="최근 1시간 안에 거래된 내역이 없습니다."
-              errorAction={keywordFallback(historyQuery.error)}
-            >
-              <div className="table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th scope="col">아이템</th>
-                      <th scope="col">카테고리</th>
-                      <th scope="col" className="align-right">
-                        수량
-                      </th>
-                      <th scope="col" className="align-right">
-                        개당 가격
-                      </th>
-                      <th scope="col">거래 시각</th>
-                      <th scope="col">옵션</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((row) => (
-                      <tr key={row.auction_buy_id}>
-                        <td>
-                          <span className="item-name">{row.item_display_name}</span>
-                          {row.item_display_name !== row.item_name ? (
-                            <small className="muted">{row.item_name}</small>
-                          ) : null}
-                        </td>
-                        <td>{row.auction_item_category}</td>
-                        <td className="align-right">{formatNumber(row.item_count)}</td>
-                        <td className="align-right">{formatGold(row.auction_price_per_unit)}</td>
-                        <td>{formatDateTime(row.date_auction_buy)}</td>
-                        <td>
-                          <ItemOptionList options={row.item_option} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {historyQuery.hasNextPage ? (
-                <button
-                  type="button"
-                  className="button button--block"
-                  disabled={historyQuery.isFetchingNextPage}
-                  onClick={() => void historyQuery.fetchNextPage()}
-                >
-                  {historyQuery.isFetchingNextPage ? '불러오는 중…' : '더 불러오기'}
-                </button>
-              ) : null}
-            </QueryState>
-          )}
-        </>
+        <Tabs
+          activeKey={tab}
+          onChange={(key) => setTab(key as Tab)}
+          items={[
+            { key: 'items', label: '판매 중 매물', children: itemsPanel },
+            { key: 'history', label: '최근 1시간 거래 내역', children: historyPanel },
+          ]}
+        />
       )}
-    </div>
+    </Flex>
   );
 }

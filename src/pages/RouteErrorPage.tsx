@@ -1,5 +1,8 @@
 import { isRouteErrorResponse, useRouteError } from 'react-router-dom';
+import { HomeOutlined } from '@ant-design/icons';
+import { Button, Flex, Result } from 'antd';
 
+/** 라우터 바깥에서 터진 오류라 RootLayout 을 거치지 않는다. 배경과 여백을 여기서 잡는다. */
 export function RouteErrorPage() {
   const error = useRouteError();
 
@@ -14,12 +17,17 @@ export function RouteErrorPage() {
   }
 
   return (
-    <div className="page state state--error" role="alert">
-      <h1>{title}</h1>
-      <p className="state__body">{detail}</p>
-      <a className="button" href={import.meta.env.BASE_URL}>
-        홈으로
-      </a>
-    </div>
+    <Flex align="center" justify="center" style={{ minHeight: '100dvh', padding: 16 }}>
+      <Result
+        status="error"
+        title={title}
+        subTitle={detail}
+        extra={
+          <Button type="primary" icon={<HomeOutlined />} href={import.meta.env.BASE_URL}>
+            홈으로
+          </Button>
+        }
+      />
+    </Flex>
   );
 }

@@ -1,13 +1,20 @@
 import { Link } from 'react-router-dom';
+import { HomeOutlined } from '@ant-design/icons';
+import { Button, Result } from 'antd';
 
 export function NotFoundPage() {
   return (
-    <div className="page state">
-      <h1>404</h1>
-      <p className="state__body">요청한 페이지를 찾을 수 없습니다.</p>
-      <Link className="button button--primary" to="/">
-        홈으로
-      </Link>
-    </div>
+    <Result
+      status="404"
+      title="404"
+      subTitle="요청한 페이지를 찾을 수 없습니다."
+      extra={
+        <Link to="/">
+          <Button type="primary" icon={<HomeOutlined />}>
+            홈으로
+          </Button>
+        </Link>
+      }
+    />
   );
 }

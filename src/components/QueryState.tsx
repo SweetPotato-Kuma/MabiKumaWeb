@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { SettingOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Empty, Flex, Skeleton, Space } from 'antd';
 import { NexonApiError } from '@/lib/nexonClient';
 
 interface QueryStateProps {
@@ -13,56 +15,62 @@ interface QueryStateProps {
 }
 
 function ErrorView({ error, action }: { error: unknown; action?: ReactNode }) {
-  if (error instanceof NexonApiError) {
-    return (
-      <div className="state state--error" role="alert">
-        <p className="state__title">요청을 처리하지 못했습니다</p>
-        <p className="state__body">{error.message}</p>
-        {action}
-        {error.isApiKeyProblem ? (
-          <Link className="button" to="/settings">
-            설정에서 API 키 입력하기
-          </Link>
-        ) : null}
-      </div>
-    );
-  }
-
+  const isApiError = error instanceof NexonApiError;
   const message = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+  const needsKey = isApiError && error.isApiKeyProblem;
 
   return (
-    <div className="state state--error" role="alert">
-      <p className="state__title">요청을 처리하지 못했습니다</p>
-      <p className="state__body">{message}</p>
-    </div>
+    <Alert
+      type="error"
+      showIcon
+      role="alert"
+      message="요청을 처리하지 못했습니다"
+      description={
+        <Flex vertical gap={12} align="flex-start">
+          <span>{message}</span>
+          {action}
+          {needsKey ? (
+            <Link to="/settings">
+              <Button icon={<SettingOutlined />}>설정에서 API 키 입력하기</Button>
+            </Link>
+          ) : null}
+        </Flex>
+      }
+    />
   );
 }
 
-/** 로딩 / 에러 / 빈 결과 / 정상을 한 곳에서 처리한다. */
+/**
+ * 로딩 / 에러 / 빈 결과 / 정상을 한 곳에서 처리한다.
+ * 네 상태가 전부 있어야 화면이 끝난 것으로 본다.
+ */
 export function QueryState({
   isLoading,
   error,
   isEmpty,
-  emptyMessage = '조건에 맞는 결과가 없습니다.',
+  emptyMessage = '조건에 맞는 결과가 없습니다. 조건을 바꿔 다시 검색해 보세요.',
   errorAction,
   children,
 }: QueryStateProps) {
   if (error) return <ErrorView error={error} action={errorAction} />;
 
   if (isLoading) {
+    // 결과가 표라서 로딩도 표 모양을 흉내 낸다. 범용 스피너는 위치를 알려 주지 못한다.
     return (
-      <div className="state" aria-live="polite">
-        <span className="spinner" aria-hidden="true" />
-        <p className="state__body">불러오는 중…</p>
-      </div>
+      <Card aria-live="polite" aria-busy="true">
+        <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+          <Skeleton.Input active block style={{ height: 38 }} />
+          <Skeleton active title={false} paragraph={{ rows: 6, width: '100%' }} />
+        </Space>
+      </Card>
     );
   }
 
   if (isEmpty) {
     return (
-      <div className="state">
-        <p className="state__body">{emptyMessage}</p>
-      </div>
+      <Card>
+        <Empty description={emptyMessage} />
+      </Card>
     );
   }
 

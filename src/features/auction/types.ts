@@ -40,14 +40,16 @@ export interface AuctionHistoryResponse {
   next_cursor: string | null;
 }
 
-/** 매물 검색 방식: 카테고리/이름 검색과 키워드 검색은 엔드포인트가 다르다. */
-export type AuctionSearchMode = 'list' | 'keyword';
-
+/**
+ * 매물 검색 조건.
+ *
+ * 이름으로 찾을 때는 keyword-search 만 쓴다. auction/list 의 item_name 은 정확한
+ * 전체 이름만 받아서(부분 문자열은 OPENAPI00004) 검색어로 쓸 수 없다.
+ * keyword-search 는 auction_item_category 를 무시하므로 카테고리는 화면에서 거른다.
+ */
 export interface AuctionSearchInput {
-  mode: AuctionSearchMode;
-  /** mode === 'list' 에서 사용 */
+  /** 비우면 전체. 키워드와 함께 쓰면 받아온 결과를 이 카테고리로 거른다. */
   category: string;
-  itemName: string;
-  /** mode === 'keyword' 에서 사용. 쉼표로 최대 10개 단어 */
+  /** 쉼표나 공백으로 여러 단어. 단어가 이름에 모두 들어간 아이템을 찾는다. */
   keyword: string;
 }

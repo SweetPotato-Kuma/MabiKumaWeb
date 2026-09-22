@@ -1,7 +1,9 @@
 # MabiKumaWeb
 
 마비노기 오픈 API 를 사용해 경매장 시세와 NPC 상점 정보를 조회하는 정적 웹 도구입니다.
-React + TypeScript + Vite 로 만들고, GitHub Actions 로 GitHub Pages 에 자동 배포합니다.
+React + TypeScript + Vite 로 만들고, UI 는 antd 하나로 통일했습니다. GitHub Actions 로 GitHub Pages 에 자동 배포합니다.
+
+디자인 규칙은 [.claude/skills/mabikuma-ui/SKILL.md](.claude/skills/mabikuma-ui/SKILL.md) 에 있습니다.
 
 - 배포 주소: https://mabi.spkuma.com/ (GitHub Pages + Cloudflare DNS)
 - 데이터 출처: [NEXON Open API — 마비노기](https://openapi.nexon.com/ko/game/mabinogi/)
