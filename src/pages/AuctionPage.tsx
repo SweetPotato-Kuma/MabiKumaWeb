@@ -351,7 +351,7 @@ export function AuctionPage() {
                     style={{ flex: '1 1 260px', minWidth: 0 }}
                   >
                     <Input
-                      placeholder="아이템명 검색 (띄어쓰기 없이 검색 가능)"
+                      placeholder="아이템명 검색"
                       allowClear
                       onPressEnter={() => runSearch(form)}
                     />
@@ -383,11 +383,15 @@ export function AuctionPage() {
                     </Tag>
                   ) : null}
                   <Text type="secondary" style={{ fontSize: 12 }}>
+                    {/*
+                      찾는 방식이 둘이라 그대로 알린다. 전체 검색은 넥슨 쪽 keyword-search 라
+                      단어가 맞아야 하고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
+                    */}
                     {form.category
                       ? dictionaryQuery.isFetching
                         ? '아이템 이름을 불러오는 중입니다.'
-                        : `${form.category} 아이템 이름 ${formatNumber(dictionaryQuery.data?.length ?? 0)}개에서 자동완성합니다.`
-                      : '카테고리를 고르면 그 안의 아이템 이름을 자동완성합니다. 검색어만으로도 찾을 수 있습니다.'}
+                        : `${form.category} 매물에서 이름 일부로 찾습니다. 자동완성은 이름 ${formatNumber(dictionaryQuery.data?.length ?? 0)}개에서 거듭니다.`
+                      : '전체 검색은 단어가 맞아야 찾습니다. 카테고리를 고르면 이름 일부만 넣어도 찾습니다.'}
                   </Text>
                 </Flex>
               </Flex>
