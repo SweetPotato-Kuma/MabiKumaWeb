@@ -141,10 +141,13 @@ export function IssueReportButton() {
             <Input placeholder="예: 경매장에서 카테고리를 바꿔도 결과가 그대로입니다" maxLength={120} showCount />
           </Form.Item>
 
+          {/*
+            showCount 는 칸의 오른쪽 아래에 겹쳐 그려진다. 같은 자리에 extra 를 두면
+            글자가 서로 포개진다. 안내는 placeholder 가 이미 틀까지 보여 주므로 비운다.
+          */}
           <Form.Item
             name="body"
             label="내용"
-            extra="버그라면 어떤 화면에서 무엇을 했는지, 무엇을 기대했는지 적어 주시면 고치기 훨씬 쉽습니다."
             rules={[
               { required: true, message: '내용을 적어 주세요.' },
               { min: 10, message: '내용은 10자 이상으로 적어 주세요.' },
