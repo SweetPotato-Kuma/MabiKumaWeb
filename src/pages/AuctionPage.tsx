@@ -7,6 +7,7 @@ import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } fr
 import { calculatePriceStats } from '@/features/auction/stats';
 import type { AuctionSearchInput, AuctionSearchMode } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
+import { NexonApiError } from '@/lib/nexonClient';
 import { useCanQuery } from '@/lib/settings';
 
 type Tab = 'items' | 'history';
@@ -35,6 +36,44 @@ export function AuctionPage() {
   const stats = useMemo(() => calculatePriceStats(items), [items]);
 
   const canSubmit = isAuctionSearchReady(form);
+
+  /**
+   * 넥슨 API 의 item_name 은 정확한 전체 이름만 받는다. "검" 처럼 일부만 넣으면
+   * 결과가 0건이 아니라 OPENAPI00004 로 거절당한다. 그 경우 같은 말을 키워드
+   * 검색으로 넘겨 주는 편이 사용자가 할 일을 하나 줄여 준다.
+   */
+  const rejectedItemName =
+    query.mode === 'list' && query.itemName.trim().length > 0 ? query.itemName.trim() : '';
+
+  function keywordFallback(error: unknown) {
+    if (!rejectedItemName) return null;
+    if (!(error instanceof NexonApiError) || error.code !== 'OPENAPI00004') return null;
+
+    return (
+      <>
+        <p className="state__body">
+          아이템 이름은 <strong>정확한 전체 이름</strong>이어야 합니다. 이름 일부로 찾으려면 키워드
+          검색을 쓰세요.
+        </p>
+        <button
+          type="button"
+          className="button"
+          onClick={() => {
+            const next: AuctionSearchInput = {
+              ...EMPTY_INPUT,
+              mode: 'keyword',
+              keyword: rejectedItemName,
+            };
+            setForm(next);
+            setSubmitted(next);
+            setTab('items');
+          }}
+        >
+          ‘{rejectedItemName}’ 으로 키워드 검색
+        </button>
+      </>
+    );
+  }
 
   return (
     <div className="page">
@@ -91,13 +130,16 @@ export function AuctionPage() {
             </label>
 
             <label className="field">
-              <span>아이템 이름</span>
+              <span>아이템 이름 (정확히 일치)</span>
               <input
                 type="text"
                 value={form.itemName}
                 placeholder="예: 롱 소드"
                 onChange={(event) => setForm((prev) => ({ ...prev, itemName: event.target.value }))}
               />
+              <small className="muted">
+                전체 이름을 그대로 넣어야 합니다. 이름 일부로 찾으려면 키워드 검색을 쓰세요.
+              </small>
             </label>
           </div>
         ) : (
@@ -190,6 +232,7 @@ export function AuctionPage() {
                 isLoading={itemsQuery.isPending && enabled}
                 error={itemsQuery.error}
                 isEmpty={items.length === 0}
+                errorAction={keywordFallback(itemsQuery.error)}
               >
                 <div className="table-wrap">
                   <table className="table">
@@ -250,6 +293,7 @@ export function AuctionPage() {
               error={historyQuery.error}
               isEmpty={history.length === 0}
               emptyMessage="최근 1시간 안에 거래된 내역이 없습니다."
+              errorAction={keywordFallback(historyQuery.error)}
             >
               <div className="table-wrap">
                 <table className="table">

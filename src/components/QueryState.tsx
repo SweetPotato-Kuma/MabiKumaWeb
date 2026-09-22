@@ -7,15 +7,18 @@ interface QueryStateProps {
   error: unknown;
   isEmpty: boolean;
   emptyMessage?: string;
+  /** 이 에러에서 사용자가 바로 할 수 있는 다음 행동. 화면 쪽에서 상황에 맞춰 넘긴다. */
+  errorAction?: ReactNode;
   children: ReactNode;
 }
 
-function ErrorView({ error }: { error: unknown }) {
+function ErrorView({ error, action }: { error: unknown; action?: ReactNode }) {
   if (error instanceof NexonApiError) {
     return (
       <div className="state state--error" role="alert">
         <p className="state__title">요청을 처리하지 못했습니다</p>
         <p className="state__body">{error.message}</p>
+        {action}
         {error.isApiKeyProblem ? (
           <Link className="button" to="/settings">
             설정에서 API 키 입력하기
@@ -41,9 +44,10 @@ export function QueryState({
   error,
   isEmpty,
   emptyMessage = '조건에 맞는 결과가 없습니다.',
+  errorAction,
   children,
 }: QueryStateProps) {
-  if (error) return <ErrorView error={error} />;
+  if (error) return <ErrorView error={error} action={errorAction} />;
 
   if (isLoading) {
     return (
