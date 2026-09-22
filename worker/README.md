@@ -52,6 +52,33 @@ npx wrangler deploy
 `*.workers.dev` 주소를 그대로 써도 동작은 같습니다. 다만 광고 차단기 중 일부가
 `workers.dev` 를 통째로 막기 때문에, 도메인이 있다면 이쪽이 덜 깨집니다.
 
+## 이슈 제보 (POST /report/issue)
+
+사이트 오른쪽 아래의 제보 버튼이 이 경로로 글을 보내고, 워커가 GitHub 에 이슈를 만듭니다.
+방문자 대부분은 GitHub 계정이 없으므로 대신 올려 주는 구조입니다.
+
+1. GitHub → Settings → Developer settings → **Fine-grained personal access token**
+   - Repository access: 이 저장소 하나만
+   - Permissions: **Issues → Read and write** 만. 다른 권한은 주지 않습니다
+2. 워커에 시크릿으로 넣습니다: 이름 `GITHUB_TOKEN`
+3. Variable `GITHUB_REPO` 를 `소유자/레포` 형식으로 둡니다 (`wrangler.toml` 에 이미 있습니다)
+
+라벨은 분류에 따라 `버그` 또는 `기능 추가 요청` 이 붙습니다. 저장소에 없는 라벨이면 GitHub 이
+처음 제보 때 만들어 줍니다.
+
+### 남용을 막는 장치
+
+토큰이 하나라 모든 제보가 같은 계정 이름으로 올라갑니다. 누가 썼는지 구분할 수 없으므로
+다음으로 막습니다.
+
+- 제목 4자에서 120자, 내용 10자에서 4000자
+- 사람이 채울 일 없는 칸(`website`)에 값이 있으면 거절
+- `ISSUE_RATE_LIMIT` 바인딩이 있으면 IP 당 1분에 3건까지 (`wrangler.toml` 참고)
+- `ALLOWED_ORIGINS` 가 브라우저 밖 호출을 걸러 냅니다
+
+대시보드로 워커를 만들었다면 rate limiting 바인딩이 없을 수 있습니다. 그때는 Security →
+WAF → Rate limiting rules 에서 `/report/issue` 경로에 규칙을 하나 걸어 두세요.
+
 ## 앱에 연결
 
 워커 주소를 `VITE_PROXY_URL` 로 넘깁니다.

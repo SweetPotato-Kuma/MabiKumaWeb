@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Flex, Grid, Layout, Menu, Space, Tag, Tooltip, Typography, theme } from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
+import { IssueReportButton } from '@/components/IssueReportButton';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
 
@@ -156,6 +157,9 @@ export function RootLayout() {
           </Text>
         </Flex>
       </Footer>
+
+      {/* 어느 화면에서든 제보할 수 있어야 한다. 화면마다 붙이지 않고 여기 한 번만 둔다. */}
+      <IssueReportButton />
     </Layout>
   );
 }

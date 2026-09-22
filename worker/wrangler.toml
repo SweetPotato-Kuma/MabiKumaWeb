@@ -7,6 +7,17 @@ compatibility_date = "2026-01-01"
 ALLOWED_ORIGINS = "https://mabi.spkuma.com,http://localhost:5173"
 CACHE_SECONDS = "60"
 
-# NEXON_API_KEY 는 여기에 적지 않는다. 시크릿으로 넣는다:
+# 이슈 제보를 올릴 곳. 공개 정보라 여기에 적어 둔다.
+GITHUB_REPO = "SweetPotato-Kuma/MabiKumaWeb"
+
+# IP 당 제보 횟수 제한. 토큰 하나로 모든 제보가 올라가므로 이게 유일한 방어선이다.
+[[unsafe.bindings]]
+name = "ISSUE_RATE_LIMIT"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 3, period = 60 }
+
+# NEXON_API_KEY 와 GITHUB_TOKEN 은 여기에 적지 않는다. 시크릿으로 넣는다:
 #   npx wrangler secret put NEXON_API_KEY
+#   npx wrangler secret put GITHUB_TOKEN
 # 또는 대시보드 → Workers → 해당 워커 → Settings → Variables → Add secret
