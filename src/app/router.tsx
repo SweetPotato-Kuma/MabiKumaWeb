@@ -3,6 +3,7 @@ import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { HomePage } from '@/pages/HomePage';
 import { AuctionPage } from '@/pages/AuctionPage';
+import { DictionaryPage } from '@/pages/DictionaryPage';
 import { NpcShopPage } from '@/pages/NpcShopPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -16,6 +17,7 @@ export const router = createBrowserRouter(
       children: [
         { index: true, element: <HomePage /> },
         { path: 'auction', element: <AuctionPage /> },
+        { path: 'dictionary', element: <DictionaryPage /> },
         { path: 'npc-shop', element: <NpcShopPage /> },
         { path: 'settings', element: <SettingsPage /> },
         { path: '*', element: <NotFoundPage /> },

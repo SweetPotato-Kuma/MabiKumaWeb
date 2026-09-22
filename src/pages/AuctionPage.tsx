@@ -1,24 +1,30 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
+  AutoComplete,
   Button,
   Card,
   Col,
   Flex,
-  Form,
+  Grid,
   Input,
   Row,
   Select,
   Statistic,
   Table,
   Tabs,
+  Tag,
+  Tree,
   Typography,
   type TableColumnsType,
+  type TreeDataNode,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
-import { AUCTION_ITEM_CATEGORIES, KEYWORD_MAX_COUNT } from '@/features/auction/constants';
+import { CATEGORY_GROUPS, findGroupOf, findUngroupedCategories, groupKeyOf } from '@/features/auction/categoryTree';
+import { matchItemNames, useCategoryItemNamesQuery } from '@/features/auction/dictionary';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
 import { calculatePriceStats } from '@/features/auction/stats';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
@@ -29,15 +35,57 @@ const { Title, Text } = Typography;
 
 type Tab = 'items' | 'history';
 
+/** 카테고리를 고르지 않은 상태. 트리의 '전체' 노드가 이 값을 가리킨다. */
+const ALL_CATEGORIES = '';
+
 const EMPTY_INPUT: AuctionSearchInput = {
-  category: '',
+  category: ALL_CATEGORIES,
   keyword: '',
 };
 
-const CATEGORY_OPTIONS = [
-  { value: '', label: '전체' },
-  ...AUCTION_ITEM_CATEGORIES.map((category) => ({ value: category, label: category })),
-];
+/**
+ * 좌측 트리. 묶음은 펼치기만 하고 고를 수 없다. 요청에 실리는 것은 언제나 잎이다.
+ * 묶음에서 빠진 카테고리가 생기면 맨 아래에 그대로 붙여 하나도 잃지 않는다.
+ */
+function buildTreeData(): TreeDataNode[] {
+  const groups: TreeDataNode[] = CATEGORY_GROUPS.map((group) => ({
+    key: groupKeyOf(group.name),
+    title: group.name,
+    selectable: false,
+    children: group.categories.map((category) => ({ key: category, title: category })),
+  }));
+
+  const ungrouped = findUngroupedCategories();
+  if (ungrouped.length > 0) {
+    groups.push({
+      key: groupKeyOf('분류되지 않음'),
+      title: '분류되지 않음',
+      selectable: false,
+      children: ungrouped.map((category) => ({ key: category, title: category })),
+    });
+  }
+
+  return [{ key: ALL_CATEGORIES, title: '전체' }, ...groups];
+}
+
+/** 좁은 화면에서는 트리 대신 묶음별 Select 를 쓴다. 트리는 손가락으로 펼치기 어렵다. */
+function buildSelectOptions() {
+  return [
+    { value: ALL_CATEGORIES, label: '전체' },
+    ...CATEGORY_GROUPS.map((group) => ({
+      label: group.name,
+      options: group.categories.map((category) => ({ value: category, label: category })),
+    })),
+  ];
+}
+
+/** 주소에 실려 온 검색 조건. 아이템 사전에서 "시세 보기" 로 넘어오는 경로다. */
+function readSearchInput(params: URLSearchParams): AuctionSearchInput {
+  return {
+    category: params.get('category') ?? ALL_CATEGORIES,
+    keyword: params.get('keyword') ?? '',
+  };
+}
 
 /** 이름 열은 표시 이름과 원래 이름이 다를 때만 두 줄이 된다. */
 function ItemNameCell({ displayName, rawName }: { displayName: string; rawName: string }) {
@@ -57,8 +105,17 @@ function ItemNameCell({ displayName, rawName }: { displayName: string; rawName: 
 
 export function AuctionPage() {
   const canQuery = useCanQuery();
-  const [form, setForm] = useState<AuctionSearchInput>(EMPTY_INPUT);
-  const [submitted, setSubmitted] = useState<AuctionSearchInput | null>(null);
+  const screens = Grid.useBreakpoint();
+  const isWide = Boolean(screens.md);
+
+  // 아이템 사전에서 넘어올 때 조건이 주소에 실려 온다. 첫 렌더에서만 읽고 이후에는 화면이 주인이다.
+  const [searchParams] = useSearchParams();
+
+  const [form, setForm] = useState<AuctionSearchInput>(() => readSearchInput(searchParams));
+  const [submitted, setSubmitted] = useState<AuctionSearchInput | null>(() => {
+    const initial = readSearchInput(searchParams);
+    return isAuctionSearchReady(initial) ? initial : null;
+  });
   const [tab, setTab] = useState<Tab>('items');
 
   const query = submitted ?? EMPTY_INPUT;
@@ -72,14 +129,64 @@ export function AuctionPage() {
   const history = useMemo(() => historyQuery.data?.items ?? [], [historyQuery.data]);
   const stats = useMemo(() => calculatePriceStats(items), [items]);
 
-  const canSubmit = isAuctionSearchReady(form);
-
-  /**
-   * 키워드 검색은 카테고리를 서버에서 걸러 주지 않아 화면에서 거른다.
-   * 그래서 "불러온 수"와 "보이는 수"가 달라질 수 있고, 그 사실을 숨기지 않는다.
-   */
   const itemsLoaded = itemsQuery.data?.loadedCount ?? 0;
   const historyLoaded = historyQuery.data?.loadedCount ?? 0;
+
+  // 자동완성은 고른 카테고리의 사전만 읽는다. 전체 사전은 15,000개가 넘는다.
+  const dictionaryQuery = useCategoryItemNamesQuery(form.category);
+  const suggestions = useMemo(
+    () => matchItemNames(dictionaryQuery.data ?? [], form.keyword).map((name) => ({ value: name })),
+    [dictionaryQuery.data, form.keyword],
+  );
+
+  const treeData = useMemo(() => buildTreeData(), []);
+  const selectOptions = useMemo(() => buildSelectOptions(), []);
+  const expandedGroup = findGroupOf(form.category);
+
+  const canSubmit = isAuctionSearchReady(form);
+
+  function runSearch(next: AuctionSearchInput) {
+    if (!isAuctionSearchReady(next)) return;
+    setSubmitted({ ...next });
+  }
+
+  /** 카테고리를 고르는 것 자체가 둘러보기 행동이라 바로 조회한다. */
+  function selectCategory(category: string) {
+    const next = { ...form, category };
+    setForm(next);
+    if (isAuctionSearchReady(next)) runSearch(next);
+  }
+
+  const categoryPanel = isWide ? (
+    <Card
+      variant="outlined"
+      size="small"
+      title="카테고리"
+      styles={{ body: { maxHeight: 'calc(100dvh - 240px)', overflowY: 'auto' } }}
+    >
+      <Tree
+        blockNode
+        treeData={treeData}
+        selectedKeys={[form.category]}
+        defaultExpandedKeys={expandedGroup ? [groupKeyOf(expandedGroup)] : []}
+        onSelect={(keys) => {
+          // 고른 것을 다시 누르면 antd 가 빈 배열을 준다. 그때는 선택을 그대로 둔다.
+          const next = keys[0];
+          if (typeof next === 'string') selectCategory(next);
+        }}
+      />
+    </Card>
+  ) : (
+    <Select
+      value={form.category}
+      onChange={selectCategory}
+      options={selectOptions}
+      showSearch
+      optionFilterProp="label"
+      placeholder="카테고리"
+      style={{ width: '100%' }}
+    />
+  );
 
   const itemColumns: TableColumnsType<AuctionItem> = [
     {
@@ -203,15 +310,14 @@ export function AuctionPage() {
         isEmpty={items.length === 0}
         emptyMessage={
           itemsLoaded > 0
-            ? `불러온 ${formatNumber(itemsLoaded)}건 중 ${query.category} 카테고리는 없습니다. 더 불러오거나 카테고리를 풀어 보세요.`
+            ? `불러온 ${formatNumber(itemsLoaded)}건 중 조건에 맞는 것이 없습니다. 더 불러오거나 조건을 넓혀 보세요.`
             : '조건에 맞는 매물이 없습니다. 검색어를 줄이거나 카테고리를 바꿔 보세요.'
         }
       >
         <Flex vertical gap={12}>
           {items.length !== itemsLoaded ? (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              불러온 {formatNumber(itemsLoaded)}건 가운데 {query.category} 카테고리 {formatNumber(items.length)}건을
-              보고 있습니다.
+              불러온 {formatNumber(itemsLoaded)}건 가운데 조건에 맞는 {formatNumber(items.length)}건을 보고 있습니다.
             </Text>
           ) : null}
           <Table<AuctionItem>
@@ -224,11 +330,7 @@ export function AuctionPage() {
             sticky
           />
           {itemsQuery.hasNextPage ? (
-            <Button
-              block
-              loading={itemsQuery.isFetchingNextPage}
-              onClick={() => void itemsQuery.fetchNextPage()}
-            >
+            <Button block loading={itemsQuery.isFetchingNextPage} onClick={() => void itemsQuery.fetchNextPage()}>
               500개 더 불러오기
             </Button>
           ) : null}
@@ -265,11 +367,7 @@ export function AuctionPage() {
           sticky
         />
         {historyQuery.hasNextPage ? (
-          <Button
-            block
-            loading={historyQuery.isFetchingNextPage}
-            onClick={() => void historyQuery.fetchNextPage()}
-          >
+          <Button block loading={historyQuery.isFetchingNextPage} onClick={() => void historyQuery.fetchNextPage()}>
             더 불러오기
           </Button>
         ) : null}
@@ -278,78 +376,95 @@ export function AuctionPage() {
   );
 
   return (
-    <Flex vertical gap={20}>
+    <Flex vertical gap={16}>
       <Title level={3} style={{ margin: 0 }}>
         경매장 조회
       </Title>
 
       <ApiKeyNotice />
 
-      <Card variant="outlined">
-        <Form
-          layout="vertical"
-          onFinish={() => {
-            if (!canSubmit) return;
-            setSubmitted({ ...form });
-          }}
-        >
-          {/* 2단 폼. 768px 미만에서는 한 단으로 떨어진다. */}
-          <Row gutter={[16, 0]}>
-            <Col xs={24} md={14}>
-              <Form.Item
-                label="검색어"
-                extra={`이름 일부만 넣어도 됩니다. 여러 단어는 쉼표나 공백으로 최대 ${KEYWORD_MAX_COUNT}개까지 넣을 수 있고, 모두 포함된 아이템을 찾습니다.`}
-              >
-                <Input
-                  value={form.keyword}
-                  placeholder="예: 소드"
-                  allowClear
-                  onChange={(event) => setForm((prev) => ({ ...prev, keyword: event.target.value }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={10}>
-              <Form.Item label="카테고리" extra="검색어 없이 카테고리만 골라도 전체 매물을 볼 수 있습니다.">
-                <Select
-                  value={form.category}
-                  onChange={(category) => setForm((prev) => ({ ...prev, category }))}
-                  options={CATEGORY_OPTIONS}
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="전체"
-                  style={{ width: '100%' }}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
+      {/* 좌측 카테고리, 우측 검색과 결과. 768px 미만에서는 위아래 한 단으로 떨어진다. */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={8} lg={6}>
+          {categoryPanel}
+        </Col>
 
-          <Flex gap={10} wrap style={{ marginTop: 8 }}>
-            <Button type="primary" htmlType="submit" icon={<SearchOutlined />} disabled={!canSubmit || !canQuery}>
-              검색
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => {
-                setForm(EMPTY_INPUT);
-                setSubmitted(null);
-              }}
-            >
-              초기화
-            </Button>
+        <Col xs={24} md={16} lg={18}>
+          <Flex vertical gap={16}>
+            <Card variant="outlined" size="small">
+              <Flex vertical gap={10}>
+                <Flex gap={8} wrap align="center">
+                  <AutoComplete
+                    value={form.keyword}
+                    options={suggestions}
+                    onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
+                    onSelect={(keyword: string) => {
+                      const next = { ...form, keyword };
+                      setForm(next);
+                      runSearch(next);
+                    }}
+                    style={{ flex: '1 1 260px', minWidth: 0 }}
+                  >
+                    <Input
+                      placeholder="아이템명 검색 (띄어쓰기 없이 검색 가능)"
+                      allowClear
+                      onPressEnter={() => runSearch(form)}
+                    />
+                  </AutoComplete>
+
+                  <Button
+                    type="primary"
+                    icon={<SearchOutlined />}
+                    disabled={!canSubmit || !canQuery}
+                    onClick={() => runSearch(form)}
+                  >
+                    찾기
+                  </Button>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => {
+                      setForm(EMPTY_INPUT);
+                      setSubmitted(null);
+                    }}
+                  >
+                    검색 초기화
+                  </Button>
+                </Flex>
+
+                <Flex gap={8} wrap align="center">
+                  {form.category ? (
+                    <Tag closable onClose={() => selectCategory(ALL_CATEGORIES)}>
+                      {form.category}
+                    </Tag>
+                  ) : null}
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {form.category
+                      ? dictionaryQuery.isFetching
+                        ? '아이템 이름을 불러오는 중입니다.'
+                        : `${form.category} 아이템 이름 ${formatNumber(dictionaryQuery.data?.length ?? 0)}개에서 자동완성합니다.`
+                      : '카테고리를 고르면 그 안의 아이템 이름을 자동완성합니다. 검색어만으로도 찾을 수 있습니다.'}
+                  </Text>
+                </Flex>
+              </Flex>
+            </Card>
+
+            {submitted === null ? (
+              <Card variant="outlined">
+                <Text type="secondary">왼쪽에서 카테고리를 고르거나 아이템명을 입력한 뒤 찾기를 누르세요.</Text>
+              </Card>
+            ) : (
+              <Tabs
+                activeKey={tab}
+                onChange={(key) => setTab(key as Tab)}
+                items={[
+                  { key: 'items', label: '판매 중 매물', children: itemsPanel },
+                  { key: 'history', label: '최근 1시간 거래 내역', children: historyPanel },
+                ]}
+              />
+            )}
           </Flex>
-        </Form>
-      </Card>
-
-      {submitted === null ? null : (
-        <Tabs
-          activeKey={tab}
-          onChange={(key) => setTab(key as Tab)}
-          items={[
-            { key: 'items', label: '판매 중 매물', children: itemsPanel },
-            { key: 'history', label: '최근 1시간 거래 내역', children: historyPanel },
-          ]}
-        />
-      )}
+        </Col>
+      </Row>
     </Flex>
   );
 }

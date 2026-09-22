@@ -1,5 +1,13 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { ApiOutlined, HomeOutlined, KeyOutlined, SettingOutlined, ShopOutlined, TagOutlined } from '@ant-design/icons';
+import {
+  ApiOutlined,
+  BookOutlined,
+  HomeOutlined,
+  KeyOutlined,
+  SettingOutlined,
+  ShopOutlined,
+  TagOutlined,
+} from '@ant-design/icons';
 import { Flex, Grid, Layout, Menu, Space, Tag, Typography, theme } from 'antd';
 import { useEndpointMode } from '@/lib/settings';
 
@@ -10,6 +18,7 @@ const { Text } = Typography;
 const NAV_ITEMS = [
   { key: '/', icon: <HomeOutlined />, label: <NavLink to="/">홈</NavLink> },
   { key: '/auction', icon: <TagOutlined />, label: <NavLink to="/auction">경매장</NavLink> },
+  { key: '/dictionary', icon: <BookOutlined />, label: <NavLink to="/dictionary">아이템 사전</NavLink> },
   { key: '/npc-shop', icon: <ShopOutlined />, label: <NavLink to="/npc-shop">NPC 상점</NavLink> },
   { key: '/settings', icon: <SettingOutlined />, label: <NavLink to="/settings">설정</NavLink> },
 ];
