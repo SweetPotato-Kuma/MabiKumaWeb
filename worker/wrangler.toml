@@ -1,0 +1,12 @@
+name = "mabikuma-api"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# 이 사이트에서 오는 요청만 받는다. 배포 주소가 바뀌면 같이 고칠 것.
+ALLOWED_ORIGINS = "https://sweetpotato-kuma.github.io,http://localhost:5173"
+CACHE_SECONDS = "60"
+
+# NEXON_API_KEY 는 여기에 적지 않는다. 시크릿으로 넣는다:
+#   npx wrangler secret put NEXON_API_KEY
+# 또는 대시보드 → Workers → 해당 워커 → Settings → Variables → Add secret
