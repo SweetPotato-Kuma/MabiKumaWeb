@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
@@ -18,6 +18,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
+import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
@@ -78,6 +79,7 @@ export function AuctionPage() {
     return isAuctionSearchReady(initial) ? initial : null;
   });
   const [tab, setTab] = useState<Tab>('items');
+  const [detail, setDetail] = useState<AuctionItemDetail | null>(null);
 
   const query = submitted ?? EMPTY_INPUT;
   const enabled = canQuery && submitted !== null && isAuctionSearchReady(query);
@@ -101,6 +103,27 @@ export function AuctionPage() {
   );
 
   const canSubmit = isAuctionSearchReady(form);
+
+  /**
+   * 줄 전체를 눌러 상세를 연다.
+   *
+   * 마우스만 되는 게 아니라 키보드로도 닿아야 한다. 표의 줄은 원래 초점을 받지 못하므로
+   * tabIndex 를 주고 Enter 와 Space 를 같이 받는다. 줄이 눌리게 됐으니 줄 안의 옵션
+   * 칸에서는 따로 펼치는 버튼을 뺐다.
+   */
+  function rowInteraction(build: () => AuctionItemDetail) {
+    return {
+      tabIndex: 0,
+      style: { cursor: 'pointer' },
+      onClick: () => setDetail(build()),
+      onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        setDetail(build());
+      },
+    };
+  }
+
 
   function runSearch(next: AuctionSearchInput) {
     if (!isAuctionSearchReady(next)) return;
@@ -179,7 +202,7 @@ export function AuctionPage() {
     {
       title: '옵션',
       dataIndex: 'item_option',
-      render: (_value, record) => <ItemOptionList options={record.item_option} />,
+      render: (_value, record) => <ItemOptionList options={record.item_option} expandable={false} />,
     },
   ];
 
@@ -220,7 +243,7 @@ export function AuctionPage() {
     {
       title: '옵션',
       dataIndex: 'item_option',
-      render: (_value, record) => <ItemOptionList options={record.item_option} />,
+      render: (_value, record) => <ItemOptionList options={record.item_option} expandable={false} />,
     },
   ];
 
@@ -239,7 +262,7 @@ export function AuctionPage() {
               ] as const
             ).map(([label, value]) => (
               <Col key={label} flex="1 1 140px">
-                <Statistic title={label} value={value} valueStyle={{ fontVariantNumeric: 'tabular-nums' }} />
+                <Statistic title={label} value={value} styles={{ content: { fontVariantNumeric: 'tabular-nums' } }} />
               </Col>
             ))}
           </Row>
@@ -268,6 +291,19 @@ export function AuctionPage() {
           <Table<AuctionItem>
             columns={itemColumns}
             dataSource={items}
+            onRow={(record) =>
+              rowInteraction(() => ({
+                displayName: record.item_display_name,
+                rawName: record.item_name,
+                category: record.auction_item_category,
+                count: record.item_count,
+                pricePerUnit: record.auction_price_per_unit,
+                options: record.item_option,
+                timeLabel: '만료',
+                timeValue: record.date_auction_expire,
+                showRemaining: true,
+              }))
+            }
             rowKey={(record, index) => `${record.item_display_name}-${record.date_auction_expire}-${index ?? 0}`}
             size="small"
             pagination={false}
@@ -305,6 +341,19 @@ export function AuctionPage() {
         <Table<AuctionHistoryItem>
           columns={historyColumns}
           dataSource={history}
+          onRow={(record) =>
+            rowInteraction(() => ({
+              displayName: record.item_display_name,
+              rawName: record.item_name,
+              category: record.auction_item_category,
+              count: record.item_count,
+              pricePerUnit: record.auction_price_per_unit,
+              options: record.item_option,
+              timeLabel: '거래 시각',
+              timeValue: record.date_auction_buy,
+              showRemaining: false,
+            }))
+          }
           rowKey={(record) => record.auction_buy_id}
           size="small"
           pagination={false}
@@ -414,6 +463,8 @@ export function AuctionPage() {
           </Flex>
         </Col>
       </Row>
+
+      <AuctionItemDetailModal detail={detail} onClose={() => setDetail(null)} />
     </Flex>
   );
 }

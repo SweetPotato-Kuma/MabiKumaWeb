@@ -36,8 +36,19 @@ function OptionRow({ option }: { option: ItemOption }) {
   );
 }
 
+interface Props {
+  options: ItemOption[] | undefined;
+  /**
+   * 넘치는 옵션을 눌러서 펼칠지.
+   *
+   * 줄 전체가 눌리는 표(경매장)에서는 꺼 둔다. 눌리는 줄 안에 또 눌리는 버튼을 두면
+   * 어느 쪽이 반응할지 알 수 없고, 키보드로 훑을 때도 걸리는 곳이 늘어난다.
+   */
+  expandable?: boolean;
+}
+
 /** 아이템 세부 옵션. 값이 없으면 칸을 비운 티를 낸다. */
-export function ItemOptionList({ options }: { options: ItemOption[] | undefined }) {
+export function ItemOptionList({ options, expandable = true }: Props) {
   if (!options || options.length === 0) {
     return (
       <Text type="secondary" aria-label="옵션 없음">
@@ -55,7 +66,13 @@ export function ItemOptionList({ options }: { options: ItemOption[] | undefined 
         <OptionRow key={`${option.option_type}-${option.option_sub_type ?? ''}-${index}`} option={option} />
       ))}
 
-      {hidden > 0 ? (
+      {hidden > 0 && !expandable ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          외 {hidden}개
+        </Text>
+      ) : null}
+
+      {hidden > 0 && expandable ? (
         <Popover
           trigger="click"
           placement="left"
