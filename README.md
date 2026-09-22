@@ -3,7 +3,7 @@
 마비노기 오픈 API 를 사용해 경매장 시세와 NPC 상점 정보를 조회하는 정적 웹 도구입니다.
 React + TypeScript + Vite 로 만들고, GitHub Actions 로 GitHub Pages 에 자동 배포합니다.
 
-- 배포 주소: https://sweetpotato-kuma.github.io/MabiKumaWeb/
+- 배포 주소: https://mabi.spkuma.com/ (GitHub Pages + Cloudflare DNS)
 - 데이터 출처: [NEXON Open API — 마비노기](https://openapi.nexon.com/ko/game/mabinogi/)
 
 ## 기능
@@ -52,15 +52,39 @@ npm run dev             # http://localhost:5173
 
 1. GitHub 레포지토리 → **Settings → Pages**
 2. **Build and deployment → Source** 를 `GitHub Actions` 로 변경
-3. `main` 에 푸시하면 Actions 탭에서 배포가 진행됩니다
+3. **Custom domain** 에 `mabi.spkuma.com` 을 넣고 저장 (DNS 는 아래 항목 참고)
+4. DNS 검사가 통과하고 인증서가 발급되면 **Enforce HTTPS** 체크
+5. `main` 에 푸시하면 Actions 탭에서 배포가 진행됩니다
 
 `gh-pages` 브랜치는 쓰지 않습니다. 빌드 산출물은 Pages 아티팩트로 바로 업로드됩니다.
 
+### 커스텀 도메인 (mabi.spkuma.com)
+
+도메인은 가비아에서 구입했고, DNS 는 Cloudflare 가 맡습니다.
+
+1. **가비아** → 도메인 관리 → 네임서버 변경 → Cloudflare 가 알려준 네임서버 2개로 교체.
+   가비아의 `DNS 관리` 가 아니라 **네임서버 자체를 Cloudflare 로 넘기는 것**입니다.
+2. **Cloudflare** → 해당 존 → DNS → 레코드 추가
+
+   | Type | Name | Content | Proxy |
+   | --- | --- | --- | --- |
+   | CNAME | `mabi` | `sweetpotato-kuma.github.io` | **DNS only (회색 구름)** |
+
+3. GitHub → Settings → Pages → Custom domain 에 `mabi.spkuma.com` 저장.
+   GitHub 이 Let's Encrypt 인증서를 발급할 때까지 기다립니다(보통 몇 분, 최대 24시간).
+   이 동안 Cloudflare 프록시를 켜면 도메인 검증이 막히므로 **회색 구름을 유지**합니다.
+4. 인증서가 나오고 `Enforce HTTPS` 가 켜진 뒤, 원하면 프록시(주황 구름)를 켭니다.
+   이때 Cloudflare **SSL/TLS → 암호화 모드**를 반드시 **Full (strict)** 로 둡니다.
+   `Flexible` 이면 GitHub 이 다시 HTTPS 로 돌려보내 리다이렉트 루프가 납니다.
+
+`public/CNAME` 에도 같은 도메인이 들어 있어 빌드 산출물과 함께 올라갑니다.
+도메인을 바꾸면 이 파일, Pages 설정, 워커의 `ALLOWED_ORIGINS` 세 곳을 같이 고칩니다.
+
 ### 경로(base) 처리
 
-GitHub Pages 프로젝트 사이트는 `https://<user>.github.io/<repo>/` 하위에서 동작하므로
-Vite `base` 를 맞춰야 합니다. 워크플로에서 `actions/configure-pages` 가 알려주는 값을
-`VITE_BASE_PATH` 로 넘기기 때문에 **레포지토리 이름을 바꿔도 따라갑니다.**
+커스텀 도메인은 루트에서 동작하므로 Vite `base` 는 `/` 입니다.
+워크플로가 `actions/configure-pages` 가 알려주는 값을 `VITE_BASE_PATH` 로 넘기므로,
+Pages 설정을 바꾸면(커스텀 도메인을 떼는 등) 빌드 경로도 따라갑니다.
 로컬 빌드 기본값은 `vite.config.ts` 의 `DEFAULT_BASE_PATH` 입니다.
 
 SPA 라우팅은 `scripts/postbuild.mjs` 가 `index.html` 을 `404.html` 로 복사해 처리합니다.

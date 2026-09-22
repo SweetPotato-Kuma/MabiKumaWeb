@@ -23,3 +23,6 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea
+
+# 코드베이스 인덱스 (VSCode codebase-memory 확장)
+.codebase-memory/

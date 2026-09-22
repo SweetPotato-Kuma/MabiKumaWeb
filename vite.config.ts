@@ -6,8 +6,8 @@ import react from '@vitejs/plugin-react';
 /** 넥슨 오픈 API 원본 호스트. 개발 서버에서는 CORS 회피를 위해 프록시로 우회한다. */
 const NEXON_API_ORIGIN = 'https://open.api.nexon.com';
 
-/** GitHub Pages 프로젝트 사이트 경로. 레포지토리 이름이 바뀌면 이 값도 함께 바꾼다. */
-const DEFAULT_BASE_PATH = '/MabiKumaWeb/';
+/** 배포 경로. 커스텀 도메인(mabi.spkuma.com) 루트에 올리므로 "/" 다. github.io 하위 경로로 돌아가면 "/<repo>/" 로 바꾼다. */
+const DEFAULT_BASE_PATH = '/';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');

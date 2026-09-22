@@ -27,7 +27,7 @@ GitHub Pages 는 정적 파일만 서빙합니다. 브라우저가 넥슨 API �
 5. **Settings → Variables and Secrets**
    - **Secret** 추가: 이름 `NEXON_API_KEY`, 값은 넥슨 오픈 API 키
    - **Variable** 추가: 이름 `ALLOWED_ORIGINS`,
-     값 `https://sweetpotato-kuma.github.io,http://localhost:5173`
+     값 `https://mabi.spkuma.com,http://localhost:5173`
 6. 워커 주소(`https://mabikuma-api.<계정>.workers.dev`)를 복사
 
 ### CLI 로 하기
@@ -38,6 +38,19 @@ npx wrangler login
 npx wrangler secret put NEXON_API_KEY   # 프롬프트에 키 입력
 npx wrangler deploy
 ```
+
+### 워커를 spkuma.com 아래에 두기 (선택)
+
+`spkuma.com` 존이 Cloudflare 에 들어와 있으면 워커에 자기 주소를 붙일 수 있습니다.
+
+1. Workers & Pages → `mabikuma-api` → **Settings → Domains & Routes → Add → Custom domain**
+2. `mabi-api.spkuma.com` 입력. DNS 레코드와 인증서는 Cloudflare 가 알아서 만듭니다.
+   한 단계짜리 서브도메인이어야 합니다 — 무료 플랜의 Universal SSL 은 `*.spkuma.com` 까지만
+   덮으므로 `api.mabi.spkuma.com` 같은 3단계 주소는 인증서가 따로 필요합니다(유료 ACM).
+3. `VITE_PROXY_URL` 을 새 주소로 바꿉니다
+
+`*.workers.dev` 주소를 그대로 써도 동작은 같습니다. 다만 광고 차단기 중 일부가
+`workers.dev` 를 통째로 막기 때문에, 도메인이 있다면 이쪽이 덜 깨집니다.
 
 ## 앱에 연결
 
