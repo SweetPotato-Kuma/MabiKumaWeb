@@ -63,6 +63,55 @@ describe('매물 상세 모달', () => {
     expect(screen.getByText(/세부 옵션이 없습니다/)).toBeInTheDocument();
   });
 
+
+  it('색상은 숫자 대신 칠한 네모로 보여 준다', () => {
+    renderModal({
+      ...DETAIL,
+      options: [
+        { option_type: '아이템 색상 파트 A', option_value: '255,255,255' },
+        { option_type: '아이템 색상 파트 D', option_value: '43,62,58' },
+      ],
+    });
+
+    // 숫자 셋을 읽는 것보다 칠해진 네모를 보는 편이 빠르다.
+    const swatch = screen.getByLabelText('아이템 색상 파트 D 43,62,58');
+    expect(swatch).toHaveStyle({ background: 'rgb(43, 62, 58)' });
+    expect(screen.getByLabelText('아이템 색상 파트 A 255,255,255')).toBeInTheDocument();
+  });
+
+  it('읽을 수 없는 색상 값은 원래 문자열을 남긴다', () => {
+    renderModal({
+      ...DETAIL,
+      options: [{ option_type: '아이템 색상 파트 A', option_value: '알 수 없음' }],
+    });
+
+    expect(screen.getByText('알 수 없음')).toBeInTheDocument();
+  });
+
+  it('쉼표로 붙은 효과를 줄 단위로 끊어 보여 준다', () => {
+    renderModal({
+      ...DETAIL,
+      options: [
+        {
+          option_type: '인챈트 접두',
+          option_value: '파괴적인 (랭크 6)',
+          option_desc: '수리비 200% 증가,체력 10 증가,최소대미지 40 증가',
+        },
+      ],
+    });
+
+    // 한 줄로 이어 두면 어디서 끊어 읽어야 할지 알 수 없다.
+    expect(screen.getByText('수리비 200% 증가')).toBeInTheDocument();
+    expect(screen.getByText('체력 10 증가')).toBeInTheDocument();
+    expect(screen.getByText('최소대미지 40 증가')).toBeInTheDocument();
+  });
+
+  it('옵션을 종류별로 묶어 보여 준다', () => {
+    renderModal(DETAIL);
+
+    expect(screen.getByText('기본 능력')).toBeInTheDocument();
+  });
+
   it('거래 내역처럼 지난 시각이면 남은 시간을 내세우지 않는다', () => {
     renderModal({ ...DETAIL, timeLabel: '거래 시각', showRemaining: false });
 

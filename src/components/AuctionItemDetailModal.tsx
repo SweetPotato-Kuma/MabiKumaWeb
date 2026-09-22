@@ -1,4 +1,12 @@
-import { Descriptions, Empty, Flex, Modal, Statistic, Tag, Typography } from 'antd';
+import { Descriptions, Empty, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
+import {
+  colorPartLabel,
+  groupItemOptions,
+  parseRgb,
+  rgbToCss,
+  splitEffects,
+  type OptionGroup,
+} from '@/features/auction/itemOptions';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 
@@ -29,6 +37,9 @@ interface Props {
   onClose: () => void;
 }
 
+/** 라벨이 두 줄로 접히면 표가 들쭉날쭉해진다. 라벨 칸은 넓게 잡고 줄바꿈을 막는다. */
+const LABEL_STYLE = { width: 148, whiteSpace: 'nowrap' } as const;
+
 function optionLabel(option: ItemOption): string {
   if (!option.option_sub_type) return option.option_type;
   return `${option.option_type} ${option.option_sub_type}`;
@@ -39,18 +50,103 @@ function optionValue(option: ItemOption): string {
   return range || '-';
 }
 
-export function AuctionItemDetailModal({ detail, onClose }: Props) {
-  const options = detail?.options ?? [];
+/**
+ * 옵션 한 칸의 값.
+ *
+ * 설명이 붙어 있으면 쉼표로 이어진 효과를 줄 단위로 끊는다. 한 줄로 두면 읽을 수 없고,
+ * 그렇다고 모두 펼치면 줄이 늘어나므로 값과 설명의 크기를 분명히 갈라 둔다.
+ */
+function OptionValue({ option }: { option: ItemOption }) {
+  const effects = splitEffects(option.option_desc);
 
   return (
-    <Modal
-      open={detail !== null}
-      onCancel={onClose}
-      footer={null}
-      width={560}
-      title={null}
-      destroyOnHidden
-    >
+    <Flex vertical gap={effects.length > 0 ? 4 : 0}>
+      <span className="tnum">{optionValue(option)}</span>
+      {effects.length > 0 ? (
+        <Flex vertical gap={2} component="ul" style={{ margin: 0, paddingInlineStart: 16 }}>
+          {effects.map((effect, index) => (
+            <li key={index}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {effect}
+              </Text>
+            </li>
+          ))}
+        </Flex>
+      ) : null}
+    </Flex>
+  );
+}
+
+/** 색상 다섯 줄은 한 줄로 모은다. 숫자 셋보다 칠해진 네모가 빠르다. */
+function ColorSwatches({ colors }: { colors: ItemOption[] }) {
+  const { token } = theme.useToken();
+
+  return (
+    <Flex gap={12} wrap>
+      {colors.map((color, index) => {
+        const value = optionValue(color);
+        const rgb = parseRgb(color.option_value);
+
+        return (
+          <Flex key={`${color.option_type}-${index}`} vertical align="center" gap={4}>
+            {rgb ? (
+              <Tooltip title={value}>
+                <span
+                  aria-label={`${color.option_type} ${value}`}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: token.borderRadius,
+                    background: rgbToCss(rgb),
+                    // 흰색 계열이면 배경에 묻힌다. 테두리로 경계를 남긴다.
+                    border: `1px solid ${token.colorBorder}`,
+                    display: 'block',
+                  }}
+                />
+              </Tooltip>
+            ) : (
+              <Text className="tnum" style={{ fontSize: 12 }}>
+                {value}
+              </Text>
+            )}
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {colorPartLabel(color)}
+            </Text>
+          </Flex>
+        );
+      })}
+    </Flex>
+  );
+}
+
+function OptionGroupTable({ group }: { group: OptionGroup }) {
+  return (
+    <Flex vertical gap={6}>
+      <Text strong style={{ fontSize: 13 }}>
+        {group.title}
+      </Text>
+      <Descriptions
+        // 값이 짧은 묶음은 두 칸으로 놓아 줄 수를 절반으로 줄인다.
+        column={group.dense ? 2 : 1}
+        size="small"
+        bordered
+        styles={{ label: LABEL_STYLE }}
+        items={group.options.map((option, index) => ({
+          key: `${option.option_type}-${option.option_sub_type ?? ''}-${index}`,
+          label: optionLabel(option),
+          children: <OptionValue option={option} />,
+        }))}
+      />
+    </Flex>
+  );
+}
+
+export function AuctionItemDetailModal({ detail, onClose }: Props) {
+  const { groups, colors } = groupItemOptions(detail?.options);
+  const hasOptions = groups.length > 0 || colors.length > 0;
+
+  return (
+    <Modal open={detail !== null} onCancel={onClose} footer={null} width={860} title={null} destroyOnHidden>
       {detail === null ? null : (
         <Flex vertical gap={20}>
           <Flex vertical gap={4}>
@@ -67,7 +163,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             </div>
           </Flex>
 
-          {/* 이 매물을 살지 말지 가르는 두 값. 나머지보다 크게 둔다. */}
+          {/* 이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다. */}
           <Flex gap={16} wrap>
             <Statistic
               title="개당 가격"
@@ -81,14 +177,20 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
               styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
               style={{ flex: '1 1 160px' }}
             />
+            <Statistic
+              title="수량"
+              value={formatNumber(detail.count)}
+              styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
+              style={{ flex: '1 1 120px' }}
+            />
           </Flex>
 
           <Descriptions
             column={1}
             size="small"
             bordered
+            styles={{ label: LABEL_STYLE }}
             items={[
-              { key: 'count', label: '수량', children: <span className="tnum">{formatNumber(detail.count)}</span> },
               {
                 key: 'time',
                 label: detail.timeLabel,
@@ -97,32 +199,24 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             ]}
           />
 
-          <Flex vertical gap={8}>
-            <Text strong>세부 옵션</Text>
-            {options.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="이 매물에는 세부 옵션이 없습니다." />
-            ) : (
-              <Descriptions
-                column={1}
-                size="small"
-                bordered
-                items={options.map((option, index) => ({
-                  key: `${option.option_type}-${option.option_sub_type ?? ''}-${index}`,
-                  label: optionLabel(option),
-                  children: (
-                    <Flex vertical gap={2}>
-                      <span className="tnum">{optionValue(option)}</span>
-                      {option.option_desc ? (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {option.option_desc}
-                        </Text>
-                      ) : null}
-                    </Flex>
-                  ),
-                }))}
-              />
-            )}
-          </Flex>
+          {hasOptions ? (
+            <Flex vertical gap={16}>
+              {groups.map((group) => (
+                <OptionGroupTable key={group.title} group={group} />
+              ))}
+
+              {colors.length > 0 ? (
+                <Flex vertical gap={8}>
+                  <Text strong style={{ fontSize: 13 }}>
+                    아이템 색상
+                  </Text>
+                  <ColorSwatches colors={colors} />
+                </Flex>
+              ) : null}
+            </Flex>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="이 매물에는 세부 옵션이 없습니다." />
+          )}
 
           <Text type="secondary" style={{ fontSize: 12 }}>
             경매장 API 는 아이템 이미지와 도감 설명을 주지 않습니다. 여기 있는 값이 응답에 담긴 전부입니다.
