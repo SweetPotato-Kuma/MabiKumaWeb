@@ -34,6 +34,16 @@ const SERVER_OPTIONS = SERVER_NAMES.map((server) => ({ value: server, label: ser
 const CHANNEL_OPTIONS = CHANNELS.map((channel) => ({ value: channel, label: `${channel} 채널` }));
 const NPC_OPTIONS = NPC_NAMES.map((npc) => ({ value: npc, label: npc }));
 
+/**
+ * 드롭다운을 body 가 아니라 자기 폼 안에 띄운다.
+ *
+ * body 에 붙으면 페이지가 스크롤될 때마다 antd 가 위치를 다시 계산하고, sticky 헤더와
+ * 맞물려 화면이 흔들린다. 여기 셋은 모두 같은 카드 안에 있어 잘릴 걱정이 없다.
+ */
+const DROPDOWN_IN_PLACE = {
+  getPopupContainer: (trigger: HTMLElement) => trigger.parentElement ?? document.body,
+} as const;
+
 function formatPrices(prices: NpcShopPrice[] | undefined): string {
   if (!prices || prices.length === 0) return '-';
   return prices.map((price) => `${formatNumber(price.price_value)} ${price.price_type}`).join(' / ');
@@ -120,34 +130,43 @@ export function NpcShopPage() {
           {/* 3단 폼. 768px 미만에서는 한 단으로 떨어진다. */}
           <Row gutter={[16, 0]}>
             <Col xs={24} md={8}>
-              <Form.Item label="서버">
+              <Form.Item label="서버" htmlFor="npc-server">
                 <Select
+                  id="npc-server"
                   value={form.serverName}
                   onChange={(serverName) => setForm((prev) => ({ ...prev, serverName }))}
                   options={SERVER_OPTIONS}
                   style={{ width: '100%' }}
+                  {...DROPDOWN_IN_PLACE}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="채널">
+              <Form.Item label="채널" htmlFor="npc-channel">
                 <Select
+                  id="npc-channel"
                   value={form.channel}
                   onChange={(channel) => setForm((prev) => ({ ...prev, channel }))}
                   options={CHANNEL_OPTIONS}
                   style={{ width: '100%' }}
+                  {...DROPDOWN_IN_PLACE}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="NPC">
+              <Form.Item label="NPC" htmlFor="npc-name">
+                {/*
+                  showSearch 를 걷어낸다. 켜 두면 antd 가 타이핑 가능한 입력칸을 그려서
+                  드롭다운이 아니라 텍스트 입력처럼 보인다. NPC 는 21명뿐이라 검색으로
+                  얻을 게 없고, 목록에서 고르는 편이 빠르다.
+                */}
                 <Select
+                  id="npc-name"
                   value={form.npcName}
                   onChange={(npcName) => setForm((prev) => ({ ...prev, npcName }))}
                   options={NPC_OPTIONS}
-                  showSearch
-                  optionFilterProp="label"
                   style={{ width: '100%' }}
+                  {...DROPDOWN_IN_PLACE}
                 />
               </Form.Item>
             </Col>
