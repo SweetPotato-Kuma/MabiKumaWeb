@@ -114,8 +114,19 @@ export function isColorOption(option: ItemOption): boolean {
   return option.option_type.startsWith(COLOR_PREFIX);
 }
 
-/** "아이템 색상 파트 A" 에서 "파트 A" 를 남긴다. 한 줄에 다섯 개를 놓을 때 쓴다. */
+/**
+ * 색상 칸의 파트 이름. 한 줄에 다섯 개를 놓을 때 쓴다.
+ *
+ * 파트는 option_type 이 아니라 option_sub_type 에 들어 있다.
+ * option_type 은 다섯 칸 모두 "아이템 색상" 으로 같고, 무엇을 칠하는지는 "파트 A" 처럼
+ * option_sub_type 이 말해 준다. 화면에 보이던 "아이템 색상 파트 A" 는 둘을 이어 붙인
+ * 결과였지 한 필드의 값이 아니었다.
+ */
 export function colorPartLabel(option: ItemOption): string {
+  const subType = option.option_sub_type?.trim();
+  if (subType) return subType;
+
+  // 파트가 비어 오면 종류 이름이라도 남긴다. 빈 라벨보다는 낫다.
   return option.option_type.slice(COLOR_PREFIX.length).trim() || option.option_type;
 }
 

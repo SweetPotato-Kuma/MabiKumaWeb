@@ -13,6 +13,11 @@ function option(type: string, value?: string, desc?: string): ItemOption {
   return { option_type: type, option_value: value, option_desc: desc };
 }
 
+/** 실제 응답 모양. 파트는 option_type 이 아니라 option_sub_type 에 들어 있다. */
+function colorOption(subType: string, value: string): ItemOption {
+  return { option_type: '아이템 색상', option_sub_type: subType, option_value: value };
+}
+
 describe('parseRgb', () => {
   it('넥슨이 주는 형태를 읽는다', () => {
     expect(parseRgb('255,255,255')).toEqual({ r: 255, g: 255, b: 255 });
@@ -60,9 +65,17 @@ describe('splitEffects', () => {
 });
 
 describe('colorPartLabel', () => {
-  it('파트 이름을 남긴다', () => {
-    expect(colorPartLabel(option('아이템 색상 파트 A'))).toBe('파트 A');
-    expect(colorPartLabel(option('아이템 색상 파트 E'))).toBe('파트 E');
+  it('파트 이름은 option_sub_type 에서 온다', () => {
+    /**
+     * 다섯 칸의 option_type 은 모두 "아이템 색상" 으로 같다. option_type 에서 파트를
+     * 잘라내려 하면 다섯 개가 전부 같은 라벨이 된다.
+     */
+    expect(colorPartLabel(colorOption('파트 A', '255,255,255'))).toBe('파트 A');
+    expect(colorPartLabel(colorOption('파트 E', '180,108,82'))).toBe('파트 E');
+  });
+
+  it('파트가 비어 오면 종류 이름이라도 남긴다', () => {
+    expect(colorPartLabel(option('아이템 색상', '255,255,255'))).toBe('아이템 색상');
   });
 });
 
@@ -108,8 +121,8 @@ describe('groupItemOptions', () => {
     option('공격', '292 ~ 353'),
     option('크리티컬', '26%'),
     option('내구력', '26 ~ 26'),
-    option('아이템 색상 파트 A', '255,255,255'),
-    option('아이템 색상 파트 D', '43,62,58'),
+    colorOption('파트 A', '255,255,255'),
+    colorOption('파트 D', '43,62,58'),
     option('인챈트 접두', '파괴적인 (랭크 6)', '수리비 200% 증가,체력 10 증가'),
     option('일반 개조', '5 ~ 5'),
     option('세공 옵션 1', '최대 공격력(10레벨:20 증가)'),
@@ -127,7 +140,7 @@ describe('groupItemOptions', () => {
   it('색상은 따로 빼낸다', () => {
     const { colors } = groupItemOptions(OPTIONS);
 
-    expect(colors.map((item) => item.option_type)).toEqual(['아이템 색상 파트 A', '아이템 색상 파트 D']);
+    expect(colors.map((item) => item.option_sub_type)).toEqual(['파트 A', '파트 D']);
   });
 
   it('정해진 순서대로 묶는다', () => {

@@ -68,8 +68,8 @@ describe('매물 상세 모달', () => {
     renderModal({
       ...DETAIL,
       options: [
-        { option_type: '아이템 색상 파트 A', option_value: '255,255,255' },
-        { option_type: '아이템 색상 파트 D', option_value: '43,62,58' },
+        { option_type: '아이템 색상', option_sub_type: '파트 A', option_value: '255,255,255' },
+        { option_type: '아이템 색상', option_sub_type: '파트 D', option_value: '43,62,58' },
       ],
     });
 
@@ -77,12 +77,16 @@ describe('매물 상세 모달', () => {
     const swatch = screen.getByLabelText('아이템 색상 파트 D 43,62,58');
     expect(swatch).toHaveStyle({ background: 'rgb(43, 62, 58)' });
     expect(screen.getByLabelText('아이템 색상 파트 A 255,255,255')).toBeInTheDocument();
+
+    // 다섯 칸의 option_type 이 모두 같으므로 파트 이름은 option_sub_type 에서 와야 한다.
+    expect(screen.getByText('파트 A')).toBeInTheDocument();
+    expect(screen.getByText('파트 D')).toBeInTheDocument();
   });
 
   it('읽을 수 없는 색상 값은 원래 문자열을 남긴다', () => {
     renderModal({
       ...DETAIL,
-      options: [{ option_type: '아이템 색상 파트 A', option_value: '알 수 없음' }],
+      options: [{ option_type: '아이템 색상', option_sub_type: '파트 A', option_value: '알 수 없음' }],
     });
 
     expect(screen.getByText('알 수 없음')).toBeInTheDocument();

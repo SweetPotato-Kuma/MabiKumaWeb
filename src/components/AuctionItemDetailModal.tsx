@@ -116,7 +116,7 @@ function ColorSwatches({ colors }: { colors: ItemOption[] }) {
             {rgb ? (
               <Tooltip title={value}>
                 <span
-                  aria-label={`${color.option_type} ${value}`}
+                  aria-label={`${optionLabel(color)} ${value}`}
                   style={{
                     width: 36,
                     height: 36,
