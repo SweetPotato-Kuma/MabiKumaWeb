@@ -84,9 +84,14 @@ export function RootLayout() {
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
 
+  /**
+   * 본문 폭. 1160 은 좁아서 넓은 화면에서 좌우가 한참 비었다. 표가 주인공인 화면이라
+   * 가로를 넓게 쓰는 편이 낫다. 1600 이면 1920 화면에서 양옆에 160px 씩 남아
+   * 광고 한 줄이 들어갈 자리는 유지된다.
+   */
   const containerStyle = {
     width: '100%',
-    maxWidth: 1160,
+    maxWidth: 1600,
     marginInline: 'auto',
     paddingInline: screens.md ? 24 : 16,
   } as const;
@@ -143,19 +148,29 @@ export function RootLayout() {
         <Outlet />
       </Content>
 
-      <Footer style={{ borderTop: `1px solid ${token.colorBorderSecondary}`, textAlign: 'center' }}>
-        <Flex vertical align="center" gap={4}>
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            데이터 출처{' '}
-            <Typography.Link href="https://openapi.nexon.com/ko/game/mabinogi/" target="_blank" rel="noreferrer">
-              NEXON Open API
-            </Typography.Link>
-            . 게임 데이터는 평균 10분 지연됩니다.
-          </Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            개인이 만든 비공식 도구이며 넥슨과 무관합니다.
-          </Text>
-        </Flex>
+      {/*
+        푸터는 읽히려고 있는 자리가 아니라 고지를 지키려고 있는 자리다. 한 줄로 줄이고
+        글자도 작게 둔다. 지연 고지와 비공식 고지는 지우지 않는다.
+      */}
+      <Footer
+        style={{
+          borderTop: `1px solid ${token.colorBorderSecondary}`,
+          textAlign: 'center',
+          paddingBlock: 12,
+        }}
+      >
+        <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.6 }}>
+          데이터 출처{' '}
+          <Typography.Link
+            href="https://openapi.nexon.com/ko/game/mabinogi/"
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 11 }}
+          >
+            NEXON Open API
+          </Typography.Link>
+          . 게임 데이터는 평균 10분 지연됩니다. 개인이 만든 비공식 도구이며 넥슨과 무관합니다.
+        </Text>
       </Footer>
 
       {/* 어느 화면에서든 제보할 수 있어야 한다. 화면마다 붙이지 않고 여기 한 번만 둔다. */}
