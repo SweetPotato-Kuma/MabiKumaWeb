@@ -8,6 +8,7 @@ import {
   splitEffects,
   type OptionGroup,
 } from '@/features/auction/itemOptions';
+import { bundlePrice } from '@/features/auction/price';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 
@@ -167,6 +168,7 @@ function OptionGroupTable({ group }: { group: OptionGroup }) {
 
 export function AuctionItemDetailModal({ detail, onClose }: Props) {
   const { groups, colors, protections } = groupItemOptions(detail?.options);
+  const price = bundlePrice(detail?.pricePerUnit ?? 0, detail?.count ?? 1);
   const hasOptions = groups.length > 0 || colors.length > 0 || protections.length > 0;
 
   return (
@@ -187,25 +189,30 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             </div>
           </Flex>
 
-          {/* 이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다. */}
+          {/*
+            이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다.
+            한 개짜리면 개당과 전체가 같으므로 가격 하나만 둔다. 같은 값을 두 번 읽힐 이유가 없다.
+          */}
           <Flex gap={16} wrap>
             <Statistic
-              title="개당 가격"
-              value={formatGold(detail.pricePerUnit)}
+              title={price.isBundle ? '개당 가격' : '가격'}
+              value={formatGold(price.pricePerUnit)}
               styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
-              style={{ flex: '1 1 160px' }}
+              style={{ flex: '1 1 150px' }}
             />
+            {price.isBundle ? (
+              <Statistic
+                title={`전체 가격 (${formatNumber(price.count)}개)`}
+                value={formatGold(price.total)}
+                styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
+                style={{ flex: '1 1 150px' }}
+              />
+            ) : null}
             <Statistic
               title={detail.showRemaining ? '남은 시간' : detail.timeLabel}
               value={detail.showRemaining ? formatRemaining(detail.timeValue) : formatDateTime(detail.timeValue)}
               styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
-              style={{ flex: '1 1 160px' }}
-            />
-            <Statistic
-              title="수량"
-              value={formatNumber(detail.count)}
-              styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
-              style={{ flex: '1 1 120px' }}
+              style={{ flex: '1 1 150px' }}
             />
           </Flex>
 
@@ -215,6 +222,19 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             bordered
             styles={{ label: LABEL_STYLE }}
             items={[
+              ...(price.isBundle
+                ? [
+                    {
+                      key: 'bundle',
+                      label: '묶음',
+                      children: (
+                        <span className="tnum">
+                          {formatNumber(price.count)}개 묶음. 전체 가격은 개당 가격에 개수를 곱한 값입니다.
+                        </span>
+                      ),
+                    },
+                  ]
+                : []),
               {
                 key: 'time',
                 label: detail.timeLabel,
