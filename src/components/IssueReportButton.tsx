@@ -4,7 +4,7 @@ import { BugOutlined, MessageOutlined } from '@ant-design/icons';
 import { Alert, App, Button, FloatButton, Form, Input, Modal, Radio, Typography } from 'antd';
 import { canReportIssue, submitIssueReport, type IssueCategory } from '@/features/report/api';
 
-const { Text, Link: AntLink } = Typography;
+const { Text } = Typography;
 
 interface FormValues {
   category: IssueCategory;
@@ -57,7 +57,7 @@ export function IssueReportButton() {
     setFailure('');
 
     try {
-      const issue = await submitIssueReport({
+      await submitIssueReport({
         category: values.category,
         title: values.title.trim(),
         body: values.body.trim(),
@@ -66,15 +66,8 @@ export function IssueReportButton() {
 
       setOpen(false);
       form.resetFields();
-      message.success(
-        <span>
-          제보가 올라갔습니다.{' '}
-          <AntLink href={issue.url} target="_blank" rel="noreferrer">
-            {`#${issue.number} 보기`}
-          </AntLink>
-        </span>,
-        6,
-      );
+      // 제보자는 GitHub 를 볼 일이 없다. 접수됐다는 사실만 알리고 끝낸다.
+      message.success('제보가 접수되었습니다. 확인하고 반영하겠습니다.', 4);
     } catch (cause) {
       setFailure(cause instanceof Error ? cause.message : '제보를 보내지 못했습니다.');
     } finally {
@@ -84,17 +77,26 @@ export function IssueReportButton() {
 
   return (
     <>
+      {/*
+        아이콘만 있는 동그란 버튼은 아무도 누르지 않는다. 무엇을 하는 버튼인지 글자로
+        말해 주고, 액센트 색을 입혀 본문과 분리한다. 색은 토큰에서 나오므로 화면마다
+        다른 색이 되지 않는다.
+      */}
       <FloatButton
+        type="primary"
+        shape="square"
         icon={<MessageOutlined />}
-        tooltip="이슈 제보"
-        aria-label="이슈 제보하기"
+        description="의견 보내기"
+        tooltip="버그 신고나 기능 요청을 보냅니다"
+        aria-label="의견 보내기. 버그 신고나 기능 요청을 보냅니다"
+        style={{ width: 80, height: 80, insetInlineEnd: 24, insetBlockEnd: 24 }}
         onClick={() => setOpen(true)}
       />
 
       <Modal
         open={open}
         onCancel={close}
-        title="이슈 제보"
+        title="의견 보내기"
         maskClosable={!sending}
         destroyOnHidden
         footer={[
@@ -102,7 +104,7 @@ export function IssueReportButton() {
             닫기
           </Button>,
           <Button key="submit" type="primary" loading={sending} onClick={() => form.submit()}>
-            제보 보내기
+            보내기
           </Button>,
         ]}
       >
