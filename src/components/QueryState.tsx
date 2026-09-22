@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { SettingOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Empty, Flex, Skeleton, Space } from 'antd';
+import { Alert, Card, Empty, Flex, Skeleton, Space, Typography } from 'antd';
 import { NexonApiError } from '@/lib/nexonClient';
+
+const { Text } = Typography;
 
 interface QueryStateProps {
   isLoading: boolean;
@@ -30,9 +30,8 @@ function ErrorView({ error, action }: { error: unknown; action?: ReactNode }) {
           <span>{message}</span>
           {action}
           {needsKey ? (
-            <Link to="/settings">
-              <Button icon={<SettingOutlined />}>설정에서 API 키 입력하기</Button>
-            </Link>
+            // 방문자가 키를 넣을 화면이 없다. 기다리라고 말하는 것이 할 수 있는 전부다.
+            <Text type="secondary">API 키 문제라 방문자가 고칠 수 있는 항목이 아닙니다. 잠시 후 다시 시도해 주세요.</Text>
           ) : null}
         </Flex>
       }

@@ -1,35 +1,38 @@
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ApiOutlined,
   BookOutlined,
-  HomeOutlined,
   KeyOutlined,
-  SettingOutlined,
+  MoonOutlined,
   ShopOutlined,
+  SunOutlined,
   TagOutlined,
 } from '@ant-design/icons';
-import { Flex, Grid, Layout, Menu, Space, Tag, Typography, theme } from 'antd';
+import { Button, Flex, Grid, Layout, Menu, Space, Tag, Tooltip, Typography, theme } from 'antd';
+import { HEADER_HEIGHT } from '@/app/theme';
 import { useEndpointMode } from '@/lib/settings';
+import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
 
 /** 내비는 데스크톱에서 한 줄을 넘지 않는다. 좁아지면 antd 가 알아서 넘침 메뉴로 접는다. */
 const NAV_ITEMS = [
-  { key: '/', icon: <HomeOutlined />, label: <NavLink to="/">홈</NavLink> },
   { key: '/auction', icon: <TagOutlined />, label: <NavLink to="/auction">경매장</NavLink> },
   { key: '/dictionary', icon: <BookOutlined />, label: <NavLink to="/dictionary">아이템 사전</NavLink> },
   { key: '/npc-shop', icon: <ShopOutlined />, label: <NavLink to="/npc-shop">NPC 상점</NavLink> },
-  { key: '/settings', icon: <SettingOutlined />, label: <NavLink to="/settings">설정</NavLink> },
 ];
 
-/** 현재 경로에 해당하는 메뉴 키. 하위 경로가 생겨도 첫 구간으로 맞춘다. */
+/** 현재 경로에 해당하는 메뉴 키. 루트로 들어오면 경매장이 첫 화면이다. */
 function selectedKeyFor(pathname: string): string {
-  const match = NAV_ITEMS.find((item) => item.key !== '/' && pathname.startsWith(item.key));
-  return match ? match.key : '/';
+  const match = NAV_ITEMS.find((item) => pathname.startsWith(item.key));
+  return match ? match.key : '/auction';
 }
 
-/** 지금 요청이 어디로 나가는지. 실제 상태라서 배지로 보여 줄 값이 맞다. */
+/**
+ * 지금 요청이 어디로 나가는지. 실제 상태라서 배지로 보여 줄 값이 맞다.
+ * 설정 화면이 없으므로 키를 직접 넣는 경로는 없다. 상태만 알린다.
+ */
 function EndpointTag() {
   const endpoint = useEndpointMode();
 
@@ -48,11 +51,30 @@ function EndpointTag() {
     );
   }
   return (
-    <Link to="/settings">
-      <Tag icon={<KeyOutlined />} color="warning" style={{ marginInlineEnd: 0 }}>
-        API 키 없음
-      </Tag>
-    </Link>
+    <Tag icon={<KeyOutlined />} color="warning" style={{ marginInlineEnd: 0 }}>
+      조회 불가
+    </Tag>
+  );
+}
+
+/**
+ * 밝기 토글. 설정 화면을 없앴으므로 다크 모드를 고를 자리가 헤더뿐이다.
+ * 누르면 지금 보고 있는 것의 반대로 넘어가고, 그 선택이 이 브라우저에 남는다.
+ */
+function ThemeToggle() {
+  const mode = useResolvedThemeMode();
+  const [, setPreference] = useThemePreference();
+  const isDark = mode === 'dark';
+
+  return (
+    <Tooltip title={isDark ? '라이트 모드로' : '다크 모드로'}>
+      <Button
+        type="text"
+        aria-label={isDark ? '라이트 모드로 전환' : '다크 모드로 전환'}
+        icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+        onClick={() => setPreference(isDark ? 'light' : 'dark')}
+      />
+    </Tooltip>
   );
 }
 
@@ -75,35 +97,44 @@ export function RootLayout() {
           position: 'sticky',
           top: 0,
           zIndex: 10,
-          height: 64,
-          lineHeight: '64px',
-          borderBottom: `1px solid ${token.colorBorderSecondary}`,
+          height: HEADER_HEIGHT,
+          lineHeight: `${HEADER_HEIGHT}px`,
+          borderBottom: `1px solid ${token.colorBorder}`,
           background: token.colorBgContainer,
+          // 본문이 헤더 밑으로 지나갈 때 경계가 분명해야 한다. 배경색 계열로만 옅게 깐다.
+          boxShadow: token.boxShadowTertiary,
         }}
       >
-        {/* Header 가 물려주는 line-height 64px 를 여기서 끊는다. 배지와 글자가 세로로 늘어난다. */}
-        <Flex align="center" gap={screens.md ? 24 : 12} style={{ ...containerStyle, lineHeight: 'normal' }}>
-          <Link to="/" aria-label="MabiKuma 홈" style={{ color: token.colorText }}>
-            <Space size={8}>
-              <span aria-hidden="true" style={{ fontSize: 20 }}>
+        {/* Header 가 물려주는 line-height 를 여기서 끊는다. 배지와 글자가 세로로 늘어난다. */}
+        <Flex align="center" gap={screens.md ? 28 : 12} style={{ ...containerStyle, lineHeight: 'normal' }}>
+          <NavLink to="/auction" aria-label="MabiKuma 홈" style={{ color: token.colorText }}>
+            <Space size={10}>
+              <span aria-hidden="true" style={{ fontSize: 26 }}>
                 🐻
               </span>
-              <Text strong style={{ fontSize: 16, whiteSpace: 'nowrap' }}>
+              <Text strong style={{ fontSize: 20, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                 MabiKuma
               </Text>
             </Space>
-          </Link>
+          </NavLink>
 
           <nav aria-label="주요 메뉴" style={{ flex: 1, minWidth: 0 }}>
             <Menu
               mode="horizontal"
               items={NAV_ITEMS}
               selectedKeys={[selectedKeyFor(location.pathname)]}
-              style={{ borderBottom: 'none', background: 'transparent' }}
+              style={{
+                borderBottom: 'none',
+                background: 'transparent',
+                lineHeight: `${HEADER_HEIGHT}px`,
+              }}
             />
           </nav>
 
-          {screens.sm ? <EndpointTag /> : null}
+          <Space size={8}>
+            {screens.sm ? <EndpointTag /> : null}
+            <ThemeToggle />
+          </Space>
         </Flex>
       </Header>
 

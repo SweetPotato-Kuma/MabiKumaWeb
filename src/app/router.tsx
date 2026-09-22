@@ -1,11 +1,9 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { Navigate, createBrowserRouter } from 'react-router-dom';
 import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
-import { HomePage } from '@/pages/HomePage';
 import { AuctionPage } from '@/pages/AuctionPage';
 import { DictionaryPage } from '@/pages/DictionaryPage';
 import { NpcShopPage } from '@/pages/NpcShopPage';
-import { SettingsPage } from '@/pages/SettingsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 export const router = createBrowserRouter(
@@ -15,11 +13,11 @@ export const router = createBrowserRouter(
       element: <RootLayout />,
       errorElement: <RouteErrorPage />,
       children: [
-        { index: true, element: <HomePage /> },
+        // 방문자가 하려는 일은 시세 조회다. 소개 화면을 거치게 할 이유가 없다.
+        { index: true, element: <Navigate to="/auction" replace /> },
         { path: 'auction', element: <AuctionPage /> },
         { path: 'dictionary', element: <DictionaryPage /> },
         { path: 'npc-shop', element: <NpcShopPage /> },
-        { path: 'settings', element: <SettingsPage /> },
         { path: '*', element: <NotFoundPage /> },
       ],
     },

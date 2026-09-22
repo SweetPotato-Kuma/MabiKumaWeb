@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Flex, Grid, Select, Tree, Typography, type TreeDataNode } from 'antd';
+import type { Key } from 'react';
 import {
   CATEGORY_GROUPS,
   findGroupOf,
   findUngroupedCategories,
   groupKeyOf,
+  isGroupKey,
 } from '@/features/auction/categoryTree';
 import { formatNumber } from '@/lib/format';
 
@@ -86,6 +88,25 @@ export function CategoryPicker({ value, onChange, counts, allLabel = '전체' }:
   const selectOptions = useMemo(() => buildSelectOptions(allLabel), [allLabel]);
   const expandedGroup = findGroupOf(value);
 
+  const [expandedKeys, setExpandedKeys] = useState<Key[]>(() =>
+    expandedGroup ? [groupKeyOf(expandedGroup)] : [],
+  );
+
+  /**
+   * 바깥에서 카테고리가 바뀌어 들어올 때(주소로 넘어온 조건 등) 그 묶음을 펼쳐 둔다.
+   * 고른 잎이 접힌 채로 있으면 무엇이 선택됐는지 화면에서 보이지 않는다.
+   */
+  useEffect(() => {
+    if (!expandedGroup) return;
+    const key = groupKeyOf(expandedGroup);
+    setExpandedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+  }, [expandedGroup]);
+
+  /** 묶음은 고를 수 없으니 제목을 눌러도 아무 일이 없다. 누르면 펼쳐지는 게 기대에 맞다. */
+  function toggleGroup(key: Key) {
+    setExpandedKeys((prev) => (prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]));
+  }
+
   if (!isWide) {
     return (
       <Select
@@ -105,7 +126,12 @@ export function CategoryPicker({ value, onChange, counts, allLabel = '전체' }:
       blockNode
       treeData={treeData}
       selectedKeys={[value]}
-      defaultExpandedKeys={expandedGroup ? [groupKeyOf(expandedGroup)] : []}
+      expandedKeys={expandedKeys}
+      onExpand={setExpandedKeys}
+      onClick={(_event, node) => {
+        // 묶음 행은 선택 대상이 아니라 onSelect 가 불리지 않는다. 여기서 펼침을 맡는다.
+        if (isGroupKey(String(node.key))) toggleGroup(node.key);
+      }}
       onSelect={(keys) => {
         // 고른 것을 다시 누르면 antd 가 빈 배열을 준다. 그때는 선택을 그대로 둔다.
         const next = keys[0];

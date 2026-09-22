@@ -35,16 +35,16 @@ const SURFACE = {
 /** 반경 스케일은 하나. antd 가 여기서 파생시키는 값을 그대로 쓴다. */
 const BORDER_RADIUS = 10;
 
-const FONT_FAMILY = [
-  'Pretendard',
-  '-apple-system',
-  'BlinkMacSystemFont',
-  'Segoe UI',
-  'Apple SD Gothic Neo',
-  'Malgun Gothic',
-  'system-ui',
-  'sans-serif',
-].join(', ');
+/** 헤더 높이. 레이아웃이 sticky 여백을 계산할 때도 같은 값을 써야 해서 내보낸다. */
+export const HEADER_HEIGHT = 72;
+
+/**
+ * 폰트는 antd 기본값을 그대로 쓴다.
+ *
+ * 직접 스택을 짜면 antd 가 자기 컴포넌트에 맞춰 잡아 둔 줄 높이와 자간이 어긋난다.
+ * 웹폰트를 싣지 않는 한 한글은 어차피 OS 기본 서체로 떨어지므로, 손으로 쓴 스택이
+ * 주는 이득이 없다. 웹폰트를 붙일 일이 생기면 그때 fontFamily 를 여기에 되살린다.
+ */
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -85,7 +85,6 @@ export function buildThemeConfig(mode: ThemeMode): ThemeConfig {
       colorBorder: surface.border,
       colorBorderSecondary: surface.borderSecondary,
       borderRadius: BORDER_RADIUS,
-      fontFamily: FONT_FAMILY,
       fontSize: 15,
       // VISUAL_DENSITY 6. 결과 영역은 촘촘하게, 진입 영역은 숨 쉬게.
       sizeUnit: 4,
@@ -95,15 +94,19 @@ export function buildThemeConfig(mode: ThemeMode): ThemeConfig {
     components: {
       Layout: {
         headerBg: 'transparent',
-        headerHeight: 64,
+        headerHeight: HEADER_HEIGHT,
         headerPadding: 0,
         bodyBg: surface.layout,
         footerBg: 'transparent',
       },
       Menu: {
+        // 헤더 메뉴는 이 사이트의 주 이동 수단이다. 본문보다 커야 눈에 먼저 들어온다.
+        fontSize: 16,
         horizontalItemSelectedColor: accent,
+        horizontalItemHoverColor: accent,
         itemBg: 'transparent',
-        activeBarHeight: 2,
+        activeBarHeight: 3,
+        itemHoverColor: accent,
       },
       Table: {
         headerBg: isDark ? surface.elevated : surface.borderSecondary,
