@@ -10,20 +10,17 @@ import {
   Grid,
   Input,
   Row,
-  Select,
   Statistic,
   Table,
   Tabs,
   Tag,
-  Tree,
   Typography,
   type TableColumnsType,
-  type TreeDataNode,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
+import { CategoryPicker } from '@/components/CategoryPicker';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
-import { CATEGORY_GROUPS, findGroupOf, findUngroupedCategories, groupKeyOf } from '@/features/auction/categoryTree';
 import { matchItemNames, useCategoryItemNamesQuery } from '@/features/auction/dictionary';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
 import { calculatePriceStats } from '@/features/auction/stats';
@@ -42,42 +39,6 @@ const EMPTY_INPUT: AuctionSearchInput = {
   category: ALL_CATEGORIES,
   keyword: '',
 };
-
-/**
- * 좌측 트리. 묶음은 펼치기만 하고 고를 수 없다. 요청에 실리는 것은 언제나 잎이다.
- * 묶음에서 빠진 카테고리가 생기면 맨 아래에 그대로 붙여 하나도 잃지 않는다.
- */
-function buildTreeData(): TreeDataNode[] {
-  const groups: TreeDataNode[] = CATEGORY_GROUPS.map((group) => ({
-    key: groupKeyOf(group.name),
-    title: group.name,
-    selectable: false,
-    children: group.categories.map((category) => ({ key: category, title: category })),
-  }));
-
-  const ungrouped = findUngroupedCategories();
-  if (ungrouped.length > 0) {
-    groups.push({
-      key: groupKeyOf('분류되지 않음'),
-      title: '분류되지 않음',
-      selectable: false,
-      children: ungrouped.map((category) => ({ key: category, title: category })),
-    });
-  }
-
-  return [{ key: ALL_CATEGORIES, title: '전체' }, ...groups];
-}
-
-/** 좁은 화면에서는 트리 대신 묶음별 Select 를 쓴다. 트리는 손가락으로 펼치기 어렵다. */
-function buildSelectOptions() {
-  return [
-    { value: ALL_CATEGORIES, label: '전체' },
-    ...CATEGORY_GROUPS.map((group) => ({
-      label: group.name,
-      options: group.categories.map((category) => ({ value: category, label: category })),
-    })),
-  ];
-}
 
 /** 주소에 실려 온 검색 조건. 아이템 사전에서 "시세 보기" 로 넘어오는 경로다. */
 function readSearchInput(params: URLSearchParams): AuctionSearchInput {
@@ -139,10 +100,6 @@ export function AuctionPage() {
     [dictionaryQuery.data, form.keyword],
   );
 
-  const treeData = useMemo(() => buildTreeData(), []);
-  const selectOptions = useMemo(() => buildSelectOptions(), []);
-  const expandedGroup = findGroupOf(form.category);
-
   const canSubmit = isAuctionSearchReady(form);
 
   function runSearch(next: AuctionSearchInput) {
@@ -157,6 +114,12 @@ export function AuctionPage() {
     if (isAuctionSearchReady(next)) runSearch(next);
   }
 
+  /**
+   * 트리는 CategoryPicker 하나만 쓴다.
+   *
+   * 여기에 같은 트리를 따로 들고 있던 탓에 아이템 사전에서 고친 것(묶음을 눌러 펼치기)이
+   * 경매장에는 반영되지 않았다. 화면마다 복사본을 두면 이런 차이가 조용히 생긴다.
+   */
   const categoryPanel = isWide ? (
     <Card
       variant="outlined"
@@ -164,28 +127,10 @@ export function AuctionPage() {
       title="카테고리"
       styles={{ body: { maxHeight: 'calc(100dvh - 240px)', overflowY: 'auto' } }}
     >
-      <Tree
-        blockNode
-        treeData={treeData}
-        selectedKeys={[form.category]}
-        defaultExpandedKeys={expandedGroup ? [groupKeyOf(expandedGroup)] : []}
-        onSelect={(keys) => {
-          // 고른 것을 다시 누르면 antd 가 빈 배열을 준다. 그때는 선택을 그대로 둔다.
-          const next = keys[0];
-          if (typeof next === 'string') selectCategory(next);
-        }}
-      />
+      <CategoryPicker value={form.category} onChange={selectCategory} />
     </Card>
   ) : (
-    <Select
-      value={form.category}
-      onChange={selectCategory}
-      options={selectOptions}
-      showSearch
-      optionFilterProp="label"
-      placeholder="카테고리"
-      style={{ width: '100%' }}
-    />
+    <CategoryPicker value={form.category} onChange={selectCategory} />
   );
 
   const itemColumns: TableColumnsType<AuctionItem> = [
