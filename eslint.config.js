@@ -35,7 +35,8 @@ export default tseslint.config(
     files: ['**/*.{js,mjs,cjs}'],
     extends: [js.configs.recommended],
     languageOptions: {
-      globals: { ...globals.node },
+      // fetch 는 Node 18 부터 전역이지만 globals 판이 낮으면 빠져 있어 no-undef 가 난다.
+      globals: { ...globals.node, fetch: 'readonly' },
     },
   },
   prettier,

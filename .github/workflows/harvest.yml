@@ -1,0 +1,64 @@
+name: Harvest item dictionary
+
+on:
+  # 손으로 돌릴 수 있어야 한다. 첫 수집과 게임 업데이트 직후에 쓴다.
+  workflow_dispatch:
+  # 사전은 천천히 변한다. 매주 월요일 09:00 UTC (한국 18:00).
+  schedule:
+    - cron: '0 9 * * 1'
+
+# contents 는 수집 결과 커밋용, 나머지는 이어서 부르는 배포용.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# 수집이 겹치면 같은 파일을 두 번 쓰게 된다.
+concurrency:
+  group: harvest
+  cancel-in-progress: false
+
+jobs:
+  harvest:
+    name: Harvest
+    runs-on: ubuntu-latest
+    # 79개 카테고리를 커서로 끝까지 훑는다. 기본 6시간 제한은 과하다.
+    timeout-minutes: 30
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Harvest
+        # 키는 이 스텝 안에서만 쓰인다. VITE_ 접두사가 아니므로 번들에 들어갈 수 없다.
+        env:
+          NEXON_API_KEY: ${{ secrets.NEXON_API_KEY }}
+        run: node scripts/harvest-auction.mjs
+
+      - name: Commit
+        id: commit
+        run: |
+          if [ -z "$(git status --porcelain public/items)" ]; then
+            echo "바뀐 아이템이 없습니다."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/items
+          git commit -m "chore: update item dictionary ($(date -u +%Y-%m-%d))"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  # 사전이 바뀌었을 때만 사이트에 반영한다.
+  deploy:
+    name: Deploy
+    needs: harvest
+    if: needs.harvest.outputs.changed == 'true'
+    uses: ./.github/workflows/deploy.yml

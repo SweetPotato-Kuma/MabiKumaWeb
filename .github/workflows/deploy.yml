@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # 사전 수집이 끝난 뒤 이어서 부른다. GITHUB_TOKEN 으로 만든 커밋은 push 이벤트를
+  # 일으키지 못하므로(재귀 방지), 그 경우 배포가 여기로 들어온다.
+  workflow_call:
 
 # GITHUB_TOKEN 에 Pages 배포 권한 부여
 permissions:
