@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import { Descriptions, Empty, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
+import { ItemIcon } from '@/components/ItemIcon';
 import {
   colorPartLabel,
   formatOptionValue,
@@ -9,10 +11,11 @@ import {
   type OptionGroup,
 } from '@/features/auction/itemOptions';
 import { bundlePrice } from '@/features/auction/price';
+import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 
-const { Text, Title } = Typography;
+const { Text, Title, Paragraph } = Typography;
 
 /**
  * 표의 한 줄을 눌렀을 때 보여 줄 매물 상세.
@@ -166,28 +169,54 @@ function OptionGroupTable({ group }: { group: OptionGroup }) {
   );
 }
 
+/** 상세 창의 아이템 그림 칸. 표보다 크게 둔다. 여기서는 그림을 보려고 연 것이다. */
+const DETAIL_ICON_BOX = 56;
+
 export function AuctionItemDetailModal({ detail, onClose }: Props) {
   const { groups, colors, protections } = groupItemOptions(detail?.options);
   const price = bundlePrice(detail?.pricePerUnit ?? 0, detail?.count ?? 1);
   const hasOptions = groups.length > 0 || colors.length > 0 || protections.length > 0;
 
+  /**
+   * 사전 카드. 표에서 이미 받아 둔 경우가 대부분이라 보통은 바로 나온다.
+   * 거래 내역 탭처럼 미리 받지 않은 줄에서 열었을 때를 위해 여기서도 한 번 묻는다.
+   */
+  const cardName = detail ? canonicalItemName(detail.rawName) : '';
+  const cardCategory = detail?.category ?? '';
+  const cardKeys = useMemo(() => (cardName ? [{ category: cardCategory, name: cardName }] : []), [cardCategory, cardName]);
+  usePrefetchItemCards(cardKeys);
+  const card = useItemCard(cardCategory, cardName);
+
   return (
     <Modal open={detail !== null} onCancel={onClose} footer={null} width={860} title={null} destroyOnHidden>
       {detail === null ? null : (
         <Flex vertical gap={20}>
-          <Flex vertical gap={4}>
-            <Title level={4} style={{ margin: 0 }}>
-              {detail.displayName}
-            </Title>
-            {detail.displayName !== detail.rawName ? (
-              <Text type="secondary" style={{ fontSize: 13 }}>
-                {detail.rawName}
-              </Text>
-            ) : null}
-            <div>
-              <Tag style={{ marginInlineEnd: 0 }}>{detail.category}</Tag>
-            </div>
+          <Flex align="flex-start" gap={16}>
+            <ItemIcon card={card} size={DETAIL_ICON_BOX} />
+            <Flex vertical gap={4} style={{ minWidth: 0 }}>
+              <Title level={4} style={{ margin: 0 }}>
+                {detail.displayName}
+              </Title>
+              {detail.displayName !== detail.rawName ? (
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  {detail.rawName}
+                </Text>
+              ) : null}
+              {card?.subtitle ? (
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  {card.subtitle}
+                </Text>
+              ) : null}
+              <div>
+                <Tag style={{ marginInlineEnd: 0 }}>{detail.category}</Tag>
+              </div>
+            </Flex>
           </Flex>
+
+          {card?.description ? (
+            // 설명 안의 줄바꿈은 게임이 넣어 둔 것이다. 이어 붙이면 문단이 뭉개진다.
+            <Paragraph style={{ marginBottom: 0, maxWidth: '65ch', whiteSpace: 'pre-line' }}>{card.description}</Paragraph>
+          ) : null}
 
           {/*
             이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다.
@@ -268,8 +297,14 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="이 매물에는 세부 옵션이 없습니다." />
           )}
 
+          {/*
+            어디서 온 값인지 섞이지 않게 적는다. 그림과 설명은 경매장 응답이 아니다.
+            카드가 없으면 예전 문구 그대로 둔다. 그때는 여기 있는 값이 정말 응답의 전부다.
+          */}
           <Text type="secondary" style={{ fontSize: 12 }}>
-            경매장 API 는 아이템 이미지와 도감 설명을 주지 않습니다. 여기 있는 값이 응답에 담긴 전부입니다.
+            {card
+              ? '그림과 설명은 경매장 API 가 아니라 아이템 사전에서 붙인 것입니다. 나머지는 이 매물의 응답에 담긴 값입니다.'
+              : '경매장 API 는 아이템 이미지와 도감 설명을 주지 않습니다. 여기 있는 값이 응답에 담긴 전부입니다.'}
           </Text>
         </Flex>
       )}

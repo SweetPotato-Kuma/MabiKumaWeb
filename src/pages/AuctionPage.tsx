@@ -22,6 +22,7 @@ import { ApiKeyNotice } from '@/components/ApiKeyNotice';
 import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { ItemIcon } from '@/components/ItemIcon';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
@@ -32,6 +33,7 @@ import {
   type NameSuggestion,
 } from '@/features/auction/nameIndex';
 import { calculatePriceStats } from '@/features/auction/stats';
+import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
@@ -79,18 +81,31 @@ function readSearchInput(params: URLSearchParams): AuctionSearchInput {
   };
 }
 
-/** 이름 열은 표시 이름과 원래 이름이 다를 때만 두 줄이 된다. */
-function ItemNameCell({ displayName, rawName }: { displayName: string; rawName: string }) {
+/** 경매장 표의 아이템 그림 칸 크기. 사전보다 조금 작게 둔다. 행이 촘촘한 표다. */
+const AUCTION_ICON_BOX = 28;
+
+/**
+ * 이름 열. 그림, 표시 이름, 그리고 표시 이름과 다를 때만 원래 이름.
+ *
+ * 그림은 사전 카드에서 온다. 이 칸이 자기 카드를 직접 지켜보는 이유는 표 전체가 메모로
+ * 굳어 있어서다. 카드가 뒤늦게 도착해도 이 칸만 다시 그려진다.
+ */
+function ItemNameCell({ displayName, rawName, category }: { displayName: string; rawName: string; category: string }) {
+  const card = useItemCard(category, canonicalItemName(rawName));
+
   return (
-    <Flex vertical gap={0}>
-      <Text strong style={{ fontSize: 14 }}>
-        {displayName}
-      </Text>
-      {displayName !== rawName ? (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {rawName}
+    <Flex align="center" gap={10}>
+      <ItemIcon card={card} size={AUCTION_ICON_BOX} />
+      <Flex vertical gap={0} style={{ minWidth: 0 }}>
+        <Text strong style={{ fontSize: 14 }}>
+          {displayName}
         </Text>
-      ) : null}
+        {displayName !== rawName ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {rawName}
+          </Text>
+        ) : null}
+      </Flex>
     </Flex>
   );
 }
@@ -125,6 +140,18 @@ export function AuctionPage() {
 
   const itemsLoaded = itemsQuery.data?.loadedCount ?? 0;
   const historyLoaded = historyQuery.data?.loadedCount ?? 0;
+
+  /**
+   * 지금 보고 있는 탭의 아이템 카드를 한꺼번에 받아 둔다.
+   *
+   * 칸마다 따로 물으면 500 줄짜리 표에서 요청이 500 번 나간다. 이름을 모아 한 번에 넘기면
+   * 같은 이름은 한 번만, 이미 아는 것은 아예 묻지 않는다. 보이지 않는 탭은 건드리지 않는다.
+   */
+  const cardKeys = useMemo(() => {
+    const rows: { item_name: string; auction_item_category: string }[] = tab === 'items' ? items : history;
+    return rows.map((row) => ({ category: row.auction_item_category, name: canonicalItemName(row.item_name) }));
+  }, [tab, items, history]);
+  usePrefetchItemCards(cardKeys);
 
   /**
    * 자동완성은 전체 이름 인덱스 한 파일로 한다. 카테고리를 골랐으면 그 안에서만 고른다.
@@ -227,7 +254,9 @@ export function AuctionPage() {
       title: '아이템',
       dataIndex: 'item_display_name',
       width: 220,
-      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} />,
+      render: (_value, record) => (
+        <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} category={record.auction_item_category} />
+      ),
     },
     { title: '카테고리', dataIndex: 'auction_item_category', width: 130 },
     {
@@ -276,7 +305,9 @@ export function AuctionPage() {
       title: '아이템',
       dataIndex: 'item_display_name',
       width: 220,
-      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} />,
+      render: (_value, record) => (
+        <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} category={record.auction_item_category} />
+      ),
     },
     { title: '카테고리', dataIndex: 'auction_item_category', width: 130 },
     {
