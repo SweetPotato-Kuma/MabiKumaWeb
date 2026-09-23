@@ -1,6 +1,10 @@
 /**
  * 경매장 API 의 auction_item_category 허용값.
  * 출처: 마비노기 오픈 API 스펙 (openapi.nexon.com)
+ *
+ * 스펙 문서가 실제 API 보다 늦다. '힐링 원드', '대형 낫', '애뮬릿' 은 문서에 없지만
+ * 요청하면 매물이 나온다. '팔리아스 유물' 은 요청은 받지만 응답에는 '유물' 로 적혀 와서
+ * 응답 쪽 이름을 쓴다. 2026-09-23 에 실제 요청으로 확인했다.
  */
 export const AUCTION_ITEM_CATEGORIES = [
   '개조석',
@@ -15,6 +19,7 @@ export const AUCTION_ITEM_CATEGORIES = [
   '날개',
   '낭만농장/달빛섬',
   '너클',
+  '대형 낫',
   '던전 통행증',
   '도끼',
   '도면',
@@ -48,6 +53,7 @@ export const AUCTION_ITEM_CATEGORIES = [
   '아틀라틀',
   '악기',
   '알반 훈련석',
+  '애뮬릿',
   '액세서리',
   '양손 장비',
   '얼굴 장식',
@@ -58,6 +64,7 @@ export const AUCTION_ITEM_CATEGORIES = [
   '옷본',
   '원거리 소모품',
   '원드',
+  '유물',
   '음식',
   '의자/사물',
   '인챈트 스크롤',
@@ -71,7 +78,6 @@ export const AUCTION_ITEM_CATEGORIES = [
   '천옷/방직',
   '체인 블레이드',
   '토템',
-  '팔리아스 유물',
   '퍼퓸',
   '페이지',
   '포션',
@@ -81,6 +87,7 @@ export const AUCTION_ITEM_CATEGORIES = [
   '핸들',
   '허브',
   '활',
+  '힐링 원드',
   '힐웬 공학',
 ] as const;
 

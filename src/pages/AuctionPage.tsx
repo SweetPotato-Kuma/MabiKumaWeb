@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useMemo, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { LoadingOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   App,
   AutoComplete,
@@ -36,6 +36,7 @@ import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
+import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useListPagination } from '@/lib/useListPagination';
 
 const { Title, Text } = Typography;
@@ -117,6 +118,48 @@ function ItemNameCell({ displayName, rawName }: { displayName: string; rawName: 
 /** 그림 칸 폭. 칸 안쪽 여백까지 더한다. */
 const ICON_COLUMN_WIDTH = AUCTION_ICON_BOX + 24;
 
+/**
+ * 표 아래 한 줄. 끝쪽에서 다음 묶음을 받는 중인지, 드물게 걸려 멈췄는지 알린다.
+ * 더 받을 것이 있어도 조용히 기다리는 중이면 아무것도 적지 않는다.
+ */
+function LoadMoreStatus({
+  hasNextPage,
+  isFetching,
+  paused,
+  onResume,
+}: {
+  hasNextPage: boolean;
+  isFetching: boolean;
+  paused: boolean;
+  onResume: () => void;
+}) {
+  if (isFetching) {
+    return (
+      <Text type="secondary" role="status" style={{ fontSize: 12 }}>
+        <LoadingOutlined /> 다음 매물을 불러오는 중입니다.
+      </Text>
+    );
+  }
+  if (!hasNextPage) return null;
+  if (paused) {
+    return (
+      <Flex gap={4} wrap align="center">
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          몇 번 더 받아 봤지만 조건에 맞는 것이 늘지 않아 멈췄습니다.
+        </Text>
+        <Button type="link" size="small" onClick={onResume}>
+          계속 찾기
+        </Button>
+      </Flex>
+    );
+  }
+  return (
+    <Text type="secondary" style={{ fontSize: 12 }}>
+      마지막 쪽을 열면 다음 매물을 이어서 불러옵니다.
+    </Text>
+  );
+}
+
 export function AuctionPage() {
   const canQuery = useCanQuery();
   const { message } = App.useApp();
@@ -164,6 +207,28 @@ export function AuctionPage() {
   // 카드는 위에서 불러온 줄 전체를 한꺼번에 받아 두므로 쪽을 넘겨도 다시 묻지 않는다.
   const itemsPaging = useListPagination(submitted);
   const historyPaging = useListPagination(submitted);
+
+  // 끝쪽에 닿으면 다음 500건을 알아서 받는다. 쪽이 끝없이 이어지는 것처럼 보인다.
+  const itemsMore = useAutoLoadMore({
+    page: itemsPaging.page,
+    pageSize: itemsPaging.pageSize,
+    rowCount: items.length,
+    hasNextPage: itemsQuery.hasNextPage,
+    isFetching: itemsQuery.isFetching,
+    fetchNextPage: itemsQuery.fetchNextPage,
+    active: enabled && tab === 'items',
+    resetKey: submitted,
+  });
+  const historyMore = useAutoLoadMore({
+    page: historyPaging.page,
+    pageSize: historyPaging.pageSize,
+    rowCount: history.length,
+    hasNextPage: historyQuery.hasNextPage,
+    isFetching: historyQuery.isFetching,
+    fetchNextPage: historyQuery.fetchNextPage,
+    active: enabled && tab === 'history',
+    resetKey: submitted,
+  });
 
   /**
    * 자동완성은 전체 이름 인덱스 한 파일로 한다. 카테고리를 골랐으면 그 안에서만 고른다.
@@ -381,7 +446,7 @@ export function AuctionPage() {
             ))}
           </Row>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            지금 보고 있는 매물 {formatNumber(stats.count)}건만으로 계산한 값입니다. 더 불러오면 값이 바뀝니다.
+            지금까지 불러온 매물 {formatNumber(stats.count)}건만으로 계산한 값입니다. 뒤쪽으로 넘겨 더 불러오면 값이 바뀝니다.
           </Text>
         </Card>
       ) : null}
@@ -392,7 +457,9 @@ export function AuctionPage() {
         isEmpty={items.length === 0}
         emptyMessage={
           itemsLoaded > 0
-            ? `불러온 ${formatNumber(itemsLoaded)}건 중 조건에 맞는 것이 없습니다. 더 불러오거나 조건을 넓혀 보세요.`
+            ? itemsQuery.hasNextPage && !itemsMore.paused
+              ? `불러온 ${formatNumber(itemsLoaded)}건 중 조건에 맞는 것이 아직 없어 더 찾고 있습니다.`
+              : `불러온 ${formatNumber(itemsLoaded)}건 중 조건에 맞는 것이 없습니다. 조건을 넓혀 보세요.`
             : '조건에 맞는 매물이 없습니다. 검색어를 줄이거나 카테고리를 바꿔 보세요.'
         }
       >
@@ -424,15 +491,16 @@ export function AuctionPage() {
             scroll={{ x: 640 }}
             sticky
           />
-          {itemsQuery.hasNextPage ? (
-            <Button block loading={itemsQuery.isFetchingNextPage} onClick={() => void itemsQuery.fetchNextPage()}>
-              500개 더 불러오기
-            </Button>
-          ) : null}
+          <LoadMoreStatus
+            hasNextPage={itemsQuery.hasNextPage}
+            isFetching={itemsQuery.isFetchingNextPage}
+            paused={itemsMore.paused}
+            onResume={itemsMore.resume}
+          />
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, itemColumns, items, itemsLoaded, itemsPaging.pagination, itemsQuery, rowInteraction, stats]);
+  ), [enabled, itemColumns, items, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, rowInteraction, stats]);
 
   const historyPanel = useMemo(() => (
     <QueryState
@@ -441,7 +509,9 @@ export function AuctionPage() {
       isEmpty={history.length === 0}
       emptyMessage={
         historyLoaded > 0
-          ? `최근 1시간 거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 없습니다. 더 불러오거나 검색어를 줄여 보세요.`
+          ? historyQuery.hasNextPage && !historyMore.paused
+            ? `최근 1시간 거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 아직 없어 더 찾고 있습니다.`
+            : `최근 1시간 거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 없습니다. 검색어를 줄여 보세요.`
           : '최근 1시간 안에 거래된 내역이 없습니다.'
       }
     >
@@ -474,14 +544,15 @@ export function AuctionPage() {
           scroll={{ x: 640 }}
           sticky
         />
-        {historyQuery.hasNextPage ? (
-          <Button block loading={historyQuery.isFetchingNextPage} onClick={() => void historyQuery.fetchNextPage()}>
-            더 불러오기
-          </Button>
-        ) : null}
+        <LoadMoreStatus
+          hasNextPage={historyQuery.hasNextPage}
+          isFetching={historyQuery.isFetchingNextPage}
+          paused={historyMore.paused}
+          onResume={historyMore.resume}
+        />
       </Flex>
     </QueryState>
-  ), [enabled, history, historyColumns, historyLoaded, historyPaging.pagination, historyQuery, rowInteraction]);
+  ), [enabled, history, historyColumns, historyLoaded, historyMore, historyPaging.pagination, historyQuery, rowInteraction]);
 
   return (
     <Flex vertical gap={16}>

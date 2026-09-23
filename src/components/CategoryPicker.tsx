@@ -77,7 +77,7 @@ function buildSelectOptions(allLabel: string) {
 }
 
 /**
- * 79개 카테고리를 고르는 컨트롤. 넓은 화면은 트리, 좁은 화면은 Select 하나로 떨어진다.
+ * 82개 카테고리를 고르는 컨트롤. 넓은 화면은 트리, 좁은 화면은 Select 하나로 떨어진다.
  * 묶음은 화면에서만 쓰는 분류이고 API 에는 존재하지 않는다.
  */
 export function CategoryPicker({ value, onChange, counts, allLabel = '전체' }: CategoryPickerProps) {

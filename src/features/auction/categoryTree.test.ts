@@ -63,7 +63,8 @@ describe('경매장 카테고리 묶음', () => {
 
   it('카테고리로 묶음을 되찾을 수 있다', () => {
     expect(findGroupOf('검')).toBe('근거리 장비');
-    expect(findGroupOf('허브')).toBe('생활 재료');
+    expect(findGroupOf('허브')).toBe('소모품');
+    expect(findGroupOf('유물')).toBe('특수 장비');
     expect(findGroupOf('없는 카테고리')).toBeUndefined();
   });
 });
