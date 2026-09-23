@@ -230,6 +230,35 @@ describe('아이템 카드 읽기', () => {
     expect(response.status).toBe(400);
   });
 
+  it('그림 주소를 따로 정해 두면 조회 결과에 붙여 준다', async () => {
+    // 그림을 워커가 아닌 R2 자체 도메인에서 내보낼 때다. 그림마다 워커 요청을 쓰지 않는다.
+    env.ICON_BASE_URL = 'https://icons.example/';
+    await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+
+    const { cards } = await (
+      await call('/item-card/lookup', {
+        method: 'POST',
+        body: { category: '기타 소모품', names: ["'도' 음 빈 병"] },
+      })
+    ).json();
+
+    expect(cards[0].iconUrl).toBe(`https://icons.example/${cards[0].icon}`);
+  });
+
+  it('그림 주소를 정하지 않았으면 붙이지 않는다', async () => {
+    // 화면은 이때 워커 경로로 받는다.
+    await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+
+    const { cards } = await (
+      await call('/item-card/lookup', {
+        method: 'POST',
+        body: { category: '기타 소모품', names: ["'도' 음 빈 병"] },
+      })
+    ).json();
+
+    expect(cards[0].iconUrl).toBeUndefined();
+  });
+
   it('카테고리를 안 보내면 조회를 거절한다', async () => {
     // 칸을 모르면 전부 뒤져야 한다. 그러라고 만든 경로가 아니다.
     const response = await call('/item-card/lookup', { method: 'POST', body: { names: ['가'] } });
@@ -461,6 +490,47 @@ describe('일괄 등록 경로', () => {
     // 이름이 내용 해시라 같은 그림은 같은 이름이 된다.
     expect(files.a).toBe(files.b);
     expect(env.ICONS.store.size).toBe(1);
+  });
+
+  it('같은 그림이 한 번에 여러 장 와도 R2 에는 한 번만 쓴다', async () => {
+    /**
+     * R2 는 같은 파일을 동시에 두 번 쓰면 하나를 거절한다. 염색이나 성별만 다른 아이템은
+     * 그림이 같아서, 이걸 막지 않으면 실제로 1,128장이 빠졌다.
+     */
+    let puts = 0;
+    const put = env.ICONS.put.bind(env.ICONS);
+    env.ICONS.put = async (key, value, options) => {
+      puts++;
+      return put(key, value, options);
+    };
+
+    const icons = ['a', 'b', 'c'].map((key) => ({ key, base64: TINY_PNG }));
+    const { files } = await (
+      await call('/item-card/icons', { method: 'POST', adminKey: ADMIN_KEY, body: { icons } })
+    ).json();
+
+    expect(puts).toBe(1);
+    expect(new Set(Object.values(files)).size).toBe(1);
+    expect(Object.keys(files).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('올린 그림에 오래 캐시해도 된다는 표시를 붙인다', async () => {
+    // 워커를 거치지 않고 R2 에서 바로 내보낼 때 CDN 과 브라우저가 이 표시를 본다.
+    let options;
+    const put = env.ICONS.put.bind(env.ICONS);
+    env.ICONS.put = async (key, value, given) => {
+      options = given;
+      return put(key, value, given);
+    };
+
+    await call('/item-card/icons', {
+      method: 'POST',
+      adminKey: ADMIN_KEY,
+      body: { icons: [{ key: 'a', base64: TINY_PNG }] },
+    });
+
+    expect(options.httpMetadata.cacheControl).toContain('immutable');
+    expect(options.httpMetadata.contentType).toBe('image/png');
   });
 
   it('아이콘을 한 번에 너무 많이 올리면 거절한다', async () => {

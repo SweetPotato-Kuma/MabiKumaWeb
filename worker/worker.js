@@ -307,13 +307,25 @@ async function iconFileName(bytes) {
   return `${(await sha256Hex(bytes)).slice(0, 16)}.png`;
 }
 
-/** 아이콘 한 장을 R2 에 넣고 파일 이름을 돌려준다. */
-async function putIcon(env, base64) {
+/** base64 로 온 아이콘을 풀고 파일 이름을 정한다. 아직 쓰지는 않는다. */
+async function prepareIcon(base64) {
   const bytes = decodeBase64(base64);
   if (bytes.byteLength > ICON_MAX_BYTES) throw new Error('아이콘이 너무 큽니다.');
+  return { bytes, file: await iconFileName(bytes) };
+}
 
-  const file = await iconFileName(bytes);
-  await env.ICONS.put(file, bytes, { httpMetadata: { contentType: 'image/png' } });
+async function writeIcon(env, file, bytes) {
+  // 캐시 표시를 파일에 같이 적어 둔다. 워커를 거치지 않고 R2 에서 바로 나갈 때도 CDN 과
+  // 브라우저가 이걸 보고 오래 붙잡는다. 이름이 내용 해시라 1년을 걸어도 틀릴 일이 없다.
+  await env.ICONS.put(file, bytes, {
+    httpMetadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000, immutable' },
+  });
+}
+
+/** 아이콘 한 장을 R2 에 넣고 파일 이름을 돌려준다. */
+async function putIcon(env, base64) {
+  const { bytes, file } = await prepareIcon(base64);
+  await writeIcon(env, file, bytes);
   return file;
 }
 
@@ -424,7 +436,9 @@ async function lookupCards(request, env, cors) {
 
   const cards = [];
   for (const [category, wanted] of wantedByCategory) {
-    for (const card of await readShard(env, category)) if (wanted.has(card.name)) cards.push(card);
+    for (const card of await readShard(env, category)) {
+      if (wanted.has(card.name)) cards.push(withIconUrl(card, env));
+    }
   }
 
   return new Response(JSON.stringify({ cards }), {
@@ -435,6 +449,20 @@ async function lookupCards(request, env, cors) {
       'cache-control': 'no-store',
     },
   });
+}
+
+/**
+ * 카드에 그림 주소를 붙인다.
+ *
+ * `ICON_BASE_URL` 이 있으면 R2 자체 도메인에서 바로 내보낸다. 그림 한 장이 워커 요청 한 번이라
+ * 워커를 거치게 두면 경매장 검색 세 번에 요청이 수백 번 나가고, 그게 경매장 중계와 같은
+ * 하루 한도(무료 플랜 10만)를 깎는다. 주소를 여기서 정해 주면 도메인을 바꿔도 사이트를
+ * 다시 배포하지 않아도 된다. 비어 있으면 붙이지 않고, 화면은 워커 경로로 받는다.
+ */
+function withIconUrl(card, env) {
+  const base = String(env.ICON_BASE_URL ?? '').replace(/\/+$/, '');
+  if (!base || !card.icon) return card;
+  return { ...card, iconUrl: `${base}/${card.icon}` };
 }
 
 function cleanText(value, limit) {
@@ -488,7 +516,7 @@ async function saveCard(request, env, cors) {
     card,
   ]);
 
-  return new Response(JSON.stringify({ card, count }), {
+  return new Response(JSON.stringify({ card: withIconUrl(card, env), count }), {
     headers: {
       ...cors,
       'content-type': 'application/json; charset=utf-8',
@@ -532,18 +560,40 @@ async function putIcons(request, env, cors) {
    * 40장에 41초) 1만 5천 장을 채우는 데 네 시간이 넘는다. 동시에 몇 개를 쓰든 subrequest
    * 한도는 전체 횟수로 세므로 ICON_BATCH_MAX(40) 안이면 문제없다.
    */
-  const results = await Promise.all(
+  const prepared = await Promise.all(
     icons.map(async (entry) => {
       if (typeof entry?.key !== 'string' || typeof entry?.base64 !== 'string') return null;
       try {
-        return [entry.key, await putIcon(env, entry.base64)];
+        return { key: entry.key, ...(await prepareIcon(entry.base64)) };
       } catch {
         // 한 장이 상했다고 나머지를 버리지 않는다. 빠진 키는 스크립트가 보고 다시 시도한다.
         return null;
       }
     }),
   );
-  const files = Object.fromEntries(results.filter(Boolean));
+
+  /**
+   * 같은 그림은 한 번만 쓴다. 염색이나 성별만 다른 아이템은 그림이 같고, 그림이 같으면 파일
+   * 이름도 같다. 같은 파일을 동시에 두 번 쓰면 R2 가 하나를 거절한다(2026-09, 이것 때문에
+   * 1,128장이 빠졌다).
+   */
+  const unique = new Map();
+  for (const item of prepared) if (item && !unique.has(item.file)) unique.set(item.file, item.bytes);
+
+  const written = new Set();
+  await Promise.all(
+    [...unique].map(async ([file, bytes]) => {
+      try {
+        await writeIcon(env, file, bytes);
+        written.add(file);
+      } catch {
+        // 못 쓴 그림은 돌려주지 않는다. 스크립트가 빠진 것을 보고 다음에 다시 보낸다.
+      }
+    }),
+  );
+
+  const files = {};
+  for (const item of prepared) if (item && written.has(item.file)) files[item.key] = item.file;
 
   return new Response(JSON.stringify({ files }), {
     headers: {
