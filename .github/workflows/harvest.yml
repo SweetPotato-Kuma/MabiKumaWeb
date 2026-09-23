@@ -41,14 +41,6 @@ jobs:
           NEXON_API_KEY: ${{ secrets.NEXON_API_KEY }}
         run: node scripts/harvest-auction.mjs
 
-      # 이미지를 주는 엔드포인트는 NPC 상점뿐이다. 사전과 달리 몇백 개 규모라
-      # 사전 수집이 실패해도 이쪽은 돌려 본다.
-      - name: Harvest images
-        if: always()
-        env:
-          NEXON_API_KEY: ${{ secrets.NEXON_API_KEY }}
-        run: node scripts/harvest-npcshop.mjs
-
       - name: Commit
         id: commit
         run: |
