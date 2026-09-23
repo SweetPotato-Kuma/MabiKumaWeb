@@ -4,6 +4,7 @@ import {
   BookOutlined,
   KeyOutlined,
   MoonOutlined,
+  PictureOutlined,
   ShopOutlined,
   SunOutlined,
   TagOutlined,
@@ -11,6 +12,7 @@ import {
 import { Button, Flex, Grid, Layout, Menu, Space, Tag, Tooltip, Typography, theme } from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
 import { IssueReportButton } from '@/components/IssueReportButton';
+import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
 
@@ -24,9 +26,19 @@ const NAV_ITEMS = [
   { key: '/npc-shop', icon: <ShopOutlined />, label: <NavLink to="/npc-shop">NPC 상점</NavLink> },
 ];
 
+/**
+ * 운영자 작업 화면. 키를 넣어 둔 브라우저에서만 메뉴에 걸린다.
+ * 메뉴에 없다고 못 들어가는 것은 아니다. 주소를 치면 화면은 열리고 키를 묻는다.
+ */
+const ADMIN_NAV_ITEM = {
+  key: '/item-card',
+  icon: <PictureOutlined />,
+  label: <NavLink to="/item-card">카드 만들기</NavLink>,
+};
+
 /** 현재 경로에 해당하는 메뉴 키. 루트로 들어오면 경매장이 첫 화면이다. */
 function selectedKeyFor(pathname: string): string {
-  const match = NAV_ITEMS.find((item) => pathname.startsWith(item.key));
+  const match = [...NAV_ITEMS, ADMIN_NAV_ITEM].find((item) => pathname.startsWith(item.key));
   return match ? match.key : '/auction';
 }
 
@@ -83,6 +95,9 @@ export function RootLayout() {
   const location = useLocation();
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
+  const hasAdminKey = useHasAdminKey();
+
+  const navItems = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
 
   /**
    * 본문 폭. 1160 은 좁아서 넓은 화면에서 좌우가 한참 비었다. 표가 주인공인 화면이라
@@ -127,7 +142,7 @@ export function RootLayout() {
           <nav aria-label="주요 메뉴" style={{ flex: 1, minWidth: 0 }}>
             <Menu
               mode="horizontal"
-              items={NAV_ITEMS}
+              items={navItems}
               selectedKeys={[selectedKeyFor(location.pathname)]}
               style={{
                 borderBottom: 'none',

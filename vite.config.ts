@@ -52,6 +52,11 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       css: false,
+      /**
+       * 개발용 .env 에 실제 워커 주소가 들어 있다. 테스트가 그걸 읽으면 화면을 그릴 때마다
+       * 실서버에 카드를 물으러 나간다. 테스트는 워커가 없는 상태에서 돈다.
+       */
+      env: { VITE_PROXY_URL: '' },
     },
   };
 });
