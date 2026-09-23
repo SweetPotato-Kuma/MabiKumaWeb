@@ -30,6 +30,11 @@ export interface ItemCard {
   category: string;
   /** 아이콘 파일 이름. 그림 내용의 해시다. 없으면 빈 문자열. */
   icon: string;
+  /**
+   * 워커가 붙여 주는 그림 주소. 그림을 워커가 아닌 곳(R2 자체 도메인)에서 내보낼 때만 온다.
+   * 없으면 워커 경로로 받는다.
+   */
+  iconUrl?: string;
   updated: string;
 }
 
@@ -149,6 +154,66 @@ let version = 0;
 
 const keyOf = (category: string, name: string) => `${category}\u0000${name}`;
 
+/**
+ * 받아 둔 카드를 이 브라우저에 남겨 둔다.
+ *
+ * 카드는 거의 바뀌지 않는다. 다시 찾아온 사람이 같은 아이템을 볼 때마다 워커에 묻는 것은
+ * 낭비이고, 무료 플랜 워커는 하루 요청 수가 정해져 있으며 그 한도를 경매장 검색과 같이 쓴다.
+ *
+ * 카드가 있는 것은 사흘, "없더라" 는 반나절만 믿는다. 없던 카드는 새 아이템이 사전에 들어오며
+ * 생기므로 더 빨리 다시 물어야 한다. 가장 최근 것 4,000 개까지만 남긴다(1.5MB 남짓).
+ */
+const STORAGE_KEY = 'mabikuma:itemCards:v1';
+const CARD_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+const MISSING_TTL_MS = 12 * 60 * 60 * 1000;
+const STORAGE_MAX_ENTRIES = 4000;
+
+/** 언제 받았는지. 남겨 둘 때 오래된 것부터 버리고, 불러올 때 유효 기간을 본다. */
+const fetchedAt = new Map<string, number>();
+
+function restoreFromStorage(): void {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    // 시크릿 모드 등 저장소가 막힌 환경. 없는 셈 친다.
+    return;
+  }
+  if (!raw) return;
+
+  try {
+    const now = Date.now();
+    for (const [key, at, card] of JSON.parse(raw) as [string, number, ItemCard | null][]) {
+      if (now - at > (card ? CARD_TTL_MS : MISSING_TTL_MS)) continue;
+      known.set(key, card);
+      fetchedAt.set(key, at);
+    }
+  } catch {
+    // 모양이 깨졌으면 버리고 새로 받는다.
+  }
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 조회가 몰려 끝나도 한 번만 쓴다. 표 하나에 조회가 일곱 번씩 나가기도 한다. */
+function schedulePersist(): void {
+  if (persistTimer !== null) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      const entries = [...fetchedAt]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, STORAGE_MAX_ENTRIES)
+        .map(([key, at]) => [key, at, known.get(key) ?? null]);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    } catch {
+      // 가득 찼거나 막혔으면 이번에는 못 남긴다. 다음에 다시 받으면 된다.
+    }
+  }, 1000);
+}
+
+if (typeof window !== 'undefined') restoreFromStorage();
+
 function emit(): void {
   version++;
   for (const listener of listeners) listener();
@@ -176,9 +241,14 @@ async function lookupBatch(batch: { category: string; names: string[] }[]): Prom
     if (!response.ok) return;
 
     const found = (await response.json()) as Pick<ItemCardFile, 'cards'>;
-    for (const key of keys) known.set(key, null);
+    const now = Date.now();
+    for (const key of keys) {
+      known.set(key, null);
+      fetchedAt.set(key, now);
+    }
     for (const card of found.cards) known.set(keyOf(card.category, card.name), card);
     emit();
+    schedulePersist();
   } catch {
     // 네트워크가 끊긴 경우도 같다. 카드는 덤이다. 이름과 시세는 그대로 보인다.
   } finally {
@@ -249,6 +319,12 @@ export function useItemCards(
 /** 카드를 저장하고 나면 부른다. 기억해 둔 것을 비워 다음 화면에서 새로 받게 한다. */
 export function forgetItemCards(): void {
   known.clear();
+  fetchedAt.clear();
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // 막혀 있으면 애초에 남긴 것도 없다.
+  }
   emit();
 }
 

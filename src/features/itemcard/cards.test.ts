@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LOOKUP_MAX_GROUPS,
   LOOKUP_MAX_NAMES,
   canonicalItemName,
   packLookupBatches,
+  type ItemCard,
   type ItemCardKey,
 } from './cards';
 
@@ -72,6 +74,80 @@ describe('packLookupBatches', () => {
 
   it('물을 것이 없으면 요청도 없다', () => {
     expect(packLookupBatches([])).toEqual([]);
+  });
+});
+
+describe('브라우저에 남겨 둔 카드', () => {
+  /**
+   * 다시 찾아온 사람이 같은 아이템을 볼 때 워커를 부르지 않게 하려는 것이다. 무료 플랜 워커의
+   * 하루 요청 한도를 경매장 검색과 같이 쓴다. 남겨 둔 것은 모듈을 처음 읽을 때 되살아나므로
+   * 테스트마다 모듈을 새로 읽는다.
+   */
+  const STORAGE_KEY = 'mabikuma:itemCards:v1';
+  const DAY = 24 * 60 * 60 * 1000;
+  const card: ItemCard = {
+    name: '롱 소드',
+    subtitle: '',
+    description: '가장 흔한 검.',
+    category: '검',
+    icon: '0123456789abcdef.png',
+    iconUrl: 'https://icons.example/0123456789abcdef.png',
+    updated: '2026-09-23',
+  };
+  const key = (category: string, name: string) => `${category}\u0000${name}`;
+
+  async function freshModule(saved: [string, number, ItemCard | null][]) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    vi.resetModules();
+    return import('./cards');
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('사흘이 안 된 카드는 다시 묻지 않고 되살린다', async () => {
+    const cards = await freshModule([[key('검', '롱 소드'), Date.now() - DAY, card]]);
+    const { result } = renderHook(() => cards.useItemCard('검', '롱 소드'));
+
+    expect(result.current).toEqual(card);
+  });
+
+  it('사흘이 지난 카드는 버린다', async () => {
+    // 설명을 고쳐 올렸으면 늦어도 사흘 안에는 새로 받는다.
+    const cards = await freshModule([[key('검', '롱 소드'), Date.now() - 4 * DAY, card]]);
+    const { result } = renderHook(() => cards.useItemCard('검', '롱 소드'));
+
+    expect(result.current).toBeUndefined();
+  });
+
+  it('"없더라" 는 반나절만 믿는다', async () => {
+    // 없던 카드는 새 아이템이 사전에 들어오며 생긴다. 카드보다 빨리 다시 물어야 한다.
+    const now = Date.now();
+    const cards = await freshModule([
+      [key('검', '새 검'), now - 60 * 60 * 1000, null],
+      [key('검', '옛 검'), now - DAY, null],
+    ]);
+
+    expect(renderHook(() => cards.useItemCard('검', '새 검')).result.current).toBeNull();
+    expect(renderHook(() => cards.useItemCard('검', '옛 검')).result.current).toBeUndefined();
+  });
+
+  it('남긴 모양이 깨져 있어도 화면을 깨지 않는다', async () => {
+    window.localStorage.setItem(STORAGE_KEY, '{깨진');
+    vi.resetModules();
+    const cards = await import('./cards');
+
+    expect(renderHook(() => cards.useItemCard('검', '롱 소드')).result.current).toBeUndefined();
+  });
+
+  it('카드를 저장하고 나면 남겨 둔 것도 지운다', async () => {
+    // 운영자가 방금 고친 카드를 자기 화면에서 바로 봐야 한다.
+    const cards = await freshModule([[key('검', '롱 소드'), Date.now(), card]]);
+    cards.forgetItemCards();
+
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(renderHook(() => cards.useItemCard('검', '롱 소드')).result.current).toBeUndefined();
   });
 });
 

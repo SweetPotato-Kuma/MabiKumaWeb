@@ -31,7 +31,8 @@ export function ItemIcon({ card, size }: ItemIconProps) {
     >
       {card?.icon ? (
         <img
-          src={iconUrl(card.icon)}
+          // 워커가 자체 도메인 주소를 붙여 주면 그쪽으로 받는다. 워커 요청 한도를 쓰지 않는다.
+          src={card.iconUrl ?? iconUrl(card.icon)}
           // 이름이 바로 옆에 있으므로 그림은 꾸밈이다. 화면 읽기 프로그램이 이름을 두 번 읽지 않게 비운다.
           alt=""
           loading="lazy"
