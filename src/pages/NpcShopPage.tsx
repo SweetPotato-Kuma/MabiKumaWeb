@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ClockCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   Button,
@@ -17,7 +17,7 @@ import { ApiKeyNotice } from '@/components/ApiKeyNotice';
 import { ItemImage } from '@/components/ItemIcon';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
-import { CHANNELS, NPC_NAMES, SERVER_NAMES } from '@/features/npcshop/constants';
+import { NPC_NAMES, SERVER_NAMES, channelsOf } from '@/features/npcshop/constants';
 import { useNpcShopQuery } from '@/features/npcshop/hooks';
 import type { NpcShopItem, NpcShopPrice, NpcShopQueryInput } from '@/features/npcshop/types';
 import { formatDateTime, formatNumber } from '@/lib/format';
@@ -36,7 +36,6 @@ const DEFAULT_INPUT: NpcShopQueryInput = {
 };
 
 const SERVER_OPTIONS = SERVER_NAMES.map((server) => ({ value: server, label: server }));
-const CHANNEL_OPTIONS = CHANNELS.map((channel) => ({ value: channel, label: `${channel} 채널` }));
 const NPC_OPTIONS = NPC_NAMES.map((npc) => ({ value: npc, label: npc }));
 
 /**
@@ -59,6 +58,12 @@ export function NpcShopPage() {
   const [form, setForm] = useState<NpcShopQueryInput>(DEFAULT_INPUT);
   const [submitted, setSubmitted] = useState<NpcShopQueryInput | null>(null);
   const [activeTab, setActiveTab] = useState('0');
+
+  /** 채널 수는 서버마다 다르다. 류트는 44채널, 나머지는 16~25채널이다. */
+  const channelOptions = useMemo(
+    () => channelsOf(form.serverName).map((channel) => ({ value: channel, label: `${channel} 채널` })),
+    [form.serverName],
+  );
 
   // 목록은 쪽으로 나눠 보여 준다. 다른 상점을 찾거나 다른 탭을 열면 첫 쪽으로 돌아간다.
   const { pagination } = useListPagination(`${JSON.stringify(submitted)}|${activeTab}`);
@@ -150,7 +155,13 @@ export function NpcShopPage() {
                 <Select
                   id="npc-server"
                   value={form.serverName}
-                  onChange={(serverName) => setForm((prev) => ({ ...prev, serverName }))}
+                  onChange={(serverName) =>
+                    setForm((prev) => {
+                      // 류트 30채널에서 울프로 바꾸면 30채널은 없다. 없는 채널이면 1채널로 돌린다.
+                      const valid = channelsOf(serverName).includes(prev.channel);
+                      return { ...prev, serverName, channel: valid ? prev.channel : 1 };
+                    })
+                  }
                   options={SERVER_OPTIONS}
                   style={{ width: '100%' }}
                   {...DROPDOWN_IN_PLACE}
@@ -163,7 +174,7 @@ export function NpcShopPage() {
                   id="npc-channel"
                   value={form.channel}
                   onChange={(channel) => setForm((prev) => ({ ...prev, channel }))}
-                  options={CHANNEL_OPTIONS}
+                  options={channelOptions}
                   style={{ width: '100%' }}
                   {...DROPDOWN_IN_PLACE}
                 />
