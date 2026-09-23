@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import {
@@ -18,20 +18,22 @@ import {
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { QueryState } from '@/components/QueryState';
 import { matchItemNames, useCategoryItemNamesQuery, useItemIndexQuery } from '@/features/auction/dictionary';
+import { ItemCardModal, type ItemCardTarget } from '@/components/ItemCardModal';
 import { ItemIcon } from '@/components/ItemIcon';
 import { useItemCards } from '@/features/itemcard/cards';
 import { formatNumber } from '@/lib/format';
+import { useListPagination } from '@/lib/useListPagination';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
-/** 아이콘 자리는 카드가 없어도 비워 둔다. 행마다 높이가 달라지면 표가 들썩인다. */
-const ICON_BOX = 32;
+/**
+ * 그림 칸 크기. 아이콘은 인벤토리 칸(24px) 단위라 48x48 이 가장 많다. 48 이면 넷 중 셋이
+ * 원래 크기 그대로 들어간다. 카드가 없어도 자리는 비워 둔다. 행마다 높이가 달라지면 표가 들썩인다.
+ */
+const ICON_BOX = 48;
 
 /** 사전 화면은 목록 전체를 보여 주므로 자동완성처럼 개수를 자르지 않는다. */
 const NO_LIMIT = Number.POSITIVE_INFINITY;
-
-/** 한 쪽에 보여 주는 행 수. 카드를 이 단위로 물어보므로 조회 쪽 상한보다 작아야 한다. */
-const PAGE_SIZE = 50;
 
 interface ItemRow {
   name: string;
@@ -42,7 +44,7 @@ export function DictionaryPage() {
   const indexQuery = useItemIndexQuery();
   const [category, setCategory] = useState('');
   const [keyword, setKeyword] = useState('');
-  const [page, setPage] = useState(1);
+  const [opened, setOpened] = useState<ItemCardTarget | null>(null);
 
   const namesQuery = useCategoryItemNamesQuery(category);
 
@@ -61,10 +63,12 @@ export function DictionaryPage() {
   /**
    * 쪽을 넘기는 일을 antd 에 맡기지 않고 직접 들고 있는 이유는 카드 때문이다.
    * 카드는 "지금 보이는 이름"만 물어서 받아 오므로, 무엇이 보이는지를 화면이 알아야 한다.
+   * 카테고리나 검색어가 바뀌면 첫 쪽으로 돌아간다.
    */
+  const { page, pageSize, pagination } = useListPagination(`${category}|${keyword}`);
   const visibleNames = useMemo(
-    () => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((row) => row.name),
-    [rows, page],
+    () => rows.slice((page - 1) * pageSize, page * pageSize).map((row) => row.name),
+    [rows, page, pageSize],
   );
 
   const cardKeys = useMemo(
@@ -73,10 +77,20 @@ export function DictionaryPage() {
   );
   const cardOf = useItemCards(cardKeys);
 
-  // 카테고리나 검색어가 바뀌면 보던 쪽 번호는 뜻을 잃는다. 첫 쪽으로 되돌린다.
-  useEffect(() => {
-    setPage(1);
-  }, [category, keyword]);
+  /**
+   * 줄을 누르면 상세 창을 연다. 경매장과 같다. 키보드로도 닿아야 하므로 줄에 초점을 주고
+   * Enter 와 Space 를 받는다.
+   */
+  const openRow = (row: ItemRow) => ({
+    tabIndex: 0,
+    style: { cursor: 'pointer' },
+    onClick: () => setOpened({ category: row.category, name: row.name }),
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      setOpened({ category: row.category, name: row.name });
+    },
+  });
 
   const columns: TableColumnsType<ItemRow> = [
     {
@@ -112,7 +126,12 @@ export function DictionaryPage() {
       width: 140,
       align: 'right',
       render: (name: string, row: ItemRow) => (
-        <Link to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(row.category)}`}>
+        <Link
+          to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(row.category)}`}
+          // 줄 전체가 상세 창을 여는 단추다. 이 단추를 눌렀을 때는 창까지 같이 뜨지 않게 막는다.
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
           <Button size="small" icon={<SearchOutlined />}>
             시세 보기
           </Button>
@@ -209,25 +228,8 @@ export function DictionaryPage() {
                     dataSource={rows}
                     rowKey="name"
                     size="small"
-                    pagination={{
-                      current: page,
-                      pageSize: PAGE_SIZE,
-                      onChange: setPage,
-                      showSizeChanger: false,
-                      size: 'small',
-                    }}
-                    // 설명이 있는 아이템만 펼쳐진다. 없는 행에 빈 화살표를 달지 않는다.
-                    expandable={{
-                      rowExpandable: (row) => Boolean(cardOf(row.category, row.name)?.description),
-                      expandedRowRender: (row) => (
-                        // 설명 안의 줄바꿈은 게임이 넣어 둔 것이다. 이어 붙이면 문단이 뭉개진다.
-                        <Paragraph
-                          style={{ marginBottom: 0, maxWidth: '65ch', whiteSpace: 'pre-line' }}
-                        >
-                          {cardOf(row.category, row.name)?.description}
-                        </Paragraph>
-                      ),
-                    }}
+                    pagination={pagination}
+                    onRow={openRow}
                   />
                 </Flex>
               </QueryState>
@@ -235,6 +237,8 @@ export function DictionaryPage() {
           )}
         </Col>
       </Row>
+
+      <ItemCardModal item={opened} onClose={() => setOpened(null)} />
     </Flex>
   );
 }

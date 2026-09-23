@@ -1,6 +1,6 @@
 import { Flex, Typography } from 'antd';
 import { bundlePrice } from '@/features/auction/price';
-import { formatGold, formatNumber } from '@/lib/format';
+import { formatGold } from '@/lib/format';
 
 const { Text } = Typography;
 
@@ -9,6 +9,8 @@ const { Text } = Typography;
  *
  * 한 칸에 하나만 올라온 매물은 개당과 전체가 같아서 가격 하나면 끝난다. 장비는 대부분
  * 이쪽이다. 여러 개가 묶인 매물에서만 개당과 전체를 나눠 보여 준다.
+ *
+ * 개수는 여기 적지 않는다. 표에 수량 칸이 따로 있어서 같은 숫자를 두 번 읽게 된다.
  *
  * 전체 값은 API 가 주는 것이 아니라 개당 가격에 개수를 곱한 값이다.
  */
@@ -30,9 +32,6 @@ export function AuctionPriceCell({ pricePerUnit, count }: { pricePerUnit: number
       </Text>
       <Text strong className="tnum">
         전체 {formatGold(price.total)}
-      </Text>
-      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-        {formatNumber(price.count)}개
       </Text>
     </Flex>
   );

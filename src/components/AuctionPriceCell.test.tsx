@@ -30,7 +30,12 @@ describe('가격 칸', () => {
 
     expect(screen.getByText('개당 1,200 G')).toBeInTheDocument();
     expect(screen.getByText('전체 18,000 G')).toBeInTheDocument();
-    expect(screen.getByText('15개')).toBeInTheDocument();
+  });
+
+  it('개수는 적지 않는다. 표에 수량 칸이 따로 있다', () => {
+    renderCell(1200, 15);
+
+    expect(screen.queryByText(/15개/)).not.toBeInTheDocument();
   });
 
   it('개수가 0 으로 와도 공짜처럼 보이지 않는다', () => {

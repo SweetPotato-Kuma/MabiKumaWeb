@@ -14,6 +14,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
+import { ItemImage } from '@/components/ItemIcon';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
 import { CHANNELS, NPC_NAMES, SERVER_NAMES } from '@/features/npcshop/constants';
@@ -21,8 +22,12 @@ import { useNpcShopQuery } from '@/features/npcshop/hooks';
 import type { NpcShopItem, NpcShopPrice, NpcShopQueryInput } from '@/features/npcshop/types';
 import { formatDateTime, formatNumber } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
+import { useListPagination } from '@/lib/useListPagination';
 
 const { Title, Text } = Typography;
+
+/** 그림 칸 크기. 경매장과 같게 둔다. 48x48 이 원래 크기 그대로 들어간다. */
+const NPC_ICON_BOX = 48;
 
 const DEFAULT_INPUT: NpcShopQueryInput = {
   npcName: NPC_NAMES[0],
@@ -55,27 +60,38 @@ export function NpcShopPage() {
   const [submitted, setSubmitted] = useState<NpcShopQueryInput | null>(null);
   const [activeTab, setActiveTab] = useState('0');
 
+  // 목록은 쪽으로 나눠 보여 준다. 다른 상점을 찾거나 다른 탭을 열면 첫 쪽으로 돌아간다.
+  const { pagination } = useListPagination(`${JSON.stringify(submitted)}|${activeTab}`);
+
   const shopQuery = useNpcShopQuery(submitted ?? DEFAULT_INPUT, canQuery && submitted !== null);
 
   const tabs = shopQuery.data?.shop ?? [];
 
   const columns: TableColumnsType<NpcShopItem> = [
     {
-      title: '아이템',
+      /**
+       * 그림을 32x32 로 못 박아 두었더니 48x48, 48x96 같은 그림이 칸에 맞춰 억지로 늘고
+       * 줄었다. 원래 크기로 그리고 칸보다 큰 것만 정확히 절반으로 줄인다. 경매장과 같다.
+       */
+      title: '',
+      key: 'icon',
+      width: NPC_ICON_BOX + 24,
+      render: (_value, record) =>
+        record.image_url ? (
+          <ItemImage src={record.image_url} size={NPC_ICON_BOX} />
+        ) : (
+          // 그림이 없어도 자리는 잡아 둔다. 줄마다 이름 시작점이 달라지지 않게.
+          <span style={{ display: 'block', width: NPC_ICON_BOX, height: NPC_ICON_BOX }} aria-hidden="true" />
+        ),
+    },
+    {
+      title: '이름',
       dataIndex: 'item_display_name',
-      width: 260,
+      width: 220,
       render: (_value, record) => (
-        <Flex align="center" gap={10}>
-          {record.image_url ? (
-            // 폭과 높이를 미리 잡아 두어야 이미지가 늦게 와도 행이 밀리지 않는다.
-            <img src={record.image_url} alt="" width={32} height={32} loading="lazy" style={{ flexShrink: 0 }} />
-          ) : (
-            <span style={{ width: 32, height: 32, flexShrink: 0 }} aria-hidden="true" />
-          )}
-          <Text strong style={{ fontSize: 14 }}>
-            {record.item_display_name}
-          </Text>
-        </Flex>
+        <Text strong style={{ fontSize: 14 }}>
+          {record.item_display_name}
+        </Text>
       ),
     },
     {
@@ -208,7 +224,7 @@ export function NpcShopPage() {
                     dataSource={shopTab.item ?? []}
                     rowKey={(record, rowIndex) => `${record.item_display_name}-${rowIndex ?? 0}`}
                     size="small"
-                    pagination={false}
+                    pagination={pagination}
                     scroll={{ x: 900 }}
                     sticky
                   />

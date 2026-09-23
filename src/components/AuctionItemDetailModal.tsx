@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Descriptions, Empty, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
-import { ItemIcon } from '@/components/ItemIcon';
+import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
   colorPartLabel,
   formatOptionValue,
@@ -15,7 +15,7 @@ import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 
-const { Text, Title, Paragraph } = Typography;
+const { Text } = Typography;
 
 /**
  * 표의 한 줄을 눌렀을 때 보여 줄 매물 상세.
@@ -169,9 +169,6 @@ function OptionGroupTable({ group }: { group: OptionGroup }) {
   );
 }
 
-/** 상세 창의 아이템 그림 칸. 표보다 크게 둔다. 여기서는 그림을 보려고 연 것이다. */
-const DETAIL_ICON_BOX = 56;
-
 export function AuctionItemDetailModal({ detail, onClose }: Props) {
   const { groups, colors, protections } = groupItemOptions(detail?.options);
   const price = bundlePrice(detail?.pricePerUnit ?? 0, detail?.count ?? 1);
@@ -191,32 +188,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
     <Modal open={detail !== null} onCancel={onClose} footer={null} width={860} title={null} destroyOnHidden>
       {detail === null ? null : (
         <Flex vertical gap={20}>
-          <Flex align="flex-start" gap={16}>
-            <ItemIcon card={card} size={DETAIL_ICON_BOX} />
-            <Flex vertical gap={4} style={{ minWidth: 0 }}>
-              <Title level={4} style={{ margin: 0 }}>
-                {detail.displayName}
-              </Title>
-              {detail.displayName !== detail.rawName ? (
-                <Text type="secondary" style={{ fontSize: 13 }}>
-                  {detail.rawName}
-                </Text>
-              ) : null}
-              {card?.subtitle ? (
-                <Text type="secondary" style={{ fontSize: 13 }}>
-                  {card.subtitle}
-                </Text>
-              ) : null}
-              <div>
-                <Tag style={{ marginInlineEnd: 0 }}>{detail.category}</Tag>
-              </div>
-            </Flex>
-          </Flex>
-
-          {card?.description ? (
-            // 설명 안의 줄바꿈은 게임이 넣어 둔 것이다. 이어 붙이면 문단이 뭉개진다.
-            <Paragraph style={{ marginBottom: 0, maxWidth: '65ch', whiteSpace: 'pre-line' }}>{card.description}</Paragraph>
-          ) : null}
+          <ItemCardSummary card={card} title={detail.displayName} rawName={detail.rawName} category={detail.category} />
 
           {/*
             이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다.
