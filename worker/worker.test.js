@@ -230,6 +230,41 @@ describe('아이템 카드 읽기', () => {
     expect(response.status).toBe(400);
   });
 
+  it('같은 칸을 곧바로 다시 물으면 KV 까지 가지 않는다', async () => {
+    // 인기 카테고리는 몇 초 간격으로 계속 조회된다. 매번 KV 를 읽고 JSON 을 풀 이유가 없다.
+    await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+    let reads = 0;
+    const get = env.ITEM_CARDS.get.bind(env.ITEM_CARDS);
+    env.ITEM_CARDS.get = async (key, type) => {
+      reads++;
+      return get(key, type);
+    };
+
+    const body = { category: '기타 소모품', names: ["'도' 음 빈 병"] };
+    const first = await call('/item-card/lookup', { method: 'POST', body });
+    const second = await call('/item-card/lookup', { method: 'POST', body });
+
+    // 저장할 때 이미 그 칸을 들고 있으므로 두 번 다 메모리에서 나온다.
+    expect(reads).toBe(0);
+    expect(first.headers.get('x-card-shards')).toBe('1/1');
+    expect((await second.json()).cards).toHaveLength(1);
+  });
+
+  it('칸을 새로 쓰면 들고 있던 옛 칸도 바로 바뀐다', async () => {
+    await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+    const body = { category: '기타 소모품', names: ["'도' 음 빈 병"] };
+    await call('/item-card/lookup', { method: 'POST', body });
+
+    await call('/item-card', {
+      method: 'POST',
+      body: cardBody({ description: '고친 설명' }),
+      adminKey: ADMIN_KEY,
+    });
+    const { cards } = await (await call('/item-card/lookup', { method: 'POST', body })).json();
+
+    expect(cards[0].description).toBe('고친 설명');
+  });
+
   it('그림 주소를 따로 정해 두면 조회 결과에 붙여 준다', async () => {
     // 그림을 워커가 아닌 R2 자체 도메인에서 내보낼 때다. 그림마다 워커 요청을 쓰지 않는다.
     env.ICON_BASE_URL = 'https://icons.example/';

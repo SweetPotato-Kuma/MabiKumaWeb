@@ -270,15 +270,69 @@ async function shardKey(category) {
   return `${CARDS_KEY_PREFIX}${(await sha256Hex(category)).slice(0, 8)}`;
 }
 
+/**
+ * 워커 인스턴스 안에 방금 푼 칸을 잠깐 들고 있는다.
+ *
+ * 워커는 요청이 끝나도 같은 인스턴스가 다음 요청을 받는 일이 많고, 그 사이 모듈 바깥 값은
+ * 남아 있다. 인기 있는 카테고리는 몇 초 간격으로 계속 조회되는데, 매번 KV 에서 읽어 JSON 을
+ * 새로 풀 이유가 없다. KV 읽기도 무료 플랜 하루 10만 건이 한도이고, 푸는 데 드는 CPU 도
+ * 요청당 10ms 한도 안에서 쓴다.
+ *
+ * 1분만 믿는다. KV 자체가 저장 후 다른 지역에 퍼지는 데 최대 60초가 걸리므로 그보다 더
+ * 낡지는 않는다. 가장 큰 칸이 풀면 수 MB 라 8개까지만 든다(워커 메모리 한도 128MB).
+ */
+const SHARD_CACHE_MS = 60_000;
+const SHARD_CACHE_MAX = 8;
+
+/**
+ * KV 바인딩마다 따로 든다. 바인딩은 인스턴스가 사는 동안 같은 객체라 운영에서는 하나를 계속
+ * 쓰고, 테스트는 매번 새 가짜 KV 를 넘기므로 저절로 섞이지 않는다.
+ */
+const shardCaches = new WeakMap();
+
+function shardCacheOf(env) {
+  let cache = shardCaches.get(env.ITEM_CARDS);
+  if (!cache) {
+    cache = new Map();
+    shardCaches.set(env.ITEM_CARDS, cache);
+  }
+  return cache;
+}
+
+function rememberShard(env, key, cards) {
+  const cache = shardCacheOf(env);
+  cache.delete(key);
+  cache.set(key, { at: Date.now(), cards });
+  while (cache.size > SHARD_CACHE_MAX) cache.delete(cache.keys().next().value);
+}
+
+/** 칸 하나. `fromMemory` 는 KV 까지 가지 않았는지. 응답 머리에 실어 운영에서 확인한다. */
+async function readShardWithSource(env, category) {
+  const key = await shardKey(category);
+  const cache = shardCacheOf(env);
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < SHARD_CACHE_MS) {
+    // 최근에 쓴 것을 뒤로 보낸다. 넘칠 때 오래 안 쓴 칸부터 버리려는 것이다.
+    cache.delete(key);
+    cache.set(key, hit);
+    return { cards: hit.cards, fromMemory: true };
+  }
+
+  const stored = await env.ITEM_CARDS.get(key, 'json');
+  const cards = Array.isArray(stored?.cards) ? stored.cards : [];
+  rememberShard(env, key, cards);
+  return { cards, fromMemory: false };
+}
+
 async function readShard(env, category) {
-  const stored = await env.ITEM_CARDS.get(await shardKey(category), 'json');
-  return Array.isArray(stored?.cards) ? stored.cards : [];
+  return (await readShardWithSource(env, category)).cards;
 }
 
 async function writeShard(env, category, cards) {
   const sorted = [...cards].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  const key = await shardKey(category);
   await env.ITEM_CARDS.put(
-    await shardKey(category),
+    key,
     JSON.stringify({
       category,
       updated: new Date().toISOString().slice(0, 10),
@@ -286,6 +340,8 @@ async function writeShard(env, category, cards) {
       cards: sorted,
     }),
   );
+  // 이 인스턴스가 들고 있던 옛 칸도 바로 바꾼다. 방금 저장한 사람이 옛 것을 보지 않게.
+  rememberShard(env, key, sorted);
   return sorted.length;
 }
 
@@ -435,8 +491,11 @@ async function lookupCards(request, env, cors) {
   }
 
   const cards = [];
+  let fromMemory = 0;
   for (const [category, wanted] of wantedByCategory) {
-    for (const card of await readShard(env, category)) {
+    const shard = await readShardWithSource(env, category);
+    if (shard.fromMemory) fromMemory++;
+    for (const card of shard.cards) {
       if (wanted.has(card.name)) cards.push(withIconUrl(card, env));
     }
   }
@@ -447,6 +506,8 @@ async function lookupCards(request, env, cors) {
       'content-type': 'application/json; charset=utf-8',
       // 방금 저장한 카드가 바로 보여야 한다. 엣지에 눌러 두지 않는다.
       'cache-control': 'no-store',
+      // 칸 몇 개를 KV 까지 가지 않고 메모리에서 꺼냈는지. 캐시가 실제로 먹는지 운영에서 본다.
+      'x-card-shards': `${fromMemory}/${wantedByCategory.size}`,
     },
   });
 }
