@@ -180,6 +180,60 @@ export function searchNames(index: NameIndex, keyword: string, options: SearchOp
   return result;
 }
 
+/** 자음으로만 된 입력인지. 초성 검색 여부를 가를 때 쓴다. */
+export function isInitialsOnly(text: string): boolean {
+  return ONLY_CONSONANTS.test(text);
+}
+
+export interface ResolvedSearch {
+  keyword: string;
+  category: string;
+}
+
+/**
+ * 찾기를 눌렀을 때 실제로 보낼 검색어를 다듬는다.
+ *
+ * 전체 검색은 넥슨 keyword-search 라 띄어쓰기까지 맞은 단어여야 한다. 자동완성이
+ * 받아 주는 입력 가운데 넥슨은 받지 않는 것이 있다.
+ *   초성 "ㅅㅅㄷ"   → 400 으로 거절
+ *   붙여 쓴 "숏소드" → 2건 (띄어 쓴 "숏 소드" 는 116건)
+ * 그래서 사전에서 이름을 찾아 제대로 띄어 쓴 이름으로 바꿔 보낸다. 그 이름이 한
+ * 카테고리에서만 보이면 카테고리도 좁힌다. 카테고리 경로는 이름 일부로 정확히 거른다.
+ *
+ * 카테고리를 이미 골랐으면 목록을 받아 화면에서 거르므로(초성도 거기서 처리한다)
+ * 검색어를 바꾸지 않는다. 입력기가 조립 중인 끝 낱자만 뗀다.
+ *
+ * 초성인데 사전에 맞는 이름이 없으면 null. 넥슨에 보내 봐야 400 이다.
+ */
+export function resolveSearch(
+  index: NameIndex | null | undefined,
+  input: { keyword: string; category: string },
+): ResolvedSearch | null {
+  let keyword = input.keyword.trim();
+  const initialsOnly = isInitialsOnly(normalizeForSearch(keyword));
+
+  if (!initialsOnly && TRAILING_JAMO.test(keyword)) keyword = keyword.slice(0, -1).trim();
+
+  if (input.category || !keyword) return { keyword, category: input.category };
+  if (!index) return initialsOnly ? null : { keyword, category: input.category };
+
+  const narrowTo = (suggestion: NameSuggestion): ResolvedSearch => ({
+    keyword: suggestion.name,
+    category: suggestion.categories.length === 1 ? suggestion.categories[0] : '',
+  });
+
+  const needle = normalizeForSearch(keyword);
+  const exact = index.normalized.indexOf(needle);
+  if (exact >= 0) return narrowTo(toSuggestion(index, exact));
+
+  if (initialsOnly) {
+    const [top] = searchNames(index, keyword, { limit: 1 });
+    return top ? narrowTo(top) : null;
+  }
+
+  return { keyword, category: input.category };
+}
+
 function toSuggestion(index: NameIndex, i: number): NameSuggestion {
   const name = index.names[i];
   return { name, categories: index.categoriesByName.get(name) ?? [index.categories[index.categoryOf[i]]] };

@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { fetchAuctionHistory, fetchAuctionKeywordSearch, fetchAuctionList } from './api';
 import { normalizeForSearch } from './dictionary';
+import { isInitialsOnly, toInitials } from './nameIndex';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from './types';
 
 const FIVE_MINUTES = 5 * 60 * 1000;
@@ -27,7 +28,13 @@ function splitTerms(keyword: string): string[] {
 function matchesKeyword(item: { item_name: string; item_display_name: string }, terms: string[]): boolean {
   if (terms.length === 0) return true;
   const haystack = normalizeForSearch(`${item.item_display_name} ${item.item_name}`);
-  return terms.every((term) => haystack.includes(term));
+  // 초성은 필요할 때만 뽑는다. 대부분의 검색어는 초성이 아니다.
+  let initials: string | undefined;
+  return terms.every((term) => {
+    if (!isInitialsOnly(term)) return haystack.includes(term);
+    initials ??= toInitials(haystack);
+    return initials.includes(term);
+  });
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNameIndex, searchNames, toInitials } from './nameIndex';
+import { buildNameIndex, resolveSearch, searchNames, toInitials } from './nameIndex';
 
 const index = buildNameIndex({
   updated: '2026-09-23',
@@ -65,5 +65,36 @@ describe('searchNames', () => {
 
   it('개수를 자른다', () => {
     expect(searchNames(index, '소드', { limit: 2 })).toHaveLength(2);
+  });
+});
+
+describe('resolveSearch', () => {
+  const all = (keyword: string) => resolveSearch(index, { keyword, category: '' });
+
+  it('전체에서 초성은 사전에서 가장 맞는 이름으로 바꾼다', () => {
+    // 숏 소드는 검과 둔기 두 곳에서 보여서 카테고리는 좁히지 않는다.
+    expect(all('ㅅㅅㄷ')).toEqual({ keyword: '숏 소드', category: '' });
+  });
+
+  it('전체에서 붙여 쓴 이름은 띄어 쓴 이름으로 바꾸고, 한 카테고리뿐이면 좁힌다', () => {
+    expect(all('롱소드')).toEqual({ keyword: '롱 소드', category: '검' });
+  });
+
+  it('조립 중인 끝 낱자를 뗀다', () => {
+    expect(all('숏ㅅ')).toEqual({ keyword: '숏', category: '' });
+  });
+
+  it('초성에 맞는 이름이 없으면 보내지 않는다', () => {
+    expect(all('ㅎㅎㅎ')).toBeNull();
+  });
+
+  it('카테고리를 골랐으면 검색어를 바꾸지 않는다. 초성은 목록에서 거른다', () => {
+    expect(resolveSearch(index, { keyword: 'ㅅㅅㄷ', category: '검' })).toEqual({ keyword: 'ㅅㅅㄷ', category: '검' });
+    expect(resolveSearch(index, { keyword: '숏ㅅ', category: '검' })).toEqual({ keyword: '숏', category: '검' });
+  });
+
+  it('사전을 아직 못 받았으면 글자는 그대로 보내고 초성은 막는다', () => {
+    expect(resolveSearch(null, { keyword: '숏소드', category: '' })).toEqual({ keyword: '숏소드', category: '' });
+    expect(resolveSearch(null, { keyword: 'ㅅㅅㄷ', category: '' })).toBeNull();
   });
 });

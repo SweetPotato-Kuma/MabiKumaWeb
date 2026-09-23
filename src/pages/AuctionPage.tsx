@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useMemo, useState, type KeyboardEvent } 
 import { useSearchParams } from 'react-router-dom';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
+  App,
   AutoComplete,
   Button,
   Card,
@@ -24,7 +25,12 @@ import { CategoryPicker } from '@/components/CategoryPicker';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
-import { searchNames, useItemNameIndexQuery, type NameSuggestion } from '@/features/auction/nameIndex';
+import {
+  resolveSearch,
+  searchNames,
+  useItemNameIndexQuery,
+  type NameSuggestion,
+} from '@/features/auction/nameIndex';
 import { calculatePriceStats } from '@/features/auction/stats';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
@@ -91,6 +97,7 @@ function ItemNameCell({ displayName, rawName }: { displayName: string; rawName: 
 
 export function AuctionPage() {
   const canQuery = useCanQuery();
+  const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const isWide = Boolean(screens.md);
 
@@ -166,9 +173,25 @@ export function AuctionPage() {
     };
   }, []);
 
+  /**
+   * 검색을 보낸다. 보내기 전에 사전으로 검색어를 다듬는다.
+   *
+   * 자동완성은 초성과 붙여 쓴 이름을 받아 주지만 넥슨 검색은 받지 않는다("ㅅㅅㄷ" 은 400,
+   * "숏소드" 는 2건). 사전에서 이름을 찾아 제대로 띄어 쓴 이름으로 바꿔 보내고, 바뀐
+   * 검색어는 입력칸에도 그대로 보여 준다. 무엇으로 찾았는지 사용자가 알아야 한다.
+   */
   function runSearch(next: AuctionSearchInput) {
     if (!isAuctionSearchReady(next)) return;
-    setSubmitted({ ...next });
+
+    const resolved = resolveSearch(nameIndexQuery.data, next);
+    if (!resolved) {
+      message.warning('초성으로 찾을 이름이 없습니다. 이름 일부를 입력하거나 카테고리를 먼저 골라 주세요.');
+      return;
+    }
+
+    const final = { ...next, ...resolved };
+    if (final.keyword !== form.keyword || final.category !== form.category) setForm(final);
+    setSubmitted(final);
   }
 
   /** 카테고리를 고르는 것 자체가 둘러보기 행동이라 바로 조회한다. */
@@ -433,12 +456,8 @@ export function AuctionPage() {
                     options={suggestionOptions}
                     onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
                     onSelect={(keyword: string) => {
-                      // 전체에서 골랐고 카테고리가 하나로 정해지면 그 카테고리로 좁힌다.
-                      // 전체 검색은 단어 단위라 섞여 나오지만, 카테고리 경로는 이름 일부로 정확히 거른다.
-                      const picked = suggestions.find((item) => item.name === keyword);
-                      const category =
-                        !form.category && picked?.categories.length === 1 ? picked.categories[0] : form.category;
-                      const next = { ...form, keyword, category };
+                      // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
+                      const next = { ...form, keyword };
                       setForm(next);
                       runSearch(next);
                     }}
