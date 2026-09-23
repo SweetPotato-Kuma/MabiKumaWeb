@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useDeferredValue, useMemo, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
@@ -23,13 +23,12 @@ import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/Auc
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { ItemOptionList } from '@/components/ItemOptionList';
 import { QueryState } from '@/components/QueryState';
-import { matchItemNames, useCategoryItemNamesQuery } from '@/features/auction/dictionary';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
+import { searchNames, useItemNameIndexQuery, type NameSuggestion } from '@/features/auction/nameIndex';
 import { calculatePriceStats } from '@/features/auction/stats';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
-import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 const { Title, Text } = Typography;
 
@@ -38,8 +37,28 @@ type Tab = 'items' | 'history';
 /** 카테고리를 고르지 않은 상태. 트리의 '전체' 노드가 이 값을 가리킨다. */
 const ALL_CATEGORIES = '';
 
-/** 자동완성 목록을 다시 만들기 전에 기다리는 시간. 타이핑이 밀리지 않는 선으로 잡았다. */
-const SUGGEST_DELAY_MS = 100;
+/**
+ * 자동완성에 보여 줄 개수. 드롭다운은 antd 가 보이는 줄만 그리므로(가상 목록)
+ * 이보다 늘려도 DOM 은 거의 늘지 않지만, 사람이 훑을 수 있는 것도 이 정도다.
+ */
+const SUGGESTION_LIMIT = 20;
+
+/**
+ * 자동완성 한 줄. 전체에서 찾을 때만 카테고리를 옆에 붙인다.
+ * 같은 이름이 여러 카테고리에 있으면 어디서 보이는지 모두 알려야 고를 수 있다.
+ */
+function SuggestionLabel({ item, showCategory }: { item: NameSuggestion; showCategory: boolean }) {
+  return (
+    <Flex justify="space-between" gap={12}>
+      <span>{item.name}</span>
+      {showCategory ? (
+        <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+          {item.categories.join(', ')}
+        </Text>
+      ) : null}
+    </Flex>
+  );
+}
 
 const EMPTY_INPUT: AuctionSearchInput = {
   category: ALL_CATEGORIES,
@@ -100,19 +119,29 @@ export function AuctionPage() {
   const itemsLoaded = itemsQuery.data?.loadedCount ?? 0;
   const historyLoaded = historyQuery.data?.loadedCount ?? 0;
 
-  // 자동완성은 고른 카테고리의 사전만 읽는다. 전체 사전은 15,000개가 넘는다.
-  const dictionaryQuery = useCategoryItemNamesQuery(form.category);
-
   /**
-   * 자동완성 계산은 한 박자 늦춘다.
+   * 자동완성은 전체 이름 인덱스 한 파일로 한다. 카테고리를 골랐으면 그 안에서만 고른다.
    *
-   * 큰 카테고리는 이름이 1,800개가 넘어서 한 글자마다 전부 훑으면 타이핑이 밀린다.
-   * 입력칸은 form.keyword 로 즉시 반응하고, 목록만 여기서 따라온다.
+   * 목록 계산은 useDeferredValue 로 입력칸 뒤로 미룬다. 고정 지연(디바운스)과 달리
+   * 기다리는 시간이 없고, 입력칸이 늘 먼저 그려진다. 계산 자체는 받을 때 전처리를
+   * 끝내 두어서 15,000개를 훑어도 1ms 안쪽이다.
    */
-  const suggestKeyword = useDebouncedValue(form.keyword, SUGGEST_DELAY_MS);
+  const nameIndexQuery = useItemNameIndexQuery();
+  const deferredKeyword = useDeferredValue(form.keyword);
   const suggestions = useMemo(
-    () => matchItemNames(dictionaryQuery.data ?? [], suggestKeyword).map((name) => ({ value: name })),
-    [dictionaryQuery.data, suggestKeyword],
+    () =>
+      nameIndexQuery.data
+        ? searchNames(nameIndexQuery.data, deferredKeyword, { category: form.category, limit: SUGGESTION_LIMIT })
+        : [],
+    [nameIndexQuery.data, deferredKeyword, form.category],
+  );
+  const suggestionOptions = useMemo(
+    () =>
+      suggestions.map((item) => ({
+        value: item.name,
+        label: <SuggestionLabel item={item} showCategory={!form.category} />,
+      })),
+    [suggestions, form.category],
   );
 
   const canSubmit = isAuctionSearchReady(form);
@@ -401,10 +430,15 @@ export function AuctionPage() {
                 <Flex gap={8} wrap align="center">
                   <AutoComplete
                     value={form.keyword}
-                    options={suggestions}
+                    options={suggestionOptions}
                     onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
                     onSelect={(keyword: string) => {
-                      const next = { ...form, keyword };
+                      // 전체에서 골랐고 카테고리가 하나로 정해지면 그 카테고리로 좁힌다.
+                      // 전체 검색은 단어 단위라 섞여 나오지만, 카테고리 경로는 이름 일부로 정확히 거른다.
+                      const picked = suggestions.find((item) => item.name === keyword);
+                      const category =
+                        !form.category && picked?.categories.length === 1 ? picked.categories[0] : form.category;
+                      const next = { ...form, keyword, category };
                       setForm(next);
                       runSearch(next);
                     }}
@@ -447,11 +481,11 @@ export function AuctionPage() {
                       찾는 방식이 둘이라 그대로 알린다. 전체 검색은 넥슨 쪽 keyword-search 라
                       단어가 맞아야 하고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
                     */}
-                    {form.category
-                      ? dictionaryQuery.isFetching
-                        ? '아이템 이름을 불러오는 중입니다.'
-                        : `${form.category} 매물에서 이름 일부로 찾습니다. 자동완성은 이름 ${formatNumber(dictionaryQuery.data?.length ?? 0)}개에서 거듭니다.`
-                      : '전체 검색은 단어가 맞아야 찾습니다. 카테고리를 고르면 이름 일부만 넣어도 찾습니다.'}
+                    {nameIndexQuery.isPending
+                      ? '아이템 이름을 불러오는 중입니다.'
+                      : form.category
+                        ? `${form.category} 매물에서 이름 일부로 찾습니다.`
+                        : '전체 검색은 단어가 맞아야 찾습니다. 자동완성에서 고르면 그 카테고리로 좁혀 정확히 찾습니다.'}
                   </Text>
                 </Flex>
               </Flex>

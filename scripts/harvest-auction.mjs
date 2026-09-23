@@ -17,6 +17,8 @@ import { resolve } from 'node:path';
 
 const API_ORIGIN = 'https://open.api.nexon.com';
 const OUT_DIR = resolve(process.cwd(), 'public/items');
+/** 전체 자동완성용 이름 인덱스. 카테고리 파일과 달리 category 필드가 없다. */
+const NAMES_FILE = 'names.json';
 const CONSTANTS_PATH = resolve(process.cwd(), 'src/features/auction/constants.ts');
 
 /** 넥슨 쪽에 부담을 주지 않도록 요청 간 간격을 둔다. */
@@ -88,7 +90,7 @@ async function readExisting() {
   }
 
   for (const file of files) {
-    if (!file.endsWith('.json') || file === 'index.json') continue;
+    if (!file.endsWith('.json') || file === 'index.json' || file === NAMES_FILE) continue;
     try {
       const parsed = JSON.parse(await readFile(resolve(OUT_DIR, file), 'utf8'));
       if (!parsed?.category || !Array.isArray(parsed.items)) continue;
@@ -173,6 +175,8 @@ async function main() {
   await mkdir(OUT_DIR, { recursive: true });
 
   const index = [];
+  // 전체 자동완성용. [이름, 카테고리 번호] 만 담아 한 파일로 둔다.
+  const nameRows = [];
   for (const [category, items] of [...dictionary].sort((a, b) => a[0].localeCompare(b[0], 'ko'))) {
     const sorted = [...items.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     const file = fileNameFor(category);
@@ -180,6 +184,7 @@ async function main() {
       resolve(OUT_DIR, file),
       `${JSON.stringify({ category, updated: today, count: sorted.length, items: sorted }, null, 2)}\n`,
     );
+    for (const item of sorted) nameRows.push([item.name, index.length]);
     index.push({ name: category, file, count: sorted.length, ...(known.has(category) ? {} : { unlisted: true }) });
   }
 
@@ -187,6 +192,16 @@ async function main() {
   await writeFile(
     resolve(OUT_DIR, 'index.json'),
     `${JSON.stringify({ updated: today, total, categories: index }, null, 2)}\n`,
+  );
+
+  /**
+   * 전체 카테고리 자동완성은 이 파일 하나로 한다. 카테고리 파일 79개를 다 받을 수는 없다.
+   * 첫/마지막 관측일은 빼고 이름과 카테고리 번호만 남겨 들여쓰기 없이 쓴다.
+   * 15,000개 기준 원본 650KB, gzip 120KB 남짓이다.
+   */
+  await writeFile(
+    resolve(OUT_DIR, NAMES_FILE),
+    `${JSON.stringify({ updated: today, categories: index.map((entry) => entry.name), items: nameRows })}\n`,
   );
 
   console.log(`\n요청 ${requests}회, 매물 ${listings}건을 훑어 사전 ${before} → ${total}개가 되었습니다.`);
