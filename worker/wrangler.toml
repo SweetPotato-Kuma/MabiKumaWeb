@@ -1,6 +1,15 @@
 name = "mabikuma-api"
 main = "worker.js"
-compatibility_date = "2026-01-01"
+compatibility_date = "2026-09-22"
+
+# 대시보드에서 켜 두었던 설정. 여기 적어 두지 않으면 wrangler 로 배포할 때마다 꺼지거나 켜진다.
+preview_urls = false
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
 
 [vars]
 # 이 사이트에서 오는 요청만 받는다. 배포 주소가 바뀌면 같이 고칠 것.
@@ -17,7 +26,32 @@ type = "ratelimit"
 namespace_id = "1001"
 simple = { limit = 3, period = 60 }
 
-# NEXON_API_KEY 와 GITHUB_TOKEN 은 여기에 적지 않는다. 시크릿으로 넣는다:
+# 카드 조회 횟수 제한. 아이콘이 아니라 **조회**에 건다.
+# 사전 한 쪽을 그리면 아이콘이 50장 한꺼번에 나가므로 이미지에 제한을 걸면 정상 사용이 먼저 깨진다.
+# 조회는 쪽을 넘길 때 한 번만 나가니, 여기에 걸어야 사람은 멀쩡하고 긁는 쪽만 느려진다.
+[[unsafe.bindings]]
+name = "CARD_RATE_LIMIT"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 30, period = 60 }
+
+# 카드 목록. 카테고리별로 한 칸씩 들어간다(79칸).
+# 한 덩어리로 두지 않는 이유는 크기다. 사전을 다 채우면 15,000장이 넘어 JSON 이 2.9MB 가 되는데,
+# 무료 플랜 워커는 요청당 CPU 10ms 라 그걸 매 조회마다 파싱할 수 없다.
+#   npx wrangler kv namespace create ITEM_CARDS
+[[kv_namespaces]]
+binding = "ITEM_CARDS"
+id = "6c0d65cc926640a892967822259a5fab"
+
+# 아이콘 PNG. 1만 5천 장이라 KV 로는 안 된다. 무료 플랜 KV 는 하루 쓰기가 1,000건이라
+# 한 번 채우는 데만 보름이 걸린다. R2 는 작은 파일을 많이 두라고 있는 물건이다.
+#   npx wrangler r2 bucket create mabikuma-icons
+[[r2_buckets]]
+binding = "ICONS"
+bucket_name = "mabikuma-icons"
+
+# NEXON_API_KEY, GITHUB_TOKEN, ADMIN_KEY 는 여기에 적지 않는다. 시크릿으로 넣는다:
 #   npx wrangler secret put NEXON_API_KEY
 #   npx wrangler secret put GITHUB_TOKEN
+#   npx wrangler secret put ADMIN_KEY
 # 또는 대시보드 → Workers → 해당 워커 → Settings → Variables → Add secret

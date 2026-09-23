@@ -16,10 +16,68 @@
  *   GITHUB_TOKEN     (Secret, 제보 기능에 필수) Issues 쓰기 권한만 가진 토큰
  *   GITHUB_REPO      (Variable, 제보 기능에 필수) "소유자/레포" 형식
  *   ISSUE_RATE_LIMIT (Rate limiting 바인딩, 선택) 있으면 IP 당 제보 수를 제한한다
+ *
+ * 아이템 카드(아이콘 + 설명)도 여기에 있다. 사이트가 정적 호스팅이라 쓸 곳이 없고,
+ * 아무나 쓰게 두면 남이 사전을 채워 넣을 수 있으므로 키를 아는 사람만 쓰게 한다.
+ *   ADMIN_KEY        (Secret, 카드 기능에 필수) 운영자만 아는 긴 문자열
+ *   ITEM_CARDS       (KV 바인딩, 카드 기능에 필수) 카테고리별 카드 목록
+ *   ICONS            (R2 바인딩, 카드 기능에 필수) 아이콘 PNG. 1만 장이 넘어 KV 로는 감당이 안 된다
+ *   CARD_RATE_LIMIT  (Rate limiting 바인딩, 선택) 있으면 카드 조회 횟수를 제한한다
+ *
+ * 읽기는 공개다. 사전 화면이 모든 방문자에게 아이콘을 보여 주므로 숨길 수가 없다.
+ * 잠그는 것은 쓰기뿐이다.
  */
 
 const NEXON_ORIGIN = 'https://open.api.nexon.com';
 const ISSUE_PATH = '/report/issue';
+
+/**
+ * 아이템 카드 경로.
+ *
+ * 목록을 통째로 주는 경로는 방문자에게 열지 않는다. 아이콘 파일 이름이 내용 해시라
+ * 찍어서 맞힐 수 없으므로, 목록이 곧 아이콘 주소의 색인이다. 색인을 통째로 내주면
+ * 누구나 스크립트 한 번으로 전부 받아 갈 수 있다.
+ *
+ * 대신 화면에 지금 보이는 이름만 묶어 묻는 `/item-card/lookup` 을 쓴다. 사전 한 쪽은
+ * 50행이라 한 번에 그만큼만 나간다. 전체를 긁으려면 수백 번 나눠 불러야 하고, 그 호출에는
+ * 횟수 제한이 걸린다.
+ */
+const CARD_PATH = '/item-card';
+const CARD_VERIFY_PATH = '/item-card/verify';
+const CARD_LOOKUP_PATH = '/item-card/lookup';
+/** 일괄 등록용 두 경로. 아이콘과 칸 쓰기를 갈라 둔 이유는 subrequest 한도 때문이다. */
+const CARD_ICONS_PATH = '/item-card/icons';
+const CARD_SHARD_PATH = '/item-card/shard';
+const ICON_PATH_PREFIX = '/item-card/icons/';
+
+/** 한 번에 물어볼 수 있는 이름 수. 사전 한 쪽(50행)보다 조금 넉넉하게 둔다. */
+const LOOKUP_MAX_NAMES = 60;
+
+/**
+ * 한 번에 물어볼 수 있는 카테고리 수. 칸 하나를 읽을 때마다 JSON 을 푼다.
+ * 가장 큰 칸(천옷)이 536KB 에 풀기 0.8ms 라, 넷이면 무료 플랜 CPU 10ms 안에 넉넉히 든다.
+ */
+const LOOKUP_MAX_GROUPS = 4;
+
+/**
+ * 한 번에 올릴 수 있는 아이콘 수.
+ *
+ * 무료 플랜 워커는 요청 하나에 R2/KV 호출을 50번까지만 할 수 있다(바인딩 호출도
+ * subrequest 로 센다). 여유를 두고 40 으로 잡는다.
+ */
+const ICON_BATCH_MAX = 40;
+
+/** 카테고리별 카드 칸의 KV 키 앞머리. */
+const CARDS_KEY_PREFIX = 'cards:';
+
+/** 운영자가 이 헤더에 키를 싣는다. */
+const ADMIN_HEADER = 'x-mabikuma-admin-key';
+
+/** 아이콘 한 장의 상한. 툴팁에서 잘라낸 아이콘은 보통 몇 KB 다. */
+const ICON_MAX_BYTES = 512 * 1024;
+
+const CARD_NAME_MAX = 120;
+const CARD_TEXT_MAX = 2000;
 
 /** 분류 값과 실제로 붙일 라벨. 화면이 보내는 값은 이 둘 중 하나뿐이다. */
 const ISSUE_LABELS = {
@@ -45,8 +103,8 @@ const DEFAULT_CACHE_SECONDS = 60;
 function corsHeaders(origin, allowList) {
   const headers = {
     Vary: 'Origin',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'accept, content-type',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': `accept, content-type, ${ADMIN_HEADER}`,
     'Access-Control-Max-Age': '86400',
   };
   if (allowList.length === 0) headers['Access-Control-Allow-Origin'] = '*';
@@ -169,6 +227,416 @@ async function createIssue(request, env, cors) {
   });
 }
 
+/**
+ * 키 비교는 길이와 내용 어느 쪽에서도 시간이 새지 않게 한다.
+ * 개인 도구라 공격받을 일이 드물지만, 비교 한 줄 더 쓰는 값이면 쓰는 게 맞다.
+ */
+function keyMatches(given, expected) {
+  if (typeof given !== 'string' || typeof expected !== 'string') return false;
+  if (given.length !== expected.length) return false;
+
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
+function adminProblem(request, env, cors) {
+  if (!env.ADMIN_KEY || !env.ITEM_CARDS) {
+    return errorResponse('CARD_NOT_CONFIGURED', '카드 기능이 아직 설정되지 않았습니다.', 503, cors);
+  }
+  if (!keyMatches(request.headers.get(ADMIN_HEADER), env.ADMIN_KEY)) {
+    return errorResponse('CARD_UNAUTHORIZED', '운영자 키가 맞지 않습니다.', 401, cors);
+  }
+  return null;
+}
+
+async function sha256Hex(input) {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 카테고리별 KV 키.
+ *
+ * 카드를 한 덩어리로 두면 안 되는 이유는 크기다. 사전을 다 채우면 15,000장이 넘고 JSON 이
+ * 2.9MB 가 된다. 무료 플랜 워커는 요청당 CPU 10ms 라 그걸 매 조회마다 파싱할 수 없다.
+ * 카테고리로 쪼개면 가장 큰 것(천옷)이 536KB, 푸는 데 0.8ms 라 여유 있게 들어간다.
+ *
+ * 사전 화면이 카테고리를 먼저 고르게 되어 있어서, 조회 한 번에 칸 하나만 읽으면 된다.
+ * `public/items/` 의 이름 사전이 이미 같은 방식으로 나뉘어 있다.
+ */
+async function shardKey(category) {
+  return `${CARDS_KEY_PREFIX}${(await sha256Hex(category)).slice(0, 8)}`;
+}
+
+async function readShard(env, category) {
+  const stored = await env.ITEM_CARDS.get(await shardKey(category), 'json');
+  return Array.isArray(stored?.cards) ? stored.cards : [];
+}
+
+async function writeShard(env, category, cards) {
+  const sorted = [...cards].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  await env.ITEM_CARDS.put(
+    await shardKey(category),
+    JSON.stringify({
+      category,
+      updated: new Date().toISOString().slice(0, 10),
+      count: sorted.length,
+      cards: sorted,
+    }),
+  );
+  return sorted.length;
+}
+
+function decodeBase64(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * 아이콘 파일 이름은 **그림 내용**의 해시다.
+ *
+ * 아이템 이름으로 지으면 같은 아이템의 아이콘을 다시 저장했을 때 이름이 그대로라, 영구
+ * 캐시를 걸어 둔 브라우저가 옛 그림을 계속 보여 준다. 내용이 바뀌면 이름도 바뀌게 해 두면
+ * 캐시를 마음 놓고 걸 수 있고, 같은 그림을 두 번 올려도 파일이 늘지 않는다.
+ */
+async function iconFileName(bytes) {
+  return `${(await sha256Hex(bytes)).slice(0, 16)}.png`;
+}
+
+/** 아이콘 한 장을 R2 에 넣고 파일 이름을 돌려준다. */
+async function putIcon(env, base64) {
+  const bytes = decodeBase64(base64);
+  if (bytes.byteLength > ICON_MAX_BYTES) throw new Error('아이콘이 너무 큽니다.');
+
+  const file = await iconFileName(bytes);
+  await env.ICONS.put(file, bytes, { httpMetadata: { contentType: 'image/png' } });
+  return file;
+}
+
+/**
+ * 아이콘은 공개 이미지다. 이름이 내용 해시라 캐시를 길게 걸어도 틀릴 일이 없다.
+ *
+ * 15,000장이 넘어가므로 KV 가 아니라 R2 에 둔다. KV 무료 플랜은 하루 쓰기가 1,000건이라
+ * 한 번 채우는 데만 보름이 걸린다. R2 는 작은 파일을 많이 두라고 있는 물건이다.
+ */
+async function serveIcon(url, env) {
+  if (!env.ICONS) return new Response('아이콘 저장소가 설정되지 않았습니다.', { status: 503 });
+
+  const file = url.pathname.slice(ICON_PATH_PREFIX.length);
+  if (!/^[0-9a-f]{16}\.png$/.test(file)) return new Response('없는 아이콘입니다.', { status: 404 });
+
+  const object = await env.ICONS.get(file);
+  if (!object) return new Response('없는 아이콘입니다.', { status: 404 });
+
+  return new Response(object.body, {
+    headers: {
+      'content-type': 'image/png',
+      'cache-control': 'public, max-age=31536000, immutable',
+      etag: object.httpEtag,
+      // img 태그로 불리므로 CORS 는 필요 없지만, 캔버스로 다시 읽을 때를 위해 열어 둔다.
+      'access-control-allow-origin': '*',
+    },
+  });
+}
+
+/**
+ * 화면에 보이는 이름만 묶어 묻는 조회. 방문자가 쓰는 유일한 읽기 경로다.
+ *
+ * 카테고리를 같이 받는 이유는 칸 하나만 읽으면 되기 때문이다. 사전 화면은 카테고리를
+ * 고른 뒤에만 목록을 보여 주므로 화면이 늘 알고 있는 값이다.
+ */
+async function lookupCards(request, env, cors) {
+  // 저장소를 아직 안 붙인 상태에서도 사전 화면이 깨지면 안 된다. 빈 결과가 정답이다.
+  if (!env.ITEM_CARDS) {
+    return new Response(JSON.stringify({ cards: [] }), {
+      headers: {
+        ...cors,
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    });
+  }
+
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return errorResponse('CARD_INVALID_BODY', '보낸 내용을 읽지 못했습니다.', 400, cors);
+  }
+
+  /**
+   * 한 칸짜리 `{ category, names }` 와 여러 칸짜리 `{ groups: [...] }` 를 다 받는다.
+   *
+   * 사전은 늘 한 카테고리만 보여 주지만 경매장은 키워드로 찾으면 여러 카테고리가 섞인다.
+   * 그때 카테고리마다 따로 부르면 한 번 검색에 요청이 너댓 번 나가 횟수 제한에 먼저 걸린다.
+   * 이름 수 상한은 칸 수와 상관없이 합쳐서 60 개 그대로다. 긁어 가기 어렵게 해 둔 수준은
+   * 그대로 두고 요청 수만 줄인다.
+   */
+  const rawGroups = Array.isArray(payload.groups)
+    ? payload.groups
+    : [{ category: payload.category, names: payload.names }];
+
+  if (rawGroups.length === 0 || rawGroups.length > LOOKUP_MAX_GROUPS) {
+    return errorResponse(
+      'CARD_TOO_MANY_GROUPS',
+      `한 번에 카테고리 ${LOOKUP_MAX_GROUPS}개까지만 물어볼 수 있습니다.`,
+      400,
+      cors,
+    );
+  }
+
+  const wantedByCategory = new Map();
+  let total = 0;
+  for (const group of rawGroups) {
+    const category = cleanText(group?.category, CARD_NAME_MAX);
+    if (!category)
+      return errorResponse('CARD_CATEGORY_REQUIRED', '카테고리가 없습니다.', 400, cors);
+    if (!Array.isArray(group?.names)) {
+      return errorResponse('CARD_NAMES_REQUIRED', '찾을 이름이 없습니다.', 400, cors);
+    }
+
+    const wanted = wantedByCategory.get(category) ?? new Set();
+    for (const name of group.names) if (typeof name === 'string') wanted.add(name);
+    wantedByCategory.set(category, wanted);
+    total += group.names.length;
+  }
+
+  if (total > LOOKUP_MAX_NAMES) {
+    return errorResponse(
+      'CARD_TOO_MANY_NAMES',
+      `한 번에 ${LOOKUP_MAX_NAMES}개까지만 물어볼 수 있습니다.`,
+      400,
+      cors,
+    );
+  }
+
+  if (env.CARD_RATE_LIMIT) {
+    const key = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const { success } = await env.CARD_RATE_LIMIT.limit({ key });
+    if (!success) {
+      return errorResponse('CARD_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
+    }
+  }
+
+  const cards = [];
+  for (const [category, wanted] of wantedByCategory) {
+    for (const card of await readShard(env, category)) if (wanted.has(card.name)) cards.push(card);
+  }
+
+  return new Response(JSON.stringify({ cards }), {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      // 방금 저장한 카드가 바로 보여야 한다. 엣지에 눌러 두지 않는다.
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+function cleanText(value, limit) {
+  return String(value ?? '')
+    .trim()
+    .slice(0, limit);
+}
+
+/** 카드 한 장을 넣거나 덮어쓴다. 툴팁 화면이 쓰는 경로다. */
+async function saveCard(request, env, cors) {
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return errorResponse('CARD_INVALID_BODY', '보낸 내용을 읽지 못했습니다.', 400, cors);
+  }
+
+  const name = cleanText(payload.card?.name, CARD_NAME_MAX);
+  const category = cleanText(payload.card?.category, CARD_NAME_MAX);
+  if (!name) return errorResponse('CARD_NAME_REQUIRED', '아이템 이름이 비어 있습니다.', 400, cors);
+  if (!category) {
+    return errorResponse('CARD_CATEGORY_REQUIRED', '카테고리를 고르지 않았습니다.', 400, cors);
+  }
+
+  const cards = await readShard(env, category);
+  const previous = cards.find((item) => item.name === name);
+
+  let icon = previous?.icon ?? '';
+  if (typeof payload.iconBase64 === 'string' && payload.iconBase64.length > 0) {
+    if (!env.ICONS) {
+      return errorResponse('CARD_ICONS_NOT_CONFIGURED', '아이콘 저장소가 없습니다.', 503, cors);
+    }
+    try {
+      icon = await putIcon(env, payload.iconBase64);
+    } catch (error) {
+      return errorResponse('CARD_ICON_INVALID', error.message, 400, cors);
+    }
+  }
+
+  const card = {
+    name,
+    subtitle: cleanText(payload.card?.subtitle, CARD_NAME_MAX),
+    description: cleanText(payload.card?.description, CARD_TEXT_MAX),
+    category,
+    icon,
+    updated: new Date().toISOString().slice(0, 10),
+  };
+
+  const count = await writeShard(env, category, [
+    ...cards.filter((item) => item.name !== name),
+    card,
+  ]);
+
+  return new Response(JSON.stringify({ card, count }), {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+/**
+ * 아이콘만 여러 장 올린다. 운영자가 한꺼번에 등록할 때 쓰는 경로다.
+ *
+ * 카드 쓰기와 갈라 둔 이유는 subrequest 한도 때문이다. 무료 플랜 워커는 요청 하나에
+ * R2/KV 호출을 50번까지만 할 수 있다. 아이콘 저장과 칸 쓰기를 한 요청에 섞으면 한 번에
+ * 넣을 수 있는 양이 확 줄어든다.
+ */
+async function putIcons(request, env, cors) {
+  if (!env.ICONS) {
+    return errorResponse('CARD_ICONS_NOT_CONFIGURED', '아이콘 저장소가 없습니다.', 503, cors);
+  }
+
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return errorResponse('CARD_INVALID_BODY', '보낸 내용을 읽지 못했습니다.', 400, cors);
+  }
+
+  const icons = Array.isArray(payload.icons) ? payload.icons : null;
+  if (!icons) return errorResponse('CARD_ICONS_REQUIRED', '올릴 아이콘이 없습니다.', 400, cors);
+  if (icons.length > ICON_BATCH_MAX) {
+    return errorResponse(
+      'CARD_TOO_MANY_ICONS',
+      `한 번에 ${ICON_BATCH_MAX}장까지만 올릴 수 있습니다.`,
+      400,
+      cors,
+    );
+  }
+
+  /**
+   * 한꺼번에 쓴다. 한 장씩 차례로 기다리면 R2 쓰기 한 번에 1초 가까이 걸려(2026-09 실측,
+   * 40장에 41초) 1만 5천 장을 채우는 데 네 시간이 넘는다. 동시에 몇 개를 쓰든 subrequest
+   * 한도는 전체 횟수로 세므로 ICON_BATCH_MAX(40) 안이면 문제없다.
+   */
+  const results = await Promise.all(
+    icons.map(async (entry) => {
+      if (typeof entry?.key !== 'string' || typeof entry?.base64 !== 'string') return null;
+      try {
+        return [entry.key, await putIcon(env, entry.base64)];
+      } catch {
+        // 한 장이 상했다고 나머지를 버리지 않는다. 빠진 키는 스크립트가 보고 다시 시도한다.
+        return null;
+      }
+    }),
+  );
+  const files = Object.fromEntries(results.filter(Boolean));
+
+  return new Response(JSON.stringify({ files }), {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+/**
+ * 카테고리 한 칸을 통째로 갈아 끼운다. 운영자가 한꺼번에 등록할 때 쓰는 경로다.
+ *
+ * KV 쓰기 한 번으로 끝나므로 무료 플랜의 하루 1,000건 안에 넉넉히 들어간다
+ * (카테고리는 79개뿐이다). 아이콘은 앞서 `/item-card/icons` 로 올려 두고
+ * 여기에는 파일 이름만 싣는다.
+ */
+async function putShard(request, env, cors) {
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return errorResponse('CARD_INVALID_BODY', '보낸 내용을 읽지 못했습니다.', 400, cors);
+  }
+
+  const category = cleanText(payload.category, CARD_NAME_MAX);
+  if (!category) return errorResponse('CARD_CATEGORY_REQUIRED', '카테고리가 없습니다.', 400, cors);
+  if (!Array.isArray(payload.cards)) {
+    return errorResponse('CARD_LIST_REQUIRED', '카드 목록이 없습니다.', 400, cors);
+  }
+
+  const cards = [];
+  for (const entry of payload.cards) {
+    const name = cleanText(entry?.name, CARD_NAME_MAX);
+    if (!name) continue;
+    cards.push({
+      name,
+      subtitle: cleanText(entry?.subtitle, CARD_NAME_MAX),
+      description: cleanText(entry?.description, CARD_TEXT_MAX),
+      category,
+      icon: /^[0-9a-f]{16}\.png$/.test(entry?.icon ?? '') ? entry.icon : '',
+      updated: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  const count = await writeShard(env, category, cards);
+
+  return new Response(JSON.stringify({ category, count }), {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+/** 잘못 저장한 카드를 지운다. 손으로 채우는 사전이라 지울 일이 반드시 생긴다. */
+async function deleteCard(url, env, cors) {
+  const name = cleanText(url.searchParams.get('name'), CARD_NAME_MAX);
+  const category = cleanText(url.searchParams.get('category'), CARD_NAME_MAX);
+  if (!name) return errorResponse('CARD_NAME_REQUIRED', '지울 아이템 이름이 없습니다.', 400, cors);
+  if (!category) {
+    return errorResponse(
+      'CARD_CATEGORY_REQUIRED',
+      '어느 카테고리인지 같이 보내 주세요.',
+      400,
+      cors,
+    );
+  }
+
+  const cards = await readShard(env, category);
+  const target = cards.find((item) => item.name === name);
+  if (!target) return errorResponse('CARD_NOT_FOUND', '그 이름의 카드가 없습니다.', 404, cors);
+
+  /**
+   * 아이콘은 지우지 않는다. 파일 이름이 내용 해시라 다른 아이템이 같은 그림을 쓰고 있을 수
+   * 있고, 그걸 확인하려면 칸을 전부 읽어야 한다. 1.5KB 짜리를 남겨 두는 값이 더 싸다.
+   */
+  const count = await writeShard(
+    env,
+    category,
+    cards.filter((item) => item.name !== name),
+  );
+
+  return new Response(JSON.stringify({ count }), {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -182,6 +650,19 @@ export default {
       return new Response(null, { status: 204, headers: cors });
     }
 
+    const url = new URL(request.url);
+
+    /**
+     * 아이콘은 출처 검사보다 앞에 둔다.
+     *
+     * <img src> 로 불리는 요청에는 Origin 헤더가 없다. 아래 허용 목록 검사는 Origin 이
+     * 없는 요청을 막도록 되어 있으므로, 여기서 갈라 두지 않으면 사전 화면의 아이콘이
+     * 전부 403 으로 깨진다. 어차피 공개 이미지라 막을 것도 없다.
+     */
+    if (request.method === 'GET' && url.pathname.startsWith(ICON_PATH_PREFIX)) {
+      return serveIcon(url, env);
+    }
+
     // origin 허용 목록을 지정했다면 그 밖의 호출은 거절한다.
     // (브라우저가 아닌 클라이언트는 Origin 을 안 보내므로 함께 막힌다.)
     if (allowList.length > 0 && !allowList.includes(origin)) {
@@ -193,14 +674,59 @@ export default {
       );
     }
 
-    const url = new URL(request.url);
-
     // 이슈 제보만 POST 다. 넥슨 중계와 섞이지 않게 여기서 갈라 둔다.
     if (url.pathname === ISSUE_PATH) {
       if (request.method !== 'POST') {
         return errorResponse('REPORT_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
       }
       return createIssue(request, env, cors);
+    }
+
+    // 방문자가 쓰는 읽기 경로. 화면에 보이는 이름만 받아 그만큼만 돌려준다.
+    if (url.pathname === CARD_LOOKUP_PATH) {
+      if (request.method !== 'POST') {
+        return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+      }
+      return lookupCards(request, env, cors);
+    }
+
+    // 여기부터는 운영자만. 키가 맞지 않으면 아래로 내려가지 않는다.
+    if (
+      url.pathname === CARD_VERIFY_PATH ||
+      url.pathname === CARD_PATH ||
+      url.pathname === CARD_ICONS_PATH ||
+      url.pathname === CARD_SHARD_PATH
+    ) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+
+      if (url.pathname === CARD_VERIFY_PATH) {
+        if (request.method !== 'POST') {
+          return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+        }
+        return new Response(null, {
+          status: 204,
+          headers: { ...cors, 'cache-control': 'no-store' },
+        });
+      }
+
+      if (url.pathname === CARD_ICONS_PATH) {
+        if (request.method !== 'POST') {
+          return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+        }
+        return putIcons(request, env, cors);
+      }
+
+      if (url.pathname === CARD_SHARD_PATH) {
+        if (request.method !== 'PUT') {
+          return errorResponse('CARD_METHOD_NOT_ALLOWED', 'PUT 으로 보내 주세요.', 405, cors);
+        }
+        return putShard(request, env, cors);
+      }
+
+      if (request.method === 'POST') return saveCard(request, env, cors);
+      if (request.method === 'DELETE') return deleteCard(url, env, cors);
+      return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 나 DELETE 로 보내 주세요.', 405, cors);
     }
 
     if (request.method !== 'GET') {
