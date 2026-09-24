@@ -18,8 +18,13 @@
  * 넥슨 그림은 48x48 픽셀 그림을 14/3 배(224px)로 키워 240px 캔버스 가운데(여백 8px)에 둔
  * 것이다. 각 칸의 가운데 픽셀을 읽어 48x48 로 되돌린다.
  *
- * 허브 주머니 10종은 넥슨이 그림 주소를 비워서 준다. 그림이 없으니 풀 수도 없다. 화면은 그
- * 주머니들을 색 칸으로 대신한다.
+ * 넥슨 그림에는 왼쪽 아래에 금색 + 표시가 들어 있다. 게임에서 + 는 "더 튼튼한 주머니" 에만
+ * 붙고 색이 늘 같다. 튼튼한 주머니에는 없으므로, 넥슨 그림과 대 본 뒤에 지우고 가려져 있던
+ * 자리는 가장 가까운 주머니 픽셀로 메운다.
+ *
+ * 허브 주머니 10종은 넥슨이 그림 주소를 비워서 준다. 게임에서도 허브 주머니 그림에는 파트
+ * 색이 입혀지지 않는다. 그래서 게임 클라이언트 아이콘을 받아 색을 칠하지 않는 픽셀로만
+ * 담는다(파트 0개). 파트 색은 상점 응답에 그대로 있으므로 화면은 색 견본과 색 비교에 쓴다.
  *
  * 실행: NEXON_API_KEY=... node scripts/build-bag-dyes.mjs
  * 산출: public/bags/dyes.json
@@ -29,6 +34,22 @@ import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
 const API_ORIGIN = 'https://open.api.nexon.com';
+/** 게임 클라이언트 아이콘. 아이템 사전 아이콘을 받는 곳과 같다(scripts/local 참고). */
+const CLIENT_ICON_URL = (id) => `https://mabires2.pril.cc/invimage/kr/${id}/${id}.png`;
+
+/** 허브 주머니의 클라이언트 아이템 번호. 2026-09-24 클라이언트 리소스에서 이름으로 찾았다. */
+const HERB_ICON_IDS = {
+  '튼튼한 블러디 허브 주머니': 5110045,
+  '튼튼한 마나 허브 주머니': 5110046,
+  '튼튼한 선라이트 허브 주머니': 5110047,
+  '튼튼한 베이스 허브 주머니': 5110048,
+  '튼튼한 만드레이크 주머니': 5110049,
+  '튼튼한 골드 허브 주머니': 5110055,
+  '튼튼한 못쓰게 된 허브 주머니': 5110056,
+  '튼튼한 화이트 허브 주머니': 5110057,
+  '튼튼한 해독초 주머니': 5110058,
+  '튼튼한 포이즌 허브 주머니': 5110059,
+};
 const OUT_FILE = resolve(process.cwd(), 'public/bags/dyes.json');
 
 /** 튼튼한 주머니를 파는 NPC. worker/worker.js 의 BAG_SELLERS 와 같다. */
@@ -274,19 +295,150 @@ function solveBag(samples) {
   return { parts, cells, worst };
 }
 
+const NEIGHBORS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/**
+ * + 표시를 지운다. + 는 금색 가운데와 한두 칸 두께의 테두리로 된 칠하지 않는 픽셀 덩어리다.
+ * 주머니마다 한두 칸씩 자리가 달라서 모양을 박아 두지 않고, 왼쪽 아래의 금색 픽셀에서 시작해
+ * 이어진 칠하지 않는 픽셀을 세 칸까지 넓혀 잡는다.
+ *
+ * 지운 자리는 네 방향 중 셋 이상에서 주머니가 보이면 주머니에 가려져 있던 자리로 보고,
+ * 가장 가까운 주머니 픽셀을 옮겨 채운다. 나머지는 투명하게 둔다.
+ */
+function removePlus(cells) {
+  const inside = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
+  const kindAt = (x, y) => cells[(y * SIZE + x) * 4];
+  const isGold = (x, y) => {
+    const o = (y * SIZE + x) * 4;
+    return cells[o] === 1 && cells[o + 1] > 150 && cells[o + 2] > 100 && cells[o + 3] < 120;
+  };
+
+  const plus = new Set();
+  let frontier = [];
+  for (let y = SIZE / 2; y < SIZE; y++) {
+    for (let x = 0; x < SIZE / 3; x++) {
+      if (!isGold(x, y)) continue;
+      plus.add(y * SIZE + x);
+      frontier.push([x, y]);
+    }
+  }
+  if (plus.size === 0)
+    throw new Error('+ 표시를 찾지 못했습니다. 넥슨 그림이 바뀌었는지 확인하세요.');
+
+  for (let step = 0; step < 3; step++) {
+    const next = [];
+    for (const [x, y] of frontier) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (!inside(nx, ny) || kindAt(nx, ny) !== 1 || plus.has(ny * SIZE + nx)) continue;
+          plus.add(ny * SIZE + nx);
+          next.push([nx, ny]);
+        }
+      }
+    }
+    frontier = next;
+  }
+
+  const out = Uint8Array.from(cells);
+  const covered = [...plus].filter((index) => {
+    const x = index % SIZE;
+    const y = Math.floor(index / SIZE);
+    let seen = 0;
+    for (const [dx, dy] of NEIGHBORS) {
+      let nx = x + dx;
+      let ny = y + dy;
+      while (inside(nx, ny) && plus.has(ny * SIZE + nx)) {
+        nx += dx;
+        ny += dy;
+      }
+      if (inside(nx, ny) && kindAt(nx, ny) !== 0) seen++;
+    }
+    return seen >= 3;
+  });
+  for (const index of plus) out.fill(0, index * 4, index * 4 + 4);
+
+  // 바깥에서 안쪽으로 한 겹씩 채운다. 이미 채운 칸도 다음 겹의 이웃이 된다.
+  const pending = new Set(covered);
+  while (pending.size > 0) {
+    const layer = [];
+    for (const index of pending) {
+      const x = index % SIZE;
+      const y = Math.floor(index / SIZE);
+      for (const [dx, dy] of NEIGHBORS) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const from = ny * SIZE + nx;
+        if (!inside(nx, ny) || pending.has(from) || out[from * 4] === 0) continue;
+        layer.push([index, from]);
+        break;
+      }
+    }
+    if (layer.length === 0) break;
+    for (const [index, from] of layer) {
+      out.set(out.subarray(from * 4, from * 4 + 4), index * 4);
+      pending.delete(index);
+    }
+  }
+  return { cells: out, removed: plus.size };
+}
+
+/** 허브 주머니. 클라이언트 아이콘을 그대로, 칠하지 않는 픽셀로 담는다. */
+async function herbCells(id) {
+  // 아이콘 서버가 가끔 503 을 준다. 잠깐 쉬었다가 두 번 더 묻는다.
+  let response;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    response = await fetch(CLIENT_ICON_URL(id));
+    if (response.ok) break;
+    await sleep(1000 * (attempt + 1));
+  }
+  if (!response.ok) throw new Error(`아이콘 ${id}: HTTP ${response.status}`);
+  const { width, pixels } = decodePng(Buffer.from(await response.arrayBuffer()));
+  if (width !== SIZE) throw new Error(`아이콘 ${id} 가 ${SIZE}px 이 아닙니다(${width}px).`);
+
+  const cells = new Uint8Array(SIZE * SIZE * 4);
+  for (let index = 0; index < SIZE * SIZE; index++) {
+    // 게임 아이콘은 완전히 투명하거나 불투명하다. 혹시 반투명이 섞이면 반을 넘는 것만 남긴다.
+    if (pixels[index * 4 + 3] < 128) continue;
+    cells.set([1, pixels[index * 4], pixels[index * 4 + 1], pixels[index * 4 + 2]], index * 4);
+  }
+  return cells;
+}
+
 const { byName, noImage } = await collectSamples();
 const bags = {};
 let failed = false;
 for (const [name, samples] of [...byName].sort(([a], [b]) => a.localeCompare(b, 'ko'))) {
   const { parts, cells, worst } = solveBag(samples);
-  console.log(`${name}: 표본 ${samples.length}장, 파트 ${parts}개, 넥슨 그림과 최대 차이 ${worst}`);
+  const { cells: clean, removed } = removePlus(cells);
+  console.log(
+    `${name}: 표본 ${samples.length}장, 파트 ${parts}개, 넥슨 그림과 최대 차이 ${worst}, + 표시 ${removed}픽셀 지움`,
+  );
   if (worst > MAX_ALLOWED_DIFF) failed = true;
-  bags[name] = { parts, cells: Buffer.from(cells).toString('base64') };
+  bags[name] = { parts, cells: Buffer.from(clean).toString('base64') };
 }
-if (noImage.size > 0) console.log(`그림이 없는 주머니: ${[...noImage].sort().join(', ')}`);
+
+for (const name of [...noImage].sort((a, b) => a.localeCompare(b, 'ko'))) {
+  const id = HERB_ICON_IDS[name];
+  if (!id) {
+    console.error(
+      `${name}: 넥슨 그림도 클라이언트 아이콘 번호도 없습니다. HERB_ICON_IDS 에 더해 주세요.`,
+    );
+    failed = true;
+    continue;
+  }
+  bags[name] = { parts: 0, cells: Buffer.from(await herbCells(id)).toString('base64') };
+  console.log(`${name}: 클라이언트 아이콘 ${id} 를 색 없이 담음`);
+}
 
 if (failed) {
-  console.error(`넥슨 그림과 ${MAX_ALLOWED_DIFF} 넘게 다른 주머니가 있어 파일을 쓰지 않습니다.`);
+  console.error('문제가 있어 파일을 쓰지 않습니다.');
   process.exit(1);
 }
 

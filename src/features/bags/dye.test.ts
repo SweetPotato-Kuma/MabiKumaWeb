@@ -50,17 +50,42 @@ describe('public/bags/dyes.json', () => {
   const file = JSON.parse(readFileSync(resolve(process.cwd(), 'public/bags/dyes.json'), 'utf8'));
   const book = parseDyeBook(file);
 
-  it('그림이 있는 22종이 모두 들어 있고, 이름이 알려진 주머니 이름이다', () => {
-    expect(book.bags.size).toBe(22);
-    for (const name of book.bags.keys()) expect(BAG_NAMES).toContain(name);
+  it('튼튼한 주머니 32종이 모두 들어 있다', () => {
+    expect([...book.bags.keys()].sort()).toEqual([...BAG_NAMES].sort());
   });
 
   it('칠하는 파트는 그 주머니가 가진 파트 안에 있다', () => {
     for (const [name, dye] of book.bags) {
-      const kinds = new Set<number>();
-      for (let i = 0; i < dye.cells.length; i += 4) kinds.add(dye.cells[i]);
-      const parts = [...kinds].filter((kind) => kind >= 2).map((kind) => kind - 2);
-      expect(Math.max(...parts), name).toBeLessThan(dye.parts);
+      for (let i = 0; i < dye.cells.length; i += 4) {
+        if (dye.cells[i] >= 2) expect(dye.cells[i] - 2, name).toBeLessThan(dye.parts);
+      }
+    }
+  });
+
+  it('허브 주머니는 색이 입혀지지 않아 상점 색과 상관없이 같은 그림이다', () => {
+    const herbs = [...book.bags].filter(([name]) => /허브|만드레이크|해독초/.test(name));
+    expect(herbs).toHaveLength(10);
+    for (const [name, dye] of herbs) {
+      expect(dye.parts, name).toBe(0);
+      expect(paintBag(book, dye, ['ff0000', '00ff00']), name).toEqual(paintBag(book, dye, []));
+    }
+  });
+
+  it('더 튼튼한 주머니에만 붙는 금색 + 표시가 남아 있지 않다', () => {
+    for (const [name, dye] of book.bags) {
+      if (dye.parts === 0) continue;
+      // + 는 왼쪽 아래 1/3 칸에 금색(R 높음, G 중간, B 낮음) 칠하지 않는 픽셀로 있었다.
+      for (let y = 24; y < 48; y++) {
+        for (let x = 0; x < 16; x++) {
+          const i = (y * 48 + x) * 4;
+          const gold =
+            dye.cells[i] === 1 &&
+            dye.cells[i + 1] > 150 &&
+            dye.cells[i + 2] > 100 &&
+            dye.cells[i + 3] < 120;
+          expect(gold, `${name} (${x}, ${y})`).toBe(false);
+        }
+      }
     }
   });
 });
