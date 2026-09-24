@@ -19,8 +19,8 @@
  * 것이다. 각 칸의 가운데 픽셀을 읽어 48x48 로 되돌린다.
  *
  * 넥슨 그림에는 왼쪽 아래에 금색 + 표시가 들어 있다. 게임에서 + 는 "더 튼튼한 주머니" 에만
- * 붙고 색이 늘 같다. 튼튼한 주머니에는 없으므로, 넥슨 그림과 대 본 뒤에 지우고 가려져 있던
- * 자리는 가장 가까운 주머니 픽셀로 메운다.
+ * 붙고 색이 늘 같다. 튼튼한 주머니에는 없으므로, 넥슨 그림과 대 본 뒤에 지운다. + 가 주머니의
+ * 왼쪽 아래 모서리를 가리고 있어서, 보이는 가장자리를 이어 그어 모서리를 되살린다(fillUnderPlus).
  *
  * 허브 주머니는 튼튼한 10종과 더 튼튼한 10종이 있고, 넥슨이 그림 주소를 비워서 준다. 게임에서도
  * 허브 주머니 그림에는 파트 색이 입혀지지 않는다. 그래서 게임 클라이언트 아이콘을 받아 색을
@@ -314,14 +314,11 @@ const NEIGHBORS = [
 ];
 
 /**
- * + 표시를 지운다. + 는 금색 가운데와 한두 칸 두께의 테두리로 된 칠하지 않는 픽셀 덩어리다.
- * 주머니마다 한두 칸씩 자리가 달라서 모양을 박아 두지 않고, 왼쪽 아래의 금색 픽셀에서 시작해
- * 이어진 칠하지 않는 픽셀을 세 칸까지 넓혀 잡는다.
- *
- * 지운 자리는 네 방향 중 셋 이상에서 주머니가 보이면 주머니에 가려져 있던 자리로 보고,
- * 가장 가까운 주머니 픽셀을 옮겨 채운다. 나머지는 투명하게 둔다.
+ * 넥슨 그림의 + 표시 자리. + 는 금색 가운데와 한두 칸 두께의 테두리로 된 칠하지 않는 픽셀
+ * 덩어리다. 주머니마다 한두 칸씩 자리가 달라서 모양을 박아 두지 않고, 왼쪽 아래의 금색
+ * 픽셀에서 시작해 이어진 칠하지 않는 픽셀을 세 칸까지 넓혀 잡는다.
  */
-function removePlus(cells) {
+function findNexonPlus(cells) {
   const inside = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
   const kindAt = (x, y) => cells[(y * SIZE + x) * 4];
   const isGold = (x, y) => {
@@ -356,48 +353,117 @@ function removePlus(cells) {
     }
     frontier = next;
   }
+  return plus;
+}
 
-  const out = Uint8Array.from(cells);
-  const covered = [...plus].filter((index) => {
-    const x = index % SIZE;
-    const y = Math.floor(index / SIZE);
-    let seen = 0;
-    for (const [dx, dy] of NEIGHBORS) {
-      let nx = x + dx;
-      let ny = y + dy;
-      while (inside(nx, ny) && plus.has(ny * SIZE + nx)) {
-        nx += dx;
-        ny += dy;
-      }
-      if (inside(nx, ny) && kindAt(nx, ny) !== 0) seen++;
-    }
-    return seen >= 3;
-  });
-  for (const index of plus) out.fill(0, index * 4, index * 4 + 4);
+/**
+ * 가려진 구간의 가장자리 위치. 아는 값 사이면 잇고, 한쪽만 알면 그쪽의 기울기로 늘인다.
+ * 기울기는 [minSlope, maxSlope] 로 묶는다. 둥근 주머니는 모서리로 갈수록 안으로 말려 들고,
+ * 상자 주머니는 곧게 떨어진다. 그 밖으로 벗어나게 늘이면 주머니가 부풀거나 파인다.
+ *
+ * @param known 위치 → 가장자리 값
+ * @param at 구할 위치
+ * @param step 아는 값이 한쪽에만 있을 때 어느 쪽에서 늘일지(-1 이면 작은 쪽, 1 이면 큰 쪽)
+ */
+function extendEdge(known, at, step, minSlope, maxSlope) {
+  if (known.has(at)) return known.get(at);
+  const positions = [...known.keys()];
+  const before = Math.max(-Infinity, ...positions.filter((p) => p < at));
+  const after = Math.min(Infinity, ...positions.filter((p) => p > at));
+  if (Number.isFinite(before) && Number.isFinite(after)) {
+    const t = (at - before) / (after - before);
+    return known.get(before) + (known.get(after) - known.get(before)) * t;
+  }
+  const from = step < 0 ? before : after;
+  if (!Number.isFinite(from)) return null;
+  const further = from + step * 2;
+  const slope = known.has(further) ? (known.get(from) - known.get(further)) / 2 : 0;
+  const clamped = Math.min(maxSlope, Math.max(minSlope, slope));
+  return known.get(from) + clamped * Math.abs(at - from);
+}
 
-  // 바깥에서 안쪽으로 한 겹씩 채운다. 이미 채운 칸도 다음 겹의 이웃이 된다.
-  const pending = new Set(covered);
-  while (pending.size > 0) {
-    const layer = [];
-    for (const index of pending) {
-      const x = index % SIZE;
-      const y = Math.floor(index / SIZE);
-      for (const [dx, dy] of NEIGHBORS) {
-        const nx = x + dx;
-        const ny = y + dy;
-        const from = ny * SIZE + nx;
-        if (!inside(nx, ny) || pending.has(from) || out[from * 4] === 0) continue;
-        layer.push([index, from]);
-        break;
-      }
-    }
-    if (layer.length === 0) break;
-    for (const [index, from] of layer) {
-      out.set(out.subarray(from * 4, from * 4 + 4), index * 4);
-      pending.delete(index);
+/**
+ * + 를 지우고, 그 아래 가려져 있던 주머니를 되살린다.
+ *
+ * + 는 주머니의 왼쪽 아래 모서리에 걸쳐 있어서 모서리 윤곽이 통째로 가려져 있다. 그래서
+ * 가려진 줄의 왼쪽 가장자리는 + 위쪽 줄들에서 보이는 가장자리를, 가려진 칸의 아래쪽
+ * 가장자리는 + 오른쪽 칸들에서 보이는 가장자리를 이어 그어 되살린다. 그 안쪽만 주머니다.
+ *
+ * 되살린 자리는 가장자리면 남은 가장자리 픽셀(윤곽선)에서, 안쪽이면 남은 안쪽 픽셀에서
+ * 가장 가까운 것을 옮겨 온다. 그래야 메운 자리에도 윤곽선이 이어진다.
+ */
+function fillUnderPlus(cells, plus) {
+  const inside = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
+  const kept = (index) => !plus.has(index) && cells[index * 4] !== 0;
+  const plusXs = [...plus].map((index) => index % SIZE);
+  const plusYs = [...plus].map((index) => Math.floor(index / SIZE));
+
+  // 줄마다 왼쪽 가장자리. 그 줄의 + 보다 왼쪽에 주머니가 보이면 가장자리를 아는 줄이다.
+  const leftKnown = new Map();
+  for (let y = 0; y < SIZE; y++) {
+    const plusLeft = Math.min(Infinity, ...plusXs.filter((_, i) => plusYs[i] === y));
+    for (let x = 0; x < SIZE; x++) {
+      if (!kept(y * SIZE + x)) continue;
+      if (x < plusLeft) leftKnown.set(y, x);
+      break;
     }
   }
-  return { cells: out, removed: plus.size };
+  // 칸마다 아래쪽 가장자리. 그 칸의 + 보다 아래에 주머니가 보이면 가장자리를 아는 칸이다.
+  const bottomKnown = new Map();
+  for (let x = 0; x < SIZE; x++) {
+    const plusBottom = Math.max(-Infinity, ...plusYs.filter((_, i) => plusXs[i] === x));
+    for (let y = SIZE - 1; y >= 0; y--) {
+      if (!kept(y * SIZE + x)) continue;
+      if (y > plusBottom) bottomKnown.set(x, y);
+      break;
+    }
+  }
+
+  const covered = new Set(
+    [...plus].filter((index) => {
+      const x = index % SIZE;
+      const y = Math.floor(index / SIZE);
+      // 아래로 내려갈수록 왼쪽 가장자리는 그대로이거나 안으로 들어온다(0 ~ 1.5칸).
+      const left = extendEdge(leftKnown, y, -1, 0, 1.5);
+      // 왼쪽으로 갈수록 아래쪽 가장자리는 그대로이거나 위로 올라온다(-1.5 ~ 0칸).
+      const bottom = extendEdge(bottomKnown, x, 1, -1.5, 0);
+      return left !== null && bottom !== null && x >= Math.round(left) && y <= Math.round(bottom);
+    }),
+  );
+
+  const out = Uint8Array.from(cells);
+  for (const index of plus) out.fill(0, index * 4, index * 4 + 4);
+  const onEdge = (index) => {
+    const x = index % SIZE;
+    const y = Math.floor(index / SIZE);
+    return NEIGHBORS.some(([dx, dy]) => {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!inside(nx, ny)) return true;
+      const next = ny * SIZE + nx;
+      return !covered.has(next) && out[next * 4] === 0;
+    });
+  };
+
+  const sources = [];
+  for (let index = 0; index < SIZE * SIZE; index++) if (kept(index)) sources.push(index);
+  const edgeSources = sources.filter(onEdge);
+  const innerSources = sources.filter((index) => !onEdge(index));
+  for (const index of covered) {
+    const x = index % SIZE;
+    const y = Math.floor(index / SIZE);
+    let best = -1;
+    let bestDistance = Infinity;
+    for (const from of onEdge(index) ? edgeSources : innerSources) {
+      const distance = ((from % SIZE) - x) ** 2 + (Math.floor(from / SIZE) - y) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = from;
+      }
+    }
+    out.set(out.subarray(best * 4, best * 4 + 4), index * 4);
+  }
+  return out;
 }
 
 /** 클라이언트 아이콘을 받는다. 게임 아이콘은 완전히 투명하거나 불투명하다. */
@@ -445,74 +511,14 @@ function findSharedPlus(allCells) {
   return plus;
 }
 
-/**
- * + 를 지우고 가려져 있던 주머니 자리를 메운다. 주머니 가장자리였던 칸은 남은 가장자리 픽셀
- * (윤곽선)에서, 안쪽이던 칸은 남은 안쪽 픽셀에서 가장 가까운 것을 가져온다. 그래야 메운 자리에도
- * 윤곽선이 이어진다.
- */
-function eraseIcon(cells, plus) {
-  const inside = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
-  const kept = (x, y) => inside(x, y) && !plus.has(y * SIZE + x) && cells[(y * SIZE + x) * 4] !== 0;
-  const covered = new Set(
-    [...plus].filter((index) => {
-      const x = index % SIZE;
-      const y = Math.floor(index / SIZE);
-      let seen = 0;
-      for (const [dx, dy] of NEIGHBORS) {
-        let nx = x + dx;
-        let ny = y + dy;
-        while (inside(nx, ny) && plus.has(ny * SIZE + nx)) {
-          nx += dx;
-          ny += dy;
-        }
-        if (kept(nx, ny)) seen++;
-      }
-      return seen >= 3;
-    }),
-  );
-
-  const out = Uint8Array.from(cells);
-  for (const index of plus) out.fill(0, index * 4, index * 4 + 4);
-  const onEdge = (index) => {
-    const x = index % SIZE;
-    const y = Math.floor(index / SIZE);
-    return NEIGHBORS.some(([dx, dy]) => {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!inside(nx, ny)) return true;
-      const next = ny * SIZE + nx;
-      return !covered.has(next) && out[next * 4] === 0;
-    });
-  };
-
-  const sources = [];
-  for (let index = 0; index < SIZE * SIZE; index++)
-    if (!plus.has(index) && out[index * 4] !== 0) sources.push(index);
-  const edgeSources = sources.filter(onEdge);
-  const innerSources = sources.filter((index) => !onEdge(index));
-  for (const index of covered) {
-    const x = index % SIZE;
-    const y = Math.floor(index / SIZE);
-    let best = -1;
-    let bestDistance = Infinity;
-    for (const from of onEdge(index) ? edgeSources : innerSources) {
-      const distance = ((from % SIZE) - x) ** 2 + (Math.floor(from / SIZE) - y) ** 2;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = from;
-      }
-    }
-    out.set(out.subarray(best * 4, best * 4 + 4), index * 4);
-  }
-  return out;
-}
-
 const { byName, noImage } = await collectSamples();
 const bags = {};
 let failed = false;
 for (const [name, samples] of [...byName].sort(([a], [b]) => a.localeCompare(b, 'ko'))) {
   const { parts, cells, worst } = solveBag(samples);
-  const { cells: clean, removed } = removePlus(cells);
+  const plus = findNexonPlus(cells);
+  const clean = fillUnderPlus(cells, plus);
+  const removed = plus.size;
   console.log(
     `${name}: 표본 ${samples.length}장, 파트 ${parts}개, 넥슨 그림과 최대 차이 ${worst}, + 표시 ${removed}픽셀 지움`,
   );
@@ -530,7 +536,7 @@ for (const { herb, id, cells } of sturdier) {
   bags[`더 튼튼한 ${herb}`] = { parts: 0, cells: Buffer.from(cells).toString('base64') };
   bags[`튼튼한 ${herb}`] = {
     parts: 0,
-    cells: Buffer.from(eraseIcon(cells, plus)).toString('base64'),
+    cells: Buffer.from(fillUnderPlus(cells, plus)).toString('base64'),
   };
   console.log(`${herb}: 클라이언트 아이콘 ${id}, 튼튼한 쪽은 + 표시 ${plus.size}픽셀 지움`);
 }
