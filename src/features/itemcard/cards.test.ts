@@ -83,7 +83,7 @@ describe('브라우저에 남겨 둔 카드', () => {
    * 하루 요청 한도를 경매장 검색과 같이 쓴다. 남겨 둔 것은 모듈을 처음 읽을 때 되살아나므로
    * 테스트마다 모듈을 새로 읽는다.
    */
-  const STORAGE_KEY = 'mabikuma:itemCards:v1';
+  const STORAGE_KEY = 'mabikuma:itemCards:v2';
   const DAY = 24 * 60 * 60 * 1000;
   const card: ItemCard = {
     name: '롱 소드',
@@ -121,16 +121,27 @@ describe('브라우저에 남겨 둔 카드', () => {
     expect(result.current).toBeUndefined();
   });
 
-  it('"없더라" 는 반나절만 믿는다', async () => {
-    // 없던 카드는 새 아이템이 사전에 들어오며 생긴다. 카드보다 빨리 다시 물어야 한다.
+  it('"없더라" 는 한 시간만 믿는다', async () => {
+    // 없던 카드는 새 아이템을 올리면 생긴다. 반나절씩 믿었더니 올린 뒤에도 그림이 빈칸이었다.
     const now = Date.now();
     const cards = await freshModule([
-      [key('검', '새 검'), now - 60 * 60 * 1000, null],
-      [key('검', '옛 검'), now - DAY, null],
+      [key('검', '새 검'), now - 30 * 60 * 1000, null],
+      [key('검', '옛 검'), now - 2 * 60 * 60 * 1000, null],
     ]);
 
     expect(renderHook(() => cards.useItemCard('검', '새 검')).result.current).toBeNull();
     expect(renderHook(() => cards.useItemCard('검', '옛 검')).result.current).toBeUndefined();
+  });
+
+  it('옛 이름으로 남긴 것은 읽지 않고 지운다', async () => {
+    // v1 에는 카드를 올리기 전에 적힌 "없더라" 가 남아 있다. 그대로 믿으면 그림이 빈칸이 된다.
+    const legacy = 'mabikuma:itemCards:v1';
+    window.localStorage.setItem(legacy, JSON.stringify([[key('대형 낫', '데빌 슬레이어'), Date.now(), null]]));
+    vi.resetModules();
+    const cards = await import('./cards');
+
+    expect(window.localStorage.getItem(legacy)).toBeNull();
+    expect(renderHook(() => cards.useItemCard('대형 낫', '데빌 슬레이어')).result.current).toBeUndefined();
   });
 
   it('남긴 모양이 깨져 있어도 화면을 깨지 않는다', async () => {

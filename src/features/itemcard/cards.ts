@@ -160,20 +160,32 @@ const keyOf = (category: string, name: string) => `${category}\u0000${name}`;
  * 카드는 거의 바뀌지 않는다. 다시 찾아온 사람이 같은 아이템을 볼 때마다 워커에 묻는 것은
  * 낭비이고, 무료 플랜 워커는 하루 요청 수가 정해져 있으며 그 한도를 경매장 검색과 같이 쓴다.
  *
- * 카드가 있는 것은 사흘, "없더라" 는 반나절만 믿는다. 없던 카드는 새 아이템이 사전에 들어오며
- * 생기므로 더 빨리 다시 물어야 한다. 가장 최근 것 4,000 개까지만 남긴다(1.5MB 남짓).
+ * 카드가 있는 것은 사흘, "없더라" 는 한 시간만 믿는다. 없던 카드는 새 아이템을 사전에 넣고
+ * 카드를 올리면 생긴다. 반나절씩 믿었더니 올리기 전에 한 번 본 사람은 올린 뒤에도 그림이
+ * 빈칸으로 남았다. 가장 최근 것 4,000 개까지만 남긴다(1.5MB 남짓).
+ *
+ * 이름 끝 번호를 올리면 모두의 브라우저에 남은 것을 한 번에 버린다. v1 에는 대형 낫, 힐링 원드,
+ * 애뮬릿을 올리기 전에 적힌 "없더라" 가 남아 있어서 v2 로 올렸다.
  */
-const STORAGE_KEY = 'mabikuma:itemCards:v1';
+const STORAGE_KEY = 'mabikuma:itemCards:v2';
+const LEGACY_STORAGE_KEYS = ['mabikuma:itemCards:v1'];
 const CARD_TTL_MS = 3 * 24 * 60 * 60 * 1000;
-const MISSING_TTL_MS = 12 * 60 * 60 * 1000;
+const MISSING_TTL_MS = 60 * 60 * 1000;
 const STORAGE_MAX_ENTRIES = 4000;
 
 /** 언제 받았는지. 남겨 둘 때 오래된 것부터 버리고, 불러올 때 유효 기간을 본다. */
 const fetchedAt = new Map<string, number>();
 
+/** "없더라" 가 오래돼 다시 물어야 하는지. 탭을 오래 열어 둔 사람도 새 카드를 보게 한다. */
+function isStaleMissing(key: string, now: number): boolean {
+  return known.get(key) === null && now - (fetchedAt.get(key) ?? 0) > MISSING_TTL_MS;
+}
+
 function restoreFromStorage(): void {
   let raw: string | null = null;
   try {
+    // 옛 이름으로 남은 것은 읽지 않고 지운다. 자리만 차지한다.
+    for (const legacy of LEGACY_STORAGE_KEYS) window.localStorage.removeItem(legacy);
     raw = window.localStorage.getItem(STORAGE_KEY);
   } catch {
     // 시크릿 모드 등 저장소가 막힌 환경. 없는 셈 친다.
@@ -270,8 +282,9 @@ export function usePrefetchItemCards(keys: readonly ItemCardKey[]): void {
     if (!isCardStoreConfigured() || signature === '') return;
 
     const missing: ItemCardKey[] = [];
+    const now = Date.now();
     for (const key of signature.split('\u0001')) {
-      if (known.has(key) || inFlight.has(key)) continue;
+      if ((known.has(key) && !isStaleMissing(key, now)) || inFlight.has(key)) continue;
       const [category, name] = key.split('\u0000');
       if (category && name) missing.push({ category, name });
     }
