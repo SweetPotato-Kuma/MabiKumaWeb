@@ -19,8 +19,8 @@ export interface BagListing {
 }
 
 interface ListingOptions {
-  /** 비우면 모든 주머니. */
-  bagName: string;
+  /** 볼 주머니 이름. null 이면 모든 주머니. */
+  bagNames: ReadonlySet<string> | null;
   /** "#ffffff" 같은 색. 비우면 색으로 비교하지 않는다. */
   color: string | null;
   part: PartMode;
@@ -32,14 +32,17 @@ interface ListingOptions {
  * 류트 한 서버가 2만 줄 남짓이라 매번 전부 다시 계산해도 몇 ms 면 끝난다. 그래서 주머니나
  * 색을 바꿀 때 다시 받지 않고 여기서 다시 거른다.
  */
-export function buildListings(channels: readonly BagChannelResult[], options: ListingOptions): BagListing[] {
+export function buildListings(
+  channels: readonly BagChannelResult[],
+  options: ListingOptions,
+): BagListing[] {
   const target = options.color ? hexToRgb(options.color) : null;
   const rows: BagListing[] = [];
 
   for (const result of channels) {
     for (const seller of result.npcs) {
       (seller.bags ?? []).forEach((bag, index) => {
-        if (options.bagName && bag.n !== options.bagName) return;
+        if (options.bagNames && !options.bagNames.has(bag.n)) return;
 
         let score: number | null = null;
         let matchedPart: number | null = null;
@@ -78,7 +81,11 @@ export function buildListings(channels: readonly BagChannelResult[], options: Li
       const byScore = (b.score ?? 0) - (a.score ?? 0);
       if (byScore !== 0) return byScore;
     }
-    return a.channel - b.channel || a.npc.localeCompare(b.npc, 'ko') || a.name.localeCompare(b.name, 'ko');
+    return (
+      a.channel - b.channel ||
+      a.npc.localeCompare(b.npc, 'ko') ||
+      a.name.localeCompare(b.name, 'ko')
+    );
   });
 
   return rows;

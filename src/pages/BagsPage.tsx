@@ -17,7 +17,9 @@ import {
   Select,
   Skeleton,
   Table,
+  Tag,
   Tooltip,
+  TreeSelect,
   Typography,
   theme,
   type TableColumnsType,
@@ -26,9 +28,15 @@ import { BagImage } from '@/components/BagImage';
 import { canSearchBags } from '@/features/bags/api';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
-import { bagNamesOf, buildListings, type BagListing, type PartMode } from '@/features/bags/listings';
+import { bareName, buildBagTree, isSturdier, namesOfSelection } from '@/features/bags/groups';
+import {
+  bagNamesOf,
+  buildListings,
+  type BagListing,
+  type PartMode,
+} from '@/features/bags/listings';
 import { useBagSearch } from '@/features/bags/useBagSearch';
-import { CHANNEL_COUNT_BY_SERVER, SERVER_NAMES } from '@/features/servers/constants';
+import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 
@@ -43,10 +51,7 @@ const PART_OPTIONS: { value: string; label: string }[] = [
   { value: '2', label: 'C' },
 ];
 
-const SERVER_OPTIONS = SERVER_NAMES.map((server) => ({
-  value: server,
-  label: `${server} (${CHANNEL_COUNT_BY_SERVER[server]}채널)`,
-}));
+const SERVER_OPTIONS = SERVER_NAMES.map((server) => ({ value: server, label: server }));
 
 type ViewMode = 'grid' | 'table';
 
@@ -54,6 +59,14 @@ const VIEW_OPTIONS = [
   { value: 'grid', label: '그림', icon: <AppstoreOutlined /> },
   { value: 'table', label: '표', icon: <UnorderedListOutlined /> },
 ];
+
+/**
+ * 한 쪽에 보여 줄 개수. 그림 보기는 카드가 작아 넓은 화면에서 한 줄에 열 개 남짓 들어가므로
+ * 여섯 줄쯤 되는 60개로 시작한다. 표는 한 줄이 높아(그림 48px) 20줄로 시작한다.
+ */
+const GRID_PAGE_SIZES = [30, 60, 120];
+const GRID_PAGE_SIZE = 60;
+const TABLE_PAGE_SIZE = 20;
 
 /** 표 줄의 주머니 그림. 원본 48px 그대로다. */
 const ROW_IMAGE_SIZE = 48;
@@ -71,27 +84,27 @@ function formatPrice(row: BagListing): string {
   return row.price === null ? '-' : `${formatNumber(row.price)} ${row.priceType ?? ''}`.trim();
 }
 
-/**
- * 카드에는 자리가 좁다. 대부분 "튼튼한" 으로 시작하므로 그 말은 뺀다. "더 튼튼한" 은 다른
- * 주머니라 남긴다(그림의 + 표시와 함께 구분하는 말이다).
- */
-function shortName(name: string): string {
-  return name.replace(/^튼튼한\s+/, '');
-}
-
 /** 주머니 색 견본. 비교에 쓰인 파트는 테두리를 두껍게 해 무엇과 비교했는지 보이게 한다. */
-function Swatches({ colors, matchedPart }: { colors: string[]; matchedPart: number | null }) {
+function Swatches({
+  colors,
+  matchedPart,
+  size = 22,
+}: {
+  colors: string[];
+  matchedPart: number | null;
+  size?: number;
+}) {
   const { token } = theme.useToken();
 
   return (
-    <Flex gap={6}>
+    <Flex gap={size < 20 ? 4 : 6}>
       {colors.map((hex, part) => (
         <Tooltip key={part} title={`${PART_LABELS[part] ?? `파트 ${part + 1}`} #${hex}`}>
           <span
             aria-label={`${PART_LABELS[part] ?? `파트 ${part + 1}`} #${hex}`}
             style={{
-              width: 22,
-              height: 22,
+              width: size,
+              height: size,
               display: 'block',
               background: `#${hex}`,
               borderRadius: token.borderRadiusSM,
@@ -110,8 +123,12 @@ function Swatches({ colors, matchedPart }: { colors: string[]; matchedPart: numb
 /**
  * 그림 보기. 색이 입혀진 주머니를 카드로 늘어놓아 눈으로 훑어 고를 수 있게 한다.
  *
+ * 한 화면에 많이 보이도록 카드를 낮고 좁게 둔다. 이름은 등급과 "주머니" 를 뗀 짧은 이름이고,
+ * 더 튼튼한 주머니는 작은 꼬리표로 가른다(그림의 + 표시와 같이 본다). 비슷함은 따로 줄을
+ * 쓰지 않고 색 견본 오른쪽에 둔다.
+ *
  * 칸 너비를 정해 두고 화면에 들어가는 만큼 채운다. 768px 미만 휴대폰에서는 두 칸, 넓은
- * 화면에서는 여섯 칸 남짓이 된다. 따로 단을 나누는 규칙이 없어도 한 단으로 무너지지 않는다.
+ * 화면에서는 열 칸 남짓이 된다. 따로 단을 나누는 규칙이 없어도 한 단으로 무너지지 않는다.
  */
 function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }) {
   const { token } = theme.useToken();
@@ -121,31 +138,49 @@ function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }
       role="list"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(156px, 1fr))',
-        gap: 12,
+        gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+        gap: 8,
       }}
     >
       {rows.map((row) => (
-        <Card key={row.key} role="listitem" size="small" variant="outlined" styles={{ body: { padding: 12 } }}>
-          <Flex vertical align="center" gap={8}>
-            <BagImage book={book} name={row.name} colors={row.colors} size={CARD_IMAGE_SIZE} />
-            <Text strong ellipsis={{ tooltip: row.name }} style={{ width: '100%', textAlign: 'center' }}>
-              {shortName(row.name)}
-            </Text>
-            <Swatches colors={row.colors} matchedPart={row.matchedPart} />
-            <Flex vertical align="center" gap={2} style={{ fontSize: 12 }}>
-              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                {row.channel}채널 {row.npc}
+        <Card
+          key={row.key}
+          role="listitem"
+          size="small"
+          variant="outlined"
+          styles={{ body: { padding: 8 } }}
+        >
+          <Flex vertical gap={4}>
+            <Flex justify="center">
+              <BagImage book={book} name={row.name} colors={row.colors} size={CARD_IMAGE_SIZE} />
+            </Flex>
+            <Flex gap={4} align="center" style={{ minWidth: 0 }}>
+              {isSturdier(row.name) ? (
+                <Tag
+                  bordered={false}
+                  style={{ marginInlineEnd: 0, paddingInline: 4, fontSize: 11 }}
+                >
+                  더 튼튼한
+                </Tag>
+              ) : null}
+              <Text strong ellipsis={{ tooltip: row.name }} style={{ fontSize: 13, minWidth: 0 }}>
+                {bareName(row.name)}
               </Text>
-              <Text className="tnum" style={{ fontSize: 12 }}>
-                {formatPrice(row)}
-              </Text>
+            </Flex>
+            <Flex justify="space-between" align="center" gap={4}>
+              <Swatches colors={row.colors} matchedPart={row.matchedPart} size={16} />
               {row.score !== null ? (
                 <Text className="tnum" style={{ fontSize: 12, color: token.colorPrimary }}>
-                  비슷함 {row.score.toFixed(1)}%
+                  {row.score.toFixed(1)}%
                 </Text>
               ) : null}
             </Flex>
+            <Text type="secondary" className="tnum" ellipsis style={{ fontSize: 12 }}>
+              {row.channel}채널 {row.npc}
+            </Text>
+            <Text className="tnum" style={{ fontSize: 12 }}>
+              {formatPrice(row)}
+            </Text>
           </Flex>
         </Card>
       ))}
@@ -160,7 +195,8 @@ export function BagsPage() {
   const dyeBook = useDyeBook();
 
   const [server, setServer] = useState<string>(SERVER_NAMES[0]);
-  const [bagName, setBagName] = useState('');
+  /** 트리에서 고른 칸들. 비어 있으면 모든 주머니. */
+  const [selectedBags, setSelectedBags] = useState<string[]>([]);
   const [useColor, setUseColor] = useState(true);
   const [color, setColor] = useState('#ffffff');
   const [part, setPart] = useState<PartMode>('any');
@@ -173,21 +209,24 @@ export function BagsPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // 찾기 전에는 알려진 42종, 찾은 뒤에는 실제로 나온 이름을 합친다.
+  const bagTree = useMemo(
+    () => buildBagTree([...BAG_NAMES, ...bagNamesOf(state.channels)]),
+    [state.channels],
+  );
+  const bagNames = useMemo(() => namesOfSelection(bagTree, selectedBags), [bagTree, selectedBags]);
+
   const listings = useMemo(
-    () => buildListings(state.channels, { bagName, color: useColor ? color : null, part }),
-    [state.channels, bagName, useColor, color, part],
+    () => buildListings(state.channels, { bagNames, color: useColor ? color : null, part }),
+    [state.channels, bagNames, useColor, color, part],
   );
 
-  // 찾기 전에는 알려진 32종, 찾은 뒤에는 실제로 나온 이름을 합친다.
-  const bagOptions = useMemo(() => {
-    const names = new Set<string>([...BAG_NAMES, ...bagNamesOf(state.channels)]);
-    return [
-      { value: '', label: '모든 주머니' },
-      ...[...names].sort((a, b) => a.localeCompare(b, 'ko')).map((name) => ({ value: name, label: name })),
-    ];
-  }, [state.channels]);
-
-  const { page, pageSize, pagination } = useListPagination(`${state.server}|${bagName}|${useColor}|${color}|${part}`);
+  const resetKey = `${state.server}|${selectedBags.join(',')}|${useColor}|${color}|${part}`;
+  const gridPaging = useListPagination(resetKey, {
+    defaultPageSize: GRID_PAGE_SIZE,
+    pageSizeOptions: GRID_PAGE_SIZES,
+  });
+  const tablePaging = useListPagination(resetKey, { defaultPageSize: TABLE_PAGE_SIZE });
 
   const scored = useColor;
   const columns = useMemo<TableColumnsType<BagListing>>(
@@ -245,45 +284,67 @@ export function BagsPage() {
 
   return (
     <Flex vertical gap={20}>
-      <Flex vertical gap={6}>
+      <Flex vertical gap={4}>
         <Title level={3} style={{ margin: 0 }}>
           튼튼한 주머니 찾기
         </Title>
         <Text type="secondary">
-          고른 서버의 모든 채널에서 NPC 17명의 튼튼한 주머니와 더 튼튼한 주머니를 불러 원하는 색에 가까운 순으로 보여 줍니다. 상점은
+          고른 서버의 모든 채널, NPC 17명의 주머니를 원하는 색에 가까운 순으로 보여 줍니다. 상점은
           에린 하루(현실 36분)마다 바뀝니다.
         </Text>
       </Flex>
 
       {!available ? (
-        <Alert type="warning" showIcon message="지금은 주머니를 찾을 수 없습니다. 조회 서버 주소가 설정되지 않았습니다." />
+        <Alert
+          type="warning"
+          showIcon
+          message="지금은 주머니를 찾을 수 없습니다. 조회 서버 주소가 설정되지 않았습니다."
+        />
       ) : null}
 
-      <Card variant="outlined">
+      <Card variant="outlined" styles={{ body: { paddingBottom: 0 } }}>
         <Form layout="vertical" onFinish={() => void search(server)}>
-          {/* 네 칸. 768px 미만에서는 한 단으로 떨어진다. */}
-          <Row gutter={[16, 0]}>
-            <Col xs={24} md={6}>
+          {/*
+            한 줄에 다섯 칸(992px 이상). 576px 이상은 두 칸씩, 그 아래 휴대폰은 한 단으로 쌓인다.
+            찾기 버튼은 입력 칸 아래 끝에 맞춘다.
+          */}
+          <Row gutter={[16, 0]} align="bottom">
+            <Col xs={24} sm={12} lg={3}>
               <Form.Item label="서버" htmlFor="bag-server">
-                <Select id="bag-server" value={server} onChange={setServer} options={SERVER_OPTIONS} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="주머니" htmlFor="bag-name">
                 <Select
-                  id="bag-name"
-                  value={bagName}
-                  onChange={setBagName}
-                  options={bagOptions}
-                  showSearch
-                  optionFilterProp="label"
+                  id="bag-server"
+                  value={server}
+                  onChange={setServer}
+                  options={SERVER_OPTIONS}
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={5}>
+            <Col xs={24} sm={12} lg={7}>
+              <Form.Item label="주머니" htmlFor="bag-name">
+                <TreeSelect
+                  id="bag-name"
+                  value={selectedBags}
+                  onChange={(values: string[]) => setSelectedBags(values)}
+                  treeData={bagTree}
+                  treeCheckable
+                  showCheckedStrategy={TreeSelect.SHOW_PARENT}
+                  treeNodeLabelProp="label"
+                  showSearch={{ treeNodeFilterProp: 'title' }}
+                  maxTagCount="responsive"
+                  allowClear
+                  placeholder="모든 주머니"
+                  popupMatchSelectWidth={false}
+                  listHeight={400}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
               <Form.Item label="원하는 색">
                 <Flex gap={10} align="center">
-                  <Checkbox checked={useColor} onChange={(event) => setUseColor(event.target.checked)}>
+                  <Checkbox
+                    checked={useColor}
+                    onChange={(event) => setUseColor(event.target.checked)}
+                  >
                     색으로 비교
                   </Checkbox>
                   <ColorPicker
@@ -296,21 +357,33 @@ export function BagsPage() {
                 </Flex>
               </Form.Item>
             </Col>
-            <Col xs={24} md={5}>
+            <Col xs={24} sm={12} lg={5}>
               <Form.Item label="비교할 파트">
                 <Segmented
                   value={String(part)}
                   disabled={!useColor}
-                  onChange={(value) => setPart(value === 'any' ? 'any' : (Number(value) as PartMode))}
+                  onChange={(value) =>
+                    setPart(value === 'any' ? 'any' : (Number(value) as PartMode))
+                  }
                   options={PART_OPTIONS}
                 />
               </Form.Item>
             </Col>
+            <Col xs={24} lg={3}>
+              <Form.Item>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SearchOutlined />}
+                  disabled={!available}
+                  loading={loading}
+                  block
+                >
+                  찾기
+                </Button>
+              </Form.Item>
+            </Col>
           </Row>
-
-          <Button type="primary" htmlType="submit" icon={<SearchOutlined />} disabled={!available} loading={loading}>
-            찾기
-          </Button>
         </Form>
       </Card>
 
@@ -319,7 +392,8 @@ export function BagsPage() {
           <Flex vertical gap={6}>
             <Progress percent={percent} showInfo={false} />
             <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-              {state.server} {state.total}채널 중 {state.done}채널을 받았습니다. 먼저 받은 채널부터 보여 줍니다.
+              {state.server} {state.total}채널 중 {state.done}채널을 받았습니다. 먼저 받은 채널부터
+              보여 줍니다.
             </Text>
           </Flex>
         </Card>
@@ -334,7 +408,11 @@ export function BagsPage() {
       ) : null}
 
       {expired ? (
-        <Alert type="info" showIcon message="상점이 바뀌었습니다. 다시 찾으면 새 목록을 받습니다." />
+        <Alert
+          type="info"
+          showIcon
+          message="상점이 바뀌었습니다. 다시 찾으면 새 목록을 받습니다."
+        />
       ) : null}
 
       {state.status === 'idle' ? (
@@ -354,14 +432,16 @@ export function BagsPage() {
         </Card>
       ) : listings.length === 0 ? (
         <Card>
-          <Empty description="조건에 맞는 주머니가 없습니다. 주머니를 모든 주머니로 두거나 비교할 파트를 바꿔 보세요." />
+          <Empty description="조건에 맞는 주머니가 없습니다. 주머니 선택을 비우거나 비교할 파트를 바꿔 보세요." />
         </Card>
       ) : (
         <Flex vertical gap={10}>
           <Flex justify="space-between" align="center" gap={12} wrap>
             <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
               {state.server} {formatNumber(listings.length)}개
-              {state.nextUpdate !== null && !expired ? `, 다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효` : ''}
+              {state.nextUpdate !== null && !expired
+                ? `, 다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효`
+                : ''}
             </Text>
             <Segmented
               size="small"
@@ -373,9 +453,15 @@ export function BagsPage() {
           </Flex>
           {view === 'grid' ? (
             <>
-              <BagGrid rows={listings.slice((page - 1) * pageSize, page * pageSize)} book={dyeBook} />
+              <BagGrid
+                rows={listings.slice(
+                  (gridPaging.page - 1) * gridPaging.pageSize,
+                  gridPaging.page * gridPaging.pageSize,
+                )}
+                book={dyeBook}
+              />
               <Flex justify="flex-end">
-                <Pagination {...pagination} total={listings.length} />
+                <Pagination {...gridPaging.pagination} total={listings.length} />
               </Flex>
             </>
           ) : (
@@ -384,13 +470,14 @@ export function BagsPage() {
               dataSource={listings}
               rowKey="key"
               size="small"
-              pagination={pagination}
+              pagination={tablePaging.pagination}
               scroll={{ x: 720 }}
             />
           )}
           <Text type="secondary" style={{ fontSize: 12 }}>
-            주머니 그림은 기본 그림 위에 상점에서 받은 파트 색을 칠해 그린 것입니다. 허브 주머니는 게임에서도 색이
-            입혀지지 않아 게임 그림을 그대로 보여 주고, 파트 색은 견본과 색 비교에만 씁니다.
+            주머니 그림은 기본 그림 위에 상점에서 받은 파트 색을 칠해 그린 것입니다. 허브 주머니는
+            게임에서도 색이 입혀지지 않아 게임 그림을 그대로 보여 주고, 파트 색은 견본과 색 비교에만
+            씁니다.
           </Text>
         </Flex>
       )}

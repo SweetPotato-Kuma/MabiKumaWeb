@@ -7,6 +7,13 @@ export const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
 /** 처음에는 10줄. 한눈에 훑을 수 있는 양이고, 휴대폰에서도 한두 번 내리면 끝난다. */
 export const DEFAULT_PAGE_SIZE = 10;
 
+interface ListPaginationOptions {
+  /** 처음 쪽 크기. 기본 10. */
+  defaultPageSize?: number;
+  /** 쪽 크기 선택지. 기본 PAGE_SIZE_OPTIONS. 렌더마다 새 배열을 넘기면 설정 객체가 매번 새로 나오므로 모듈 상수로 둔다. */
+  pageSizeOptions?: number[];
+}
+
 /**
  * 표의 쪽 넘기기.
  *
@@ -16,9 +23,10 @@ export const DEFAULT_PAGE_SIZE = 10;
  * 설정 객체는 쪽이 바뀔 때만 새로 만든다. 경매장은 타이핑하는 동안 표를 다시 그리지 않도록
  * 결과 패널을 메모로 굳혀 두는데, 이 객체가 렌더마다 새로 나오면 그 메모가 매번 깨진다.
  */
-export function useListPagination(resetKey: unknown) {
+export function useListPagination(resetKey: unknown, options: ListPaginationOptions = {}) {
+  const { defaultPageSize = DEFAULT_PAGE_SIZE, pageSizeOptions = PAGE_SIZE_OPTIONS } = options;
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
 
   useEffect(() => {
     setPage(1);
@@ -28,7 +36,7 @@ export function useListPagination(resetKey: unknown) {
     () => ({
       current: page,
       pageSize,
-      pageSizeOptions: PAGE_SIZE_OPTIONS,
+      pageSizeOptions,
       showSizeChanger: true,
       size: 'small',
       onChange: (nextPage, nextSize) => {
@@ -40,7 +48,7 @@ export function useListPagination(resetKey: unknown) {
         setPage(nextPage);
       },
     }),
-    [page, pageSize],
+    [page, pageSize, pageSizeOptions],
   );
 
   return { page, pageSize, pagination };
