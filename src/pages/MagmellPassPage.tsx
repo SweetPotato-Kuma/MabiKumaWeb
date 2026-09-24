@@ -29,18 +29,13 @@ import {
   type PassListing,
 } from '@/features/magmell/ranking';
 import { usePassSearch } from '@/features/magmell/usePassSearch';
-import { CHANNEL_COUNT_BY_SERVER, SERVER_NAMES } from '@/features/servers/constants';
+import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 
 const { Title, Text } = Typography;
 
 const ALL = '';
-
-const TOTAL_CHANNELS = SERVER_NAMES.reduce(
-  (sum, server) => sum + CHANNEL_COUNT_BY_SERVER[server],
-  0,
-);
 
 const SERVER_OPTIONS = [
   { value: ALL, label: '모든 서버' },
@@ -248,15 +243,9 @@ export function MagmellPassPage() {
 
   return (
     <Flex vertical gap={20}>
-      <Flex vertical gap={6}>
-        <Title level={3} style={{ margin: 0 }}>
-          마그 멜 통행증 찾기
-        </Title>
-        <Text type="secondary">
-          피오나트가 파는 마그 멜 미션 통행증 값을 네 서버의 모든 채널({TOTAL_CHANNELS}곳)에서 불러
-          싼 순으로 보여 줍니다. 상점은 에린 하루(현실 36분)마다 바뀝니다.
-        </Text>
-      </Flex>
+      <Title level={3} style={{ margin: 0 }}>
+        마그 멜 통행증 찾기
+      </Title>
 
       {!available ? (
         <Alert
