@@ -96,7 +96,7 @@ const BODY_MAX = 4000;
  * 한 채널의 주머니를 보려면 NPC 17명을 모두 불러야 한다. 브라우저가 직접 부르면 류트 한
  * 서버만 748번(17명 × 44채널), 응답이 NPC 하나에 75~125KB 라 60MB 가 넘는다. 그래서
  * 브라우저는 "서버, 채널" 로 한 번만 묻고, 워커가 17명을 한꺼번에 불러 튼튼한 주머니 줄만
- * 추려 돌려준다. 채널 하나가 30KB 안팎이 되고 류트 전체가 44번으로 끝난다.
+ * 추려 돌려준다. 채널 하나가 그림 주소까지 100KB 안팎(압축하면 25KB)이 되고 류트 전체가 44번으로 끝난다.
  *
  * 저장은 하지 않는다. 상점은 에린 하루(현실 36분)마다 바뀌므로, 같은 채널을 다음 갱신
  * 시각까지만 이 워커 인스턴스 메모리에 들고 있다가 버린다. workers.dev 에서는 Cache API 가
@@ -119,6 +119,13 @@ const BAG_PARTIAL_TTL_MS = 30 * 1000;
 /** 다음 갱신 시각을 모를 때의 상한. 에린 하루. */
 const BAG_MAX_TTL_MS = 36 * 60 * 1000;
 
+/**
+ * 넥슨이 주는 아이템 그림 주소의 앞부분. 주머니 그림은 넥슨이 그 줄의 색을 입혀 그린 것이라
+ * 색을 가장 정확하게 보여 준다. 줄마다 같은 앞부분은 떼고 보낸다(화면 src/features/bags/constants.ts
+ * 의 BAG_IMAGE_BASE 와 같은 값). 앞부분이 다른 주소는 화면이 믿을 수 없으니 보내지 않는다.
+ */
+const BAG_IMAGE_BASE = `${NEXON_ORIGIN}/static/mabinogi/img/`;
+
 const bagCache = new Map();
 
 /** "187,148,199" → "bb94c7". 줄 수가 많아 짧게 보낸다. */
@@ -130,7 +137,7 @@ function rgbToHex(value) {
   return parts.map((part) => part.toString(16).padStart(2, '0')).join('');
 }
 
-/** 상점 응답에서 튼튼한 주머니만 남긴다. 색은 파트 순서대로, 가격은 첫 번째 것. */
+/** 상점 응답에서 튼튼한 주머니만 남긴다. 색은 파트 순서대로, 가격은 첫 번째 것, 그림은 주소 뒷부분. */
 function extractBags(shop) {
   const bags = [];
   for (const tab of shop?.shop ?? []) {
@@ -144,8 +151,13 @@ function extractBags(shop) {
         .map((option) => rgbToHex(option.option_value))
         .filter(Boolean);
       const price = item.price?.[0];
+      const image = typeof item.image_url === 'string' && item.image_url.startsWith(BAG_IMAGE_BASE)
+        ? item.image_url.slice(BAG_IMAGE_BASE.length)
+        : null;
 
-      bags.push({ n: name, c: colors, p: price?.price_value ?? null, t: price?.price_type ?? null });
+      const bag = { n: name, c: colors, p: price?.price_value ?? null, t: price?.price_type ?? null };
+      if (image) bag.i = image;
+      bags.push(bag);
     }
   }
   return bags;

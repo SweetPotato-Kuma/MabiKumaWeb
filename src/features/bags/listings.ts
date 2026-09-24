@@ -1,5 +1,6 @@
 import type { BagChannelResult } from './api';
 import { hexToRgb, similarity } from './color';
+import { BAG_IMAGE_BASE } from './constants';
 
 /** 원하는 색을 어느 파트와 비교할지. 'any' 는 세 파트 중 가장 가까운 것. */
 export type PartMode = 'any' | 0 | 1 | 2;
@@ -10,6 +11,8 @@ export interface BagListing {
   channel: number;
   npc: string;
   colors: string[];
+  /** 그 색으로 그린 주머니 그림. 없으면 색 견본만 보여 준다. */
+  image: string | null;
   price: number | null;
   priceType: string | null;
   /** 원하는 색과 비슷한 정도(0~100). 색을 고르지 않았으면 null. */
@@ -64,6 +67,7 @@ export function buildListings(channels: readonly BagChannelResult[], options: Li
           channel: result.channel,
           npc: seller.npc,
           colors: bag.c,
+          image: bag.i ? `${BAG_IMAGE_BASE}${bag.i}` : null,
           price: bag.p,
           priceType: bag.t,
           score,

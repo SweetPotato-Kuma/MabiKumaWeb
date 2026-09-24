@@ -18,6 +18,8 @@ export interface BagRow {
   p: number | null;
   /** 가격 단위 (두카트 등) */
   t: string | null;
+  /** 그 색으로 그린 그림 주소의 뒷부분(BAG_IMAGE_BASE 뒤). 넥슨이 주지 않았으면 없다. */
+  i?: string;
 }
 
 export interface BagNpc {

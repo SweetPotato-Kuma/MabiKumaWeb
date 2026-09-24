@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SearchOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, SearchOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -10,6 +10,7 @@ import {
   Empty,
   Flex,
   Form,
+  Pagination,
   Progress,
   Row,
   Segmented,
@@ -21,6 +22,7 @@ import {
   theme,
   type TableColumnsType,
 } from 'antd';
+import { BagImage } from '@/components/BagImage';
 import { canSearchBags } from '@/features/bags/api';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
 import { bagNamesOf, buildListings, type BagListing, type PartMode } from '@/features/bags/listings';
@@ -45,11 +47,32 @@ const SERVER_OPTIONS = SERVER_NAMES.map((server) => ({
   label: `${server} (${CHANNEL_COUNT_BY_SERVER[server]}채널)`,
 }));
 
+type ViewMode = 'grid' | 'table';
+
+const VIEW_OPTIONS = [
+  { value: 'grid', label: '그림', icon: <AppstoreOutlined /> },
+  { value: 'table', label: '표', icon: <UnorderedListOutlined /> },
+];
+
+/** 표 줄의 주머니 그림. 원본 48px 그대로다. */
+const ROW_IMAGE_SIZE = 48;
+/** 그림 보기 카드의 주머니 그림. 원본의 두 배. */
+const CARD_IMAGE_SIZE = 96;
+
 /** 결과가 유효한지 다시 볼 간격. 데이터를 다시 받는 것이 아니라 "지났다" 표시만 바꾼다. */
 const CLOCK_TICK_MS = 30 * 1000;
 
 function formatClock(ms: number): string {
   return new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatPrice(row: BagListing): string {
+  return row.price === null ? '-' : `${formatNumber(row.price)} ${row.priceType ?? ''}`.trim();
+}
+
+/** 카드에는 자리가 좁다. 모든 이름이 "튼튼한" 으로 시작하므로 그 말은 뺀다. */
+function shortName(name: string): string {
+  return name.replace(/^튼튼한\s+/, '');
 }
 
 /** 주머니 색 견본. 비교에 쓰인 파트는 테두리를 두껍게 해 무엇과 비교했는지 보이게 한다. */
@@ -80,6 +103,52 @@ function Swatches({ colors, matchedPart }: { colors: string[]; matchedPart: numb
   );
 }
 
+/**
+ * 그림 보기. 색이 입혀진 주머니를 카드로 늘어놓아 눈으로 훑어 고를 수 있게 한다.
+ *
+ * 칸 너비를 정해 두고 화면에 들어가는 만큼 채운다. 768px 미만 휴대폰에서는 두 칸, 넓은
+ * 화면에서는 여섯 칸 남짓이 된다. 따로 단을 나누는 규칙이 없어도 한 단으로 무너지지 않는다.
+ */
+function BagGrid({ rows }: { rows: BagListing[] }) {
+  const { token } = theme.useToken();
+
+  return (
+    <div
+      role="list"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(156px, 1fr))',
+        gap: 12,
+      }}
+    >
+      {rows.map((row) => (
+        <Card key={row.key} role="listitem" size="small" variant="outlined" styles={{ body: { padding: 12 } }}>
+          <Flex vertical align="center" gap={8}>
+            <BagImage src={row.image} colors={row.colors} size={CARD_IMAGE_SIZE} />
+            <Text strong ellipsis={{ tooltip: row.name }} style={{ width: '100%', textAlign: 'center' }}>
+              {shortName(row.name)}
+            </Text>
+            <Swatches colors={row.colors} matchedPart={row.matchedPart} />
+            <Flex vertical align="center" gap={2} style={{ fontSize: 12 }}>
+              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                {row.channel}채널 {row.npc}
+              </Text>
+              <Text className="tnum" style={{ fontSize: 12 }}>
+                {formatPrice(row)}
+              </Text>
+              {row.score !== null ? (
+                <Text className="tnum" style={{ fontSize: 12, color: token.colorPrimary }}>
+                  비슷함 {row.score.toFixed(1)}%
+                </Text>
+              ) : null}
+            </Flex>
+          </Flex>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function BagsPage() {
   const available = canSearchBags();
   const { state, search } = useBagSearch();
@@ -89,6 +158,7 @@ export function BagsPage() {
   const [useColor, setUseColor] = useState(true);
   const [color, setColor] = useState('#ffffff');
   const [part, setPart] = useState<PartMode>('any');
+  const [view, setView] = useState<ViewMode>('grid');
 
   // 결과가 아직 유효한지 보여 주려고 시계만 돈다. 데이터를 다시 받지는 않는다.
   const [now, setNow] = useState(() => Date.now());
@@ -111,18 +181,24 @@ export function BagsPage() {
     ];
   }, [state.channels]);
 
-  const { pagination } = useListPagination(`${state.server}|${bagName}|${useColor}|${color}|${part}`);
+  const { page, pageSize, pagination } = useListPagination(`${state.server}|${bagName}|${useColor}|${color}|${part}`);
 
   const scored = useColor;
   const columns = useMemo<TableColumnsType<BagListing>>(
     () => [
       {
-        title: '색',
-        dataIndex: 'colors',
-        width: 110,
-        render: (_value, row) => <Swatches colors={row.colors} matchedPart={row.matchedPart} />,
+        title: '주머니',
+        dataIndex: 'name',
+        render: (name: string, row) => (
+          <Flex gap={12} align="center">
+            <BagImage src={row.image} colors={row.colors} size={ROW_IMAGE_SIZE} />
+            <Flex vertical gap={6}>
+              <Text strong>{name}</Text>
+              <Swatches colors={row.colors} matchedPart={row.matchedPart} />
+            </Flex>
+          </Flex>
+        ),
       },
-      { title: '주머니', dataIndex: 'name', render: (name: string) => <Text strong>{name}</Text> },
       {
         title: '채널',
         dataIndex: 'channel',
@@ -139,7 +215,7 @@ export function BagsPage() {
         align: 'right',
         className: 'tnum',
         render: (price: number | null, row) =>
-          price === null ? <Text type="secondary">-</Text> : `${formatNumber(price)} ${row.priceType ?? ''}`,
+          price === null ? <Text type="secondary">-</Text> : formatPrice(row),
       },
       ...(scored
         ? [
@@ -276,18 +352,40 @@ export function BagsPage() {
         </Card>
       ) : (
         <Flex vertical gap={10}>
-          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-            {state.server} {formatNumber(listings.length)}개
-            {state.nextUpdate !== null && !expired ? `, 다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효` : ''}
+          <Flex justify="space-between" align="center" gap={12} wrap>
+            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              {state.server} {formatNumber(listings.length)}개
+              {state.nextUpdate !== null && !expired ? `, 다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효` : ''}
+            </Text>
+            <Segmented
+              size="small"
+              aria-label="보기 방식"
+              value={view}
+              onChange={(value) => setView(value as ViewMode)}
+              options={VIEW_OPTIONS}
+            />
+          </Flex>
+          {view === 'grid' ? (
+            <>
+              <BagGrid rows={listings.slice((page - 1) * pageSize, page * pageSize)} />
+              <Flex justify="flex-end">
+                <Pagination {...pagination} total={listings.length} />
+              </Flex>
+            </>
+          ) : (
+            <Table<BagListing>
+              columns={columns}
+              dataSource={listings}
+              rowKey="key"
+              size="small"
+              pagination={pagination}
+              scroll={{ x: 720 }}
+            />
+          )}
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            주머니 그림은 넥슨이 그 주머니의 색을 입혀 그려 준 것입니다. 허브 주머니처럼 넥슨이 그림을 주지 않는
+            주머니는 파트 색을 나란히 칠해 대신합니다.
           </Text>
-          <Table<BagListing>
-            columns={columns}
-            dataSource={listings}
-            rowKey="key"
-            size="small"
-            pagination={pagination}
-            scroll={{ x: 760 }}
-          />
         </Flex>
       )}
     </Flex>

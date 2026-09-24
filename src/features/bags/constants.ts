@@ -39,5 +39,13 @@ export const BAG_NAMES = [
   '튼튼한 화이트 허브 주머니',
 ] as const;
 
+/**
+ * 주머니 그림 주소의 앞부분. 워커가 줄마다 같은 이 부분을 떼고 뒷부분만 보낸다
+ * (worker/worker.js 의 BAG_IMAGE_BASE 와 같은 값).
+ *
+ * 넥슨은 이 그림을 그 주머니의 색을 입혀 그려 준다. 색 견본 세 칸보다 실제 모습을 한눈에 알아보기 쉽다.
+ */
+export const BAG_IMAGE_BASE = 'https://open.api.nexon.com/static/mabinogi/img/';
+
 /** 색 고르기의 바로가기. 흰색과 검정 주머니를 가장 많이 찾는다. */
 export const COLOR_PRESETS = ['#ffffff', '#000000', '#ff0000', '#ffff00', '#00ff00', '#0000ff'];
