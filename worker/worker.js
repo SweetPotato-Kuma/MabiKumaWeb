@@ -90,6 +90,136 @@ const TITLE_MAX = 120;
 const BODY_MIN = 10;
 const BODY_MAX = 4000;
 
+/**
+ * 튼튼한 주머니 찾기.
+ *
+ * 한 채널의 주머니를 보려면 NPC 17명을 모두 불러야 한다. 브라우저가 직접 부르면 류트 한
+ * 서버만 748번(17명 × 44채널), 응답이 NPC 하나에 75~125KB 라 60MB 가 넘는다. 그래서
+ * 브라우저는 "서버, 채널" 로 한 번만 묻고, 워커가 17명을 한꺼번에 불러 튼튼한 주머니 줄만
+ * 추려 돌려준다. 채널 하나가 30KB 안팎이 되고 류트 전체가 44번으로 끝난다.
+ *
+ * 저장은 하지 않는다. 상점은 에린 하루(현실 36분)마다 바뀌므로, 같은 채널을 다음 갱신
+ * 시각까지만 이 워커 인스턴스 메모리에 들고 있다가 버린다. workers.dev 에서는 Cache API 가
+ * 동작하지 않아 메모리를 쓴다.
+ */
+const BAG_PATH = '/npcshop/bags';
+const BAG_NAME_PREFIX = '튼튼한';
+
+/** 튼튼한 주머니를 파는 NPC. 2026-09-23 넥슨 API 로 21명을 모두 불러 확인했다. */
+const BAG_SELLERS = [
+  '상인 라누', '상인 피루', '모락', '상인 아루', '리나', '상인 누누', '상인 메루', '켄', '귀넥',
+  '얼리', '데위', '테일로', '상인 세누', '상인 베루', '상인 에루', '상인 네루', '카디',
+];
+
+/** 서버별 채널 수. 화면(src/features/npcshop/constants.ts)과 같은 값이다. */
+const BAG_CHANNELS = { 류트: 44, 만돌린: 16, 하프: 25, 울프: 16 };
+
+/** 모든 NPC 가 답하지 못했을 때는 오래 들고 있지 않는다. 잠깐 뒤 다시 물어볼 수 있게. */
+const BAG_PARTIAL_TTL_MS = 30 * 1000;
+/** 다음 갱신 시각을 모를 때의 상한. 에린 하루. */
+const BAG_MAX_TTL_MS = 36 * 60 * 1000;
+
+const bagCache = new Map();
+
+/** "187,148,199" → "bb94c7". 줄 수가 많아 짧게 보낸다. */
+function rgbToHex(value) {
+  const parts = String(value ?? '')
+    .split(',')
+    .map((part) => Number(part.trim()));
+  if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return parts.map((part) => part.toString(16).padStart(2, '0')).join('');
+}
+
+/** 상점 응답에서 튼튼한 주머니만 남긴다. 색은 파트 순서대로, 가격은 첫 번째 것. */
+function extractBags(shop) {
+  const bags = [];
+  for (const tab of shop?.shop ?? []) {
+    for (const item of tab.item ?? []) {
+      const name = item.item_display_name ?? '';
+      if (!name.startsWith(BAG_NAME_PREFIX)) continue;
+
+      const colors = (item.item_option ?? [])
+        .filter((option) => option.option_type === '아이템 색상')
+        .sort((a, b) => String(a.option_sub_type).localeCompare(String(b.option_sub_type)))
+        .map((option) => rgbToHex(option.option_value))
+        .filter(Boolean);
+      const price = item.price?.[0];
+
+      bags.push({ n: name, c: colors, p: price?.price_value ?? null, t: price?.price_type ?? null });
+    }
+  }
+  return bags;
+}
+
+async function findBags(url, env, cors) {
+  const server = url.searchParams.get('server') ?? '';
+  const channel = Number(url.searchParams.get('channel'));
+  const maxChannel = BAG_CHANNELS[server];
+  if (!maxChannel || !Number.isInteger(channel) || channel < 1 || channel > maxChannel) {
+    return errorResponse('BAG_INVALID_QUERY', '서버와 채널을 다시 골라 주세요.', 400, cors);
+  }
+
+  const headers = {
+    ...cors,
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+  };
+
+  const key = `${server}|${channel}`;
+  const cached = bagCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return new Response(cached.body, { status: 200, headers: { ...headers, 'x-bag-cache': 'hit' } });
+  }
+
+  const npcs = await Promise.all(
+    BAG_SELLERS.map(async (npc) => {
+      const upstream = new URL('/mabinogi/v1/npcshop/list', NEXON_ORIGIN);
+      upstream.searchParams.set('npc_name', npc);
+      upstream.searchParams.set('server_name', server);
+      upstream.searchParams.set('channel', String(channel));
+      try {
+        const response = await fetch(upstream.toString(), {
+          headers: { accept: 'application/json', 'x-nxopen-api-key': env.NEXON_API_KEY },
+        });
+        if (!response.ok) return { npc, error: response.status };
+        const shop = await response.json();
+        return { npc, nextUpdate: shop.date_shop_next_update ?? null, bags: extractBags(shop) };
+      } catch {
+        return { npc, error: 0 };
+      }
+    }),
+  );
+
+  // 다음 갱신 시각은 NPC 마다 같지만, 가장 이른 것을 믿는다.
+  const nextTimes = npcs
+    .map((entry) => Date.parse(entry.nextUpdate ?? ''))
+    .filter((time) => Number.isFinite(time));
+  const nextUpdate = nextTimes.length > 0 ? Math.min(...nextTimes) : null;
+  const complete = npcs.every((entry) => !entry.error);
+
+  const body = JSON.stringify({
+    server,
+    channel,
+    nextUpdate: nextUpdate ? new Date(nextUpdate).toISOString() : null,
+    npcs,
+  });
+
+  const now = Date.now();
+  const ttl = complete
+    ? Math.min(Math.max((nextUpdate ?? 0) - now, 0), BAG_MAX_TTL_MS)
+    : BAG_PARTIAL_TTL_MS;
+  if (ttl > 0) bagCache.set(key, { body, expiresAt: now + ttl });
+
+  // 오래된 칸은 조회할 때 조금씩 치운다. 인스턴스가 오래 살아도 메모리가 불어나지 않게.
+  if (bagCache.size > 200) {
+    for (const [cachedKey, entry] of bagCache) {
+      if (entry.expiresAt <= now) bagCache.delete(cachedKey);
+    }
+  }
+
+  return new Response(body, { status: 200, headers: { ...headers, 'x-bag-cache': 'miss' } });
+}
+
 /** 이 워커가 중계해 주는 경로만 허용한다. 열린 프록시가 되지 않도록. */
 const ALLOWED_PATHS = [
   /^\/mabinogi\/v1\/auction\/list$/,
@@ -852,6 +982,9 @@ export default {
         cors,
       );
     }
+
+    // 튼튼한 주머니 찾기. 한 채널의 NPC 17명을 한 번에 불러 주머니 줄만 돌려준다.
+    if (url.pathname === BAG_PATH) return findBags(url, env, cors);
 
     if (!ALLOWED_PATHS.some((pattern) => pattern.test(url.pathname))) {
       return errorResponse(

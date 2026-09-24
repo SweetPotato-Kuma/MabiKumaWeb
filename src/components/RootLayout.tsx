@@ -6,6 +6,7 @@ import {
   MoonOutlined,
   PictureOutlined,
   ShopOutlined,
+  ShoppingOutlined,
   SunOutlined,
   TagOutlined,
 } from '@ant-design/icons';
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { key: '/auction', icon: <TagOutlined />, label: <NavLink to="/auction">경매장</NavLink> },
   { key: '/dictionary', icon: <BookOutlined />, label: <NavLink to="/dictionary">아이템 사전</NavLink> },
   { key: '/npc-shop', icon: <ShopOutlined />, label: <NavLink to="/npc-shop">NPC 상점</NavLink> },
+  { key: '/bags', icon: <ShoppingOutlined />, label: <NavLink to="/bags">튼튼한 주머니</NavLink> },
 ];
 
 /**

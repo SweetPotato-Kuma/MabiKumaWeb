@@ -4,6 +4,7 @@ import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
 import { DictionaryPage } from '@/pages/DictionaryPage';
 import { NpcShopPage } from '@/pages/NpcShopPage';
+import { BagsPage } from '@/pages/BagsPage';
 import { ItemCardPage } from '@/pages/ItemCardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
@@ -28,6 +29,7 @@ export const router = createBrowserRouter(
         { path: 'auction', element: <AuctionPage /> },
         { path: 'dictionary', element: <DictionaryPage /> },
         { path: 'npc-shop', element: <NpcShopPage /> },
+        { path: 'bags', element: <BagsPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },
       ],
