@@ -103,7 +103,8 @@ const BODY_MAX = 4000;
  * 동작하지 않아 메모리를 쓴다.
  */
 const BAG_PATH = '/npcshop/bags';
-const BAG_NAME_PREFIX = '튼튼한';
+/** 튼튼한 주머니와 더 튼튼한 주머니. 더 튼튼한 쪽은 지금 허브 주머니 10종만 상점에 나온다. */
+const BAG_NAME = /^(더 )?튼튼한 /;
 
 /** 튼튼한 주머니를 파는 NPC. 2026-09-23 넥슨 API 로 21명을 모두 불러 확인했다. */
 const BAG_SELLERS = [
@@ -130,13 +131,13 @@ function rgbToHex(value) {
   return parts.map((part) => part.toString(16).padStart(2, '0')).join('');
 }
 
-/** 상점 응답에서 튼튼한 주머니만 남긴다. 색은 파트 순서대로, 가격은 첫 번째 것. */
+/** 상점 응답에서 튼튼한 주머니와 더 튼튼한 주머니만 남긴다. 색은 파트 순서대로, 가격은 첫 번째 것. */
 function extractBags(shop) {
   const bags = [];
   for (const tab of shop?.shop ?? []) {
     for (const item of tab.item ?? []) {
       const name = item.item_display_name ?? '';
-      if (!name.startsWith(BAG_NAME_PREFIX)) continue;
+      if (!BAG_NAME.test(name)) continue;
 
       const colors = (item.item_option ?? [])
         .filter((option) => option.option_type === '아이템 색상')

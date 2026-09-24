@@ -22,9 +22,14 @@
  * 붙고 색이 늘 같다. 튼튼한 주머니에는 없으므로, 넥슨 그림과 대 본 뒤에 지우고 가려져 있던
  * 자리는 가장 가까운 주머니 픽셀로 메운다.
  *
- * 허브 주머니 10종은 넥슨이 그림 주소를 비워서 준다. 게임에서도 허브 주머니 그림에는 파트
- * 색이 입혀지지 않는다. 그래서 게임 클라이언트 아이콘을 받아 색을 칠하지 않는 픽셀로만
- * 담는다(파트 0개). 파트 색은 상점 응답에 그대로 있으므로 화면은 색 견본과 색 비교에 쓴다.
+ * 허브 주머니는 튼튼한 10종과 더 튼튼한 10종이 있고, 넥슨이 그림 주소를 비워서 준다. 게임에서도
+ * 허브 주머니 그림에는 파트 색이 입혀지지 않는다. 그래서 게임 클라이언트 아이콘을 받아 색을
+ * 칠하지 않는 픽셀로만 담는다(파트 0개). 파트 색은 상점 응답에 그대로 있으므로 화면은 색 견본과
+ * 색 비교에 쓴다.
+ * - 클라이언트의 튼튼한 허브 주머니 아이콘은 허브가 빠진 염색 틀뿐이라 쓰지 않는다. 더 튼튼한
+ *   쪽 아이콘은 허브까지 그려진 완성 그림이다
+ * - 두 주머니는 + 표시만 다르다. 더 튼튼한 아이콘을 그대로 쓰고, 튼튼한 쪽은 그 아이콘에서 +
+ *   를 지운다. + 는 열 아이콘에서 픽셀이 똑같은 왼쪽 아래 자리로 찾는다
  *
  * 실행: NEXON_API_KEY=... node scripts/build-bag-dyes.mjs
  * 산출: public/bags/dyes.json
@@ -37,20 +42,26 @@ const API_ORIGIN = 'https://open.api.nexon.com';
 /** 게임 클라이언트 아이콘. 아이템 사전 아이콘을 받는 곳과 같다(scripts/local 참고). */
 const CLIENT_ICON_URL = (id) => `https://mabires2.pril.cc/invimage/kr/${id}/${id}.png`;
 
-/** 허브 주머니의 클라이언트 아이템 번호. 2026-09-24 클라이언트 리소스에서 이름으로 찾았다. */
+/**
+ * 더 튼튼한 허브 주머니의 클라이언트 아이템 번호. 2026-09-24 클라이언트 리소스에서 이름으로 찾았다.
+ * 튼튼한 허브 주머니도 이 그림에서 + 만 지워 만든다.
+ */
 const HERB_ICON_IDS = {
-  '튼튼한 블러디 허브 주머니': 5110045,
-  '튼튼한 마나 허브 주머니': 5110046,
-  '튼튼한 선라이트 허브 주머니': 5110047,
-  '튼튼한 베이스 허브 주머니': 5110048,
-  '튼튼한 만드레이크 주머니': 5110049,
-  '튼튼한 골드 허브 주머니': 5110055,
-  '튼튼한 못쓰게 된 허브 주머니': 5110056,
-  '튼튼한 화이트 허브 주머니': 5110057,
-  '튼튼한 해독초 주머니': 5110058,
-  '튼튼한 포이즌 허브 주머니': 5110059,
+  '블러디 허브 주머니': 5110050,
+  '마나 허브 주머니': 5110051,
+  '선라이트 허브 주머니': 5110052,
+  '베이스 허브 주머니': 5110053,
+  '만드레이크 주머니': 5110054,
+  '골드 허브 주머니': 5110060,
+  '못쓰게 된 허브 주머니': 5110061,
+  '화이트 허브 주머니': 5110062,
+  '해독초 주머니': 5110063,
+  '포이즌 허브 주머니': 5110064,
 };
 const OUT_FILE = resolve(process.cwd(), 'public/bags/dyes.json');
+
+/** 상점에서 튼튼한 주머니와 더 튼튼한 주머니를 가려낸다. worker/worker.js 와 같다. */
+const BAG_NAME = /^(더 )?튼튼한 /;
 
 /** 튼튼한 주머니를 파는 NPC. worker/worker.js 의 BAG_SELLERS 와 같다. */
 const SELLERS = [
@@ -190,7 +201,7 @@ async function collectSamples() {
       for (const tab of shop.shop ?? []) {
         for (const item of tab.item ?? []) {
           const name = item.item_display_name ?? '';
-          if (!name.startsWith('튼튼한')) continue;
+          if (!BAG_NAME.test(name)) continue;
           if (!item.image_url) {
             noImage.add(name);
             continue;
@@ -389,8 +400,8 @@ function removePlus(cells) {
   return { cells: out, removed: plus.size };
 }
 
-/** 허브 주머니. 클라이언트 아이콘을 그대로, 칠하지 않는 픽셀로 담는다. */
-async function herbCells(id) {
+/** 클라이언트 아이콘을 받는다. 게임 아이콘은 완전히 투명하거나 불투명하다. */
+async function fetchIcon(id) {
   // 아이콘 서버가 가끔 503 을 준다. 잠깐 쉬었다가 두 번 더 묻는다.
   let response;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -401,14 +412,99 @@ async function herbCells(id) {
   if (!response.ok) throw new Error(`아이콘 ${id}: HTTP ${response.status}`);
   const { width, pixels } = decodePng(Buffer.from(await response.arrayBuffer()));
   if (width !== SIZE) throw new Error(`아이콘 ${id} 가 ${SIZE}px 이 아닙니다(${width}px).`);
+  return pixels;
+}
 
+/** 아이콘을 칠하지 않는 픽셀로만 된 지도로. 반투명이 섞이면 반을 넘는 것만 남긴다. */
+function iconCells(pixels) {
   const cells = new Uint8Array(SIZE * SIZE * 4);
   for (let index = 0; index < SIZE * SIZE; index++) {
-    // 게임 아이콘은 완전히 투명하거나 불투명하다. 혹시 반투명이 섞이면 반을 넘는 것만 남긴다.
     if (pixels[index * 4 + 3] < 128) continue;
     cells.set([1, pixels[index * 4], pixels[index * 4 + 1], pixels[index * 4 + 2]], index * 4);
   }
   return cells;
+}
+
+/** + 는 모든 더 튼튼한 아이콘의 같은 자리에 같은 색으로 있다. 왼쪽 아래 1/4 에서 그 픽셀들을 모은다. */
+function findSharedPlus(allCells) {
+  const plus = new Set();
+  const [first] = allCells;
+  for (let y = SIZE / 2; y < SIZE; y++) {
+    for (let x = 0; x < SIZE / 2; x++) {
+      const o = (y * SIZE + x) * 4;
+      if (first[o] === 0) continue;
+      const same = allCells.every((cells) =>
+        [0, 1, 2, 3].every((k) => cells[o + k] === first[o + k]),
+      );
+      if (same) plus.add(y * SIZE + x);
+    }
+  }
+  // 2026-09-24 에 133픽셀이었다. 크게 벗어나면 아이콘이 바뀐 것이다.
+  if (plus.size < 80 || plus.size > 200)
+    throw new Error(`+ 표시가 ${plus.size}픽셀로 잡혔습니다. 아이콘이 바뀌었는지 확인하세요.`);
+  return plus;
+}
+
+/**
+ * + 를 지우고 가려져 있던 주머니 자리를 메운다. 주머니 가장자리였던 칸은 남은 가장자리 픽셀
+ * (윤곽선)에서, 안쪽이던 칸은 남은 안쪽 픽셀에서 가장 가까운 것을 가져온다. 그래야 메운 자리에도
+ * 윤곽선이 이어진다.
+ */
+function eraseIcon(cells, plus) {
+  const inside = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
+  const kept = (x, y) => inside(x, y) && !plus.has(y * SIZE + x) && cells[(y * SIZE + x) * 4] !== 0;
+  const covered = new Set(
+    [...plus].filter((index) => {
+      const x = index % SIZE;
+      const y = Math.floor(index / SIZE);
+      let seen = 0;
+      for (const [dx, dy] of NEIGHBORS) {
+        let nx = x + dx;
+        let ny = y + dy;
+        while (inside(nx, ny) && plus.has(ny * SIZE + nx)) {
+          nx += dx;
+          ny += dy;
+        }
+        if (kept(nx, ny)) seen++;
+      }
+      return seen >= 3;
+    }),
+  );
+
+  const out = Uint8Array.from(cells);
+  for (const index of plus) out.fill(0, index * 4, index * 4 + 4);
+  const onEdge = (index) => {
+    const x = index % SIZE;
+    const y = Math.floor(index / SIZE);
+    return NEIGHBORS.some(([dx, dy]) => {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!inside(nx, ny)) return true;
+      const next = ny * SIZE + nx;
+      return !covered.has(next) && out[next * 4] === 0;
+    });
+  };
+
+  const sources = [];
+  for (let index = 0; index < SIZE * SIZE; index++)
+    if (!plus.has(index) && out[index * 4] !== 0) sources.push(index);
+  const edgeSources = sources.filter(onEdge);
+  const innerSources = sources.filter((index) => !onEdge(index));
+  for (const index of covered) {
+    const x = index % SIZE;
+    const y = Math.floor(index / SIZE);
+    let best = -1;
+    let bestDistance = Infinity;
+    for (const from of onEdge(index) ? edgeSources : innerSources) {
+      const distance = ((from % SIZE) - x) ** 2 + (Math.floor(from / SIZE) - y) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = from;
+      }
+    }
+    out.set(out.subarray(best * 4, best * 4 + 4), index * 4);
+  }
+  return out;
 }
 
 const { byName, noImage } = await collectSamples();
@@ -424,17 +520,28 @@ for (const [name, samples] of [...byName].sort(([a], [b]) => a.localeCompare(b, 
   bags[name] = { parts, cells: Buffer.from(clean).toString('base64') };
 }
 
-for (const name of [...noImage].sort((a, b) => a.localeCompare(b, 'ko'))) {
-  const id = HERB_ICON_IDS[name];
-  if (!id) {
-    console.error(
-      `${name}: 넥슨 그림도 클라이언트 아이콘 번호도 없습니다. HERB_ICON_IDS 에 더해 주세요.`,
-    );
-    failed = true;
-    continue;
-  }
-  bags[name] = { parts: 0, cells: Buffer.from(await herbCells(id)).toString('base64') };
-  console.log(`${name}: 클라이언트 아이콘 ${id} 를 색 없이 담음`);
+const sturdier = [];
+for (const [herb, id] of Object.entries(HERB_ICON_IDS)) {
+  sturdier.push({ herb, id, cells: iconCells(await fetchIcon(id)) });
+  await sleep(200);
+}
+const plus = findSharedPlus(sturdier.map((entry) => entry.cells));
+for (const { herb, id, cells } of sturdier) {
+  bags[`더 튼튼한 ${herb}`] = { parts: 0, cells: Buffer.from(cells).toString('base64') };
+  bags[`튼튼한 ${herb}`] = {
+    parts: 0,
+    cells: Buffer.from(eraseIcon(cells, plus)).toString('base64'),
+  };
+  console.log(`${herb}: 클라이언트 아이콘 ${id}, 튼튼한 쪽은 + 표시 ${plus.size}픽셀 지움`);
+}
+
+// 넥슨이 그림을 주지 않았는데 지도도 없는 주머니가 생기면(새 허브가 나오면) 알린다.
+for (const name of noImage) {
+  if (bags[name]) continue;
+  console.error(
+    `${name}: 넥슨 그림도 클라이언트 아이콘 번호도 없습니다. HERB_ICON_IDS 에 더해 주세요.`,
+  );
+  failed = true;
 }
 
 if (failed) {

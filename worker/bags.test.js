@@ -28,11 +28,30 @@ function shop({ nextUpdate }) {
             item_option: [
               // 파트 순서를 일부러 섞어 둔다. 워커가 A, B, C 로 맞춰야 한다.
               { option_type: '아이템 색상', option_sub_type: '파트 B', option_value: '107,58,68' },
-              { option_type: '아이템 색상', option_sub_type: '파트 A', option_value: '187,148,199' },
-              { option_type: '아이템 색상', option_sub_type: '파트 C', option_value: '255,255,255' },
+              {
+                option_type: '아이템 색상',
+                option_sub_type: '파트 A',
+                option_value: '187,148,199',
+              },
+              {
+                option_type: '아이템 색상',
+                option_sub_type: '파트 C',
+                option_value: '255,255,255',
+              },
             ],
           },
-          { item_display_name: '꽃바구니', price: [{ price_type: '골드', price_value: 350000 }], item_option: [] },
+          {
+            item_display_name: '더 튼튼한 마나 허브 주머니',
+            price: [{ price_type: '두카트', price_value: 500000 }],
+            item_option: [
+              { option_type: '아이템 색상', option_sub_type: '파트 A', option_value: '0,100,174' },
+            ],
+          },
+          {
+            item_display_name: '꽃바구니',
+            price: [{ price_type: '골드', price_value: 350000 }],
+            item_option: [],
+          },
         ],
       },
       { tab_name: '일반', item: [{ item_display_name: '붕대', price: [], item_option: [] }] },
@@ -68,7 +87,7 @@ afterEach(() => {
 });
 
 describe('튼튼한 주머니 찾기', () => {
-  it('한 채널의 NPC 17명을 모두 부르고 튼튼한 주머니만 돌려준다', async () => {
+  it('한 채널의 NPC 17명을 모두 부르고 튼튼한 주머니와 더 튼튼한 주머니만 돌려준다', async () => {
     const response = await worker.fetch(request(bagsPath('류트', 1)), env);
     expect(response.status).toBe(200);
 
@@ -82,6 +101,7 @@ describe('튼튼한 주머니 찾기', () => {
     expect(body.npcs).toHaveLength(17);
     expect(body.npcs[0].bags).toEqual([
       { n: '튼튼한 고급 실크 주머니', c: ['bb94c7', '6b3a44', 'ffffff'], p: 500000, t: '두카트' },
+      { n: '더 튼튼한 마나 허브 주머니', c: ['0064ae'], p: 500000, t: '두카트' },
     ]);
   });
 
@@ -117,7 +137,9 @@ describe('튼튼한 주머니 찾기', () => {
 
   it('허용하지 않은 출처는 막는다', async () => {
     const response = await worker.fetch(
-      new Request(`https://worker.test${bagsPath('류트', 4)}`, { headers: { Origin: 'https://evil.example' } }),
+      new Request(`https://worker.test${bagsPath('류트', 4)}`, {
+        headers: { Origin: 'https://evil.example' },
+      }),
       env,
     );
     expect(response.status).toBe(403);

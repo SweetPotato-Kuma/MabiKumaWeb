@@ -71,7 +71,10 @@ function formatPrice(row: BagListing): string {
   return row.price === null ? '-' : `${formatNumber(row.price)} ${row.priceType ?? ''}`.trim();
 }
 
-/** 카드에는 자리가 좁다. 모든 이름이 "튼튼한" 으로 시작하므로 그 말은 뺀다. */
+/**
+ * 카드에는 자리가 좁다. 대부분 "튼튼한" 으로 시작하므로 그 말은 뺀다. "더 튼튼한" 은 다른
+ * 주머니라 남긴다(그림의 + 표시와 함께 구분하는 말이다).
+ */
 function shortName(name: string): string {
   return name.replace(/^튼튼한\s+/, '');
 }
@@ -247,7 +250,7 @@ export function BagsPage() {
           튼튼한 주머니 찾기
         </Title>
         <Text type="secondary">
-          고른 서버의 모든 채널에서 NPC 17명의 튼튼한 주머니를 불러 원하는 색에 가까운 순으로 보여 줍니다. 상점은
+          고른 서버의 모든 채널에서 NPC 17명의 튼튼한 주머니와 더 튼튼한 주머니를 불러 원하는 색에 가까운 순으로 보여 줍니다. 상점은
           에린 하루(현실 36분)마다 바뀝니다.
         </Text>
       </Flex>
