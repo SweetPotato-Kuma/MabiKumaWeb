@@ -1,0 +1,32 @@
+{
+  "siteName": "MabiKuma",
+  "defaultTitle": "MabiKuma · 마비노기 도구상자",
+  "defaultDescription": "마비노기 오픈 API 기반 경매장 시세 조회 도구",
+  "pages": [
+    {
+      "path": "/auction",
+      "title": "마비노기 경매장 시세 조회",
+      "description": "마비노기 경매장 매물을 카테고리와 아이템 이름으로 찾아 가격을 비교합니다. 넥슨 오픈 API 기준이며 평균 10분 지연됩니다."
+    },
+    {
+      "path": "/dictionary",
+      "title": "마비노기 아이템 사전",
+      "description": "마비노기 경매장에 올라온 적이 있는 아이템 이름을 카테고리별로 모아 둔 목록입니다."
+    },
+    {
+      "path": "/bags",
+      "title": "마비노기 튼튼한 주머니 찾기",
+      "description": "서버의 모든 채널, NPC 상점 17곳의 튼튼한 주머니를 원하는 색에 가까운 순으로 찾아 줍니다."
+    },
+    {
+      "path": "/magmell-pass",
+      "title": "마비노기 마그 멜 통행증 찾기",
+      "description": "모든 채널의 NPC 상점에서 파는 마그 멜 통행증을 가격순으로 비교합니다."
+    },
+    {
+      "path": "/privacy",
+      "title": "개인정보처리방침",
+      "description": "MabiKuma가 방문자의 어떤 정보를 어떻게 다루는지, 광고와 쿠키를 어떻게 쓰는지 안내합니다."
+    }
+  ]
+}

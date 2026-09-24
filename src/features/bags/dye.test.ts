@@ -46,8 +46,8 @@ describe('paintBag', () => {
   });
 });
 
-describe('public/bags/dyes.json', () => {
-  const file = JSON.parse(readFileSync(resolve(process.cwd(), 'public/bags/dyes.json'), 'utf8'));
+describe('public/bag-dyes.json', () => {
+  const file = JSON.parse(readFileSync(resolve(process.cwd(), 'public/bag-dyes.json'), 'utf8'));
   const book = parseDyeBook(file);
 
   it('상점에 나오는 주머니 42종이 모두 들어 있다', () => {

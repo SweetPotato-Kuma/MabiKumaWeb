@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ApiOutlined,
   BookOutlined,
@@ -25,6 +25,7 @@ import {
   theme,
   type MenuProps,
 } from 'antd';
+import { usePageMeta } from '@/app/pageMeta';
 import { HEADER_HEIGHT } from '@/app/theme';
 import { IssueReportButton } from '@/components/IssueReportButton';
 import { useHasAdminKey } from '@/lib/adminKey';
@@ -131,6 +132,7 @@ export function RootLayout() {
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const hasAdminKey = useHasAdminKey();
+  usePageMeta(location.pathname);
 
   const navItems: MenuProps['items'] = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
 
@@ -219,7 +221,10 @@ export function RootLayout() {
           >
             NEXON Open API
           </Typography.Link>
-          . 게임 데이터는 평균 10분 지연됩니다. 개인이 만든 비공식 도구이며 넥슨과 무관합니다.
+          . 게임 데이터는 평균 10분 지연됩니다. 개인이 만든 비공식 도구이며 넥슨과 무관합니다.{' '}
+          <Link to="/privacy" style={{ fontSize: 11, color: token.colorLink }}>
+            개인정보처리방침
+          </Link>
         </Text>
       </Footer>
 

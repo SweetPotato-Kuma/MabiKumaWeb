@@ -7,6 +7,7 @@ import { BagsPage } from '@/pages/BagsPage';
 import { MagmellPassPage } from '@/pages/MagmellPassPage';
 import { ItemCardPage } from '@/pages/ItemCardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { PrivacyPage } from '@/pages/PrivacyPage';
 
 /**
  * 아이템 카드 만들기는 운영자 작업 화면이지만 배포본에도 올라간다. 게임을 하는 컴퓨터에서
@@ -32,6 +33,7 @@ export const router = createBrowserRouter(
         { path: 'npc-shop', element: <Navigate to="/bags" replace /> },
         { path: 'bags', element: <BagsPage /> },
         { path: 'magmell-pass', element: <MagmellPassPage /> },
+        { path: 'privacy', element: <PrivacyPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },
       ],

@@ -32,7 +32,7 @@
  *   를 지운다. + 는 열 아이콘에서 픽셀이 똑같은 왼쪽 아래 자리로 찾는다
  *
  * 실행: NEXON_API_KEY=... node scripts/build-bag-dyes.mjs
- * 산출: public/bags/dyes.json
+ * 산출: public/bag-dyes.json
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -58,7 +58,7 @@ const HERB_ICON_IDS = {
   '해독초 주머니': 5110063,
   '포이즌 허브 주머니': 5110064,
 };
-const OUT_FILE = resolve(process.cwd(), 'public/bags/dyes.json');
+const OUT_FILE = resolve(process.cwd(), 'public/bag-dyes.json');
 
 /** 상점에서 튼튼한 주머니와 더 튼튼한 주머니를 가려낸다. worker/worker.js 와 같다. */
 const BAG_NAME = /^(더 )?튼튼한 /;

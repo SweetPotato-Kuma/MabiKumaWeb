@@ -5,7 +5,7 @@ import { hexToRgb } from './color';
  * 튼튼한 주머니 색칠.
  *
  * 상점 응답에는 색만 있다. 주머니마다 "어느 픽셀이 어느 파트인지와 얼마나 밝게 칠해지는지"
- * 를 담은 지도(public/bags/dyes.json)를 들고 있다가 그 색을 칠해 그린다. 지도는
+ * 를 담은 지도(public/bag-dyes.json)를 들고 있다가 그 색을 칠해 그린다. 지도는
  * scripts/build-bag-dyes.mjs 가 넥슨이 색을 입혀 그린 그림들을 거꾸로 풀어 만든다.
  *
  * 칠하는 식은 넥슨과 같다: 칠해진 색 = min(255, 명암 × 파트 색), R, G, B 채널마다 따로.
@@ -103,7 +103,7 @@ let pending: Promise<BagDyeBook | null> | null = null;
  * 받지 못하면 다음에 다시 시도하도록 기억하지 않는다.
  */
 export function loadDyeBook(): Promise<BagDyeBook | null> {
-  pending ??= fetch(`${import.meta.env.BASE_URL}bags/dyes.json`)
+  pending ??= fetch(`${import.meta.env.BASE_URL}bag-dyes.json`)
     .then((response) => (response.ok ? (response.json() as Promise<DyeFile>) : null))
     .then((file) => (file ? parseDyeBook(file) : null))
     .catch(() => null)
