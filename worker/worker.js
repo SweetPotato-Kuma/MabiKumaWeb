@@ -111,8 +111,8 @@ const BAG_SELLERS = [
   '얼리', '데위', '테일로', '상인 세누', '상인 베루', '상인 에루', '상인 네루', '카디',
 ];
 
-/** 서버별 채널 수. 화면(src/features/npcshop/constants.ts)과 같은 값이다. */
-const BAG_CHANNELS = { 류트: 44, 만돌린: 16, 하프: 25, 울프: 16 };
+/** 서버별 채널 수. 화면(src/features/servers/constants.ts)과 같은 값이다. 통행증 찾기도 같이 쓴다. */
+const SERVER_CHANNELS = { 류트: 44, 만돌린: 16, 하프: 25, 울프: 16 };
 
 /** 모든 NPC 가 답하지 못했을 때는 오래 들고 있지 않는다. 잠깐 뒤 다시 물어볼 수 있게. */
 const BAG_PARTIAL_TTL_MS = 30 * 1000;
@@ -154,7 +154,7 @@ function extractBags(shop) {
 async function findBags(url, env, cors) {
   const server = url.searchParams.get('server') ?? '';
   const channel = Number(url.searchParams.get('channel'));
-  const maxChannel = BAG_CHANNELS[server];
+  const maxChannel = SERVER_CHANNELS[server];
   if (!maxChannel || !Number.isInteger(channel) || channel < 1 || channel > maxChannel) {
     return errorResponse('BAG_INVALID_QUERY', '서버와 채널을 다시 골라 주세요.', 400, cors);
   }
@@ -218,6 +218,110 @@ async function findBags(url, env, cors) {
   }
 
   return new Response(body, { status: 200, headers: { ...headers, 'x-bag-cache': 'miss' } });
+}
+
+/**
+ * 마그 멜 미션 통행증 찾기.
+ *
+ * 통행증은 피오나트 한 명만 팔고, 가격이 채널마다 다르다(2026-09-24 에 10만에서 50만 골드까지
+ * 봤다). 싼 채널을 찾으려면 네 서버 101채널을 모두 봐야 한다. 브라우저는 서버마다 한 번만
+ * 묻고, 워커가 그 서버의 모든 채널을 한꺼번에 불러 통행증 줄만 돌려준다.
+ *
+ * 채널이 가장 많은 류트가 44번이라 무료 플랜의 요청당 외부 호출 50번 안에 든다. 피오나트
+ * 응답은 11KB 안팎이라 44개를 풀어도 CPU 가 1ms 남짓이다. 넥슨이 류트 채널을 50개 넘게
+ * 늘리면 이 방식은 한도에 걸린다.
+ *
+ * 저장하지 않는 것, 다음 상점 갱신 시각까지만 메모리에 드는 것은 주머니 찾기와 같다.
+ */
+const PASS_PATH = '/npcshop/magmell-pass';
+const PASS_SELLER = '피오나트';
+
+const passCache = new Map();
+
+/** "마그 멜 미션 통행증 - 사계의 숲(어려움)". 앞말만 보고 던전 이름은 가리지 않는다. */
+function isMagmellPass(name) {
+  return name.startsWith('마그 멜') && name.includes('통행증');
+}
+
+/** 피오나트 상점에서 통행증 줄만 남긴다. 가격은 첫 번째 것. */
+function extractPasses(shop) {
+  const passes = [];
+  for (const tab of shop?.shop ?? []) {
+    for (const item of tab.item ?? []) {
+      const name = item.item_display_name ?? '';
+      if (!isMagmellPass(name)) continue;
+      const price = item.price?.[0];
+      passes.push({ n: name, p: price?.price_value ?? null, t: price?.price_type ?? null });
+    }
+  }
+  return passes;
+}
+
+async function findPasses(url, env, cors) {
+  const server = url.searchParams.get('server') ?? '';
+  const channelCount = SERVER_CHANNELS[server];
+  if (!channelCount) {
+    return errorResponse('PASS_INVALID_QUERY', '서버를 다시 골라 주세요.', 400, cors);
+  }
+
+  const headers = {
+    ...cors,
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+  };
+
+  const cached = passCache.get(server);
+  if (cached && cached.expiresAt > Date.now()) {
+    return new Response(cached.body, {
+      status: 200,
+      headers: { ...headers, 'x-pass-cache': 'hit' },
+    });
+  }
+
+  const channels = await Promise.all(
+    Array.from({ length: channelCount }, async (_, index) => {
+      const channel = index + 1;
+      const upstream = new URL('/mabinogi/v1/npcshop/list', NEXON_ORIGIN);
+      upstream.searchParams.set('npc_name', PASS_SELLER);
+      upstream.searchParams.set('server_name', server);
+      upstream.searchParams.set('channel', String(channel));
+      try {
+        const response = await fetch(upstream.toString(), {
+          headers: { accept: 'application/json', 'x-nxopen-api-key': env.NEXON_API_KEY },
+        });
+        if (!response.ok) return { channel, error: response.status };
+        const shop = await response.json();
+        return {
+          channel,
+          nextUpdate: shop.date_shop_next_update ?? null,
+          passes: extractPasses(shop),
+        };
+      } catch {
+        return { channel, error: 0 };
+      }
+    }),
+  );
+
+  const nextTimes = channels
+    .map((entry) => Date.parse(entry.nextUpdate ?? ''))
+    .filter((time) => Number.isFinite(time));
+  const nextUpdate = nextTimes.length > 0 ? Math.min(...nextTimes) : null;
+  const complete = channels.every((entry) => !entry.error);
+
+  const body = JSON.stringify({
+    server,
+    nextUpdate: nextUpdate ? new Date(nextUpdate).toISOString() : null,
+    channels,
+  });
+
+  const now = Date.now();
+  const ttl = complete
+    ? Math.min(Math.max((nextUpdate ?? 0) - now, 0), BAG_MAX_TTL_MS)
+    : BAG_PARTIAL_TTL_MS;
+  // 서버가 넷뿐이라 칸이 불어날 일이 없다. 치우지 않고 덮어쓴다.
+  if (ttl > 0) passCache.set(server, { body, expiresAt: now + ttl });
+
+  return new Response(body, { status: 200, headers: { ...headers, 'x-pass-cache': 'miss' } });
 }
 
 /** 이 워커가 중계해 주는 경로만 허용한다. 열린 프록시가 되지 않도록. */
@@ -985,6 +1089,8 @@ export default {
 
     // 튼튼한 주머니 찾기. 한 채널의 NPC 17명을 한 번에 불러 주머니 줄만 돌려준다.
     if (url.pathname === BAG_PATH) return findBags(url, env, cors);
+    // 마그 멜 통행증 찾기. 한 서버의 모든 채널에서 피오나트를 불러 통행증 줄만 돌려준다.
+    if (url.pathname === PASS_PATH) return findPasses(url, env, cors);
 
     if (!ALLOWED_PATHS.some((pattern) => pattern.test(url.pathname))) {
       return errorResponse(

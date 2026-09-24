@@ -1,15 +1,30 @@
+import type { ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ApiOutlined,
   BookOutlined,
+  IdcardOutlined,
   KeyOutlined,
   MoonOutlined,
   PictureOutlined,
+  ShopOutlined,
   ShoppingOutlined,
   SunOutlined,
   TagOutlined,
 } from '@ant-design/icons';
-import { Button, Flex, Grid, Layout, Menu, Space, Tag, Tooltip, Typography, theme } from 'antd';
+import {
+  Button,
+  Flex,
+  Grid,
+  Layout,
+  Menu,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  theme,
+  type MenuProps,
+} from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
 import { IssueReportButton } from '@/components/IssueReportButton';
 import { useHasAdminKey } from '@/lib/adminKey';
@@ -19,18 +34,37 @@ import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference'
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
 
-/** 내비는 데스크톱에서 한 줄을 넘지 않는다. 좁아지면 antd 가 알아서 넘침 메뉴로 접는다. */
-const NAV_ITEMS = [
+type NavItem = { key: string; icon: ReactNode; label: ReactNode; children?: NavItem[] };
+
+/**
+ * 내비는 데스크톱에서 한 줄을 넘지 않는다. 좁아지면 antd 가 알아서 넘침 메뉴로 접는다.
+ *
+ * NPC 상점에서 찾는 것들은 한 칸 아래로 묶는다. 상점마다 화면이 하나씩 늘어나도 헤더가
+ * 한 줄을 넘지 않게 하려는 것이다. 묶음 칸 자체는 화면이 없어 누르면 펼쳐지기만 한다.
+ */
+const NAV_ITEMS: NavItem[] = [
   { key: '/auction', icon: <TagOutlined />, label: <NavLink to="/auction">경매장</NavLink> },
   { key: '/dictionary', icon: <BookOutlined />, label: <NavLink to="/dictionary">아이템 사전</NavLink> },
-  { key: '/bags', icon: <ShoppingOutlined />, label: <NavLink to="/bags">튼튼한 주머니</NavLink> },
+  {
+    key: 'npc-shop',
+    icon: <ShopOutlined />,
+    label: 'NPC 상점',
+    children: [
+      { key: '/bags', icon: <ShoppingOutlined />, label: <NavLink to="/bags">튼튼한 주머니</NavLink> },
+      {
+        key: '/magmell-pass',
+        icon: <IdcardOutlined />,
+        label: <NavLink to="/magmell-pass">마그 멜 통행증</NavLink>,
+      },
+    ],
+  },
 ];
 
 /**
  * 운영자 작업 화면. 키를 넣어 둔 브라우저에서만 메뉴에 걸린다.
  * 메뉴에 없다고 못 들어가는 것은 아니다. 주소를 치면 화면은 열리고 키를 묻는다.
  */
-const ADMIN_NAV_ITEM = {
+const ADMIN_NAV_ITEM: NavItem = {
   key: '/item-card',
   icon: <PictureOutlined />,
   label: <NavLink to="/item-card">카드 만들기</NavLink>,
@@ -38,7 +72,8 @@ const ADMIN_NAV_ITEM = {
 
 /** 현재 경로에 해당하는 메뉴 키. 루트로 들어오면 경매장이 첫 화면이다. */
 function selectedKeyFor(pathname: string): string {
-  const match = [...NAV_ITEMS, ADMIN_NAV_ITEM].find((item) => pathname.startsWith(item.key));
+  const leaves = [...NAV_ITEMS, ADMIN_NAV_ITEM].flatMap((item) => item.children ?? [item]);
+  const match = leaves.find((item) => pathname.startsWith(item.key));
   return match ? match.key : '/auction';
 }
 
@@ -97,7 +132,7 @@ export function RootLayout() {
   const screens = Grid.useBreakpoint();
   const hasAdminKey = useHasAdminKey();
 
-  const navItems = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const navItems: MenuProps['items'] = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
 
   /**
    * 본문 폭. 1160 은 좁아서 넓은 화면에서 좌우가 한참 비었다. 표가 주인공인 화면이라

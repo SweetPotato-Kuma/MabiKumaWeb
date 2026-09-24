@@ -16,6 +16,7 @@ React + TypeScript + Vite 로 만들고, UI 는 antd 하나로 통일했습니�
 | 경매장 키워드 검색 | `GET /mabinogi/v1/auction/keyword-search` |
 | 최근 1시간 거래 내역 | `GET /mabinogi/v1/auction/history` |
 | 튼튼한 주머니 찾기 | 워커 `/npcshop/bags` (워커가 `GET /mabinogi/v1/npcshop/list` 를 모아 부름) |
+| 마그 멜 통행증 찾기 | 워커 `/npcshop/magmell-pass` (워커가 한 서버의 모든 채널에서 피오나트를 모아 부름) |
 
 매물 목록에서는 개당 가격의 최저 / 중위 / 평균 / 최고값을 함께 계산해 보여줍니다.
 평균만 보면 터무니없는 호가에 끌려가므로 중위값을 같이 봅니다.
@@ -174,6 +175,7 @@ src/
 │  ├─ auction/     경매장: types / constants / api / hooks / stats
 │  ├─ itemcard/    아이템 카드: imageOps / canvas / promptModel / cards
 │  ├─ bags/        튼튼한 주머니: api / listings / color
+│  ├─ magmell/     마그 멜 통행증: api / ranking
 │  └─ servers/     서버 이름과 서버별 채널 수
 ├─ lib/            API 클라이언트, 설정 저장소, 포매터
 ├─ pages/          라우트별 화면

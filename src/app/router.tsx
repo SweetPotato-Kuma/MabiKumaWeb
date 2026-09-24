@@ -4,6 +4,7 @@ import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
 import { DictionaryPage } from '@/pages/DictionaryPage';
 import { BagsPage } from '@/pages/BagsPage';
+import { MagmellPassPage } from '@/pages/MagmellPassPage';
 import { ItemCardPage } from '@/pages/ItemCardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
@@ -27,9 +28,10 @@ export const router = createBrowserRouter(
         { index: true, element: <Navigate to="/auction" replace /> },
         { path: 'auction', element: <AuctionPage /> },
         { path: 'dictionary', element: <DictionaryPage /> },
-        // NPC 상점 화면은 내렸다. 예전 즐겨찾기가 빈 화면에 떨어지지 않게 첫 화면으로 보낸다.
-        { path: 'npc-shop', element: <Navigate to="/auction" replace /> },
+        // 예전 NPC 상점 화면 주소. 그 자리는 NPC 상점 메뉴의 첫 항목인 주머니 찾기가 이어받는다.
+        { path: 'npc-shop', element: <Navigate to="/bags" replace /> },
         { path: 'bags', element: <BagsPage /> },
+        { path: 'magmell-pass', element: <MagmellPassPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },
       ],
