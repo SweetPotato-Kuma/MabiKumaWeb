@@ -3,7 +3,6 @@ import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
 import { DictionaryPage } from '@/pages/DictionaryPage';
-import { NpcShopPage } from '@/pages/NpcShopPage';
 import { BagsPage } from '@/pages/BagsPage';
 import { ItemCardPage } from '@/pages/ItemCardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -28,7 +27,8 @@ export const router = createBrowserRouter(
         { index: true, element: <Navigate to="/auction" replace /> },
         { path: 'auction', element: <AuctionPage /> },
         { path: 'dictionary', element: <DictionaryPage /> },
-        { path: 'npc-shop', element: <NpcShopPage /> },
+        // NPC 상점 화면은 내렸다. 예전 즐겨찾기가 빈 화면에 떨어지지 않게 첫 화면으로 보낸다.
+        { path: 'npc-shop', element: <Navigate to="/auction" replace /> },
         { path: 'bags', element: <BagsPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },

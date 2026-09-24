@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "마비노기 오픈 API 기반 경매장 · NPC 상점 조회 도구",
+  "description": "마비노기 오픈 API 기반 경매장 시세 조회 도구",
   "engines": {
     "node": ">=20.19.0"
   },

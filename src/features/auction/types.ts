@@ -1,4 +1,4 @@
-/** 아이템 세부 옵션 한 줄. 경매장·NPC 상점 응답이 같은 모양을 쓴다. */
+/** 아이템 세부 옵션 한 줄. */
 export interface ItemOption {
   option_type: string;
   option_sub_type?: string;

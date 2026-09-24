@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { channelsOf } from '@/features/npcshop/constants';
+import { channelsOf } from '@/features/servers/constants';
 import { fetchBagChannel, type BagChannelResult } from './api';
 
 /**

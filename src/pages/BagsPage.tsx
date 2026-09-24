@@ -25,7 +25,7 @@ import { canSearchBags } from '@/features/bags/api';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
 import { bagNamesOf, buildListings, type BagListing, type PartMode } from '@/features/bags/listings';
 import { useBagSearch } from '@/features/bags/useBagSearch';
-import { CHANNEL_COUNT_BY_SERVER, SERVER_NAMES } from '@/features/npcshop/constants';
+import { CHANNEL_COUNT_BY_SERVER, SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 
