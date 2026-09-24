@@ -215,10 +215,38 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
     expect(await screen.findAllByText('체력 15 증가')).toHaveLength(2);
   });
 
-  it('개조마다 해 주는 NPC 를 적고 이름 모르는 NPC 는 수만 센다', async () => {
+  it('개조 NPC 가 모두 같으면 한 번만 적고 이름 모르는 NPC 는 수만 센다', async () => {
     renderPage(SWORD_PATH);
 
-    expect(await screen.findByText('NPC 네리스, 퍼거스 외 1명(이름 미확인)')).toBeInTheDocument();
+    expect(await screen.findByText('개조 NPC')).toBeInTheDocument();
+    expect(screen.getByText('네리스, 퍼거스 외 1명(이름 미확인)')).toBeInTheDocument();
+  });
+
+  it('개조는 칸마다 한 줄에 고른 개조의 효과와 비용을 적는다', async () => {
+    renderPage(`${SWORD_PATH}&up=52507.`);
+
+    expect(await screen.findByText('최대 공격력 +30 (숙련 100, 99,000 G)')).toBeInTheDocument();
+    // 두 번째 칸에는 할 수 있는 개조가 없다. "0가지 중에서" 라고 적지 않는다.
+    expect(screen.getByText('이 칸에 할 수 있는 개조가 없습니다')).toBeInTheDocument();
+  });
+
+  it('바를 수 있는 인챈트를 펼쳐 두고 줄을 누르면 바른다', async () => {
+    renderPage(SWORD_PATH);
+
+    fireEvent.click(await screen.findByText('윈드밀 랭크 3단 이상일 때 최대 대미지 50~60 증가'));
+
+    expect(await screen.findByText('거침없는 소울 리버레이트 소드')).toBeInTheDocument();
+    expect(screen.getByTestId('url')).toHaveTextContent('en=21643.');
+  });
+
+  it('인챈트는 효과 글로도 찾는다', async () => {
+    renderPage(SWORD_PATH);
+
+    fireEvent.change(await screen.findByLabelText('이름이나 효과로 찾기'), {
+      target: { value: '마법 공격력' },
+    });
+
+    expect(screen.getByText('"마법 공격력" 와 맞는 접두 인챈트가 없습니다.')).toBeInTheDocument();
   });
 
   it('유동 능력치는 기본값에 얹은 실제 값과 그 구성을 보여 준다', async () => {
