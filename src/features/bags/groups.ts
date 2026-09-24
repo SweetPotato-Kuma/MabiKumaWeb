@@ -55,6 +55,17 @@ function categoryOf(name: string): Category {
   return CATEGORIES.find((category) => category.match.test(bare)) ?? OTHER;
 }
 
+/** 주머니가 속한 분류. 결과를 분류별 탭으로 나눌 때 쓴다. */
+export function bagCategory(name: string): { key: string; title: string } {
+  const { key, title } = categoryOf(name);
+  return { key, title };
+}
+
+/** 분류 순서. 트리와 탭이 같은 순서로 보이게 한다. */
+export const CATEGORY_ORDER: readonly string[] = [...CATEGORIES, OTHER].map(
+  (category) => category.key,
+);
+
 function compareBags(a: string, b: string): number {
   const rank = (name: string) => {
     const index = QUALITY_ORDER.indexOf(bareName(name).split(' ')[0]);

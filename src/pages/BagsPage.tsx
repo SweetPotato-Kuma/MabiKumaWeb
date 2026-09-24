@@ -17,6 +17,7 @@ import {
   Select,
   Skeleton,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Tree,
@@ -30,8 +31,10 @@ import { canSearchBags } from '@/features/bags/api';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
 import {
+  bagCategory,
   bareName,
   buildBagTree,
+  CATEGORY_ORDER,
   isSturdier,
   namesOfSelection,
   type BagTreeNode,
@@ -80,7 +83,11 @@ const GRID_GAP = 8;
 const PAGINATION_ROOM = 42;
 /** 휴대폰에서는 화면에 맞추지 않고 이만큼씩 보여 준다. 어차피 스크롤로 본다. */
 const MOBILE_PAGE_SIZE = 20;
-const TABLE_PAGE_SIZE = 20;
+/** 표는 한 줄이 높아(그림 48px) 10줄로 시작한다. */
+const TABLE_PAGE_SIZE = 10;
+
+/** 분류 탭의 "전체". 분류 키(herb, leather …)와 겹치지 않는 값이다. */
+const ALL_TAB = 'all';
 
 /** 표 줄의 주머니 그림. 원본 48px 그대로다. */
 const ROW_IMAGE_SIZE = 48;
@@ -202,6 +209,18 @@ function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }
   );
 }
 
+/** 탭 이름 옆에 개수를 흐리게 붙인다. */
+function tabLabel(title: string, count: number) {
+  return (
+    <Flex gap={6} align="baseline">
+      <span>{title}</span>
+      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+        {formatNumber(count)}
+      </Text>
+    </Flex>
+  );
+}
+
 /** 분류 트리를 antd Tree 모양으로. 잎은 짧은 이름으로 보인다(위 칸이 등급과 재료를 말해 준다). */
 function toTreeData(nodes: readonly BagTreeNode[]): TreeDataNode[] {
   return nodes.map((node) => ({
@@ -255,6 +274,7 @@ export function BagsPage() {
   const [selectedBags, setSelectedBags] = useState<string[]>([]);
   const [targets, setTargets] = useState<PartTarget[]>(DEFAULT_TARGETS);
   const [view, setView] = useState<ViewMode>('grid');
+  const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
 
   // 결과가 아직 유효한지 보여 주려고 시계만 돈다. 데이터를 다시 받지는 않는다.
   const [now, setNow] = useState(() => Date.now());
@@ -280,12 +300,44 @@ export function BagsPage() {
     [state.channels, bagNames, searchTargets],
   );
 
+  /**
+   * 분류별 탭. 여러 분류를 함께 고르면 결과가 섞여 한 분류만 훑어보기 어렵다. 결과에 분류가
+   * 둘 이상 있을 때만 탭을 보이고, "전체" 는 분류를 가리지 않고 가까운 순으로 본다.
+   */
+  const categoryOfName = useMemo(() => {
+    const map = new Map<string, { key: string; title: string }>();
+    for (const row of listings) if (!map.has(row.name)) map.set(row.name, bagCategory(row.name));
+    return map;
+  }, [listings]);
+  const categoryTabs = useMemo(() => {
+    const counts = new Map<string, { title: string; count: number }>();
+    for (const row of listings) {
+      const { key, title } = categoryOfName.get(row.name)!;
+      counts.set(key, { title, count: (counts.get(key)?.count ?? 0) + 1 });
+    }
+    return CATEGORY_ORDER.filter((key) => counts.has(key)).map((key) => ({
+      key,
+      ...counts.get(key)!,
+    }));
+  }, [listings, categoryOfName]);
+  const showTabs = categoryTabs.length > 1;
+  // 체크를 바꿔 보던 분류가 결과에서 사라지면 전체로 돌아간다.
+  const currentTab =
+    showTabs && categoryTabs.some((tab) => tab.key === activeTab) ? activeTab : ALL_TAB;
+  const visible = useMemo(
+    () =>
+      currentTab === ALL_TAB
+        ? listings
+        : listings.filter((row) => categoryOfName.get(row.name)?.key === currentTab),
+    [listings, categoryOfName, currentTab],
+  );
+
   const loading = state.status === 'loading';
   const expired = state.nextUpdate !== null && state.nextUpdate <= now;
   const percent = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
   const failed = state.failedChannels.length > 0 && !loading;
 
-  const resetKey = `${state.server}|${selectedBags.join(',')}|${searchTargets.join(',')}`;
+  const resetKey = `${state.server}|${selectedBags.join(',')}|${searchTargets.join(',')}|${currentTab}`;
   const tablePaging = useListPagination(resetKey, { defaultPageSize: TABLE_PAGE_SIZE });
 
   // 그림 보기는 화면에 맞춘 개수씩 넘긴다. 위쪽 안내가 생기거나 없어지면 격자가 움직이므로 다시 잰다.
@@ -296,7 +348,7 @@ export function BagsPage() {
     gap: GRID_GAP,
     reserveBelow: PAGINATION_ROOM,
     minRows: 2,
-    layoutKey: `${view}|${loading}|${failed}|${expired}|${state.status}|${listings.length > 0}`,
+    layoutKey: `${view}|${loading}|${failed}|${expired}|${state.status}|${listings.length > 0}|${showTabs}`,
   });
   const gridPageSize = wide ? (fitted ?? MOBILE_PAGE_SIZE) : MOBILE_PAGE_SIZE;
   const [gridPage, setGridPage] = useState(1);
@@ -347,6 +399,21 @@ export function BagsPage() {
       },
     ],
     [dyeBook],
+  );
+
+  const validity =
+    state.nextUpdate !== null && !expired
+      ? `다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효`
+      : null;
+
+  const viewToggle = (
+    <Segmented
+      size="small"
+      aria-label="보기 방식"
+      value={view}
+      onChange={(value) => setView(value as ViewMode)}
+      options={VIEW_OPTIONS}
+    />
   );
 
   const conditions = (
@@ -447,7 +514,7 @@ export function BagsPage() {
       <>
         <div ref={gridRef}>
           <BagGrid
-            rows={listings.slice((gridPage - 1) * gridPageSize, gridPage * gridPageSize)}
+            rows={visible.slice((gridPage - 1) * gridPageSize, gridPage * gridPageSize)}
             book={dyeBook}
           />
         </div>
@@ -455,7 +522,7 @@ export function BagsPage() {
           <Pagination
             current={gridPage}
             pageSize={gridPageSize}
-            total={listings.length}
+            total={visible.length}
             onChange={setGridPage}
             showSizeChanger={false}
             size="small"
@@ -465,7 +532,7 @@ export function BagsPage() {
     ) : (
       <Table<BagListing>
         columns={columns}
-        dataSource={listings}
+        dataSource={visible}
         rowKey="key"
         size="small"
         pagination={tablePaging.pagination}
@@ -537,21 +604,40 @@ export function BagsPage() {
             ) : null}
 
             {state.status !== 'idle' && state.status !== 'error' && listings.length > 0 ? (
-              <Flex justify="space-between" align="center" gap={12} wrap>
-                <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                  {state.server} {formatNumber(listings.length)}개
-                  {state.nextUpdate !== null && !expired
-                    ? `, 다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효`
-                    : ''}
-                </Text>
-                <Segmented
+              showTabs ? (
+                // 개수는 탭마다 붙어 있으므로 따로 줄을 쓰지 않는다. 그만큼 격자가 한 줄 더 들어간다.
+                <Tabs
                   size="small"
-                  aria-label="보기 방식"
-                  value={view}
-                  onChange={(value) => setView(value as ViewMode)}
-                  options={VIEW_OPTIONS}
+                  activeKey={currentTab}
+                  onChange={setActiveTab}
+                  tabBarStyle={{ marginBottom: 0 }}
+                  tabBarExtraContent={
+                    <Flex gap={12} align="center">
+                      {validity ? (
+                        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                          {validity}
+                        </Text>
+                      ) : null}
+                      {viewToggle}
+                    </Flex>
+                  }
+                  items={[
+                    { key: ALL_TAB, label: tabLabel('전체', listings.length) },
+                    ...categoryTabs.map((tab) => ({
+                      key: tab.key,
+                      label: tabLabel(tab.title, tab.count),
+                    })),
+                  ]}
                 />
-              </Flex>
+              ) : (
+                <Flex justify="space-between" align="center" gap={12} wrap>
+                  <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                    {state.server} {formatNumber(listings.length)}개
+                    {validity ? `, ${validity}` : ''}
+                  </Text>
+                  {viewToggle}
+                </Flex>
+              )
             ) : null}
 
             {results}

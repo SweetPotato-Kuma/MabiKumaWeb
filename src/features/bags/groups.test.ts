@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { BAG_NAMES } from './constants';
-import { bareName, buildBagTree, namesOfSelection, type BagTreeNode } from './groups';
+import {
+  bagCategory,
+  bareName,
+  buildBagTree,
+  CATEGORY_ORDER,
+  namesOfSelection,
+  type BagTreeNode,
+} from './groups';
 
 const tree = buildBagTree(BAG_NAMES);
 
@@ -99,5 +106,20 @@ describe('bareName', () => {
   it('등급과 "주머니" 를 뗀다', () => {
     expect(bareName('더 튼튼한 골드 허브 주머니')).toBe('골드 허브');
     expect(bareName('튼튼한 꽃바구니')).toBe('꽃바구니');
+  });
+});
+
+describe('bagCategory', () => {
+  it('트리와 같은 분류를 돌려준다', () => {
+    expect(bagCategory('더 튼튼한 골드 허브 주머니')).toEqual({ key: 'herb', title: '허브' });
+    expect(bagCategory('튼튼한 고급 가죽 주머니')).toEqual({ key: 'leather', title: '가죽' });
+    expect(bagCategory('튼튼한 새싹 주머니')).toEqual({ key: 'other', title: '기타' });
+  });
+
+  it('탭 순서는 트리 순서와 같다', () => {
+    expect(CATEGORY_ORDER).toEqual([
+      ...tree.map((entry) => entry.value.replace('group:', '')),
+      'other',
+    ]);
   });
 });
