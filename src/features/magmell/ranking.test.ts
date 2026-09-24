@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PassServerResult } from './api';
-import { buildPassRanking, passNamesOf, shortPassName, summarizeRanking } from './ranking';
+import { buildPassRanking, passNamesOf, shortPassName } from './ranking';
 
 const FOREST = '마그 멜 미션 통행증 - 사계의 숲(어려움)';
 const LAND = '마그 멜 미션 통행증 - 역동의 대지(어려움)';
@@ -113,18 +113,6 @@ describe('buildPassRanking', () => {
     );
     expect(rows.map((row) => row.channel)).toEqual([2, 1]);
     expect(rows.map((row) => row.rank)).toEqual([1, 2]);
-  });
-});
-
-describe('summarizeRanking', () => {
-  it('최저가 채널과 가장 흔한 값을 알려 준다', () => {
-    const summary = summarizeRanking(buildPassRanking(RESULTS, { server: null, passName: null }));
-    expect(summary.lowest.map((row) => row.key)).toEqual(['류트|26', '하프|2']);
-    expect(summary.common).toEqual({ price: 100000, priceType: '골드', count: 2 });
-  });
-
-  it('빈 목록이면 비어 있다', () => {
-    expect(summarizeRanking([])).toEqual({ lowest: [], common: null });
   });
 });
 

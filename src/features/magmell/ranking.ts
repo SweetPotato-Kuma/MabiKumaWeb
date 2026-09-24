@@ -106,28 +106,3 @@ export function buildPassRanking(
   });
   return ranked;
 }
-
-export interface PassSummary {
-  /** 가장 싼 값에 파는 채널들. */
-  lowest: PassListing[];
-  /** 가장 많은 채널이 붙인 값. 최저가가 얼마나 싼지 가늠하는 기준이다. */
-  common: { price: number; priceType: string | null; count: number } | null;
-}
-
-export function summarizeRanking(listings: readonly PassListing[]): PassSummary {
-  const lowest = listings.filter((row) => row.rank === 1);
-
-  const counts = new Map<string, { price: number; priceType: string | null; count: number }>();
-  for (const row of listings) {
-    const key = `${row.price}|${row.priceType ?? ''}`;
-    const entry = counts.get(key) ?? { price: row.price, priceType: row.priceType, count: 0 };
-    entry.count += 1;
-    counts.set(key, entry);
-  }
-  let common: PassSummary['common'] = null;
-  for (const entry of counts.values()) {
-    if (!common || entry.count > common.count) common = entry;
-  }
-
-  return { lowest, common };
-}

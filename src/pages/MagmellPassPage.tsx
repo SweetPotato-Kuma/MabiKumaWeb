@@ -26,7 +26,6 @@ import {
   buildPassRanking,
   passNamesOf,
   shortPassName,
-  summarizeRanking,
   type PassListing,
 } from '@/features/magmell/ranking';
 import { usePassSearch } from '@/features/magmell/usePassSearch';
@@ -54,10 +53,6 @@ const SUMMARY_CHANNEL_LIMIT = 8;
 /** 결과가 유효한지 다시 볼 간격. 데이터를 다시 받는 것이 아니라 "지났다" 표시만 바꾼다. */
 const CLOCK_TICK_MS = 30 * 1000;
 
-function formatClock(ms: number): string {
-  return new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-}
-
 function formatPrice(price: number, priceType: string | null): string {
   return `${formatNumber(price)} ${priceType ?? ''}`.trim();
 }
@@ -65,7 +60,7 @@ function formatPrice(price: number, priceType: string | null): string {
 /** 가장 싼 값 한눈에 보기. 표를 읽기 전에 답이 먼저 보이게 한다. */
 function LowestSummary({ listings }: { listings: PassListing[] }) {
   const { token } = theme.useToken();
-  const { lowest, common } = useMemo(() => summarizeRanking(listings), [listings]);
+  const lowest = useMemo(() => listings.filter((row) => row.rank === 1), [listings]);
   if (lowest.length === 0) return null;
 
   const first = lowest[0];
@@ -108,12 +103,6 @@ function LowestSummary({ listings }: { listings: PassListing[] }) {
                 </Tag>
               ) : null}
             </Flex>
-            {common && common.price !== first.price ? (
-              <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-                가장 많은 채널({common.count}곳)은 {formatPrice(common.price, common.priceType)}에
-                팝니다.
-              </Text>
-            ) : null}
           </Flex>
         </Col>
       </Row>
@@ -390,15 +379,12 @@ export function MagmellPassPage() {
       ) : (
         <Flex vertical gap={10}>
           <LowestSummary listings={listings} />
-          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-            {server || '모든 서버'} {formatNumber(listings.length)}개 채널
-            {state.nextUpdate !== null && !expired
-              ? `, 다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효`
-              : ''}
-            {skipped > 0
-              ? `. 받은 ${loadedChannels}채널 중 통행증이 없는 ${skipped}채널은 뺐습니다.`
-              : ''}
-          </Text>
+          {/* 받은 채널과 목록 줄 수가 다를 때만 적는다. 숨기지 않되, 같을 때는 말하지 않는다. */}
+          {skipped > 0 ? (
+            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              받은 {loadedChannels}채널 중 통행증이 없는 {skipped}채널은 목록에서 뺐습니다.
+            </Text>
+          ) : null}
           <Table<PassListing>
             columns={columns}
             dataSource={listings}
