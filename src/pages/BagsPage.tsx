@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppstoreOutlined, SearchOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  SearchOutlined,
+  StarFilled,
+  StarOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -31,6 +37,13 @@ import { canSearchBags } from '@/features/bags/api';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
 import { formatRgb } from '@/features/bags/color';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
+import {
+  isSavedColor,
+  removeSavedColor,
+  saveColor,
+  SAVED_COLORS_MAX,
+  useSavedColors,
+} from '@/features/bags/savedColors';
 import {
   bagCategory,
   bareName,
@@ -231,7 +244,12 @@ function toTreeData(nodes: readonly BagTreeNode[]): TreeDataNode[] {
   }));
 }
 
-/** 파트 하나의 원하는 색. 검색 제외를 켜면 그 파트는 어떤 색이든 된다. */
+/**
+ * 파트 하나의 원하는 색. 검색 제외를 켜면 그 파트는 어떤 색이든 된다.
+ *
+ * 색 고르기 창 맨 위에 저장한 색을 두어 눌러 쓰게 하고, 창 아래에서 지금 색을 저장하거나 뺀다.
+ * 저장한 색은 세 파트가 함께 쓴다(savedColors).
+ */
 function PartColorRow({
   part,
   target,
@@ -241,6 +259,21 @@ function PartColorRow({
   target: PartTarget;
   onChange: (next: PartTarget) => void;
 }) {
+  const savedColors = useSavedColors();
+  const saved = isSavedColor(target.color);
+  const presets = [
+    ...(savedColors.length > 0
+      ? [
+          {
+            label: `저장한 색 ${savedColors.length}/${SAVED_COLORS_MAX}`,
+            colors: savedColors,
+            defaultOpen: true,
+          },
+        ]
+      : []),
+    { label: '기본 색', colors: COLOR_PRESETS, defaultOpen: savedColors.length === 0 },
+  ];
+
   return (
     <Flex align="center" gap={10} wrap>
       <Text style={{ width: 44, flex: '0 0 44px' }}>{PART_LABELS[part]}</Text>
@@ -248,7 +281,34 @@ function PartColorRow({
         value={target.color}
         disabled={target.excluded}
         onChange={(value) => onChange({ ...target, color: value.toHexString() })}
-        presets={[{ label: '자주 찾는 색', colors: COLOR_PRESETS }]}
+        presets={presets}
+        panelRender={(panel) => (
+          <Flex vertical gap={8}>
+            {panel}
+            <Flex justify="space-between" align="center" gap={8}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {saved ? '저장한 색입니다' : '자주 찾는 색을 저장해 두세요'}
+              </Text>
+              {saved ? (
+                <Button
+                  size="small"
+                  icon={<StarFilled />}
+                  onClick={() => removeSavedColor(target.color)}
+                >
+                  저장에서 빼기
+                </Button>
+              ) : (
+                <Button
+                  size="small"
+                  icon={<StarOutlined />}
+                  onClick={() => saveColor(target.color)}
+                >
+                  이 색 저장
+                </Button>
+              )}
+            </Flex>
+          </Flex>
+        )}
         // 마비노기는 색을 RGB 로 보여 주고 찾는다. 고르는 창도 RGB 입력으로 열고, 주머니 색에는
         // 투명도가 없으므로 투명도 입력은 뺀다.
         defaultFormat="rgb"
