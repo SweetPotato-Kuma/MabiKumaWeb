@@ -46,3 +46,13 @@ export function similarity(a: Rgb, b: Rgb): number {
   const score = 100 - (colorDistance(a, b) / MAX_DISTANCE) * 100;
   return Math.round(Math.max(0, score) * 10) / 10;
 }
+
+/**
+ * "bb94c7" → "R:187 G:148 B:199". 마비노기는 색을 16진수가 아니라 RGB 로 보여 주고 찾는다
+ * (아이템 툴팁도 "R:245 G:132 B:89"). 화면에 보이는 색 값은 모두 이 모양으로 쓴다.
+ * 형식이 틀리면 받은 값을 그대로 돌려준다.
+ */
+export function formatRgb(hex: string): string {
+  const rgb = hexToRgb(hex);
+  return rgb ? `R:${rgb.r} G:${rgb.g} B:${rgb.b}` : hex;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { colorDistance, hexToRgb, similarity } from './color';
+import { colorDistance, formatRgb, hexToRgb, similarity } from './color';
 
 describe('hexToRgb', () => {
   it('# 이 있든 없든 읽는다', () => {
@@ -32,5 +32,16 @@ describe('similarity', () => {
     const a = { r: 187, g: 148, b: 199 };
     const b = { r: 107, g: 58, b: 68 };
     expect(colorDistance(a, b)).toBeCloseTo(colorDistance(b, a));
+  });
+});
+
+describe('formatRgb', () => {
+  it('게임 툴팁처럼 R, G, B 순서로 쓴다', () => {
+    expect(formatRgb('f58459')).toBe('R:245 G:132 B:89');
+    expect(formatRgb('#FFFFFF')).toBe('R:255 G:255 B:255');
+  });
+
+  it('형식이 틀리면 받은 값 그대로', () => {
+    expect(formatRgb('zzz')).toBe('zzz');
   });
 });

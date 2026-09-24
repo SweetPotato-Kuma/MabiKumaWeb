@@ -29,6 +29,7 @@ import {
 import { BagImage } from '@/components/BagImage';
 import { canSearchBags } from '@/features/bags/api';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
+import { formatRgb } from '@/features/bags/color';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
 import {
   bagCategory,
@@ -120,9 +121,9 @@ function Swatches({
   return (
     <Flex gap={size < 20 ? 4 : 6}>
       {colors.map((hex, part) => (
-        <Tooltip key={part} title={`${PART_LABELS[part] ?? `파트 ${part + 1}`} #${hex}`}>
+        <Tooltip key={part} title={`${PART_LABELS[part] ?? `파트 ${part + 1}`} ${formatRgb(hex)}`}>
           <span
-            aria-label={`${PART_LABELS[part] ?? `파트 ${part + 1}`} #${hex}`}
+            aria-label={`${PART_LABELS[part] ?? `파트 ${part + 1}`} ${formatRgb(hex)}`}
             style={{
               width: size,
               height: size,
@@ -241,14 +242,21 @@ function PartColorRow({
   onChange: (next: PartTarget) => void;
 }) {
   return (
-    <Flex align="center" gap={10}>
+    <Flex align="center" gap={10} wrap>
       <Text style={{ width: 44, flex: '0 0 44px' }}>{PART_LABELS[part]}</Text>
       <ColorPicker
         value={target.color}
         disabled={target.excluded}
         onChange={(value) => onChange({ ...target, color: value.toHexString() })}
         presets={[{ label: '자주 찾는 색', colors: COLOR_PRESETS }]}
-        showText
+        // 마비노기는 색을 RGB 로 보여 주고 찾는다. 고르는 창도 RGB 입력으로 열고, 주머니 색에는
+        // 투명도가 없으므로 투명도 입력은 뺀다.
+        defaultFormat="rgb"
+        disabledAlpha
+        showText={(color) => {
+          const { r, g, b } = color.toRgb();
+          return <span className="tnum">{`R:${r} G:${g} B:${b}`}</span>;
+        }}
         aria-label={`${PART_LABELS[part]} 원하는 색`}
       />
       <Checkbox
@@ -566,10 +574,6 @@ export function BagsPage() {
           <Flex vertical gap={16}>
             {conditions}
             {bagPicker}
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              주머니 그림은 기본 그림 위에 상점에서 받은 파트 색을 칠해 그린 것입니다. + 표시가
-              주황이면 튼튼한 주머니, 노랑이면 더 튼튼한 주머니입니다.
-            </Text>
           </Flex>
         </Col>
 
