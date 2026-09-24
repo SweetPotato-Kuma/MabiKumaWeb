@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { LinkOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Card, Col, Empty, Flex, Grid, Row, Typography } from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
-import { EquipmentPicker } from '@/components/equipment/EquipmentPicker';
 import { RandomStatsPanel } from '@/components/equipment/RandomStatsPanel';
 import { ReforgePanel } from '@/components/equipment/ReforgePanel';
 import { SpecialUpgradePanel } from '@/components/equipment/SpecialUpgradePanel';
@@ -23,7 +22,7 @@ import {
 import type { EquipmentLookup, EquipmentRecord } from '@/features/equipment/types';
 import { useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /** 주소에 담는 조합 칸. `simulate.ts` 의 SimulationParams 와 같은 이름이다. */
 const SIM_KEYS = ['rv', 'up', 'gm', 'rf', 'sp'] as const;
@@ -195,15 +194,14 @@ function Simulator({ lookup, params, onParamsChange }: SimulatorProps) {
 }
 
 /**
- * 장비 시뮬레이터. 기본 능력치에 랜덤 능력치와 개조를 더해 보고, 세공과 특별 개조를 골라 본다.
+ * 아이템 사전의 장비 상세. 기본 능력치에 랜덤 능력치와 개조를 더해 보고, 세공과 특별 개조를 골라 본다.
  *
- * 무엇을 보고 있는지(카테고리, 이름)와 무엇을 골랐는지(조합)가 모두 주소에 있다. 새로고침해도,
- * 링크를 남에게 보내도 같은 화면이 열린다. 서버에는 아무것도 저장하지 않는다.
+ * 무엇을 골랐는지(조합)는 주소에 붙는다. 사전이 이미 주소에 담아 둔 카테고리와 이름은 건드리지
+ * 않고 조합 칸만 바꾼다. 새로고침해도, 링크를 남에게 보내도 같은 화면이 열린다.
+ * 서버에는 아무것도 저장하지 않는다.
  */
-export function EquipmentPage() {
+export function EquipmentDetail({ category, name }: { category: string; name: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const category = searchParams.get('category') ?? '';
-  const name = searchParams.get('name') ?? '';
 
   const params = useMemo<SimulationParams>(() => {
     const picked: SimulationParams = {};
@@ -215,14 +213,22 @@ export function EquipmentPage() {
   }, [searchParams]);
 
   const setParams = (next: SimulationParams) => {
-    const query = new URLSearchParams({ category, name });
-    for (const key of SIM_KEYS) if (next[key]) query.set(key, next[key]);
-    // 값을 바꿀 때마다 방문 기록이 쌓이면 뒤로 가기가 쓸모없어진다. 자리만 바꾼다.
-    setSearchParams(query, { replace: true });
+    setSearchParams(
+      (current) => {
+        const query = new URLSearchParams(current);
+        for (const key of SIM_KEYS) {
+          if (next[key]) query.set(key, next[key]);
+          else query.delete(key);
+        }
+        return query;
+      },
+      // 값을 바꿀 때마다 방문 기록이 쌓이면 뒤로 가기로 사전 목록에 돌아갈 수 없다. 자리만 바꾼다.
+      { replace: true },
+    );
   };
 
   const query = useEquipmentQuery(category, name);
-  const cardKeys = useMemo(() => (name ? [{ category, name }] : []), [category, name]);
+  const cardKeys = useMemo(() => [{ category, name }], [category, name]);
   usePrefetchItemCards(cardKeys);
   const card = useItemCard(category, name);
 
@@ -231,10 +237,6 @@ export function EquipmentPage() {
 
   return (
     <Flex vertical gap={20}>
-      <Title level={3} style={{ margin: 0 }}>
-        장비 시뮬레이터
-      </Title>
-
       {!canLookupEquipment() ? (
         <Alert
           type="warning"
@@ -243,50 +245,37 @@ export function EquipmentPage() {
         />
       ) : null}
 
-      <Card variant="outlined">
-        {/* 다른 장비로 바꿀 때 입력칸이 이전 이름을 들고 있지 않게 이름마다 새로 만든다. */}
-        <EquipmentPicker key={`${category}\u0000${name}`} initialName={name} />
+      <Card>
+        <Flex vertical gap={16}>
+          <ItemCardSummary card={card} title={name} rawName={name} category={category} />
+          <div>
+            <Link
+              to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`}
+            >
+              <Button icon={<SearchOutlined />}>시세 보기</Button>
+            </Link>
+          </div>
+        </Flex>
       </Card>
 
-      {!name ? (
-        <Card>
-          <Empty description="장비 이름을 고르면 기본 능력치, 랜덤 능력치, 개조, 세공, 특별 개조를 골라 볼 수 있습니다." />
-        </Card>
-      ) : (
-        <>
-          <Card>
-            <Flex vertical gap={16}>
-              <ItemCardSummary card={card} title={name} rawName={name} category={category} />
-              <div>
-                <Link
-                  to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`}
-                >
-                  <Button icon={<SearchOutlined />}>시세 보기</Button>
-                </Link>
-              </div>
-            </Flex>
-          </Card>
+      <QueryState
+        isLoading={query.isLoading}
+        error={query.error}
+        isEmpty={query.isSuccess && item === null}
+        emptyMessage="이 아이템은 장비 정보가 없습니다. 장비가 아니거나 아직 모으지 못한 아이템입니다."
+      >
+        {lookup && item ? (
+          <Simulator lookup={{ ...lookup, item }} params={params} onParamsChange={setParams} />
+        ) : null}
+      </QueryState>
 
-          <QueryState
-            isLoading={query.isLoading}
-            error={query.error}
-            isEmpty={query.isSuccess && item === null}
-            emptyMessage="이 아이템은 장비 정보가 없습니다. 장비가 아니거나 아직 모으지 못한 아이템입니다."
-          >
-            {lookup && item ? (
-              <Simulator lookup={{ ...lookup, item }} params={params} onParamsChange={setParams} />
-            ) : null}
-          </QueryState>
-
-          {/* 어디서 온 값인지 섞이지 않게 적는다. 경매장 API 가 주는 값이 아니다. */}
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            능력치와 개조, 세공 정보는 게임 클라이언트 데이터에서 모아 둔 것이며 경매장 API 가 주는
-            값이 아닙니다.
-            {lookup?.updated ? ` ${lookup.updated} 기준입니다.` : ''} 게임 업데이트 직후에는 실제와
-            다를 수 있습니다.
-          </Text>
-        </>
-      )}
+      {/* 어디서 온 값인지 섞이지 않게 적는다. 경매장 API 가 주는 값이 아니다. */}
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        능력치와 개조, 세공 정보는 게임 클라이언트 데이터에서 모아 둔 것이며 경매장 API 가 주는 값이
+        아닙니다.
+        {lookup?.updated ? ` ${lookup.updated} 기준입니다.` : ''} 게임 업데이트 직후에는 실제와 다를
+        수 있습니다.
+      </Text>
     </Flex>
   );
 }

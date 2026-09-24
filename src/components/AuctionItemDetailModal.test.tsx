@@ -126,12 +126,12 @@ describe('매물 상세 모달', () => {
     expect(screen.queryByText('남은 시간')).not.toBeInTheDocument();
   });
 
-  it('장비면 같은 장비의 시뮬레이터로 가는 단추를 둔다', () => {
+  it('장비면 사전의 장비 시뮬레이터로 가는 단추를 둔다', () => {
     renderModal(DETAIL);
 
     const link = screen.getByRole('link', { name: /장비 시뮬레이터/ });
     // 경매장 이름 앞의 @ 는 떼고 사전 이름으로 보낸다.
-    expect(link).toHaveAttribute('href', '/equipment?category=%EA%B2%80&name=%EA%B8%80%EB%9D%BC%EB%94%94%EC%9A%B0%EC%8A%A4');
+    expect(link).toHaveAttribute('href', '/dictionary?category=%EA%B2%80&name=%EA%B8%80%EB%9D%BC%EB%94%94%EC%9A%B0%EC%8A%A4');
   });
 
   it('장비가 아니면 시뮬레이터 단추가 없다', () => {

@@ -10,7 +10,7 @@ import type { EquipmentLookup } from './types';
  */
 
 /**
- * 장비 정보가 있는 카테고리. 사전의 버튼을 이 카테고리에서만 보여 준다.
+ * 장비 정보가 있는 카테고리. 사전에서 이 카테고리의 줄을 누르면 시뮬레이터가 열린다.
  *
  * 2026-09 수집 결과에서 장비 데이터가 붙은 카테고리다. "기타" 는 1,500개 남짓 중 두 개뿐이라
  * 뺐다. 거기서 버튼을 띄우면 거의 전부 빈 화면으로 간다.
@@ -54,9 +54,9 @@ export function isEquipmentCategory(category: string): boolean {
   return EQUIPMENT_CATEGORIES.has(category);
 }
 
-/** 시뮬레이터 주소. 사전과 경매장 상세 창이 같은 모양으로 만든다. */
+/** 시뮬레이터 주소. 아이템 사전 안의 상세 화면이다. 사전 목록과 경매장 상세 창이 같이 쓴다. */
 export function equipmentPath(category: string, name: string): string {
-  return `/equipment?category=${encodeURIComponent(category)}&name=${encodeURIComponent(name)}`;
+  return `/dictionary?category=${encodeURIComponent(category)}&name=${encodeURIComponent(name)}`;
 }
 
 export function canLookupEquipment(): boolean {

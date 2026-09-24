@@ -1,7 +1,8 @@
 import { useMemo, useState, type KeyboardEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import {
+  Breadcrumb,
   Button,
   Card,
   Col,
@@ -16,10 +17,12 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { QueryState } from '@/components/QueryState';
 import { matchItemNames, useCategoryItemNamesQuery, useItemIndexQuery } from '@/features/auction/dictionary';
 import { ItemCardModal, type ItemCardTarget } from '@/components/ItemCardModal';
 import { ItemIcon } from '@/components/ItemIcon';
+import { equipmentPath, isEquipmentCategory } from '@/features/equipment/api';
 import { useItemCards } from '@/features/itemcard/cards';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
@@ -40,9 +43,65 @@ interface ItemRow {
   category: string;
 }
 
+/** 카테고리 목록으로 돌아가는 주소. 비우면 카테고리를 고르기 전 화면이다. */
+const dictionaryPath = (category: string) =>
+  category ? `/dictionary?category=${encodeURIComponent(category)}` : '/dictionary';
+
+/**
+ * 아이템 사전.
+ *
+ * 카테고리와 이름을 주소에 둔다. 이름까지 있으면 그 아이템의 상세(장비면 시뮬레이터)를 보여 준다.
+ * 목록에서 상세로 갈 때는 방문 기록을 남기므로 뒤로 가기로 보던 카테고리에 돌아온다.
+ *
+ * 상세를 보는 동안에도 목록은 내리지 않고 숨겨 둔다. 검색어와 보던 쪽이 목록 안에 들어 있어서,
+ * 내렸다 다시 그리면 천 개 넘는 카테고리에서 첫 쪽부터 다시 넘겨야 한다.
+ */
 export function DictionaryPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const category = searchParams.get('category') ?? '';
+  const detailName = searchParams.get('name') ?? '';
+
+  return (
+    <>
+      {detailName ? (
+        <Flex vertical gap={20}>
+          <Flex vertical gap={6}>
+            <Title level={3} style={{ margin: 0 }}>
+              아이템 사전
+            </Title>
+            <Breadcrumb
+              items={[
+                { title: <Link to={dictionaryPath('')}>전체</Link> },
+                ...(category ? [{ title: <Link to={dictionaryPath(category)}>{category}</Link> }] : []),
+                { title: detailName },
+              ]}
+            />
+          </Flex>
+          {/* 다른 아이템으로 넘어가면 받아 둔 것과 고른 것을 새로 시작한다. */}
+          <EquipmentDetail key={`${category}\u0000${detailName}`} category={category} name={detailName} />
+        </Flex>
+      ) : null}
+
+      <div hidden={detailName !== ''}>
+        <DictionaryList
+          category={category}
+          // 카테고리를 바꿀 때마다 방문 기록이 쌓이면 뒤로 가기가 쓸모없어진다. 자리만 바꾼다.
+          onCategoryChange={(next) => setSearchParams(next ? { category: next } : {}, { replace: true })}
+        />
+      </div>
+    </>
+  );
+}
+
+function DictionaryList({
+  category,
+  onCategoryChange: setCategory,
+}: {
+  category: string;
+  onCategoryChange: (category: string) => void;
+}) {
+  const navigate = useNavigate();
   const indexQuery = useItemIndexQuery();
-  const [category, setCategory] = useState('');
   const [keyword, setKeyword] = useState('');
   const [opened, setOpened] = useState<ItemCardTarget | null>(null);
 
@@ -78,17 +137,25 @@ export function DictionaryPage() {
   const cardOf = useItemCards(cardKeys);
 
   /**
-   * 줄을 누르면 상세 창을 연다. 경매장과 같다. 키보드로도 닿아야 하므로 줄에 초점을 주고
-   * Enter 와 Space 를 받는다.
+   * 줄을 누르면 상세를 연다. 장비는 사전 안의 시뮬레이터로 넘어가고, 나머지는 경매장처럼 창을
+   * 띄운다. 장비가 아니면 보여 줄 것이 그림과 설명뿐이라 화면을 옮길 이유가 없다.
+   * 키보드로도 닿아야 하므로 줄에 초점을 주고 Enter 와 Space 를 받는다.
    */
+  const open = (row: ItemRow) => {
+    if (isEquipmentCategory(row.category)) {
+      // 목록 아래쪽에서 눌러도 상세는 맨 위부터 보이게 한다.
+      window.scrollTo({ top: 0 });
+      navigate(equipmentPath(row.category, row.name));
+    } else setOpened({ category: row.category, name: row.name });
+  };
   const openRow = (row: ItemRow) => ({
     tabIndex: 0,
     style: { cursor: 'pointer' },
-    onClick: () => setOpened({ category: row.category, name: row.name }),
+    onClick: () => open(row),
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
-      setOpened({ category: row.category, name: row.name });
+      open(row);
     },
   });
 
@@ -197,8 +264,9 @@ export function DictionaryPage() {
             <Flex vertical gap={16}>
               <Card variant="outlined" size="small">
                 <Form layout="vertical" style={{ marginBottom: 0 }}>
-                  <Form.Item label="이름으로 찾기" style={{ marginBottom: 0 }}>
+                  <Form.Item label="이름으로 찾기" htmlFor="dictionary-keyword" style={{ marginBottom: 0 }}>
                     <Input
+                      id="dictionary-keyword"
                       value={keyword}
                       onChange={(event) => setKeyword(event.target.value)}
                       placeholder="예: 소드"
@@ -222,6 +290,9 @@ export function DictionaryPage() {
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {category} <span className="tnum">{formatNumber(names.length)}</span>개 가운데{' '}
                     <span className="tnum">{formatNumber(rows.length)}</span>개를 보고 있습니다.
+                    {isEquipmentCategory(category)
+                      ? ' 줄을 누르면 개조, 세공, 랜덤 능력치를 골라 보는 장비 시뮬레이터가 열립니다.'
+                      : ''}
                   </Text>
                   <Table<ItemRow>
                     columns={columns}

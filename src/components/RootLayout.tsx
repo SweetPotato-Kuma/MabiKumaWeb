@@ -11,7 +11,6 @@ import {
   ShoppingOutlined,
   SunOutlined,
   TagOutlined,
-  ToolOutlined,
 } from '@ant-design/icons';
 import {
   Button,
@@ -47,7 +46,6 @@ type NavItem = { key: string; icon: ReactNode; label: ReactNode; children?: NavI
 const NAV_ITEMS: NavItem[] = [
   { key: '/auction', icon: <TagOutlined />, label: <NavLink to="/auction">경매장</NavLink> },
   { key: '/dictionary', icon: <BookOutlined />, label: <NavLink to="/dictionary">아이템 사전</NavLink> },
-  { key: '/equipment', icon: <ToolOutlined />, label: <NavLink to="/equipment">장비 시뮬레이터</NavLink> },
   {
     key: 'npc-shop',
     icon: <ShopOutlined />,
