@@ -24,6 +24,9 @@
  *   ICONS            (R2 바인딩, 카드 기능에 필수) 아이콘 PNG. 1만 장이 넘어 KV 로는 감당이 안 된다
  *   CARD_RATE_LIMIT  (Rate limiting 바인딩, 선택) 있으면 카드 조회 횟수를 제한한다
  *
+ * 장비 정보(GET /item-equip, PUT /item-equip/shard)도 같은 KV 와 같은 운영자 키, 같은 조회
+ * 제한을 쓴다. 새로 붙일 바인딩은 없다.
+ *
  * 읽기는 공개다. 사전 화면이 모든 방문자에게 아이콘을 보여 주므로 숨길 수가 없다.
  * 잠그는 것은 쓰기뿐이다.
  */
@@ -49,6 +52,23 @@ const CARD_LOOKUP_PATH = '/item-card/lookup';
 const CARD_ICONS_PATH = '/item-card/icons';
 const CARD_SHARD_PATH = '/item-card/shard';
 const ICON_PATH_PREFIX = '/item-card/icons/';
+
+/**
+ * 장비 정보(기본 능력치, 랜덤 능력치, 개조, 세공, 특별 개조) 경로.
+ *
+ * 카드와 같은 원칙이다. 방문자는 아이템 하나씩만 물을 수 있고 그 조회에 횟수 제한이 걸린다.
+ * 운영자는 카테고리 한 칸을 통째로 갈아 끼운다. 개조와 세공 정의는 여러 아이템이 같이 쓰므로
+ * 칸 안에 한 번씩만 두고, 조회할 때 그 아이템에 붙는 것만 골라 싣는다.
+ */
+const EQUIP_PATH = '/item-equip';
+const EQUIP_SHARD_PATH = '/item-equip/shard';
+const EQUIP_KEY_PREFIX = 'equip:';
+
+/**
+ * 장비 칸 하나의 상한. 가장 큰 칸(천옷)이 2026-09 기준 1MB 남짓이다. 넉넉히 잡되, 실수로
+ * 엉뚱한 것을 통째로 밀어 넣는 일은 막는다. 무료 플랜 CPU 10ms 안에서 풀어야 하는 크기이기도 하다.
+ */
+const EQUIP_SHARD_MAX_BYTES = 4 * 1024 * 1024;
 
 /** 한 번에 물어볼 수 있는 이름 수. 사전 한 쪽(50행)보다 조금 넉넉하게 둔다. */
 const LOOKUP_MAX_NAMES = 60;
@@ -534,29 +554,39 @@ function shardCacheOf(env) {
   return cache;
 }
 
-function rememberShard(env, key, cards) {
+/** 카드 칸과 장비 칸이 같이 쓴다. KV 키 앞머리가 달라 섞이지 않는다. */
+function rememberShard(env, key, value) {
   const cache = shardCacheOf(env);
   cache.delete(key);
-  cache.set(key, { at: Date.now(), cards });
+  cache.set(key, { at: Date.now(), value });
   while (cache.size > SHARD_CACHE_MAX) cache.delete(cache.keys().next().value);
 }
 
-/** 칸 하나. `fromMemory` 는 KV 까지 가지 않았는지. 응답 머리에 실어 운영에서 확인한다. */
-async function readShardWithSource(env, category) {
-  const key = await shardKey(category);
+/**
+ * KV 값 하나를 메모리를 거쳐 읽는다. `pick` 은 저장된 JSON 에서 들고 있을 부분만 고른다.
+ * `fromMemory` 는 KV 까지 가지 않았는지. 응답 머리에 실어 운영에서 확인한다.
+ */
+async function readCachedKv(env, key, pick) {
   const cache = shardCacheOf(env);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < SHARD_CACHE_MS) {
     // 최근에 쓴 것을 뒤로 보낸다. 넘칠 때 오래 안 쓴 칸부터 버리려는 것이다.
     cache.delete(key);
     cache.set(key, hit);
-    return { cards: hit.cards, fromMemory: true };
+    return { value: hit.value, fromMemory: true };
   }
 
-  const stored = await env.ITEM_CARDS.get(key, 'json');
-  const cards = Array.isArray(stored?.cards) ? stored.cards : [];
-  rememberShard(env, key, cards);
-  return { cards, fromMemory: false };
+  const value = pick(await env.ITEM_CARDS.get(key, 'json'));
+  rememberShard(env, key, value);
+  return { value, fromMemory: false };
+}
+
+/** 카드 칸 하나. */
+async function readShardWithSource(env, category) {
+  const { value, fromMemory } = await readCachedKv(env, await shardKey(category), (stored) =>
+    Array.isArray(stored?.cards) ? stored.cards : [],
+  );
+  return { cards: value, fromMemory };
 }
 
 async function readShard(env, category) {
@@ -983,6 +1013,128 @@ async function deleteCard(url, env, cors) {
   });
 }
 
+async function equipKey(category) {
+  return `${EQUIP_KEY_PREFIX}${(await sha256Hex(category)).slice(0, 8)}`;
+}
+
+const isPlainObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** 세공 옵션이 이 장비에 붙는지. 장비 종류가 맞고, 종족이 하나라도 겹쳐야 한다. */
+function abilityFits(ability, reforge) {
+  if (!Array.isArray(ability?.types) || !ability.types.includes(reforge.type)) return false;
+  const races = String(ability.races ?? '');
+  return [...String(reforge.races ?? '')].some((race) => races.includes(race));
+}
+
+/**
+ * 장비 한 개. 방문자가 쓰는 읽기 경로다.
+ *
+ * 칸에는 개조와 세공 정의가 카테고리 전체 몫으로 들어 있다. 그대로 내주면 한 번 조회로
+ * 카테고리를 통째로 가져가는 셈이라, 이 아이템에 붙는 것만 골라 싣는다.
+ */
+async function lookupEquipment(request, url, env, cors) {
+  const jsonHeaders = {
+    ...cors,
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+  };
+  if (!env.ITEM_CARDS)
+    return new Response(JSON.stringify({ item: null }), { headers: jsonHeaders });
+
+  const category = cleanText(url.searchParams.get('category'), CARD_NAME_MAX);
+  const name = cleanText(url.searchParams.get('name'), CARD_NAME_MAX);
+  if (!category) return errorResponse('EQUIP_CATEGORY_REQUIRED', '카테고리가 없습니다.', 400, cors);
+  if (!name) return errorResponse('EQUIP_NAME_REQUIRED', '아이템 이름이 없습니다.', 400, cors);
+
+  if (env.CARD_RATE_LIMIT) {
+    const key = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const { success } = await env.CARD_RATE_LIMIT.limit({ key });
+    if (!success)
+      return errorResponse('EQUIP_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
+  }
+
+  const { value: shard, fromMemory } = await readCachedKv(
+    env,
+    await equipKey(category),
+    (stored) => (isPlainObject(stored?.items) ? stored : null),
+  );
+  const record = shard?.items?.[name];
+  if (!isPlainObject(record)) {
+    return new Response(JSON.stringify({ item: null }), { headers: jsonHeaders });
+  }
+
+  const upgrades = {};
+  for (const id of record.upgrade?.ids ?? []) {
+    const def = shard.upgrades?.[id];
+    if (def) upgrades[id] = def;
+  }
+
+  const abilities = [];
+  if (record.reforge) {
+    for (const [id, ability] of Object.entries(shard.abilities ?? {})) {
+      if (abilityFits(ability, record.reforge)) abilities.push({ id: Number(id), ...ability });
+    }
+  }
+
+  const body = {
+    item: { ...record, name, category },
+    upgrades,
+    abilities,
+    levels: record.reforge ? (shard.levels ?? []) : [],
+    updated: shard.updated ?? '',
+  };
+
+  return new Response(JSON.stringify(body), {
+    headers: { ...jsonHeaders, 'x-equip-shard': fromMemory ? 'memory' : 'kv' },
+  });
+}
+
+/** 장비 칸 하나를 통째로 갈아 끼운다. 운영자가 한꺼번에 등록할 때 쓰는 경로다. */
+async function putEquipShard(request, env, cors) {
+  const raw = await request.text();
+  if (raw.length > EQUIP_SHARD_MAX_BYTES) {
+    return errorResponse('EQUIP_TOO_LARGE', '장비 칸이 너무 큽니다.', 413, cors);
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return errorResponse('EQUIP_INVALID_BODY', '보낸 내용을 읽지 못했습니다.', 400, cors);
+  }
+
+  const category = cleanText(payload?.category, CARD_NAME_MAX);
+  if (!category) return errorResponse('EQUIP_CATEGORY_REQUIRED', '카테고리가 없습니다.', 400, cors);
+  if (!isPlainObject(payload.items)) {
+    return errorResponse('EQUIP_ITEMS_REQUIRED', '아이템 목록이 없습니다.', 400, cors);
+  }
+
+  const count = Object.keys(payload.items).length;
+  await env.ITEM_CARDS.put(
+    await equipKey(category),
+    JSON.stringify({
+      category,
+      updated: new Date().toISOString().slice(0, 10),
+      count,
+      items: payload.items,
+      upgrades: isPlainObject(payload.upgrades) ? payload.upgrades : {},
+      abilities: isPlainObject(payload.abilities) ? payload.abilities : {},
+      levels: Array.isArray(payload.levels) ? payload.levels : [],
+    }),
+  );
+  // 이 인스턴스가 들고 있던 옛 칸은 버린다. 방금 올린 사람이 옛 것을 보지 않게.
+  shardCacheOf(env).delete(await equipKey(category));
+
+  return new Response(JSON.stringify({ category, count }), {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -1034,6 +1186,24 @@ export default {
         return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
       }
       return lookupCards(request, env, cors);
+    }
+
+    // 장비 정보 읽기. 아이템 하나씩만 돌려준다.
+    if (url.pathname === EQUIP_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('EQUIP_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return lookupEquipment(request, url, env, cors);
+    }
+
+    // 장비 칸 쓰기는 운영자만.
+    if (url.pathname === EQUIP_SHARD_PATH) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      if (request.method !== 'PUT') {
+        return errorResponse('EQUIP_METHOD_NOT_ALLOWED', 'PUT 으로 보내 주세요.', 405, cors);
+      }
+      return putEquipShard(request, env, cors);
     }
 
     // 여기부터는 운영자만. 키가 맞지 않으면 아래로 내려가지 않는다.

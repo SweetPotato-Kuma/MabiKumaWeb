@@ -640,3 +640,126 @@ describe('일괄 등록 경로', () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('장비 정보', () => {
+  /** 한손검 하나와 그 칸에 딸린 개조, 세공 정의. 실제 수집 결과와 같은 모양이다. */
+  function equipShard() {
+    return {
+      category: '검',
+      items: {
+        '소울 리버레이트 소드': {
+          id: 1000059,
+          base: { attack_min: 89, attack_max: 139, critical: 10, balance: 77, durability: 20 },
+          random: [['attack_min', 0, 10]],
+          upgrade: { max: 5, gemMax: 1, ids: [52500] },
+          reforge: { type: 'OHSword', races: 'heg' },
+          special: { s: 201, r: 301, max: 8 },
+        },
+      },
+      upgrades: {
+        52500: { name: '검신 다듬기1', stats: [['attack_max', 14, 14]], min: 1, max: 1 },
+        99999: { name: '다른 아이템의 개조', stats: [], min: 0, max: 0 },
+      },
+      abilities: {
+        1: { name: '체력', types: ['OHSword', 'THSword'], races: 'heg', lv: [20, 10, 5] },
+        2: { name: '양손검 전용', types: ['THSword'], races: 'heg', lv: [20, 10, 5] },
+        3: { name: '자이언트 전용', types: ['OHSword'], races: 'g', lv: [20, 10, 5] },
+      },
+      levels: [[20, 1, 5, 1, 10, 1, 20, 21, 25]],
+    };
+  }
+
+  const lookup = (category, name) =>
+    call(`/item-equip?category=${encodeURIComponent(category)}&name=${encodeURIComponent(name)}`);
+
+  it('올린 장비를 하나씩 꺼낸다', async () => {
+    const put = await call('/item-equip/shard', {
+      method: 'PUT',
+      adminKey: ADMIN_KEY,
+      body: equipShard(),
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toMatchObject({ category: '검', count: 1 });
+
+    const body = await (await lookup('검', '소울 리버레이트 소드')).json();
+    expect(body.item).toMatchObject({ id: 1000059, name: '소울 리버레이트 소드', category: '검' });
+    expect(body.levels).toHaveLength(1);
+  });
+
+  it('그 아이템에 붙는 개조와 세공만 싣는다', async () => {
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: equipShard() });
+
+    const body = await (await lookup('검', '소울 리버레이트 소드')).json();
+    expect(Object.keys(body.upgrades)).toEqual(['52500']);
+    // 양손검 전용은 종류가 달라서, 자이언트 전용은 종족이 겹쳐서 붙는다.
+    expect(body.abilities.map((ability) => ability.id).sort()).toEqual([1, 3]);
+  });
+
+  it('종족이 하나도 겹치지 않는 세공은 뺀다', async () => {
+    const shard = equipShard();
+    shard.items['소울 리버레이트 소드'].reforge.races = 'he';
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: shard });
+
+    const body = await (await lookup('검', '소울 리버레이트 소드')).json();
+    expect(body.abilities.map((ability) => ability.id)).toEqual([1]);
+  });
+
+  it('없는 아이템은 빈 자리로 답한다', async () => {
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: equipShard() });
+
+    const response = await lookup('검', '없는 검');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ item: null });
+  });
+
+  it('칸을 다시 올리면 들고 있던 옛 칸 대신 새 칸을 읽는다', async () => {
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: equipShard() });
+    await lookup('검', '소울 리버레이트 소드');
+
+    const shard = equipShard();
+    shard.items['소울 리버레이트 소드'].base.attack_max = 150;
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: shard });
+
+    const body = await (await lookup('검', '소울 리버레이트 소드')).json();
+    expect(body.item.base.attack_max).toBe(150);
+  });
+
+  it('카드 칸과 섞이지 않는다', async () => {
+    await call('/item-card', {
+      method: 'POST',
+      body: cardBody({ category: '검' }),
+      adminKey: ADMIN_KEY,
+    });
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: equipShard() });
+
+    const found = await (
+      await call('/item-card/lookup', {
+        method: 'POST',
+        body: { category: '검', names: ["'도' 음 빈 병"] },
+      })
+    ).json();
+    expect(found.cards).toHaveLength(1);
+  });
+
+  it('칸 쓰기에는 키가 필요하다', async () => {
+    const response = await call('/item-equip/shard', { method: 'PUT', body: equipShard() });
+    expect(response.status).toBe(401);
+  });
+
+  it('카테고리나 이름이 없으면 거절한다', async () => {
+    expect((await call('/item-equip?name=x')).status).toBe(400);
+    expect((await call('/item-equip?category=x')).status).toBe(400);
+  });
+
+  it('조회 횟수 제한에 걸리면 429 다', async () => {
+    env.CARD_RATE_LIMIT = { limit: async () => ({ success: false }) };
+    expect((await lookup('검', '소울 리버레이트 소드')).status).toBe(429);
+  });
+
+  it('허용하지 않은 출처는 막는다', async () => {
+    const response = await call('/item-equip?category=검&name=x', {
+      origin: 'https://evil.example',
+    });
+    expect(response.status).toBe(403);
+  });
+});

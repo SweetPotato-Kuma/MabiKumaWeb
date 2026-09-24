@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined, ToolOutlined } from '@ant-design/icons';
 import { Button, Empty, Flex, Modal, Skeleton, Typography } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
+import { equipmentPath, isEquipmentCategory } from '@/features/equipment/api';
 import {
   isCardStoreConfigured,
   useItemCard,
@@ -57,14 +58,19 @@ export function ItemCardModal({ item, onClose }: ItemCardModalProps) {
             />
           ) : null}
 
-          <div>
+          <Flex gap={8} wrap>
             <Link
               to={`/auction?keyword=${encodeURIComponent(item.name)}&category=${encodeURIComponent(item.category)}`}
               onClick={onClose}
             >
               <Button icon={<SearchOutlined />}>시세 보기</Button>
             </Link>
-          </div>
+            {isEquipmentCategory(item.category) ? (
+              <Link to={equipmentPath(item.category, item.name)} onClick={onClose}>
+                <Button icon={<ToolOutlined />}>장비 시뮬레이터</Button>
+              </Link>
+            ) : null}
+          </Flex>
 
           {/* 어디서 온 값인지 섞이지 않게 적는다. 사전의 그림과 설명은 경매장 응답이 아니다. */}
           <Text type="secondary" style={{ fontSize: 12 }}>

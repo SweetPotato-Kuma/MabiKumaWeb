@@ -3,6 +3,7 @@ import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
 import { DictionaryPage } from '@/pages/DictionaryPage';
+import { EquipmentPage } from '@/pages/EquipmentPage';
 import { BagsPage } from '@/pages/BagsPage';
 import { MagmellPassPage } from '@/pages/MagmellPassPage';
 import { ItemCardPage } from '@/pages/ItemCardPage';
@@ -29,6 +30,7 @@ export const router = createBrowserRouter(
         { index: true, element: <Navigate to="/auction" replace /> },
         { path: 'auction', element: <AuctionPage /> },
         { path: 'dictionary', element: <DictionaryPage /> },
+        { path: 'equipment', element: <EquipmentPage /> },
         // 예전 NPC 상점 화면 주소. 그 자리는 NPC 상점 메뉴의 첫 항목인 주머니 찾기가 이어받는다.
         { path: 'npc-shop', element: <Navigate to="/bags" replace /> },
         { path: 'bags', element: <BagsPage /> },
