@@ -1,5 +1,6 @@
 import { Flex, Form, Segmented, Select, Typography } from 'antd';
 import type { SpecialKind } from '@/features/equipment/simulate';
+import { describeSpecialStep, specialStep } from '@/features/equipment/specialUpgrade';
 import type { EquipmentRecord } from '@/features/equipment/types';
 
 const { Text } = Typography;
@@ -14,10 +15,10 @@ interface SpecialUpgradePanelProps {
 type KindChoice = SpecialKind | 'none';
 
 /**
- * 특별 개조. 종류(S, R)와 단계만 고른다.
+ * 특별 개조. 종류(S, R)와 단계를 고른다.
  *
- * 게임 데이터에는 이 장비가 어느 특별 개조 종류를 받는지와 단계 상한만 있고 단계별 수치 표는
- * 없다. 그래서 능력치 표에 더하지 않는다. 수치를 지어내 넣느니 비워 두는 편이 맞다.
+ * 단계별 수치는 게임 데이터에 없어 공개된 커뮤니티 표를 옮겼다(`specialUpgrade.ts`). 그 표에
+ * 비어 있는 단계는 최종 능력치에 더하지 않고, 비어 있다고 적는다.
  */
 export function SpecialUpgradePanel({ special, kind, level, onChange }: SpecialUpgradePanelProps) {
   const choices = [
@@ -29,6 +30,7 @@ export function SpecialUpgradePanel({ special, kind, level, onChange }: SpecialU
     value: index + 1,
     label: `${index + 1}단계`,
   }));
+  const step = kind ? specialStep(kind, kind === 's' ? special.s : special.r, level) : undefined;
 
   return (
     <Flex vertical gap={12}>
@@ -57,10 +59,12 @@ export function SpecialUpgradePanel({ special, kind, level, onChange }: SpecialU
         </Flex>
       </Form>
 
+      {kind ? <Text className="tnum">{describeSpecialStep(step)}</Text> : null}
+
       <Text type="secondary" style={{ fontSize: 12 }}>
-        S 개조는 푸른 개조석으로 무기 자체의 능력치를, R 개조는 붉은 개조석으로 크리티컬 대미지를
-        올립니다. 이 장비는 {special.max}단계까지 받을 수 있습니다. 단계별 수치는 게임 데이터에 적혀
-        있지 않아 위 능력치 표에는 더하지 않았습니다.
+        S 개조는 푸른 개조석으로 공격력과 보너스 대미지를, R 개조는 붉은 개조석으로 크리티컬
+        대미지를 올립니다. 이 장비는 {special.max}단계까지 받을 수 있습니다. 단계별 수치는 게임
+        데이터에 없어 공개된 커뮤니티 표를 옮겼으며, 그 표가 오래되어 실제와 다를 수 있습니다.
       </Text>
     </Flex>
   );

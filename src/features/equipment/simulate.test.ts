@@ -4,11 +4,12 @@ import {
   decodeState,
   encodeState,
   initialState,
+  selectedSpecial,
   selectedUpgrades,
   upgradeCost,
   upgradesForSlot,
 } from './simulate';
-import type { AbilityDef, EquipmentRecord, LevelRow, UpgradeDef } from './types';
+import type { AbilityDef, EnchantDef, EquipmentRecord, LevelRow, UpgradeDef } from './types';
 
 /** 소울 리버레이트 소드. 2026-09 게임 데이터에서 뽑은 값을 줄여 옮겼다. */
 const SWORD: EquipmentRecord = {
@@ -95,6 +96,30 @@ const ABILITIES: AbilityDef[] = [
 ];
 const LEVELS: LevelRow[] = [[10, 1, 3, 1, 6, 1, 10, 11, 12]];
 
+/** 거침없는(접두)과 파머(접미). 효과는 2026-09 게임 데이터 그대로다. */
+const ENCHANTS: EnchantDef[] = [
+  {
+    id: 21643,
+    name: '거침없는',
+    slot: 0,
+    level: 10,
+    desc: ['윈드밀 랭크 3단 이상일 때 최대 대미지 50~60 증가', '최대 생명력 100 증가'],
+    effects: [
+      ['attack_max', 50, 60, 1],
+      ['life_max', 100, 100],
+    ],
+    personal: true,
+  },
+  {
+    id: 10604,
+    name: '파머',
+    slot: 1,
+    level: 1,
+    desc: ['[체력 1~3 감소]'],
+    effects: [['str', -3, -1]],
+  },
+];
+
 describe('개조 칸', () => {
   it('칸 번호에 맞는 일반 개조만 고를 수 있다', () => {
     const first = upgradesForSlot(SWORD, UPGRADES, 0, false).map(([id]) => id);
@@ -121,7 +146,7 @@ describe('능력치 합산', () => {
   it('아무것도 고르지 않으면 기본 능력치에 랜덤 최솟값을 더한 값이다', () => {
     const rows = computeStats(SWORD, UPGRADES, initialState(SWORD));
     const attackMax = rows.find((row) => row.stat === 'attack_max');
-    expect(attackMax).toMatchObject({ base: 139, random: 0, totalMin: 139, totalMax: 139 });
+    expect(attackMax).toMatchObject({ base: 139, random: 0, total: [139, 139] });
   });
 
   it('랜덤 값과 고른 개조를 칸별로 나눠 더한다', () => {
@@ -134,13 +159,12 @@ describe('능력치 합산', () => {
     expect(attackMax).toMatchObject({
       base: 139,
       random: 10,
-      upgradeMin: 46,
-      totalMin: 195,
-      totalMax: 195,
+      upgrade: [46, 46],
+      total: [195, 195],
     });
 
     const balance = computeStats(SWORD, UPGRADES, state).find((row) => row.stat === 'balance');
-    expect(balance?.totalMin).toBe(75);
+    expect(balance?.total[0]).toBe(75);
   });
 
   it('게임 표기 순서로 늘어놓는다', () => {
@@ -177,6 +201,55 @@ describe('능력치 합산', () => {
   });
 });
 
+describe('인챈트와 특별 개조', () => {
+  it('고른 인챈트의 효과를 인챈트 칸에 범위로 더한다', () => {
+    const state = initialState(SWORD);
+    state.enchant = { prefix: 21643, suffix: 10604, conditional: true };
+
+    const rows = computeStats(SWORD, UPGRADES, state, ENCHANTS);
+    expect(rows.find((row) => row.stat === 'attack_max')).toMatchObject({
+      enchant: [50, 60],
+      total: [189, 199],
+    });
+    expect(rows.find((row) => row.stat === 'str')).toMatchObject({
+      enchant: [-3, -1],
+      total: [-3, -1],
+    });
+  });
+
+  it('조건 붙은 효과를 빼라고 하면 조건 없는 효과만 더한다', () => {
+    const state = initialState(SWORD);
+    state.enchant = { prefix: 21643, suffix: null, conditional: false };
+
+    const rows = computeStats(SWORD, UPGRADES, state, ENCHANTS);
+    expect(rows.find((row) => row.stat === 'attack_max')?.enchant).toEqual([0, 0]);
+    expect(rows.find((row) => row.stat === 'life_max')?.total).toEqual([100, 100]);
+  });
+
+  it('특별 개조 S 는 종류 번호의 표에서 단계 수치를 더한다', () => {
+    const state = initialState(SWORD);
+    state.special = { kind: 's', level: 7 };
+
+    // S201 한손 무기 7단계: 최소 +60, 최대 +120, 보너스 대미지 +5%
+    const rows = computeStats(SWORD, UPGRADES, state, ENCHANTS);
+    expect(rows.find((row) => row.stat === 'attack_max')).toMatchObject({
+      special: 120,
+      total: [259, 259],
+    });
+    expect(rows.find((row) => row.stat === 'bonus_damage')?.total).toEqual([5, 5]);
+  });
+
+  it('표에 비어 있는 단계는 아무것도 더하지 않는다', () => {
+    const state = initialState(SWORD);
+    state.special = { kind: 'r', level: 8 };
+
+    expect(selectedSpecial(SWORD, state)).toBeNull();
+    expect(
+      computeStats(SWORD, UPGRADES, state).find((row) => row.stat === 'critical_damage'),
+    ).toBeUndefined();
+  });
+});
+
 describe('링크로 저장하고 불러오기', () => {
   it('고른 조합이 주소를 한 바퀴 돌아도 그대로다', () => {
     const state = initialState(SWORD);
@@ -185,9 +258,10 @@ describe('링크로 저장하고 불러오기', () => {
     state.gemSlots = [52472];
     state.reforge = { rank: 1, options: [{ abilityId: 1, level: 12 }] };
     state.special = { kind: 'r', level: 7 };
+    state.enchant = { prefix: 21643, suffix: 10604, conditional: false };
 
     const params = encodeState(SWORD, state);
-    expect(decodeState(params, SWORD, UPGRADES, ABILITIES, LEVELS)).toEqual(state);
+    expect(decodeState(params, SWORD, UPGRADES, ABILITIES, LEVELS, ENCHANTS)).toEqual(state);
   });
 
   it('고른 것이 없으면 주소에 아무것도 붙이지 않는다', () => {
@@ -209,5 +283,10 @@ describe('링크로 저장하고 불러오기', () => {
     // 3랭크 최대 레벨은 3이다. 없는 옵션 777 은 버린다.
     expect(state.reforge).toEqual({ rank: 3, options: [{ abilityId: 1, level: 3 }] });
     expect(state.special).toEqual({ kind: 's', level: 8 });
+  });
+
+  it('접두 자리에 접미 인챈트를 넣은 주소는 버린다', () => {
+    const state = decodeState({ en: '10604.21643' }, SWORD, UPGRADES, ABILITIES, LEVELS, ENCHANTS);
+    expect(state.enchant).toEqual({ prefix: null, suffix: null, conditional: true });
   });
 });

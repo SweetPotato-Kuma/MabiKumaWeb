@@ -1077,10 +1077,19 @@ async function lookupEquipment(request, url, env, cors) {
     }
   }
 
+  // 인챈트는 같은 목록을 쓰는 아이템끼리 묶음 번호 하나로 가리킨다. 여기서 풀어 싣는다.
+  const enchants = [];
+  const group = record.enchants === undefined ? null : shard.enchantGroups?.[record.enchants];
+  for (const id of Array.isArray(group) ? group : []) {
+    const def = shard.enchants?.[id];
+    if (def) enchants.push({ id: Number(id), ...def });
+  }
+
   const body = {
     item: { ...record, name, category },
     upgrades,
     abilities,
+    enchants,
     levels: record.reforge ? (shard.levels ?? []) : [],
     updated: shard.updated ?? '',
   };
@@ -1121,6 +1130,8 @@ async function putEquipShard(request, env, cors) {
       upgrades: isPlainObject(payload.upgrades) ? payload.upgrades : {},
       abilities: isPlainObject(payload.abilities) ? payload.abilities : {},
       levels: Array.isArray(payload.levels) ? payload.levels : [],
+      enchants: isPlainObject(payload.enchants) ? payload.enchants : {},
+      enchantGroups: isPlainObject(payload.enchantGroups) ? payload.enchantGroups : {},
     }),
   );
   // 이 인스턴스가 들고 있던 옛 칸은 버린다. 방금 올린 사람이 옛 것을 보지 않게.

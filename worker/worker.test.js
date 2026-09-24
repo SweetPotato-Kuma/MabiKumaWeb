@@ -654,8 +654,16 @@ describe('장비 정보', () => {
           upgrade: { max: 5, gemMax: 1, ids: [52500] },
           reforge: { type: 'OHSword', races: 'heg' },
           special: { s: 201, r: 301, max: 8 },
+          enchants: 0,
         },
+        '인챈트 없는 검': { id: 1, base: { attack_max: 10 } },
       },
+      enchants: {
+        21643: { name: '거침없는', slot: 0, level: 10, desc: ['최대 생명력 100 증가'], effects: [] },
+        21538: { name: '충돌의', slot: 0, level: 12, desc: [], effects: [] },
+        10604: { name: '파머', slot: 1, level: 1, desc: [], effects: [] },
+      },
+      enchantGroups: { 0: [21643, 10604] },
       upgrades: {
         52500: { name: '검신 다듬기1', stats: [['attack_max', 14, 14]], min: 1, max: 1 },
         99999: { name: '다른 아이템의 개조', stats: [], min: 0, max: 0 },
@@ -679,7 +687,7 @@ describe('장비 정보', () => {
       body: equipShard(),
     });
     expect(put.status).toBe(200);
-    expect(await put.json()).toMatchObject({ category: '검', count: 1 });
+    expect(await put.json()).toMatchObject({ category: '검', count: 2 });
 
     const body = await (await lookup('검', '소울 리버레이트 소드')).json();
     expect(body.item).toMatchObject({ id: 1000059, name: '소울 리버레이트 소드', category: '검' });
@@ -693,6 +701,21 @@ describe('장비 정보', () => {
     expect(Object.keys(body.upgrades)).toEqual(['52500']);
     // 양손검 전용은 종류가 달라서, 자이언트 전용은 종족이 겹쳐서 붙는다.
     expect(body.abilities.map((ability) => ability.id).sort()).toEqual([1, 3]);
+  });
+
+  it('인챈트는 그 아이템의 묶음에 든 것만 풀어 싣는다', async () => {
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: equipShard() });
+
+    const body = await (await lookup('검', '소울 리버레이트 소드')).json();
+    expect(body.enchants.map((enchant) => enchant.id).sort()).toEqual([10604, 21643]);
+    expect(body.enchants.find((enchant) => enchant.id === 21643)).toMatchObject({ name: '거침없는' });
+  });
+
+  it('인챈트가 없는 아이템은 빈 목록이다', async () => {
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: equipShard() });
+
+    const body = await (await lookup('검', '인챈트 없는 검')).json();
+    expect(body.enchants).toEqual([]);
   });
 
   it('종족이 하나도 겹치지 않는 세공은 뺀다', async () => {

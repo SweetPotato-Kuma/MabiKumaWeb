@@ -106,5 +106,6 @@ describe('능력치 표기', () => {
 
   it('모르는 능력치는 내부 이름을 그대로 보여 준다', () => {
     expect(describeStats([['new_stat', 1, 3]])).toBe('new_stat +1~3');
+    expect(describeStats([['critical', 0, 10]])).toBe('크리티컬 +0~10%');
   });
 });

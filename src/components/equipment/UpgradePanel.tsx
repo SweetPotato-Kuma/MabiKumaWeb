@@ -1,17 +1,4 @@
-import { useMemo } from 'react';
-import {
-  Col,
-  Collapse,
-  Descriptions,
-  Flex,
-  Form,
-  Row,
-  Select,
-  Table,
-  Tag,
-  Typography,
-  type TableColumnsType,
-} from 'antd';
+import { Descriptions, Flex, Radio, Tag, Typography, theme } from 'antd';
 import { formatNumber } from '@/lib/format';
 import { selectedUpgrades, upgradeCost, upgradesForSlot } from '@/features/equipment/simulate';
 import { NON_ADDITIVE_STATS, describeStats } from '@/features/equipment/stats';
@@ -27,34 +14,43 @@ interface UpgradePanelProps {
   onChange: (slots: (number | null)[], gemSlots: (number | null)[]) => void;
 }
 
-/** 칸 번호 표기. 데이터의 "이미 한 횟수" 가 아니라 게임처럼 1 부터 센다. */
-function slotText(def: UpgradeDef): string {
-  if (def.min === def.max) return `${def.min + 1}`;
-  return `${def.min + 1}~${def.max + 1}`;
-}
-
-/** 능력치 표에 더하지 않는 칸. 체인 캐스팅은 최소/최대 칸에 스킬 번호가 들어 있다. */
+/** 표에 더하지 않는 효과. 체인 캐스팅은 최소/최대 칸에 스킬 번호가 들어 있다. */
 const extraStats = (def: UpgradeDef) => def.stats.filter(([stat]) => NON_ADDITIVE_STATS.has(stat));
 
-const hasExtras = (def: UpgradeDef) =>
-  Boolean(def.options?.length || def.lucky || extraStats(def).length);
+/** "네리스, 레이널드, 멜레스" 에 이름 모르는 NPC 수를 덧붙인다. */
+function npcText(def: UpgradeDef): string {
+  const names = def.npcs ?? [];
+  const unknown = def.npcUnknown ?? 0;
+  if (names.length === 0 && unknown === 0) return '';
+  const extra = unknown ? `${names.length ? ' 외 ' : ''}${unknown}명(이름 미확인)` : '';
+  return `${names.join(', ')}${extra}`;
+}
 
-/** 능력치 말고 글로만 적힌 효과. 장인 개조의 확률도 여기서 보여 준다. */
-function ExtraEffects({ def, withStats = false }: { def: UpgradeDef; withStats?: boolean }) {
-  if (!hasExtras(def)) return null;
-  const stats = withStats ? extraStats(def) : [];
+/** 개조 하나의 설명. 효과, 비용, 보석, 해 주는 NPC. */
+function UpgradeOption({ def }: { def: UpgradeDef }) {
+  const stats = def.stats.filter(([stat]) => !NON_ADDITIVE_STATS.has(stat));
+  const extras = extraStats(def);
+  const npcs = npcText(def);
+
   return (
-    <Flex vertical gap={2}>
-      {stats.length ? <Text style={{ fontSize: 12 }}>{describeStats(stats)}</Text> : null}
+    <Flex vertical gap={2} style={{ minWidth: 0 }}>
+      <span>
+        <Text strong>{def.name}</Text>
+        {def.personal ? (
+          <Tag bordered={false} style={{ marginInlineStart: 6 }}>
+            전용
+          </Tag>
+        ) : null}
+      </span>
+      {stats.length ? <span>{describeStats(stats)}</span> : null}
+      {extras.length ? <span>{describeStats(extras)}</span> : null}
       {def.options?.map((text) => (
-        <Text key={text} style={{ fontSize: 12 }}>
-          {text}
-        </Text>
+        <span key={text}>{text}</span>
       ))}
       {def.lucky ? (
-        <>
+        <Flex vertical gap={0}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            붙는 옵션 수:{' '}
+            결과가 확률로 정해집니다. 붙는 옵션 수{' '}
             {def.lucky.counts.map(([count, percent]) => `${count}개 ${percent}%`).join(', ')}
           </Text>
           {def.lucky.options.map(([text, percent]) => (
@@ -62,157 +58,91 @@ function ExtraEffects({ def, withStats = false }: { def: UpgradeDef; withStats?:
               {text} ({percent}%)
             </Text>
           ))}
-        </>
+        </Flex>
+      ) : null}
+      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+        숙련 {formatNumber(def.ep)}
+        {def.gold ? `, ${formatNumber(def.gold)} G` : ''}
+        {def.gems?.length
+          ? `, 보석 ${def.gems.map(([name, size]) => `${name} ${size}cm 이상`).join(' 또는 ')}`
+          : ''}
+      </Text>
+      {npcs ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          NPC {npcs}
+        </Text>
       ) : null}
     </Flex>
   );
 }
 
-function effectSummary(def: UpgradeDef): string {
-  const stats = describeStats(def.stats);
-  if (stats) return stats;
-  if (def.lucky) return '결과가 확률로 정해짐';
-  return def.options?.join(', ') ?? '';
-}
-
-interface UpgradeRow {
-  id: number;
-  def: UpgradeDef;
-}
-
 /**
- * 개조. 칸마다 할 수 있는 개조가 정해져 있어 칸별 선택으로 둔다.
- * 표로 가로 칸을 늘어놓으면 휴대폰에서 옆으로 한참 밀어야 해서 고르는 칸과 목록을 나눴다.
+ * 개조. 칸마다 할 수 있는 개조를 전부 펼쳐 두고 그 자리에서 고른다.
+ *
+ * 전에는 칸마다 드롭다운을 두고 전체 목록을 따로 접어 두었는데, 무엇이 있는지 보려면 펼쳐서 옆으로
+ * 밀어야 했다. 칸별 목록 하나로 합치면 "몇 번째에 무엇을 할 수 있나" 와 "무엇을 골랐나" 가 한곳에 있다.
  */
 export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: UpgradePanelProps) {
-  const chosen = selectedUpgrades({ slots, gemSlots }, upgrades);
-  const cost = upgradeCost(chosen);
+  const { token } = theme.useToken();
+  const cost = upgradeCost(selectedUpgrades({ slots, gemSlots }, upgrades));
 
-  const rows = useMemo<UpgradeRow[]>(
-    () =>
-      [...new Set(item.upgrade?.ids ?? [])]
-        .filter((id) => upgrades[id])
-        .map((id) => ({ id, def: upgrades[id] }))
-        .sort(
-          (a, b) =>
-            Number(Boolean(a.def.gems)) - Number(Boolean(b.def.gems)) || a.def.min - b.def.min,
-        ),
-    [item.upgrade?.ids, upgrades],
-  );
-
-  const columns: TableColumnsType<UpgradeRow> = [
-    {
-      title: '개조',
-      key: 'name',
-      render: (_, { def }) => (
-        <Flex vertical gap={2}>
-          <span>
-            {def.name}
-            {def.personal ? (
-              <Tag style={{ marginInlineStart: 6 }} bordered={false}>
-                전용
-              </Tag>
-            ) : null}
-          </span>
-          {def.desc ? (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {def.desc}
-            </Text>
-          ) : null}
-        </Flex>
-      ),
-    },
-    {
-      title: '칸',
-      key: 'slot',
-      align: 'right',
-      className: 'tnum',
-      render: (_, { def }) => (def.gems?.length ? `보석 ${slotText(def)}` : slotText(def)),
-    },
-    {
-      title: '효과',
-      key: 'effect',
-      render: (_, { def }) => (
-        <Flex vertical gap={2}>
-          {def.stats.length ? <span>{describeStats(def.stats)}</span> : null}
-          <ExtraEffects def={def} />
-        </Flex>
-      ),
-    },
-    {
-      title: '비용',
-      key: 'cost',
-      align: 'right',
-      className: 'tnum',
-      render: (_, { def }) => (
-        <Flex vertical gap={2}>
-          <span>숙련 {formatNumber(def.ep)}</span>
-          {def.gold ? <span>{formatNumber(def.gold)} G</span> : null}
-          {def.gems?.map(([name, size]) => (
-            <Text key={name} type="secondary" style={{ fontSize: 12 }}>
-              {name} {size}cm 이상
-            </Text>
-          ))}
-        </Flex>
-      ),
-    },
-  ];
-
-  const slotSelect = (slot: number, gem: boolean) => {
+  const slotGroup = (slot: number, gem: boolean) => {
     const current = gem ? gemSlots : slots;
     const candidates = upgradesForSlot(item, upgrades, slot, gem);
-    const id = `upgrade-${gem ? 'gem' : 'normal'}-${slot}`;
-    const set = (value: number | undefined) => {
+    const titleId = `upgrade-slot-${gem ? 'gem' : 'normal'}-${slot}`;
+    const set = (value: number) => {
       const next = [...current];
-      next[slot] = value ?? null;
+      next[slot] = value === 0 ? null : value;
       if (gem) onChange(slots, next);
       else onChange(next, gemSlots);
     };
 
     return (
-      <Col key={id} xs={24} md={12}>
-        <Form.Item
-          label={gem ? `보석 개조 ${slot + 1}` : `${slot + 1}번째 개조`}
-          htmlFor={id}
-          style={{ marginBottom: 0 }}
-        >
-          <Select<number>
-            id={id}
-            allowClear
-            value={current[slot] ?? undefined}
-            onChange={set}
-            placeholder={candidates.length ? '하지 않음' : '이 칸에 할 수 있는 개조가 없습니다'}
-            disabled={candidates.length === 0}
-            options={candidates.map(([upgradeId, def]) => ({
-              value: upgradeId,
-              label: def.name,
-              effect: effectSummary(def),
-            }))}
-            optionRender={(option) => (
-              <Flex vertical>
-                <span>{option.data.label}</span>
-                <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'normal' }}>
-                  {option.data.effect}
-                </Text>
-              </Flex>
-            )}
-          />
-        </Form.Item>
-      </Col>
+      <Flex key={titleId} vertical gap={8}>
+        <Text strong id={titleId}>
+          {gem ? `보석 개조 ${slot + 1}` : `${slot + 1}번째 개조`}
+        </Text>
+        {candidates.length === 0 ? (
+          <Text type="secondary">이 칸에 할 수 있는 개조가 없습니다.</Text>
+        ) : (
+          <Radio.Group
+            aria-labelledby={titleId}
+            value={current[slot] ?? 0}
+            onChange={(event) => set(Number(event.target.value))}
+            style={{ width: '100%' }}
+          >
+            <Flex vertical gap={6}>
+              <Radio value={0}>하지 않음</Radio>
+              {candidates.map(([id, def]) => {
+                const chosen = current[slot] === id;
+                return (
+                  <Radio
+                    key={id}
+                    value={id}
+                    style={{
+                      alignItems: 'flex-start',
+                      padding: '8px 10px',
+                      marginInlineEnd: 0,
+                      borderRadius: token.borderRadius,
+                      border: `1px solid ${chosen ? token.colorPrimaryBorder : token.colorBorderSecondary}`,
+                      background: chosen ? token.colorPrimaryBg : undefined,
+                    }}
+                  >
+                    <UpgradeOption def={def} />
+                  </Radio>
+                );
+              })}
+            </Flex>
+          </Radio.Group>
+        )}
+      </Flex>
     );
   };
 
-  const withExtras = chosen.filter(hasExtras);
-
   return (
-    <Flex vertical gap={16}>
-      <Form layout="vertical">
-        {/* 칸이 많아 두 단으로 나눈다. 768px 미만에서는 한 단으로 떨어진다. */}
-        <Row gutter={[16, 12]}>
-          {slots.map((_, slot) => slotSelect(slot, false))}
-          {gemSlots.map((_, slot) => slotSelect(slot, true))}
-        </Row>
-      </Form>
+    <Flex vertical gap={20}>
+      {slots.map((_, slot) => slotGroup(slot, false))}
+      {gemSlots.map((_, slot) => slotGroup(slot, true))}
 
       <Descriptions
         size="small"
@@ -227,40 +157,6 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
             key: 'gold',
             label: '수수료 합계',
             children: <span className="tnum">{formatNumber(cost.gold)} G</span>,
-          },
-        ]}
-      />
-
-      {withExtras.length > 0 ? (
-        <Flex vertical gap={8}>
-          <Text strong style={{ fontSize: 13 }}>
-            표에 더하지 않은 효과
-          </Text>
-          {withExtras.map((def, index) => (
-            <Flex key={`${def.name}-${index}`} vertical gap={2}>
-              <Text style={{ fontSize: 13 }}>{def.name}</Text>
-              <ExtraEffects def={def} withStats />
-            </Flex>
-          ))}
-        </Flex>
-      ) : null}
-
-      <Collapse
-        size="small"
-        items={[
-          {
-            key: 'all',
-            label: `이 장비의 개조 전체 (${rows.length}개)`,
-            children: (
-              <Table<UpgradeRow>
-                size="small"
-                rowKey="id"
-                columns={columns}
-                dataSource={rows}
-                pagination={false}
-                scroll={{ x: 'max-content' }}
-              />
-            ),
           },
         ]}
       />

@@ -3,29 +3,31 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { LinkOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Card, Col, Empty, Flex, Grid, Row, Typography } from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
-import { RandomStatsPanel } from '@/components/equipment/RandomStatsPanel';
+import { BaseStatsPanel } from '@/components/equipment/BaseStatsPanel';
+import { EnchantPanel } from '@/components/equipment/EnchantPanel';
+import { EquipmentPreview } from '@/components/equipment/EquipmentPreview';
 import { ReforgePanel } from '@/components/equipment/ReforgePanel';
 import { SpecialUpgradePanel } from '@/components/equipment/SpecialUpgradePanel';
-import { StatTable } from '@/components/equipment/StatTable';
 import { UpgradePanel } from '@/components/equipment/UpgradePanel';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import { QueryState } from '@/components/QueryState';
 import { canLookupEquipment, useEquipmentQuery } from '@/features/equipment/api';
 import { describeAbility } from '@/features/equipment/reforge';
 import {
+  SIMULATION_PARAM_KEYS,
   computeStats,
   decodeState,
   encodeState,
+  selectedEnchants,
+  selectedSpecial,
+  selectedUpgrades,
   type SimulationParams,
   type SimulationState,
 } from '@/features/equipment/simulate';
 import type { EquipmentLookup, EquipmentRecord } from '@/features/equipment/types';
-import { useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
+import { useItemCard, usePrefetchItemCards, type ItemCard } from '@/features/itemcard/cards';
 
 const { Text } = Typography;
-
-/** 주소에 담는 조합 칸. `simulate.ts` 의 SimulationParams 와 같은 이름이다. */
-const SIM_KEYS = ['rv', 'up', 'gm', 'rf', 'sp'] as const;
 
 function Section({
   title,
@@ -45,23 +47,28 @@ function Section({
 
 interface SimulatorProps {
   lookup: EquipmentLookup & { item: EquipmentRecord };
+  card: ItemCard | null | undefined;
   params: SimulationParams;
   onParamsChange: (params: SimulationParams) => void;
 }
 
-function Simulator({ lookup, params, onParamsChange }: SimulatorProps) {
+function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const { item } = lookup;
   const upgrades = useMemo(() => lookup.upgrades ?? {}, [lookup.upgrades]);
   const abilities = useMemo(() => lookup.abilities ?? [], [lookup.abilities]);
   const levels = useMemo(() => lookup.levels ?? [], [lookup.levels]);
+  const enchants = useMemo(() => lookup.enchants ?? [], [lookup.enchants]);
 
   const state = useMemo(
-    () => decodeState(params, item, upgrades, abilities, levels),
-    [params, item, upgrades, abilities, levels],
+    () => decodeState(params, item, upgrades, abilities, levels, enchants),
+    [params, item, upgrades, abilities, levels, enchants],
   );
-  const rows = useMemo(() => computeStats(item, upgrades, state), [item, upgrades, state]);
+  const rows = useMemo(
+    () => computeStats(item, upgrades, state, enchants),
+    [item, upgrades, state, enchants],
+  );
   const update = (patch: Partial<SimulationState>) =>
     onParamsChange(encodeState(item, { ...state, ...patch }));
 
@@ -81,25 +88,31 @@ function Simulator({ lookup, params, onParamsChange }: SimulatorProps) {
     })
     .filter((line): line is string => line !== null);
 
-  const specialLine =
+  const special =
     state.special.kind && item.special
-      ? `특별 개조 ${state.special.kind.toUpperCase()} ${state.special.level}단계`
+      ? {
+          label: `${state.special.kind.toUpperCase()} ${state.special.level}단계`,
+          step: selectedSpecial(item, state),
+        }
       : null;
 
-  const hasAnything = Boolean(item.random?.length || item.upgrade || item.reforge || item.special);
+  const hasAnything = Boolean(
+    item.base ||
+    item.random?.length ||
+    item.upgrade ||
+    item.reforge ||
+    item.special ||
+    enchants.length,
+  );
 
   return (
     <Row gutter={[20, 20]}>
-      {/* 결과를 왼쪽에 붙여 둔다. 992px 미만에서는 결과가 위, 고르는 칸이 아래로 떨어진다. */}
+      {/* 미리보기를 왼쪽에 붙여 둔다. 992px 미만에서는 미리보기가 위, 고르는 칸이 아래로 떨어진다. */}
       <Col xs={24} lg={10}>
-        {/* 넓은 화면에서는 고르는 동안 결과가 따라 내려온다. 좁은 화면에서는 붙이지 않는다. */}
-        <Flex
-          vertical
-          gap={16}
-          style={screens.lg ? { position: 'sticky', top: HEADER_HEIGHT + 16 } : undefined}
-        >
+        {/* 넓은 화면에서는 고르는 동안 미리보기가 따라 내려온다. 좁은 화면에서는 붙이지 않는다. */}
+        <div style={screens.lg ? { position: 'sticky', top: HEADER_HEIGHT + 16 } : undefined}>
           <Section
-            title="최종 능력치"
+            title="장비 미리보기"
             extra={
               <Flex gap={4}>
                 <Button size="small" icon={<LinkOutlined />} onClick={() => void copyLink()}>
@@ -112,40 +125,41 @@ function Simulator({ lookup, params, onParamsChange }: SimulatorProps) {
             }
           >
             <Flex vertical gap={12}>
-              <StatTable rows={rows} />
-              {reforgeLines.length || specialLine ? (
-                <Flex vertical gap={4}>
-                  <Text strong style={{ fontSize: 13 }}>
-                    표 밖의 효과
-                  </Text>
-                  {reforgeLines.map((line, index) => (
-                    <Text key={`${line}-${index}`} className="tnum">
-                      세공 {line}
-                    </Text>
-                  ))}
-                  {specialLine ? <Text>{specialLine} (수치 미포함)</Text> : null}
-                </Flex>
-              ) : null}
+              <EquipmentPreview
+                name={item.name}
+                card={card}
+                rows={rows}
+                enchants={selectedEnchants(state.enchant, enchants)}
+                upgrades={selectedUpgrades(state, upgrades)}
+                upgradeCount={{
+                  done: state.slots.filter((id) => id !== null).length,
+                  max: state.slots.length,
+                  gemDone: state.gemSlots.filter((id) => id !== null).length,
+                  gemMax: state.gemSlots.length,
+                }}
+                reforgeLines={reforgeLines}
+                special={special}
+              />
               <Text type="secondary" style={{ fontSize: 12 }}>
                 고른 조합은 주소에 담깁니다. 링크를 저장해 두면 다음에 같은 조합으로 다시 열립니다.
               </Text>
             </Flex>
           </Section>
-        </Flex>
+        </div>
       </Col>
 
       <Col xs={24} lg={14}>
         <Flex vertical gap={16}>
           {!hasAnything ? (
             <Card>
-              <Empty description="이 장비에는 고를 수 있는 랜덤 능력치, 개조, 세공, 특별 개조가 없습니다." />
+              <Empty description="이 장비에는 고를 수 있는 랜덤 능력치, 개조, 인챈트, 세공, 특별 개조가 없습니다." />
             </Card>
           ) : null}
 
-          {item.random?.length ? (
-            <Section title="랜덤 능력치">
-              <RandomStatsPanel
-                ranges={item.random}
+          {item.base || item.random?.length ? (
+            <Section title="기본 성능">
+              <BaseStatsPanel
+                item={item}
                 values={state.random}
                 onChange={(random) => update({ random })}
               />
@@ -160,6 +174,16 @@ function Simulator({ lookup, params, onParamsChange }: SimulatorProps) {
                 slots={state.slots}
                 gemSlots={state.gemSlots}
                 onChange={(slots, gemSlots) => update({ slots, gemSlots })}
+              />
+            </Section>
+          ) : null}
+
+          {enchants.length ? (
+            <Section title="인챈트">
+              <EnchantPanel
+                enchants={enchants}
+                pick={state.enchant}
+                onChange={(enchant) => update({ enchant })}
               />
             </Section>
           ) : null}
@@ -194,7 +218,7 @@ function Simulator({ lookup, params, onParamsChange }: SimulatorProps) {
 }
 
 /**
- * 아이템 사전의 장비 상세. 기본 능력치에 랜덤 능력치와 개조를 더해 보고, 세공과 특별 개조를 골라 본다.
+ * 아이템 사전의 장비 상세. 기본 성능, 개조, 인챈트, 세공, 특별 개조를 골라 한 벌로 합쳐 본다.
  *
  * 무엇을 골랐는지(조합)는 주소에 붙는다. 사전이 이미 주소에 담아 둔 카테고리와 이름은 건드리지
  * 않고 조합 칸만 바꾼다. 새로고침해도, 링크를 남에게 보내도 같은 화면이 열린다.
@@ -205,7 +229,7 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
 
   const params = useMemo<SimulationParams>(() => {
     const picked: SimulationParams = {};
-    for (const key of SIM_KEYS) {
+    for (const key of SIMULATION_PARAM_KEYS) {
       const value = searchParams.get(key);
       if (value) picked[key] = value;
     }
@@ -216,8 +240,9 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
     setSearchParams(
       (current) => {
         const query = new URLSearchParams(current);
-        for (const key of SIM_KEYS) {
-          if (next[key]) query.set(key, next[key]);
+        for (const key of SIMULATION_PARAM_KEYS) {
+          const value = next[key];
+          if (value) query.set(key, value);
           else query.delete(key);
         }
         return query;
@@ -265,16 +290,21 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
         emptyMessage="이 아이템은 장비 정보가 없습니다. 장비가 아니거나 아직 모으지 못한 아이템입니다."
       >
         {lookup && item ? (
-          <Simulator lookup={{ ...lookup, item }} params={params} onParamsChange={setParams} />
+          <Simulator
+            lookup={{ ...lookup, item }}
+            card={card}
+            params={params}
+            onParamsChange={setParams}
+          />
         ) : null}
       </QueryState>
 
       {/* 어디서 온 값인지 섞이지 않게 적는다. 경매장 API 가 주는 값이 아니다. */}
       <Text type="secondary" style={{ fontSize: 12 }}>
-        능력치와 개조, 세공 정보는 게임 클라이언트 데이터에서 모아 둔 것이며 경매장 API 가 주는 값이
-        아닙니다.
-        {lookup?.updated ? ` ${lookup.updated} 기준입니다.` : ''} 게임 업데이트 직후에는 실제와 다를
-        수 있습니다.
+        능력치와 개조, 인챈트, 세공 정보는 게임 클라이언트 데이터에서 모아 둔 것이며 경매장 API 가
+        주는 값이 아닙니다.
+        {lookup?.updated ? ` ${lookup.updated} 기준입니다.` : ''} 특별 개조 수치만 공개된 커뮤니티
+        표에서 옮겼습니다. 게임 업데이트 직후에는 실제와 다를 수 있습니다.
       </Text>
     </Flex>
   );

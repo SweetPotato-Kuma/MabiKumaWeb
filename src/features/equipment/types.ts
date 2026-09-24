@@ -28,11 +28,17 @@ export interface EquipmentRecord {
   reforge?: { type: string; races: string };
   /** 특별 개조 종류 번호(S, R)와 단계 상한 */
   special?: { s: number; r: number; max: number };
+  /** 붙일 수 있는 인챈트 묶음 번호. 워커가 풀어 `EquipmentLookup.enchants` 로 싣는다. */
+  enchants?: number;
 }
 
 export interface UpgradeDef {
   name: string;
   desc?: string;
+  /** 이 개조를 해 주는 NPC 한글 이름 */
+  npcs?: string[];
+  /** 게임 데이터에 한글 이름이 없어 이름을 못 붙인 NPC 수 */
+  npcUnknown?: number;
   ep: number;
   gold: number;
   /**
@@ -88,10 +94,28 @@ export type LevelRow = [
   limitBreakMax: number,
 ];
 
+/** [능력치, 최소, 최대, 조건이 붙었으면 1] */
+export type EnchantEffect = [stat: string, min: number, max: number, conditional?: 1];
+
+export interface EnchantDef {
+  id: number;
+  name: string;
+  /** 0 접두, 1 접미 */
+  slot: 0 | 1;
+  /** 1~6 이 F~A 랭크, 7~15 가 9~1 랭크 */
+  level: number;
+  /** 게임 설명 문장. 조건의 뜻은 여기에만 있다 */
+  desc: string[];
+  effects: EnchantEffect[];
+  /** 인챈트한 장비를 전용으로 만든다 */
+  personal?: boolean;
+}
+
 export interface EquipmentLookup {
   item: EquipmentRecord | null;
   upgrades?: Record<string, UpgradeDef>;
   abilities?: AbilityDef[];
+  enchants?: EnchantDef[];
   levels?: LevelRow[];
   /** 운영자가 이 칸을 올린 날 */
   updated?: string;

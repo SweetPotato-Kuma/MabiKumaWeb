@@ -36,8 +36,21 @@ const LOOKUP: EquipmentLookup = {
       min: 0,
       max: 0,
       stats: [['attack_max', 30, 30]],
+      npcs: ['네리스', '퍼거스'],
+      npcUnknown: 1,
     },
   },
+  enchants: [
+    {
+      id: 21643,
+      name: '거침없는',
+      slot: 0,
+      level: 10,
+      desc: ['양손 무기에 인챈트 가능', '윈드밀 랭크 3단 이상일 때 최대 대미지 50~60 증가'],
+      effects: [['attack_max', 50, 60, 1]],
+      personal: true,
+    },
+  ],
   abilities: [
     {
       id: 1,
@@ -135,7 +148,7 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
     expect(screen.getByTestId('url')).toHaveTextContent(
       '/dictionary?category=검&name=소울 리버레이트 소드',
     );
-    expect(await screen.findByText('최종 능력치')).toBeInTheDocument();
+    expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '검' })).toHaveAttribute(
       'href',
       `/dictionary?category=${encodeURIComponent('검')}`,
@@ -167,7 +180,7 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
       `/equipment?category=${encodeURIComponent('검')}&name=${encodeURIComponent('소울 리버레이트 소드')}&sp=s7`,
     );
 
-    expect(await screen.findByText('특별 개조 S 7단계 (수치 미포함)')).toBeInTheDocument();
+    expect(await screen.findByText(/^S 7단계: /)).toBeInTheDocument();
     expect(screen.getByTestId('url')).toHaveTextContent('/dictionary?category=검');
   });
 
@@ -182,11 +195,36 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
     expect(within(row as HTMLElement).getByText('179')).toBeInTheDocument();
   });
 
-  it('세공과 특별 개조는 표 밖에 따로 적는다', async () => {
-    renderPage(`${SWORD_PATH}&rf=1_1-10&sp=s7`);
+  it('인챈트와 특별 개조까지 합친 이름과 능력치를 미리보기에 보여 준다', async () => {
+    // 139 + 전용 개조 30 + 거침없는 50~60 + S201 7단계 120 = 339~349
+    renderPage(`${SWORD_PATH}&up=52507.&en=21643.&sp=s7`);
 
-    expect(await screen.findByText('세공 체력 15 증가')).toBeInTheDocument();
-    expect(screen.getByText('특별 개조 S 7단계 (수치 미포함)')).toBeInTheDocument();
+    expect(await screen.findByText('거침없는 소울 리버레이트 소드')).toBeInTheDocument();
+    const labels = screen.getAllByText('최대 공격력');
+    const row = labels.map((label) => label.closest('tr')).find(Boolean);
+    expect(within(row as HTMLElement).getByText('339~349')).toBeInTheDocument();
+    expect(
+      screen.getByText('S 7단계: 최소 공격력 +60, 최대 공격력 +120, 보너스 대미지 +5%'),
+    ).toBeInTheDocument();
+  });
+
+  it('세공은 표에 더하지 않고 따로 적는다', async () => {
+    renderPage(`${SWORD_PATH}&rf=1_1-10`);
+
+    // 세공 패널과 미리보기 두 곳에 같은 줄이 나온다.
+    expect(await screen.findAllByText('체력 15 증가')).toHaveLength(2);
+  });
+
+  it('개조마다 해 주는 NPC 를 적고 이름 모르는 NPC 는 수만 센다', async () => {
+    renderPage(SWORD_PATH);
+
+    expect(await screen.findByText('NPC 네리스, 퍼거스 외 1명(이름 미확인)')).toBeInTheDocument();
+  });
+
+  it('랜덤 능력치는 기본값에 얹은 실제 값으로 보여 준다', async () => {
+    renderPage(SWORD_PATH);
+
+    expect(await screen.findByText('139~149 (기본 139, 랜덤 +0~10)')).toBeInTheDocument();
   });
 
   it('장비 정보가 없는 아이템이면 그렇다고 말한다', async () => {

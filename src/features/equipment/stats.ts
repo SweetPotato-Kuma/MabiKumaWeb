@@ -15,6 +15,12 @@ const STAT_LABELS: [string, StatLabel][] = [
   ['attack_min', { label: '최소 공격력' }],
   ['attack_max', { label: '최대 공격력' }],
   ['magic_damage', { label: '마법 공격력' }],
+  ['alchemy_damage', { label: '연금술 대미지' }],
+  ['alchemy_all', { label: '4대 속성 연금술 대미지' }],
+  ['alchemy_fire', { label: '불 속성 연금술 대미지' }],
+  ['alchemy_water', { label: '물 속성 연금술 대미지' }],
+  ['bonus_damage', { label: '보너스 대미지', unit: '%' }],
+  ['critical_damage', { label: '크리티컬 대미지', unit: '%' }],
   ['wound_min', { label: '최소 부상률', unit: '%' }],
   ['wound_max', { label: '최대 부상률', unit: '%' }],
   ['critical', { label: '크리티컬', unit: '%' }],
@@ -25,6 +31,7 @@ const STAT_LABELS: [string, StatLabel][] = [
   ['magic_protect', { label: '마법 보호' }],
   ['durability', { label: '내구력' }],
   ['lance_piercing', { label: '피어싱 레벨' }],
+  ['smash_damage', { label: '스매시 대미지', unit: '%' }],
   ['attack_range', { label: '사정거리' }],
   ['splash_radius', { label: '범위 공격 거리' }],
   ['splash_damage', { label: '범위 공격 대미지', unit: '%', scale: 100 }],
@@ -43,6 +50,11 @@ const STAT_LABELS: [string, StatLabel][] = [
   ['mana_recover', { label: '마나 회복' }],
   ['mana_reduce_percent', { label: '마나 소모 감소', unit: '%' }],
   ['astrologist_damage', { label: '점성술 대미지' }],
+  ['music_buff_attack', { label: '전장의 서곡, 비바체 공격력 보너스', unit: '%' }],
+  ['healing_potency', { label: '힐링 효과', unit: '%' }],
+  ['life_max', { label: '최대 생명력' }],
+  ['mana_max', { label: '최대 마나' }],
+  ['stamina_max', { label: '최대 스태미나' }],
   ['str', { label: '체력' }],
   ['dex', { label: '솜씨' }],
   ['int', { label: '지력' }],
@@ -72,19 +84,25 @@ export function roundStat(value: number): number {
   return Math.round(value * 1e4) / 1e4;
 }
 
-/** 값 하나를 게임 표기로. 단위와 배율을 붙인다. */
-export function formatStatValue(stat: string, value: number, signed = false): string {
-  const info = LABELS.get(stat);
-  const scaled = roundStat(value * (info?.scale ?? 1));
+/** 숫자만. 배율을 곱하고 자릿수를 맞춘다. 단위는 붙이지 않는다. */
+function formatNumberPart(stat: string, value: number, signed: boolean): string {
+  const scaled = roundStat(value * (LABELS.get(stat)?.scale ?? 1));
   const text = scaled.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
-  const sign = signed && scaled > 0 ? '+' : '';
-  return `${sign}${text}${info?.unit ?? ''}`;
+  return `${signed && scaled > 0 ? '+' : ''}${text}`;
 }
 
-/** 최소와 최대가 다르면 "3~5" 로. */
+/** 값 하나를 게임 표기로. 단위와 배율을 붙인다. */
+export function formatStatValue(stat: string, value: number, signed = false): string {
+  return `${formatNumberPart(stat, value, signed)}${LABELS.get(stat)?.unit ?? ''}`;
+}
+
+/** 최소와 최대가 다르면 "3~5%" 로. 단위는 끝에 한 번만 붙인다. */
 export function formatStatRange(stat: string, min: number, max: number, signed = false): string {
   if (min === max) return formatStatValue(stat, min, signed);
-  return `${formatStatValue(stat, min, signed)}~${formatStatValue(stat, max, false)}`;
+  // 더하는 폭이 0 부터면 "+0~10" 으로. "0~10" 이면 더하는 값인지 결과값인지 헷갈린다.
+  const lead = signed && min === 0 ? '+' : '';
+  const unit = LABELS.get(stat)?.unit ?? '';
+  return `${lead}${formatNumberPart(stat, min, signed)}~${formatNumberPart(stat, max, false)}${unit}`;
 }
 
 /** 개조 한 줄의 효과를 사람이 읽는 글로. "최대 공격력 +14, 밸런스 -2" */
