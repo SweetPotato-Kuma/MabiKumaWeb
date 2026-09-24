@@ -180,7 +180,9 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
       `/equipment?category=${encodeURIComponent('검')}&name=${encodeURIComponent('소울 리버레이트 소드')}&sp=s7`,
     );
 
-    expect(await screen.findByText(/^S 7단계: /)).toBeInTheDocument();
+    expect(
+      await screen.findAllByText('최소 공격력 +60, 최대 공격력 +120, 보너스 대미지 +5%'),
+    ).not.toHaveLength(0);
     expect(screen.getByTestId('url')).toHaveTextContent('/dictionary?category=검');
   });
 
@@ -203,9 +205,10 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
     const labels = screen.getAllByText('최대 공격력');
     const row = labels.map((label) => label.closest('tr')).find(Boolean);
     expect(within(row as HTMLElement).getByText('339~349')).toBeInTheDocument();
+    // 특별 개조 패널과 미리보기 두 곳에 같은 줄이 나온다.
     expect(
-      screen.getByText('S 7단계: 최소 공격력 +60, 최대 공격력 +120, 보너스 대미지 +5%'),
-    ).toBeInTheDocument();
+      screen.getAllByText('최소 공격력 +60, 최대 공격력 +120, 보너스 대미지 +5%'),
+    ).toHaveLength(2);
   });
 
   it('세공은 표에 더하지 않고 따로 적는다', async () => {
@@ -252,10 +255,8 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
   it('유동 능력치는 기본값에 얹은 실제 값과 그 구성을 보여 준다', async () => {
     renderPage(`${SWORD_PATH}&rv=7`);
 
-    expect(await screen.findByText('기본 139 + 유동 7 (유동 폭 0~10)')).toBeInTheDocument();
-    // 슬라이더 양 끝에 실제 값의 최소와 최대가 붙는다.
-    expect(screen.getByText('149')).toBeInTheDocument();
-    expect(screen.getByText('범위 139 ~ 149')).toBeInTheDocument();
+    // 한 줄 끝에 나올 수 있는 범위를 적는다. 구성은 그 위에 마우스를 올리면 보인다.
+    expect(await screen.findByText('139~149')).toBeInTheDocument();
     // 미리보기 구성에도 유동 폭을 같이 적는다.
     expect(screen.getByText('기본 139, 유동 +7 (0~10)')).toBeInTheDocument();
     expect(screen.getByRole('spinbutton', { name: '최대 공격력' })).toHaveValue('146');

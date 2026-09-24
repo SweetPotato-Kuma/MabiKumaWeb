@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { LinkOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Col, Empty, Flex, Grid, Row, Typography } from 'antd';
+import { Alert, App, Button, Card, Col, Empty, Flex, Grid, Row, Tooltip, Typography } from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
 import { BaseStatsPanel } from '@/components/equipment/BaseStatsPanel';
 import { EnchantPanel } from '@/components/equipment/EnchantPanel';
@@ -9,7 +9,6 @@ import { EquipmentPreview } from '@/components/equipment/EquipmentPreview';
 import { ReforgePanel } from '@/components/equipment/ReforgePanel';
 import { SpecialUpgradePanel } from '@/components/equipment/SpecialUpgradePanel';
 import { UpgradePanel } from '@/components/equipment/UpgradePanel';
-import { ItemCardSummary } from '@/components/ItemCardSummary';
 import { QueryState } from '@/components/QueryState';
 import { canLookupEquipment, useEquipmentQuery } from '@/features/equipment/api';
 import { describeAbility } from '@/features/equipment/reforge';
@@ -27,7 +26,7 @@ import {
 import type { EquipmentLookup, EquipmentRecord } from '@/features/equipment/types';
 import { useItemCard, usePrefetchItemCards, type ItemCard } from '@/features/itemcard/cards';
 
-const { Text } = Typography;
+const { Text, Paragraph } = Typography;
 
 function Section({
   title,
@@ -106,7 +105,7 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
   );
 
   return (
-    <Row gutter={[20, 20]}>
+    <Row gutter={[16, 16]}>
       {/* 미리보기를 왼쪽에 붙여 둔다. 992px 미만에서는 미리보기가 위, 고르는 칸이 아래로 떨어진다. */}
       <Col xs={24} lg={10}>
         {/* 넓은 화면에서는 고르는 동안 미리보기가 따라 내려온다. 좁은 화면에서는 붙이지 않는다. */}
@@ -115,41 +114,38 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
             title="장비 미리보기"
             extra={
               <Flex gap={4}>
-                <Button size="small" icon={<LinkOutlined />} onClick={() => void copyLink()}>
-                  링크 복사
-                </Button>
+                <Tooltip title="고른 조합이 주소에 담겨 있습니다. 링크를 저장해 두면 같은 조합으로 다시 열립니다.">
+                  <Button size="small" icon={<LinkOutlined />} onClick={() => void copyLink()}>
+                    링크 복사
+                  </Button>
+                </Tooltip>
                 <Button size="small" icon={<ReloadOutlined />} onClick={() => onParamsChange({})}>
                   처음으로
                 </Button>
               </Flex>
             }
           >
-            <Flex vertical gap={12}>
-              <EquipmentPreview
-                name={item.name}
-                card={card}
-                rows={rows}
-                enchants={selectedEnchants(state.enchant, enchants)}
-                upgrades={selectedUpgrades(state, upgrades)}
-                upgradeCount={{
-                  done: state.slots.filter((id) => id !== null).length,
-                  max: state.slots.length,
-                  gemDone: state.gemSlots.filter((id) => id !== null).length,
-                  gemMax: state.gemSlots.length,
-                }}
-                reforgeLines={reforgeLines}
-                special={special}
-              />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                고른 조합은 주소에 담깁니다. 링크를 저장해 두면 다음에 같은 조합으로 다시 열립니다.
-              </Text>
-            </Flex>
+            <EquipmentPreview
+              name={item.name}
+              card={card}
+              rows={rows}
+              enchants={selectedEnchants(state.enchant, enchants)}
+              upgrades={selectedUpgrades(state, upgrades)}
+              upgradeCount={{
+                done: state.slots.filter((id) => id !== null).length,
+                max: state.slots.length,
+                gemDone: state.gemSlots.filter((id) => id !== null).length,
+                gemMax: state.gemSlots.length,
+              }}
+              reforgeLines={reforgeLines}
+              special={special}
+            />
           </Section>
         </div>
       </Col>
 
       <Col xs={24} lg={14}>
-        <Flex vertical gap={16}>
+        <Flex vertical gap={12}>
           {!hasAnything ? (
             <Card>
               <Empty description="이 장비에는 고를 수 있는 유동 능력치, 개조, 인챈트, 세공, 특별 개조가 없습니다." />
@@ -261,7 +257,7 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
   const item = lookup?.item ?? null;
 
   return (
-    <Flex vertical gap={20}>
+    <Flex vertical gap={12}>
       {!canLookupEquipment() ? (
         <Alert
           type="warning"
@@ -270,16 +266,26 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
         />
       ) : null}
 
-      <Card>
-        <Flex vertical gap={16}>
-          <ItemCardSummary card={card} title={name} rawName={name} category={category} />
-          <div>
-            <Link
-              to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`}
-            >
-              <Button icon={<SearchOutlined />}>시세 보기</Button>
-            </Link>
-          </div>
+      {/*
+        설명과 시세 버튼만 한 줄에. 그림과 이름은 바로 아래 미리보기에 있어 두 번 적지 않는다.
+        설명은 두 줄까지만 보이고 "더 보기" 로 편다.
+      */}
+      <Card size="small">
+        <Flex align="flex-start" justify="space-between" gap={12}>
+          <Paragraph
+            type="secondary"
+            ellipsis={{ rows: 2, expandable: true, symbol: '더 보기' }}
+            style={{ marginBottom: 0, whiteSpace: 'pre-line', flex: 1, minWidth: 0 }}
+          >
+            {card?.description || `${category} 카테고리의 장비입니다.`}
+          </Paragraph>
+          <Link
+            to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`}
+          >
+            <Button size="small" icon={<SearchOutlined />}>
+              시세 보기
+            </Button>
+          </Link>
         </Flex>
       </Card>
 

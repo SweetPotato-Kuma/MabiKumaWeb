@@ -1,4 +1,14 @@
-import { Button, Col, Descriptions, Flex, InputNumber, Row, Slider, Typography, theme } from 'antd';
+import {
+  Button,
+  Col,
+  Descriptions,
+  Flex,
+  InputNumber,
+  Row,
+  Slider,
+  Tooltip,
+  Typography,
+} from 'antd';
 import {
   compareStats,
   formatStatRange,
@@ -16,28 +26,29 @@ interface BaseStatsPanelProps {
   onChange: (values: Record<string, number>) => void;
 }
 
-interface RandomLine {
+interface VariableLine {
   stat: string;
   base: number;
   min: number;
   max: number;
 }
 
-function RandomStat({
+/** 유동 능력치 한 줄: 이름, 슬라이더, 지금 값, 나올 수 있는 범위. 구성은 범위에 마우스를 올리면 보인다. */
+function VariableStat({
   line,
   bonus,
   onChange,
 }: {
-  line: RandomLine;
+  line: VariableLine;
   bonus: number;
   onChange: (bonus: number) => void;
 }) {
-  const { token } = theme.useToken();
   const { stat, base, min, max } = line;
   const low = base + min;
   const high = base + max;
   const id = `base-${stat}`;
   const fixed = min === max;
+  const breakdown = `기본 ${formatStatValue(stat, base)} + 유동 ${formatStatValue(stat, bonus)} (유동 폭 ${formatStatRange(stat, min, max)})`;
 
   const set = (total: number | null) => {
     if (total === null || !Number.isFinite(total)) return;
@@ -45,65 +56,38 @@ function RandomStat({
   };
 
   return (
-    <Flex
-      vertical
-      gap={4}
-      style={{
-        height: '100%',
-        padding: '10px 12px',
-        borderRadius: token.borderRadius,
-        border: `1px solid ${token.colorBorderSecondary}`,
-      }}
-    >
-      {/* 이름과 지금 값을 한 줄에. 값을 가장 먼저 읽게 굵고 크게 두고, 바로 아래에 나올 수 있는 범위를 적는다. */}
-      <Flex justify="space-between" align="flex-start" gap={8}>
-        <label htmlFor={id}>{statLabel(stat)}</label>
-        <Flex vertical align="flex-end" gap={0}>
-          <Text
-            strong
-            className="tnum"
-            style={{ fontSize: token.fontSizeHeading4, lineHeight: 1.2 }}
-          >
-            {formatStatValue(stat, base + bonus)}
-          </Text>
-          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-            범위 {formatStatValue(stat, low)} ~ {formatStatValue(stat, high)}
-          </Text>
-        </Flex>
-      </Flex>
-
-      <Flex align="center" gap={12}>
-        {/* 양 끝에 최솟값과 최댓값을 붙여, 지금 값이 폭의 어디쯤인지 보이게 한다. */}
-        <Slider
-          min={low}
-          max={high}
-          value={base + bonus}
-          onChange={set}
-          disabled={fixed}
-          marks={{ [low]: formatStatValue(stat, low), [high]: formatStatValue(stat, high) }}
-          tooltip={{
-            formatter: (value) => (value === undefined ? '' : formatStatValue(stat, value)),
-          }}
-          style={{ flex: 1, minWidth: 0, marginBlockEnd: 20 }}
-          aria-label={`${statLabel(stat)} 값`}
-        />
-        <InputNumber
-          id={id}
-          size="small"
-          min={low}
-          max={high}
-          value={base + bonus}
-          onChange={set}
-          disabled={fixed}
-          className="tnum"
-          style={{ width: 72 }}
-        />
-      </Flex>
-
-      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-        기본 {formatStatValue(stat, base)} + 유동 {formatStatValue(stat, bonus)} (유동 폭{' '}
-        {formatStatRange(stat, min, max)})
-      </Text>
+    <Flex align="center" gap={10} style={{ minHeight: 32 }}>
+      <label htmlFor={id} style={{ flex: '0 0 84px' }}>
+        {statLabel(stat)}
+      </label>
+      <Slider
+        min={low}
+        max={high}
+        value={base + bonus}
+        onChange={set}
+        disabled={fixed}
+        tooltip={{
+          formatter: (value) => (value === undefined ? '' : formatStatValue(stat, value)),
+        }}
+        style={{ flex: '1 1 80px', minWidth: 60, marginBlock: 0 }}
+        aria-label={`${statLabel(stat)} 값`}
+      />
+      <InputNumber
+        id={id}
+        size="small"
+        min={low}
+        max={high}
+        value={base + bonus}
+        onChange={set}
+        disabled={fixed}
+        className="tnum"
+        style={{ width: 64 }}
+      />
+      <Tooltip title={breakdown}>
+        <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+          {formatStatValue(stat, low)}~{formatStatValue(stat, high)}
+        </Text>
+      </Tooltip>
     </Flex>
   );
 }
@@ -111,45 +95,42 @@ function RandomStat({
 /**
  * 기본 성능. 기본 능력치와 유동 능력치를 합친 실제 장비 스펙을 보여 준다.
  *
- * 유동 능력치를 "+0~10" 으로만 적으면 결국 몇이 되는지 머릿속으로 더해야 한다. 그래서 칸마다
- * 지금 값을 크게, 폭의 양 끝을 슬라이더에, 구성(기본 + 유동)을 아래에 둔다. 고르는 칸도 실제 값으로
- * 움직인다. 안에서는 더해지는 몫만 들고 있다.
+ * 유동 능력치는 한 줄에 하나다. 칸마다 값, 범위, 슬라이더, 구성을 여러 줄로 늘어놓았더니 무기 하나에
+ * 스무 줄이 넘어 화면이 늘어졌다. 고르는 칸도 실제 값으로 움직이고, 오른쪽에 나올 수 있는 범위를 적는다.
+ * 안에서는 기본값에 더해지는 몫만 들고 있다.
  *
- * 고정 능력치는 고를 것이 없으니 따로 떼어 짧은 표로 둔다. 섞어 두면 고를 칸이 묻힌다.
+ * 고정 능력치는 고를 것이 없으니 따로 떼어 짧은 표로 둔다.
  */
 export function BaseStatsPanel({ item, values, onChange }: BaseStatsPanelProps) {
   const base = item.base ?? {};
-  const randomLines: RandomLine[] = (item.random ?? [])
+  const variableLines: VariableLine[] = (item.random ?? [])
     .map(([stat, min, max]) => ({ stat, base: base[stat] ?? 0, min, max }))
     .sort((a, b) => compareStats(a.stat, b.stat));
-  const randomStats = new Set(randomLines.map((line) => line.stat));
+  const variableStats = new Set(variableLines.map((line) => line.stat));
   const fixedStats = Object.keys(base)
-    .filter((stat) => !randomStats.has(stat))
+    .filter((stat) => !variableStats.has(stat))
     .sort(compareStats);
 
   const setAll = (pick: 'min' | 'max') =>
     onChange(
       Object.fromEntries(
-        randomLines.map(({ stat, min, max }) => [stat, pick === 'min' ? min : max]),
+        variableLines.map(({ stat, min, max }) => [stat, pick === 'min' ? min : max]),
       ),
     );
 
-  if (randomLines.length === 0 && fixedStats.length === 0) {
+  if (variableLines.length === 0 && fixedStats.length === 0) {
     return <Text type="secondary">이 장비에는 적힌 기본 능력치가 없습니다.</Text>;
   }
 
   return (
-    <Flex vertical gap={16}>
-      {randomLines.length > 0 ? (
-        <Flex vertical gap={10}>
+    <Flex vertical gap={12}>
+      {variableLines.length > 0 ? (
+        <Flex vertical gap={4}>
           <Flex justify="space-between" align="center" gap={8} wrap>
-            <Flex vertical gap={0}>
+            <Tooltip title="제작하거나 얻을 때 범위 안에서 한 번 정해지는 값입니다.">
               <Text strong>유동 능력치</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                제작하거나 얻을 때 폭 안에서 정해집니다.
-              </Text>
-            </Flex>
-            <Flex gap={8}>
+            </Tooltip>
+            <Flex gap={6}>
               <Button size="small" onClick={() => setAll('min')}>
                 모두 최소
               </Button>
@@ -159,11 +140,11 @@ export function BaseStatsPanel({ item, values, onChange }: BaseStatsPanelProps) 
             </Flex>
           </Flex>
 
-          {/* 두 칸씩 나란히. 768px 미만에서는 한 칸씩 떨어진다. */}
-          <Row gutter={[12, 12]}>
-            {randomLines.map((line) => (
+          {/* 한 줄짜리를 두 단으로. 768px 미만에서는 한 단으로 떨어진다. */}
+          <Row gutter={[24, 0]}>
+            {variableLines.map((line) => (
               <Col key={line.stat} xs={24} md={12}>
-                <RandomStat
+                <VariableStat
                   line={line}
                   bonus={values[line.stat] ?? line.min}
                   onChange={(bonus) => onChange({ ...values, [line.stat]: bonus })}
@@ -178,8 +159,7 @@ export function BaseStatsPanel({ item, values, onChange }: BaseStatsPanelProps) 
         <Descriptions
           title={<Text strong>고정 능력치</Text>}
           size="small"
-          bordered
-          column={{ xs: 1, sm: 2 }}
+          column={{ xs: 2, sm: 3 }}
           items={fixedStats.map((stat) => ({
             key: stat,
             label: statLabel(stat),

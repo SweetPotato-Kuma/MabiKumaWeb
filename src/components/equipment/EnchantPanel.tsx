@@ -4,19 +4,13 @@ import {
   Checkbox,
   Empty,
   Flex,
-  Form,
   Input,
   Table,
   Tabs,
   Typography,
   type TableColumnsType,
 } from 'antd';
-import {
-  compareEnchants,
-  enchantRank,
-  isEnchantNote,
-  stripBrackets,
-} from '@/features/equipment/enchant';
+import { compareEnchants, effectSummary, enchantRank } from '@/features/equipment/enchant';
 import type { EnchantPick } from '@/features/equipment/simulate';
 import type { EnchantDef } from '@/features/equipment/types';
 
@@ -28,30 +22,8 @@ interface EnchantPanelProps {
   onChange: (pick: EnchantPick) => void;
 }
 
-/** 목록 한 쪽의 줄 수. 한 화면에서 훑을 수 있는 양이다. */
-const PAGE_SIZE = 10;
-
-/** 고른 인챈트의 설명. 효과 줄을 먼저, 적용 조건과 부가 규칙은 흐리게 뒤로. */
-export function EnchantEffects({ enchant }: { enchant: EnchantDef }) {
-  const effects = enchant.desc.filter((line) => !isEnchantNote(line));
-  const notes = enchant.desc.filter(isEnchantNote);
-  return (
-    <Flex vertical gap={2}>
-      {effects.map((line, index) => (
-        <span key={`${line}-${index}`}>{line}</span>
-      ))}
-      {notes.map((line, index) => (
-        <Text key={`${line}-${index}`} type="secondary" style={{ fontSize: 12 }}>
-          {stripBrackets(line)}
-        </Text>
-      ))}
-    </Flex>
-  );
-}
-
-/** 목록 한 줄에 들어갈 효과. 적용 조건("양손 무기에 인챈트 가능")과 부가 규칙은 뺀다. */
-const effectSummary = (enchant: EnchantDef) =>
-  enchant.desc.filter((line) => !isEnchantNote(line)).join(', ');
+/** 목록 한 쪽의 줄 수. 패널이 길게 늘어지지 않게 적게 둔다. 찾기로 좁히는 편이 빠르다. */
+const PAGE_SIZE = 5;
 
 const rankLabel = (enchant: EnchantDef) => `${enchantRank(enchant.level)} 랭크`;
 
@@ -110,41 +82,37 @@ function EnchantList({
   ];
 
   return (
-    <Flex vertical gap={10}>
-      <Flex align="center" gap={8} wrap style={{ minHeight: 32 }}>
-        <Text type="secondary">적용한 {label}</Text>
-        {chosen ? (
-          <>
-            <Text strong className="tnum">
-              {rankLabel(chosen)} {chosen.name}
-            </Text>
-            <Button size="small" onClick={() => onChange(null)}>
-              빼기
-            </Button>
-          </>
-        ) : (
-          <Text>없음</Text>
-        )}
+    <Flex vertical gap={8}>
+      {/* 무엇을 발랐는지와 찾기 칸을 한 줄에. 좁은 화면에서는 찾기 칸이 아래로 떨어진다. */}
+      <Flex align="center" justify="space-between" gap={8} wrap>
+        <Flex align="center" gap={6} wrap>
+          <Text type="secondary">적용한 {label}</Text>
+          {chosen ? (
+            <>
+              <Text strong className="tnum">
+                {rankLabel(chosen)} {chosen.name}
+              </Text>
+              <Button size="small" type="link" onClick={() => onChange(null)}>
+                빼기
+              </Button>
+            </>
+          ) : (
+            <Text>없음</Text>
+          )}
+        </Flex>
+        <Input
+          aria-label="이름이나 효과로 찾기"
+          size="small"
+          value={keyword}
+          onChange={(event) => {
+            setKeyword(event.target.value);
+            setPage(1);
+          }}
+          placeholder="예: 최대 대미지"
+          allowClear
+          style={{ width: 200 }}
+        />
       </Flex>
-
-      <Form layout="vertical">
-        <Form.Item
-          label="이름이나 효과로 찾기"
-          htmlFor={`enchant-search-${slot}`}
-          style={{ marginBottom: 0 }}
-        >
-          <Input
-            id={`enchant-search-${slot}`}
-            value={keyword}
-            onChange={(event) => {
-              setKeyword(event.target.value);
-              setPage(1);
-            }}
-            placeholder="예: 최대 대미지"
-            allowClear
-          />
-        </Form.Item>
-      </Form>
 
       <Table<EnchantDef>
         size="small"
@@ -211,12 +179,15 @@ export function EnchantPanel({ enchants, pick, onChange }: EnchantPanelProps) {
   }
 
   return (
-    <Flex vertical gap={12}>
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        이 장비에 바를 수 있는 인챈트만 모았습니다. 접두와 접미를 하나씩 바를 수 있습니다.
-      </Text>
-
+    <Flex vertical gap={8}>
       <Tabs
+        size="small"
+        tabBarStyle={{ marginBottom: 8 }}
+        tabBarExtraContent={
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            이 장비에 바를 수 있는 것만, 접두와 접미 하나씩
+          </Text>
+        }
         items={[
           {
             key: 'prefix',

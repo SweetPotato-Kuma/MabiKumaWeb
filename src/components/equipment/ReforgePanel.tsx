@@ -2,15 +2,13 @@ import { useMemo } from 'react';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   Button,
-  Col,
   Empty,
   Flex,
-  Form,
   InputNumber,
-  Row,
   Segmented,
   Select,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -40,10 +38,11 @@ interface ReforgePanelProps {
 const RANK_OPTIONS = REFORGE_RANKS.map((rank) => ({ value: rank, label: `${rank}랭크` }));
 
 /**
- * 세공. 랭크를 고르고 옵션을 셋까지 붙여 본다.
+ * 세공. 랭크를 고르고 옵션을 셋까지 붙여 본다. 옵션 하나가 한 줄이다: 옵션, 레벨, 값, 빼기.
  *
  * 랭크를 바꾸면 그 랭크에서 붙을 수 없는 옵션은 빼고, 레벨은 새 랭크의 폭 안으로 옮긴다.
  * 게임에서도 랭크가 레벨 폭을 정하므로 폭 밖의 조합은 만들 수 없다.
+ * 레벨 폭은 랭크 기준 전체 폭이며, 쓰는 세공 도구에 따라 실제로 나오는 폭은 더 좁을 수 있다.
  */
 export function ReforgePanel({
   equipType,
@@ -101,17 +100,27 @@ export function ReforgePanel({
   }
 
   return (
-    <Flex vertical gap={16}>
-      <Form layout="vertical">
-        <Form.Item label="랭크" style={{ marginBottom: 0 }}>
-          <Segmented<ReforgeRank>
-            aria-label="세공 랭크"
-            value={rank}
-            onChange={changeRank}
-            options={RANK_OPTIONS}
-          />
-        </Form.Item>
-      </Form>
+    <Flex vertical gap={8}>
+      <Flex align="center" gap={8} wrap>
+        <Segmented<ReforgeRank>
+          aria-label="세공 랭크"
+          value={rank}
+          onChange={changeRank}
+          options={RANK_OPTIONS}
+          size="small"
+        />
+        <Button
+          size="small"
+          icon={<PlusOutlined />}
+          onClick={addOption}
+          disabled={options.length >= REFORGE_MAX_OPTIONS || candidates.length <= options.length}
+        >
+          옵션 추가
+        </Button>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          붙을 수 있는 옵션 {candidates.length}개
+        </Text>
+      </Flex>
 
       {options.map((pick, index) => {
         const ability = byId.get(pick.abilityId);
@@ -120,102 +129,71 @@ export function ReforgePanel({
         const used = new Set(
           options.filter((_, other) => other !== index).map((entry) => entry.abilityId),
         );
-        const selectId = `reforge-option-${index}`;
-        const levelId = `reforge-level-${index}`;
+        const rangeText = `레벨 ${range.min}~${range.max}${
+          range.limitBreakMax ? `, 한계 돌파 ${range.limitBreakMin}~${range.limitBreakMax}` : ''
+        }`;
 
         return (
-          <Flex key={`${pick.abilityId}-${index}`} vertical gap={6}>
-            <Form layout="vertical">
-              {/* 옵션과 레벨을 한 줄에. 768px 미만에서는 두 줄로 떨어진다. */}
-              <Row gutter={[12, 8]} align="bottom">
-                <Col xs={24} md={15}>
-                  <Form.Item
-                    label={`옵션 ${index + 1}`}
-                    htmlFor={selectId}
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Select<number>
-                      id={selectId}
-                      showSearch
-                      optionFilterProp="label"
-                      value={pick.abilityId}
-                      onChange={(abilityId) => {
-                        const next = byId.get(abilityId);
-                        if (!next) return;
-                        replace(index, {
-                          abilityId,
-                          level: levelRange(next, rank, equipType, levels).max,
-                        });
-                      }}
-                      options={candidates
-                        .filter((candidate) => !used.has(candidate.id))
-                        .map((candidate) => ({ value: candidate.id, label: candidate.name }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={16} md={6}>
-                  <Form.Item label="레벨" htmlFor={levelId} style={{ marginBottom: 0 }}>
-                    <InputNumber
-                      id={levelId}
-                      min={range.min}
-                      max={highestLevel(range)}
-                      value={pick.level}
-                      onChange={(level) => {
-                        if (level === null) return;
-                        const clamped = Math.min(
-                          Math.max(Math.round(level), range.min),
-                          highestLevel(range),
-                        );
-                        replace(index, { ...pick, level: clamped });
-                      }}
-                      className="tnum"
-                      style={{ width: '100%' }}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={8} md={3}>
-                  <Button
-                    icon={<DeleteOutlined />}
-                    aria-label={`옵션 ${index + 1} 빼기`}
-                    onClick={() => replace(index, null)}
-                    block
-                  />
-                </Col>
-              </Row>
-            </Form>
-            <Flex gap={8} wrap align="center">
-              <Text className="tnum">{describeAbility(ability, pick.level)}</Text>
+          // 한 줄. 좁은 화면에서는 값이 아래로 떨어진다.
+          <Flex key={`${pick.abilityId}-${index}`} align="center" gap={8} wrap>
+            <Select<number>
+              aria-label={`세공 옵션 ${index + 1}`}
+              size="small"
+              showSearch
+              optionFilterProp="label"
+              value={pick.abilityId}
+              onChange={(abilityId) => {
+                const next = byId.get(abilityId);
+                if (!next) return;
+                replace(index, {
+                  abilityId,
+                  level: levelRange(next, rank, equipType, levels).max,
+                });
+              }}
+              options={candidates
+                .filter((candidate) => !used.has(candidate.id))
+                .map((candidate) => ({ value: candidate.id, label: candidate.name }))}
+              popupMatchSelectWidth={false}
+              style={{ flex: '1 1 180px', minWidth: 0, maxWidth: 260 }}
+            />
+            <Tooltip title={rangeText}>
+              <InputNumber
+                aria-label={`세공 옵션 ${index + 1} 레벨`}
+                size="small"
+                min={range.min}
+                max={highestLevel(range)}
+                value={pick.level}
+                onChange={(level) => {
+                  if (level === null) return;
+                  const clamped = Math.min(
+                    Math.max(Math.round(level), range.min),
+                    highestLevel(range),
+                  );
+                  replace(index, { ...pick, level: clamped });
+                }}
+                prefix="Lv"
+                className="tnum"
+                style={{ width: 76 }}
+              />
+            </Tooltip>
+            <Text className="tnum" style={{ flex: '1 1 160px', minWidth: 0 }}>
+              {describeAbility(ability, pick.level)}
               {isLimitBreakLevel(range, pick.level) ? (
-                <Tag color="processing" style={{ marginInlineEnd: 0 }}>
+                <Tag color="processing" style={{ marginInlineStart: 6, marginInlineEnd: 0 }}>
                   한계 돌파
                 </Tag>
               ) : null}
-              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                레벨 {range.min}~{range.max}
-                {range.limitBreakMax
-                  ? `, 한계 돌파 ${range.limitBreakMin}~${range.limitBreakMax}`
-                  : ''}
-              </Text>
-            </Flex>
+            </Text>
+            <Button
+              size="small"
+              type="text"
+              icon={<DeleteOutlined />}
+              aria-label={`세공 옵션 ${index + 1} 빼기`}
+              onClick={() => replace(index, null)}
+            />
           </Flex>
         );
       })}
-
-      <div>
-        <Button
-          icon={<PlusOutlined />}
-          onClick={addOption}
-          disabled={options.length >= REFORGE_MAX_OPTIONS || candidates.length <= options.length}
-        >
-          옵션 추가
-        </Button>
-      </div>
-
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        이 장비에 붙을 수 있는 옵션 {candidates.length}개 중에서 고릅니다. 레벨 폭은 랭크 기준 전체
-        폭이며, 쓰는 세공 도구에 따라 실제로 나오는 폭은 더 좁을 수 있습니다. 한계 돌파는 일부 세공
-        도구로만 나옵니다.
-      </Text>
     </Flex>
   );
 }

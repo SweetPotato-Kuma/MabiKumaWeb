@@ -29,3 +29,8 @@ export function isEnchantNote(line: string): boolean {
 export function stripBrackets(line: string): string {
   return line.replace(/^\[(.*)\]$/, '$1');
 }
+
+/** 목록 한 줄에 들어갈 효과. 적용 조건("양손 무기에 인챈트 가능")과 부가 규칙은 뺀다. */
+export function effectSummary(enchant: EnchantDef): string {
+  return enchant.desc.filter((line) => !isEnchantNote(line)).join(', ');
+}
