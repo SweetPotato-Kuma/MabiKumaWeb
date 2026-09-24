@@ -18,18 +18,22 @@
  * 넥슨 그림은 48x48 픽셀 그림을 14/3 배(224px)로 키워 240px 캔버스 가운데(여백 8px)에 둔
  * 것이다. 각 칸의 가운데 픽셀을 읽어 48x48 로 되돌린다.
  *
- * 넥슨 그림에는 왼쪽 아래에 금색 + 표시가 들어 있다. 게임에서 + 는 "더 튼튼한 주머니" 에만
- * 붙고 색이 늘 같다. 튼튼한 주머니에는 없으므로, 넥슨 그림과 대 본 뒤에 지운다. + 가 주머니의
- * 왼쪽 아래 모서리를 가리고 있어서, 보이는 가장자리를 이어 그어 모서리를 되살린다(fillUnderPlus).
+ * + 표시는 모든 주머니에 붙고, 색으로 등급을 가른다. 튼튼한 주머니는 주황, 더 튼튼한
+ * 주머니는 노랑이다(게임 화면으로 확인, scripts/bag-dye-sources). 그런데 넥슨 그림은 튼튼한
+ * 주머니에도 노란 + 를 그린다. 그래서 넥슨 그림과 대 본 뒤에 노란 + 를 지우고(가려져 있던 주머니
+ * 모서리는 보이는 가장자리를 이어 그어 되살린다, fillUnderPlus), 게임 화면에서 뽑은 주황 + 를
+ * 그 자리에 찍는다.
  *
- * 허브 주머니는 튼튼한 10종과 더 튼튼한 10종이 있고, 넥슨이 그림 주소를 비워서 준다. 게임에서도
- * 허브 주머니 그림에는 파트 색이 입혀지지 않는다. 그래서 게임 클라이언트 아이콘을 받아 색을
- * 칠하지 않는 픽셀로만 담는다(파트 0개). 파트 색은 상점 응답에 그대로 있으므로 화면은 색 견본과
- * 색 비교에 쓴다.
- * - 클라이언트의 튼튼한 허브 주머니 아이콘은 허브가 빠진 염색 틀뿐이라 쓰지 않는다. 더 튼튼한
- *   쪽 아이콘은 허브까지 그려진 완성 그림이다
- * - 두 주머니는 + 표시만 다르다. 더 튼튼한 아이콘을 그대로 쓰고, 튼튼한 쪽은 그 아이콘에서 +
- *   를 지운다. + 는 열 아이콘에서 픽셀이 똑같은 왼쪽 아래 자리로 찾는다
+ * 허브 주머니(튼튼한 10종, 더 튼튼한 10종)는 넥슨이 그림 주소를 비워서 준다. 클라이언트 아이콘은
+ * 게임 화면과 그림이 달라 쓸 수 없다. 그래서 게임 화면 캡처 두 장(튼튼한 만드레이크 주머니, 더
+ * 튼튼한 블러디 허브 주머니)과 그때의 파트 색으로 주머니 틀을 푼다.
+ * - 허브 주머니는 곱하기가 아니라 더하기로 칠한다: 칠해진 색 = 파트 색 + 명암(세 채널에 같은 값)
+ *   캡처의 몸통이 파트 A 에서 세 채널 모두 같은 만큼 빠지고 더해진 색이라 알 수 있었다. 그래서
+ *   캡처 한 장으로도 픽셀마다 세 채널의 차이가 같아지는 파트를 고를 수 있다
+ * - 창 안의 허브 그림은 파트 색과 상관없다. 더 튼튼한 쪽 창 안은 클라이언트 아이콘의 창 안과
+ *   픽셀 하나까지 같아서, 열 종 모두 클라이언트 아이콘에서 옮긴다
+ * - 튼튼한 쪽 창은 모양이 달라 옮길 그림이 없다. 만드레이크는 캡처 그대로 두고, 나머지 아홉 종은
+ *   더 튼튼한 쪽 허브 그림을 창 가운데에 옮겨 넣는다(근사)
  *
  * 실행: NEXON_API_KEY=... node scripts/build-bag-dyes.mjs
  * 산출: public/bag-dyes.json
@@ -41,6 +45,35 @@ import { inflateSync } from 'node:zlib';
 const API_ORIGIN = 'https://open.api.nexon.com';
 /** 게임 클라이언트 아이콘. 아이템 사전 아이콘을 받는 곳과 같다(scripts/local 참고). */
 const CLIENT_ICON_URL = (id) => `https://mabires2.pril.cc/invimage/kr/${id}/${id}.png`;
+
+/**
+ * 게임 화면 캡처. 인벤토리의 아이콘을 원래 크기로 찍은 것과, 그 주머니의 파트 색(툴팁 값).
+ * 허브 주머니의 주머니 틀과 + 표시를 여기서 푼다.
+ */
+const HERB_CAPTURES = {
+  plain: {
+    file: 'scripts/bag-dye-sources/sturdy-mandrake-bag.png',
+    herb: '만드레이크 주머니',
+    colors: [
+      [245, 132, 89],
+      [155, 89, 91],
+    ],
+  },
+  sturdier: {
+    file: 'scripts/bag-dye-sources/sturdier-bloody-herb-bag.png',
+    herb: '블러디 허브 주머니',
+    colors: [
+      [167, 184, 218],
+      [248, 195, 145],
+      [232, 188, 180],
+    ],
+  },
+};
+
+/** 더하기로 칠하는 칸. 5 는 파트 A, 6 은 파트 B, 7 은 파트 C. [종류, 음수면 1, 명암 크기, 0] */
+const CELL_ADD_FIRST = 5;
+/** 캡처에서 세 채널의 차이가 이만큼 안에서 같으면 그 파트로 칠해진 픽셀로 본다. */
+const ADD_SPREAD = 6;
 
 /**
  * 더 튼튼한 허브 주머니의 클라이언트 아이템 번호. 2026-09-24 클라이언트 리소스에서 이름으로 찾았다.
@@ -156,7 +189,7 @@ function decodePng(buffer) {
     line.copy(pixels, y * stride);
     previous = line;
   }
-  return { width, pixels };
+  return { width, height, pixels };
 }
 
 /** 240px 그림을 48x48 픽셀 그림으로 되돌린다. */
@@ -283,6 +316,10 @@ function paint(cell, colors) {
   const [kind, a, b, c] = cell;
   if (kind === 0) return [0, 0, 0];
   if (kind === 1) return [a, b, c];
+  if (kind >= CELL_ADD_FIRST) {
+    const offset = a === 1 ? -b : b;
+    return colors[kind - CELL_ADD_FIRST].map((value) => Math.min(255, Math.max(0, value + offset)));
+  }
   const color = colors[kind - 2];
   return [a, b, c].map((shade, k) => Math.min(255, Math.round((shade * color[k]) / SHADE_SCALE)));
 }
@@ -481,35 +518,298 @@ async function fetchIcon(id) {
   return pixels;
 }
 
-/** 아이콘을 칠하지 않는 픽셀로만 된 지도로. 반투명이 섞이면 반을 넘는 것만 남긴다. */
-function iconCells(pixels) {
-  const cells = new Uint8Array(SIZE * SIZE * 4);
-  for (let index = 0; index < SIZE * SIZE; index++) {
-    if (pixels[index * 4 + 3] < 128) continue;
-    cells.set([1, pixels[index * 4], pixels[index * 4 + 1], pixels[index * 4 + 2]], index * 4);
-  }
-  return cells;
-}
-
-/** + 는 모든 더 튼튼한 아이콘의 같은 자리에 같은 색으로 있다. 왼쪽 아래 1/4 에서 그 픽셀들을 모은다. */
-function findSharedPlus(allCells) {
-  const plus = new Set();
-  const [first] = allCells;
-  for (let y = SIZE / 2; y < SIZE; y++) {
-    for (let x = 0; x < SIZE / 2; x++) {
-      const o = (y * SIZE + x) * 4;
-      if (first[o] === 0) continue;
-      const same = allCells.every((cells) =>
-        [0, 1, 2, 3].every((k) => cells[o + k] === first[o + k]),
-      );
-      if (same) plus.add(y * SIZE + x);
+/**
+ * 캡처에서 아이콘 픽셀만 고른다. 배경(인벤토리 칸의 회색, 투명 표시 바둑판)은 가장자리에서
+ * 회색으로 이어진 곳이고, 남은 것 가운데 가장 큰 덩어리가 아이콘이다. 칸 번호 숫자나 격자
+ * 점처럼 떨어져 있는 것은 빠진다. 아이콘 안의 어두운 회색은 가장자리와 이어지지 않아 남는다.
+ */
+function captureIcon({ width, height, pixels }) {
+  const isGray = (index) => {
+    const [r, g, b] = [pixels[index * 4], pixels[index * 4 + 1], pixels[index * 4 + 2]];
+    return Math.abs(r - g) < 4 && Math.abs(g - b) < 4 && r >= 20 && r < 100;
+  };
+  const outside = new Uint8Array(width * height);
+  const queue = [];
+  for (let x = 0; x < width; x++) queue.push(x, (height - 1) * width + x);
+  for (let y = 0; y < height; y++) queue.push(y * width, y * width + width - 1);
+  for (let k = 0; k < queue.length; k++) {
+    const index = queue[k];
+    if (outside[index] || !isGray(index)) continue;
+    outside[index] = 1;
+    const x = index % width;
+    const y = Math.floor(index / width);
+    for (const [dx, dy] of NEIGHBORS) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < width && ny < height) queue.push(ny * width + nx);
     }
   }
-  // 2026-09-24 에 133픽셀이었다. 크게 벗어나면 아이콘이 바뀐 것이다.
-  if (plus.size < 80 || plus.size > 200)
-    throw new Error(`+ 표시가 ${plus.size}픽셀로 잡혔습니다. 아이콘이 바뀌었는지 확인하세요.`);
-  return plus;
+
+  const seen = new Uint8Array(width * height);
+  let icon = [];
+  for (let start = 0; start < width * height; start++) {
+    if (outside[start] || seen[start]) continue;
+    const part = [start];
+    seen[start] = 1;
+    for (let k = 0; k < part.length; k++) {
+      const x = part[k] % width;
+      const y = Math.floor(part[k] / width);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const next = ny * width + nx;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height || outside[next] || seen[next])
+            continue;
+          seen[next] = 1;
+          part.push(next);
+        }
+      }
+    }
+    if (part.length > icon.length) icon = part;
+  }
+  return new Set(icon);
 }
+
+/**
+ * 캡처 한 장을 48x48 지도로 푼다. 아이콘을 칸 가운데에 둔다.
+ * 픽셀마다 파트 색과의 차이가 세 채널에서 같아지는 파트가 있으면 그 파트를 더하기로 칠하는
+ * 칸, 없으면 칠하지 않는 칸(창 안 허브, + 표시, 흰 바느질 점)이다. 0 이나 255 에 닿은 채널은
+ * 잘린 값이라 차이를 재는 데 쓰지 않고, 잘린 방향만 맞는지 본다.
+ */
+function captureCells(image, colors) {
+  const icon = captureIcon(image);
+  const xs = [...icon].map((index) => index % image.width);
+  const ys = [...icon].map((index) => Math.floor(index / image.width));
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const width = Math.max(...xs) - left + 1;
+  const height = Math.max(...ys) - top + 1;
+  if (width > SIZE || height > SIZE)
+    throw new Error(`캡처의 아이콘이 ${width}x${height} 로 ${SIZE}px 보다 큽니다.`);
+  const offsetX = left - Math.floor((SIZE - width) / 2);
+  const offsetY = top - Math.floor((SIZE - height) / 2);
+
+  const cells = new Uint8Array(SIZE * SIZE * 4);
+  const original = new Map();
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const sx = x + offsetX;
+      const sy = y + offsetY;
+      const from = sy * image.width + sx;
+      if (sx < 0 || sy < 0 || sx >= image.width || sy >= image.height || !icon.has(from)) continue;
+      const value = [0, 1, 2].map((k) => image.pixels[from * 4 + k]);
+      original.set(y * SIZE + x, value);
+
+      let best = null;
+      colors.forEach((color, part) => {
+        const free = [0, 1, 2].filter((k) => value[k] > 0 && value[k] < 255);
+        if (free.length < 2) return;
+        const diffs = free.map((k) => value[k] - color[k]);
+        const spread = Math.max(...diffs) - Math.min(...diffs);
+        const offset = Math.round(diffs.reduce((sum, d) => sum + d, 0) / diffs.length);
+        const clipped = [0, 1, 2].every((k) =>
+          value[k] === 0
+            ? color[k] + offset <= 2
+            : value[k] === 255
+              ? color[k] + offset >= 253
+              : true,
+        );
+        if (clipped && (!best || spread < best.spread)) best = { part, spread, offset };
+      });
+
+      const cell =
+        best && best.spread <= ADD_SPREAD
+          ? [
+              CELL_ADD_FIRST + best.part,
+              best.offset < 0 ? 1 : 0,
+              Math.min(255, Math.abs(best.offset)),
+              0,
+            ]
+          : [1, ...value];
+      cells.set(cell, (y * SIZE + x) * 4);
+    }
+  }
+  return { cells, original };
+}
+
+/** 푼 지도를 캡처 때의 색으로 다시 칠해 캡처 원본과 대 본다. 풀이가 맞으면 그대로 돌아와야 한다. */
+function captureWorst({ cells, original }, colors) {
+  let worst = 0;
+  for (const [index, value] of original) {
+    const painted = paint(cells.subarray(index * 4, index * 4 + 4), colors);
+    for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(painted[k] - value[k]));
+  }
+  return worst;
+}
+
+/** 가운데 쪽에서 시작해 이어진 칠하지 않는 픽셀 덩어리. 창 안이다. + 표시(왼쪽 아래)로는 번지지 않게 한다. */
+function windowOf(cells, accept = () => true) {
+  const inCenter = (x, y) => x >= 18 && x < 40 && y >= 14 && y < 44;
+  const ok = (index) => cells[index * 4] === 1 && index % SIZE >= 16 && accept(index);
+  let best = new Set();
+  const seen = new Set();
+  for (let index = 0; index < SIZE * SIZE; index++) {
+    if (seen.has(index) || !ok(index) || !inCenter(index % SIZE, Math.floor(index / SIZE)))
+      continue;
+    const area = [index];
+    seen.add(index);
+    for (let k = 0; k < area.length; k++) {
+      const x = area[k] % SIZE;
+      const y = Math.floor(area[k] / SIZE);
+      for (const [dx, dy] of NEIGHBORS) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const next = ny * SIZE + nx;
+        if (nx < 0 || ny < 0 || nx >= SIZE || ny >= SIZE || seen.has(next) || !ok(next)) continue;
+        seen.add(next);
+        area.push(next);
+      }
+    }
+    if (area.length > best.size) best = new Set(area);
+  }
+  return best;
+}
+
+/** 클라이언트 아이콘에서 창 안 그림을 캡처의 창 자리로 옮길 때 어긋남. 캡처의 허브와 같은 허브 아이콘으로 찾는다. */
+function alignIcon(cells, iconPixels) {
+  const center = [];
+  for (let index = 0; index < SIZE * SIZE; index++) {
+    const x = index % SIZE;
+    const y = Math.floor(index / SIZE);
+    if (cells[index * 4] === 1 && x >= 18 && x < 40 && y >= 14 && y < 44) center.push(index);
+  }
+  const same = (index, dx, dy) => {
+    const x = (index % SIZE) + dx;
+    const y = Math.floor(index / SIZE) + dy;
+    if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return false;
+    const o = (y * SIZE + x) * 4;
+    return (
+      iconPixels[o + 3] >= 128 &&
+      [0, 1, 2].every((k) => Math.abs(iconPixels[o + k] - cells[index * 4 + 1 + k]) <= 3)
+    );
+  };
+  let best = { dx: 0, dy: 0, count: -1 };
+  for (let dy = -12; dy <= 12; dy++) {
+    for (let dx = -12; dx <= 12; dx++) {
+      const count = center.filter((index) => same(index, dx, dy)).length;
+      if (count > best.count) best = { dx, dy, count };
+    }
+  }
+  const window = windowOf(cells, (index) => same(index, best.dx, best.dy));
+  return { ...best, window };
+}
+
+/** 색 목록에서 가장 흔한 색. */
+function mostCommon(values) {
+  const counts = new Map();
+  for (const value of values) counts.set(value.join(','), (counts.get(value.join(',')) ?? 0) + 1);
+  return [...counts]
+    .sort((a, b) => b[1] - a[1])[0][0]
+    .split(',')
+    .map(Number);
+}
+
+/** 창 안(window)을 다른 허브의 창 안 그림으로 바꾼다. 아이콘 좌표 = 창 좌표 + (dx, dy). */
+function swapWindow(cells, window, iconPixels, dx, dy) {
+  const out = Uint8Array.from(cells);
+  for (const index of window) {
+    const x = (index % SIZE) + dx;
+    const y = Math.floor(index / SIZE) + dy;
+    const o = (y * SIZE + x) * 4;
+    out.set([1, iconPixels[o], iconPixels[o + 1], iconPixels[o + 2]], index * 4);
+  }
+  return out;
+}
+
+/**
+ * 튼튼한 쪽 창에 더 튼튼한 쪽 허브 그림을 옮겨 넣는다. 두 창은 모양이 달라 픽셀을 그대로
+ * 옮길 수 없다. 창을 창 바탕색으로 비우고, 허브 그림(더 튼튼한 창에서 바탕색이 아닌 픽셀)을
+ * 두 창의 가운데를 맞춰 찍는다. 창을 벗어나는 픽셀은 버린다.
+ */
+function transplantHerb(cells, window, iconPixels, sturdierWindow, dx, dy) {
+  const out = Uint8Array.from(cells);
+  const background = mostCommon(
+    [...window].map((index) => [...cells.subarray(index * 4 + 1, index * 4 + 4)]),
+  );
+  for (const index of window) out.set([1, ...background], index * 4);
+
+  const iconAt = (index) => {
+    const o = ((Math.floor(index / SIZE) + dy) * SIZE + (index % SIZE) + dx) * 4;
+    return [iconPixels[o], iconPixels[o + 1], iconPixels[o + 2]];
+  };
+  const herbBackground = mostCommon([...sturdierWindow].map(iconAt)).join(',');
+  const centerOf = (set) => {
+    const list = [...set];
+    return [
+      Math.round(list.reduce((sum, index) => sum + (index % SIZE), 0) / list.length),
+      Math.round(list.reduce((sum, index) => sum + Math.floor(index / SIZE), 0) / list.length),
+    ];
+  };
+  const [fromX, fromY] = centerOf(sturdierWindow);
+  const [toX, toY] = centerOf(window);
+  for (const index of sturdierWindow) {
+    const color = iconAt(index);
+    if (color.join(',') === herbBackground) continue;
+    const target = (Math.floor(index / SIZE) - fromY + toY) * SIZE + (index % SIZE) - fromX + toX;
+    if (window.has(target)) out.set([1, ...color], target * 4);
+  }
+  return out;
+}
+
+/** 캡처의 + 표시(왼쪽 아래의 칠하지 않는 픽셀)를 떼어 온다. */
+function plusSprite(cells) {
+  const sprite = [];
+  for (let y = SIZE / 2; y < SIZE; y++) {
+    for (let x = 0; x < 20; x++) {
+      const index = y * SIZE + x;
+      if (cells[index * 4] === 1)
+        sprite.push({ x, y, color: [...cells.subarray(index * 4 + 1, index * 4 + 4)] });
+    }
+  }
+  // 2026-09-24 캡처에서 70픽셀 남짓이었다.
+  if (sprite.length < 40 || sprite.length > 120)
+    throw new Error(`캡처의 + 표시가 ${sprite.length}픽셀로 잡혔습니다.`);
+  return sprite;
+}
+
+/** 지운 + 자리(plus)의 가운데에 주황 + 를 찍는다. */
+function stampPlus(cells, plus, sprite) {
+  const out = Uint8Array.from(cells);
+  const box = (xs, ys) => [
+    (Math.min(...xs) + Math.max(...xs)) / 2,
+    (Math.min(...ys) + Math.max(...ys)) / 2,
+  ];
+  const [toX, toY] = box(
+    [...plus].map((i) => i % SIZE),
+    [...plus].map((i) => Math.floor(i / SIZE)),
+  );
+  const [fromX, fromY] = box(
+    sprite.map((p) => p.x),
+    sprite.map((p) => p.y),
+  );
+  const dx = Math.round(toX - fromX);
+  const dy = Math.round(toY - fromY);
+  for (const { x, y, color } of sprite) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx >= 0 && ny >= 0 && nx < SIZE && ny < SIZE) out.set([1, ...color], (ny * SIZE + nx) * 4);
+  }
+  return out;
+}
+
+async function loadCapture(file) {
+  const { readFile } = await import('node:fs/promises');
+  return decodePng(await readFile(resolve(process.cwd(), file)));
+}
+
+const plainCapture = await loadCapture(HERB_CAPTURES.plain.file);
+const sturdierCapture = await loadCapture(HERB_CAPTURES.sturdier.file);
+const plainSolved = captureCells(plainCapture, HERB_CAPTURES.plain.colors);
+const sturdierSolved = captureCells(sturdierCapture, HERB_CAPTURES.sturdier.colors);
+const plainBase = plainSolved.cells;
+const sturdierBase = sturdierSolved.cells;
+const orangePlus = plusSprite(plainBase);
 
 const { byName, noImage } = await collectSamples();
 const bags = {};
@@ -517,28 +817,52 @@ let failed = false;
 for (const [name, samples] of [...byName].sort(([a], [b]) => a.localeCompare(b, 'ko'))) {
   const { parts, cells, worst } = solveBag(samples);
   const plus = findNexonPlus(cells);
-  const clean = fillUnderPlus(cells, plus);
-  const removed = plus.size;
+  const clean = stampPlus(fillUnderPlus(cells, plus), plus, orangePlus);
   console.log(
-    `${name}: 표본 ${samples.length}장, 파트 ${parts}개, 넥슨 그림과 최대 차이 ${worst}, + 표시 ${removed}픽셀 지움`,
+    `${name}: 표본 ${samples.length}장, 파트 ${parts}개, 넥슨 그림과 최대 차이 ${worst}, 노란 + ${plus.size}픽셀을 주황 + 로 바꿈`,
   );
   if (worst > MAX_ALLOWED_DIFF) failed = true;
   bags[name] = { parts, cells: Buffer.from(clean).toString('base64') };
 }
 
-const sturdier = [];
+// 허브 주머니. 먼저 캡처의 허브와 같은 허브 아이콘으로 창 자리를 맞춘다.
+const herbIcons = {};
 for (const [herb, id] of Object.entries(HERB_ICON_IDS)) {
-  sturdier.push({ herb, id, cells: iconCells(await fetchIcon(id)) });
+  herbIcons[herb] = (await fetchIcon(id)).subarray();
   await sleep(200);
 }
-const plus = findSharedPlus(sturdier.map((entry) => entry.cells));
-for (const { herb, id, cells } of sturdier) {
-  bags[`더 튼튼한 ${herb}`] = { parts: 0, cells: Buffer.from(cells).toString('base64') };
-  bags[`튼튼한 ${herb}`] = {
-    parts: 0,
-    cells: Buffer.from(fillUnderPlus(cells, plus)).toString('base64'),
-  };
-  console.log(`${herb}: 클라이언트 아이콘 ${id}, 튼튼한 쪽은 + 표시 ${plus.size}픽셀 지움`);
+const aligned = alignIcon(sturdierBase, herbIcons[HERB_CAPTURES.sturdier.herb]);
+console.log(
+  `더 튼튼한 창: 캡처와 아이콘이 ${aligned.count}픽셀 일치, 창 ${aligned.window.size}픽셀, 어긋남 (${aligned.dx}, ${aligned.dy})`,
+);
+if (aligned.window.size < 40) {
+  console.error(
+    '더 튼튼한 쪽 창 안이 클라이언트 아이콘과 맞지 않습니다. 캡처나 아이콘이 바뀌었는지 확인하세요.',
+  );
+  failed = true;
+}
+const plainWindow = windowOf(plainBase);
+console.log(`튼튼한 창: ${plainWindow.size}픽셀`);
+
+for (const herb of Object.keys(HERB_ICON_IDS)) {
+  const icon = herbIcons[herb];
+  const sturdier = swapWindow(sturdierBase, aligned.window, icon, aligned.dx, aligned.dy);
+  const plain =
+    herb === HERB_CAPTURES.plain.herb
+      ? plainBase
+      : transplantHerb(plainBase, plainWindow, icon, aligned.window, aligned.dx, aligned.dy);
+  bags[`더 튼튼한 ${herb}`] = { parts: 3, cells: Buffer.from(sturdier).toString('base64') };
+  bags[`튼튼한 ${herb}`] = { parts: 2, cells: Buffer.from(plain).toString('base64') };
+}
+
+// 풀이 확인: 캡처의 주머니를 그때 색으로 다시 칠하면 캡처와 같아야 한다.
+for (const [key, solved] of [
+  ['plain', plainSolved],
+  ['sturdier', sturdierSolved],
+]) {
+  const worst = captureWorst(solved, HERB_CAPTURES[key].colors);
+  console.log(`${HERB_CAPTURES[key].herb}(${key}) 캡처와 최대 차이 ${worst}`);
+  if (worst > MAX_ALLOWED_DIFF) failed = true;
 }
 
 // 넥슨이 그림을 주지 않았는데 지도도 없는 주머니가 생기면(새 허브가 나오면) 알린다.

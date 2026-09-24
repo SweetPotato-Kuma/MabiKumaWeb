@@ -8,20 +8,23 @@ import { hexToRgb } from './color';
  * 를 담은 지도(public/bag-dyes.json)를 들고 있다가 그 색을 칠해 그린다. 지도는
  * scripts/build-bag-dyes.mjs 가 넥슨이 색을 입혀 그린 그림들을 거꾸로 풀어 만든다.
  *
- * 칠하는 식은 넥슨과 같다: 칠해진 색 = min(255, 명암 × 파트 색), R, G, B 채널마다 따로.
- * 이 식으로 그린 그림은 넥슨 그림과 채널당 2 이내로 같다(2026-09-24, 넥슨 그림 110장으로 확인).
- * 넥슨 그림 왼쪽 아래의 + 표시는 더 튼튼한 주머니에만 붙는 것이라 지도에서 지워 두었다.
+ * 칠하는 식은 두 가지다.
+ * - 곱하기(넥슨 그림에서 푼 22종): 칠해진 색 = min(255, 명암 × 파트 색), R, G, B 채널마다 따로.
+ *   넥슨 그림과 채널당 2 이내로 같다(2026-09-24, 넥슨 그림 110장으로 확인)
+ * - 더하기(허브 주머니 20종): 칠해진 색 = 파트 색 + 명암(세 채널에 같은 값), 0 ~ 255 로 자른다.
+ *   게임 화면 캡처에서 풀었고, 캡처 때 색으로 다시 칠하면 캡처와 채널당 1 이내로 같다
  *
- * 허브 주머니(튼튼한 10종, 더 튼튼한 10종)는 파트가 0개인 지도다. 게임에서도 허브 주머니
- * 그림에는 색이 입혀지지 않으므로 칠하지 않는 픽셀로만 되어 있고, 상점 색과 상관없이 늘 같은
- * 그림이 나온다. 더 튼튼한 쪽에만 + 가 있다.
+ * + 표시는 모든 주머니에 있고 색으로 등급을 가른다. 튼튼한 주머니는 주황, 더 튼튼한 주머니
+ * (지금은 허브만 있다)는 노랑이다.
  */
 
 /** 한 픽셀은 4바이트. 첫 바이트가 종류다. */
 const CELL_TRANSPARENT = 0;
 const CELL_FIXED = 1;
-/** 2 는 파트 A, 3 은 파트 B, 4 는 파트 C. 나머지 세 바이트가 R, G, B 명암이다. */
+/** 곱하기 칸. 2 는 파트 A, 3 은 파트 B, 4 는 파트 C. 나머지 세 바이트가 R, G, B 명암이다. */
 const CELL_FIRST_PART = 2;
+/** 더하기 칸. 5 는 파트 A, 6 은 파트 B, 7 은 파트 C. [종류, 음수면 1, 명암 크기, 0] */
+const CELL_FIRST_ADD = 5;
 
 export interface BagDye {
   parts: number;
@@ -83,6 +86,14 @@ export function paintBag(
       pixels[i] = cells[i + 1];
       pixels[i + 1] = cells[i + 2];
       pixels[i + 2] = cells[i + 3];
+    } else if (kind >= CELL_FIRST_ADD) {
+      const color = rgb[kind - CELL_FIRST_ADD];
+      if (!color) return null;
+      const offset = cells[i + 1] === 1 ? -cells[i + 2] : cells[i + 2];
+      // Uint8ClampedArray 가 0 과 255 에서 잘라 준다.
+      pixels[i] = color.r + offset;
+      pixels[i + 1] = color.g + offset;
+      pixels[i + 2] = color.b + offset;
     } else {
       const color = rgb[kind - CELL_FIRST_PART];
       if (!color) return null;
