@@ -32,7 +32,12 @@ export interface EquipmentPreviewProps {
 function breakdown(row: StatRow): string {
   const parts: string[] = [];
   if (row.base) parts.push(`기본 ${formatStatValue(row.stat, row.base)}`);
-  if (row.random) parts.push(`랜덤 ${formatStatValue(row.stat, row.random, true)}`);
+  if (row.randomRange) {
+    const [min, max] = row.randomRange;
+    parts.push(
+      `유동 ${formatStatValue(row.stat, row.random, true)} (${formatStatRange(row.stat, min, max)})`,
+    );
+  }
   if (row.upgrade[0] || row.upgrade[1])
     parts.push(`개조 ${formatStatRange(row.stat, ...row.upgrade, true)}`);
   if (row.enchant[0] || row.enchant[1])
@@ -55,7 +60,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 /**
  * 장비 미리보기. 고른 것을 모두 합친 장비 한 벌을 게임 툴팁처럼 한 카드에 모은다.
  *
- * 능력치는 두 칸으로 둔다. 구성(기본, 랜덤, 개조, 인챈트, 특별 개조)을 칸마다 늘어놓으면
+ * 능력치는 두 칸으로 둔다. 구성(기본, 유동, 개조, 인챈트, 특별 개조)을 칸마다 늘어놓으면
  * 휴대폰에서 옆으로 밀어야 한다. 합계 옆에 구성을 작은 글씨로 접어 넣으면 줄이 늘 뿐 옆으로는 늘지 않는다.
  */
 export function EquipmentPreview({

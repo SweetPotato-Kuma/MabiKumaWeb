@@ -291,7 +291,7 @@ function DictionaryList({
                     {category} <span className="tnum">{formatNumber(names.length)}</span>개 가운데{' '}
                     <span className="tnum">{formatNumber(rows.length)}</span>개를 보고 있습니다.
                     {isEquipmentCategory(category)
-                      ? ' 줄을 누르면 개조, 세공, 랜덤 능력치를 골라 보는 장비 시뮬레이터가 열립니다.'
+                      ? ' 줄을 누르면 개조, 세공, 유동 능력치를 골라 보는 장비 시뮬레이터가 열립니다.'
                       : ''}
                   </Text>
                   <Table<ItemRow>

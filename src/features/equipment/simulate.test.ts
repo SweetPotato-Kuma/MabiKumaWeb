@@ -143,13 +143,13 @@ describe('개조 칸', () => {
 });
 
 describe('능력치 합산', () => {
-  it('아무것도 고르지 않으면 기본 능력치에 랜덤 최솟값을 더한 값이다', () => {
+  it('아무것도 고르지 않으면 기본 능력치에 유동 최솟값을 더한 값이다', () => {
     const rows = computeStats(SWORD, UPGRADES, initialState(SWORD));
     const attackMax = rows.find((row) => row.stat === 'attack_max');
     expect(attackMax).toMatchObject({ base: 139, random: 0, total: [139, 139] });
   });
 
-  it('랜덤 값과 고른 개조를 칸별로 나눠 더한다', () => {
+  it('유동 값과 고른 개조를 칸별로 나눠 더한다', () => {
     const state = initialState(SWORD);
     state.random.attack_max = 10;
     state.slots = [52507, 52500, null, null, null];

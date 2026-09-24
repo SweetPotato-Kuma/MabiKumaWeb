@@ -185,10 +185,10 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
   });
 
   it('주소에 담긴 조합을 불러와 최종 능력치에 더한다', async () => {
-    // 랜덤 최대공 10, 첫 칸 전용 개조 1(+30). 139 + 10 + 30 = 179
+    // 유동 최대공 10, 첫 칸 전용 개조 1(+30). 139 + 10 + 30 = 179
     renderPage(`${SWORD_PATH}&rv=10&up=52507.`);
 
-    // 랜덤 능력치 칸에도 같은 이름표가 있다. 표의 줄만 고른다.
+    // 유동 능력치 칸에도 같은 이름표가 있다. 표의 줄만 고른다.
     const labels = await screen.findAllByText('최대 공격력');
     const row = labels.map((label) => label.closest('tr')).find(Boolean);
     expect(row).toBeTruthy();
@@ -221,12 +221,15 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
     expect(await screen.findByText('NPC 네리스, 퍼거스 외 1명(이름 미확인)')).toBeInTheDocument();
   });
 
-  it('랜덤 능력치는 기본값에 얹은 실제 값과 그 구성을 보여 준다', async () => {
+  it('유동 능력치는 기본값에 얹은 실제 값과 그 구성을 보여 준다', async () => {
     renderPage(`${SWORD_PATH}&rv=7`);
 
-    expect(await screen.findByText('기본 139 + 랜덤 7 (폭 0~10)')).toBeInTheDocument();
+    expect(await screen.findByText('기본 139 + 유동 7 (유동 폭 0~10)')).toBeInTheDocument();
     // 슬라이더 양 끝에 실제 값의 최소와 최대가 붙는다.
     expect(screen.getByText('149')).toBeInTheDocument();
+    expect(screen.getByText('범위 139 ~ 149')).toBeInTheDocument();
+    // 미리보기 구성에도 유동 폭을 같이 적는다.
+    expect(screen.getByText('기본 139, 유동 +7 (0~10)')).toBeInTheDocument();
     expect(screen.getByRole('spinbutton', { name: '최대 공격력' })).toHaveValue('146');
   });
 
@@ -234,7 +237,7 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
     renderPage(SWORD_PATH);
 
     expect(await screen.findByText('고정 능력치')).toBeInTheDocument();
-    expect(screen.getByText('랜덤 능력치')).toBeInTheDocument();
+    expect(screen.getByText('유동 능력치')).toBeInTheDocument();
   });
 
   it('장비 정보가 없는 아이템이면 그렇다고 말한다', async () => {

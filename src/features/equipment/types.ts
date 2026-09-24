@@ -6,7 +6,7 @@
  * 들어가야 하기 때문이다.
  */
 
-/** [능력치 이름, 최소, 최대]. 랜덤 능력치는 기본값에 더하는 폭이다. */
+/** [능력치 이름, 최소, 최대]. 유동 능력치는 기본값에 더하는 폭이다. */
 export type StatRange = [stat: string, min: number, max: number];
 
 export interface EquipmentRecord {
@@ -15,7 +15,7 @@ export interface EquipmentRecord {
   category: string;
   /** 기본 능력치. 값이 0 인 칸은 빠져 있다. */
   base?: Record<string, number>;
-  /** 랜덤 능력치. 제작하거나 얻을 때 이 폭 안에서 정해져 기본값에 더해진다. */
+  /** 유동 능력치. 제작하거나 얻을 때 이 폭 안에서 정해져 기본값에 더해진다. */
   random?: StatRange[];
   upgrade?: {
     /** 일반 개조 횟수 */

@@ -11,7 +11,7 @@ const { Text } = Typography;
 
 interface BaseStatsPanelProps {
   item: EquipmentRecord;
-  /** 랜덤 능력치마다 고른 몫(기본값에 더해지는 값) */
+  /** 유동 능력치마다 고른 몫(기본값에 더해지는 값) */
   values: Record<string, number>;
   onChange: (values: Record<string, number>) => void;
 }
@@ -55,12 +55,21 @@ function RandomStat({
         border: `1px solid ${token.colorBorderSecondary}`,
       }}
     >
-      {/* 이름과 지금 값을 한 줄에. 값을 가장 먼저 읽게 굵고 크게 둔다. */}
-      <Flex justify="space-between" align="baseline" gap={8}>
+      {/* 이름과 지금 값을 한 줄에. 값을 가장 먼저 읽게 굵고 크게 두고, 바로 아래에 나올 수 있는 범위를 적는다. */}
+      <Flex justify="space-between" align="flex-start" gap={8}>
         <label htmlFor={id}>{statLabel(stat)}</label>
-        <Text strong className="tnum" style={{ fontSize: token.fontSizeHeading4 }}>
-          {formatStatValue(stat, base + bonus)}
-        </Text>
+        <Flex vertical align="flex-end" gap={0}>
+          <Text
+            strong
+            className="tnum"
+            style={{ fontSize: token.fontSizeHeading4, lineHeight: 1.2 }}
+          >
+            {formatStatValue(stat, base + bonus)}
+          </Text>
+          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+            범위 {formatStatValue(stat, low)} ~ {formatStatValue(stat, high)}
+          </Text>
+        </Flex>
       </Flex>
 
       <Flex align="center" gap={12}>
@@ -92,7 +101,7 @@ function RandomStat({
       </Flex>
 
       <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-        기본 {formatStatValue(stat, base)} + 랜덤 {formatStatValue(stat, bonus)} (폭{' '}
+        기본 {formatStatValue(stat, base)} + 유동 {formatStatValue(stat, bonus)} (유동 폭{' '}
         {formatStatRange(stat, min, max)})
       </Text>
     </Flex>
@@ -100,10 +109,10 @@ function RandomStat({
 }
 
 /**
- * 기본 성능. 기본 능력치와 랜덤 능력치를 합친 실제 장비 스펙을 보여 준다.
+ * 기본 성능. 기본 능력치와 유동 능력치를 합친 실제 장비 스펙을 보여 준다.
  *
- * 랜덤 능력치를 "+0~10" 으로만 적으면 결국 몇이 되는지 머릿속으로 더해야 한다. 그래서 칸마다
- * 지금 값을 크게, 폭의 양 끝을 슬라이더에, 구성(기본 + 랜덤)을 아래에 둔다. 고르는 칸도 실제 값으로
+ * 유동 능력치를 "+0~10" 으로만 적으면 결국 몇이 되는지 머릿속으로 더해야 한다. 그래서 칸마다
+ * 지금 값을 크게, 폭의 양 끝을 슬라이더에, 구성(기본 + 유동)을 아래에 둔다. 고르는 칸도 실제 값으로
  * 움직인다. 안에서는 더해지는 몫만 들고 있다.
  *
  * 고정 능력치는 고를 것이 없으니 따로 떼어 짧은 표로 둔다. 섞어 두면 고를 칸이 묻힌다.
@@ -135,7 +144,7 @@ export function BaseStatsPanel({ item, values, onChange }: BaseStatsPanelProps) 
         <Flex vertical gap={10}>
           <Flex justify="space-between" align="center" gap={8} wrap>
             <Flex vertical gap={0}>
-              <Text strong>랜덤 능력치</Text>
+              <Text strong>유동 능력치</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 제작하거나 얻을 때 폭 안에서 정해집니다.
               </Text>

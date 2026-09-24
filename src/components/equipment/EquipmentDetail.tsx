@@ -152,7 +152,7 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
         <Flex vertical gap={16}>
           {!hasAnything ? (
             <Card>
-              <Empty description="이 장비에는 고를 수 있는 랜덤 능력치, 개조, 인챈트, 세공, 특별 개조가 없습니다." />
+              <Empty description="이 장비에는 고를 수 있는 유동 능력치, 개조, 인챈트, 세공, 특별 개조가 없습니다." />
             </Card>
           ) : null}
 
