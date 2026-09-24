@@ -24,7 +24,6 @@ function shop({ nextUpdate }) {
         item: [
           {
             item_display_name: '튼튼한 고급 실크 주머니',
-            image_url: 'https://open.api.nexon.com/static/mabinogi/img/ead0f110c5139356446221d0fbca345d?q=4b45',
             price: [{ price_type: '두카트', price_value: 500000 }],
             item_option: [
               // 파트 순서를 일부러 섞어 둔다. 워커가 A, B, C 로 맞춰야 한다.
@@ -32,13 +31,6 @@ function shop({ nextUpdate }) {
               { option_type: '아이템 색상', option_sub_type: '파트 A', option_value: '187,148,199' },
               { option_type: '아이템 색상', option_sub_type: '파트 C', option_value: '255,255,255' },
             ],
-          },
-          // 넥슨 그림 주소가 아니면 믿을 수 없어 그림을 보내지 않는다.
-          {
-            item_display_name: '튼튼한 밀 주머니',
-            image_url: 'https://evil.example/bag.png',
-            price: [{ price_type: '두카트', price_value: 1000 }],
-            item_option: [],
           },
           { item_display_name: '꽃바구니', price: [{ price_type: '골드', price_value: 350000 }], item_option: [] },
         ],
@@ -89,14 +81,7 @@ describe('튼튼한 주머니 찾기', () => {
     expect(body.channel).toBe(1);
     expect(body.npcs).toHaveLength(17);
     expect(body.npcs[0].bags).toEqual([
-      {
-        n: '튼튼한 고급 실크 주머니',
-        c: ['bb94c7', '6b3a44', 'ffffff'],
-        p: 500000,
-        t: '두카트',
-        i: 'ead0f110c5139356446221d0fbca345d?q=4b45',
-      },
-      { n: '튼튼한 밀 주머니', c: [], p: 1000, t: '두카트' },
+      { n: '튼튼한 고급 실크 주머니', c: ['bb94c7', '6b3a44', 'ffffff'], p: 500000, t: '두카트' },
     ]);
   });
 

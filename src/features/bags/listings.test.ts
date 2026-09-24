@@ -11,13 +11,7 @@ const channels: BagChannelResult[] = [
       {
         npc: '상인 라누',
         bags: [
-          {
-            n: '튼튼한 고급 실크 주머니',
-            c: ['b79686', '577abc', '829ab3'],
-            p: 500000,
-            t: '두카트',
-            i: 'ead0f110c5139356446221d0fbca345d?q=4b45',
-          },
+          { n: '튼튼한 고급 실크 주머니', c: ['b79686', '577abc', '829ab3'], p: 500000, t: '두카트' },
           { n: '튼튼한 밀 주머니', c: ['ffffff', '000000', '000000'], p: 1000, t: '두카트' },
         ],
       },
@@ -64,14 +58,6 @@ describe('buildListings', () => {
     const rows = buildListings(channels, { bagName: '', color: '#ffffff', part: 0 });
     // 파트 A 가 흰색인 것은 밀 주머니뿐이다.
     expect(rows[0]).toMatchObject({ name: '튼튼한 밀 주머니', score: 100, matchedPart: 0 });
-  });
-
-  it('그림 주소는 넥슨 주소 앞부분을 붙여 되살리고, 없으면 비워 둔다', () => {
-    const rows = buildListings(channels, { bagName: '', color: null, part: 'any' });
-    expect(rows[0].image).toBe(
-      'https://open.api.nexon.com/static/mabinogi/img/ead0f110c5139356446221d0fbca345d?q=4b45',
-    );
-    expect(rows[1].image).toBeNull();
   });
 });
 

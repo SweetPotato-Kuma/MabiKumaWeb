@@ -25,6 +25,7 @@ import {
 import { BagImage } from '@/components/BagImage';
 import { canSearchBags } from '@/features/bags/api';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
+import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
 import { bagNamesOf, buildListings, type BagListing, type PartMode } from '@/features/bags/listings';
 import { useBagSearch } from '@/features/bags/useBagSearch';
 import { CHANNEL_COUNT_BY_SERVER, SERVER_NAMES } from '@/features/servers/constants';
@@ -109,7 +110,7 @@ function Swatches({ colors, matchedPart }: { colors: string[]; matchedPart: numb
  * 칸 너비를 정해 두고 화면에 들어가는 만큼 채운다. 768px 미만 휴대폰에서는 두 칸, 넓은
  * 화면에서는 여섯 칸 남짓이 된다. 따로 단을 나누는 규칙이 없어도 한 단으로 무너지지 않는다.
  */
-function BagGrid({ rows }: { rows: BagListing[] }) {
+function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }) {
   const { token } = theme.useToken();
 
   return (
@@ -124,7 +125,7 @@ function BagGrid({ rows }: { rows: BagListing[] }) {
       {rows.map((row) => (
         <Card key={row.key} role="listitem" size="small" variant="outlined" styles={{ body: { padding: 12 } }}>
           <Flex vertical align="center" gap={8}>
-            <BagImage src={row.image} colors={row.colors} size={CARD_IMAGE_SIZE} />
+            <BagImage book={book} name={row.name} colors={row.colors} size={CARD_IMAGE_SIZE} />
             <Text strong ellipsis={{ tooltip: row.name }} style={{ width: '100%', textAlign: 'center' }}>
               {shortName(row.name)}
             </Text>
@@ -152,6 +153,8 @@ function BagGrid({ rows }: { rows: BagListing[] }) {
 export function BagsPage() {
   const available = canSearchBags();
   const { state, search } = useBagSearch();
+  // 찾기 전에 미리 받아 둔다. 결과가 올 때쯤이면 칠할 준비가 끝나 있다.
+  const dyeBook = useDyeBook();
 
   const [server, setServer] = useState<string>(SERVER_NAMES[0]);
   const [bagName, setBagName] = useState('');
@@ -191,7 +194,7 @@ export function BagsPage() {
         dataIndex: 'name',
         render: (name: string, row) => (
           <Flex gap={12} align="center">
-            <BagImage src={row.image} colors={row.colors} size={ROW_IMAGE_SIZE} />
+            <BagImage book={dyeBook} name={row.name} colors={row.colors} size={ROW_IMAGE_SIZE} />
             <Flex vertical gap={6}>
               <Text strong>{name}</Text>
               <Swatches colors={row.colors} matchedPart={row.matchedPart} />
@@ -230,7 +233,7 @@ export function BagsPage() {
           ]
         : []),
     ],
-    [scored],
+    [scored, dyeBook],
   );
 
   const loading = state.status === 'loading';
@@ -367,7 +370,7 @@ export function BagsPage() {
           </Flex>
           {view === 'grid' ? (
             <>
-              <BagGrid rows={listings.slice((page - 1) * pageSize, page * pageSize)} />
+              <BagGrid rows={listings.slice((page - 1) * pageSize, page * pageSize)} book={dyeBook} />
               <Flex justify="flex-end">
                 <Pagination {...pagination} total={listings.length} />
               </Flex>
@@ -383,8 +386,8 @@ export function BagsPage() {
             />
           )}
           <Text type="secondary" style={{ fontSize: 12 }}>
-            주머니 그림은 넥슨이 그 주머니의 색을 입혀 그려 준 것입니다. 허브 주머니처럼 넥슨이 그림을 주지 않는
-            주머니는 파트 색을 나란히 칠해 대신합니다.
+            주머니 그림은 기본 그림 위에 상점에서 받은 파트 색을 칠해 그린 것입니다. 허브 주머니처럼 기본 그림이
+            없는 주머니는 파트 색을 나란히 칠해 대신합니다.
           </Text>
         </Flex>
       )}
