@@ -9,13 +9,13 @@
     <meta name="description" content="마비노기 오픈 API 기반 경매장 시세 조회 도구" />
     <meta name="color-scheme" content="light dark" />
     <!--
-      표의 그림은 워커에 카드를 묻고, 받은 주소로 그림을 받는 두 단계다. 두 곳 모두 처음이면
-      연결(DNS, TCP, TLS)부터 맺느라 그림이 늦게 뜬다. 앱이 뜨는 동안 미리 연결해 둔다.
-      워커 조회는 fetch(CORS)라 crossorigin 을 붙이고, 그림은 img 라 붙이지 않는다.
-      그림 도메인은 worker/wrangler.toml 의 ICON_BASE_URL 과 같다.
+      처음이면 연결(DNS, TCP, TLS)부터 맺느라 그림이 늦게 뜬다. 앱이 뜨는 동안 미리 연결해 둔다.
+      fetch(CORS)로 받는 곳은 crossorigin 을 붙이고, img 로 받는 곳은 붙이지 않는다.
+      그림 도메인에서는 그림 목록(fetch)과 그림(img)을 둘 다 받으므로 두 가지 연결을 모두 열어 둔다.
     -->
     <link rel="preconnect" href="%VITE_PROXY_URL%" crossorigin />
-    <link rel="preconnect" href="https://icons.spkuma.com" />
+    <link rel="preconnect" href="%VITE_ICON_BASE_URL%" crossorigin />
+    <link rel="preconnect" href="%VITE_ICON_BASE_URL%" />
     <meta name="naver-site-verification" content="27284032f7bef3eb99d76267813fe3ebae164271" />
     <script
       async

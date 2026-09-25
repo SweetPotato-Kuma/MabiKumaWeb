@@ -61,6 +61,9 @@ jobs:
           # Actions Variable 은 자동으로 환경변수가 되지 않는다. 여기서 꺼내 써야
           # 번들에 프록시 주소가 박힌다. 비어 있으면 앱은 "키 직접 입력" 모드로 뜬다.
           VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL }}
+          # 그림과 카테고리별 그림 목록이 나가는 CDN. 공개 주소이고 worker/wrangler.toml 의
+          # ICON_BASE_URL 과 같아야 한다. 비우면 표의 그림이 워커 조회를 기다렸다 뜬다.
+          VITE_ICON_BASE_URL: https://icons.spkuma.com
         run: npm run build
 
       - name: Upload artifact

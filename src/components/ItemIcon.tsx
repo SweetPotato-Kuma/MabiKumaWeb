@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { iconSrcOf, isCardStoreConfigured, type ItemCard } from '@/features/itemcard/cards';
+import { iconFileUrl, isIconMapConfigured, useItemBrief } from '@/features/itemcard/iconMap';
 import { pixelScale } from '@/features/itemcard/pixelScale';
 
 interface ItemImageProps {
@@ -57,23 +58,38 @@ export function ItemImage({ src, size }: ItemImageProps) {
 }
 
 interface ItemIconProps {
-  card: ItemCard | null | undefined;
+  /** 워커에서 받은 카드. 상세 화면처럼 설명까지 받아 둔 곳이 넘긴다. */
+  card?: ItemCard | null;
+  /** 주면 카테고리별 그림 목록에서 바로 찾는다. 카드 조회를 기다리지 않는다. */
+  category?: string;
+  name?: string;
   size: number;
 }
 
 /**
  * 사전 카드의 그림 한 칸.
  *
- * 그림이 아직 없어도 **자리는 비워 둔다.** 카드는 표가 그려진 뒤에 도착하고, 그때 칸이
- * 생기면 이름이 옆으로 밀리며 표가 들썩인다. 카드 저장소가 아예 없는 환경에서는 자리도
- * 만들지 않는다. 영영 채워지지 않을 빈칸을 두지 않는다.
+ * 그림은 카테고리별 그림 목록(iconMap.ts)에서 먼저 찾는다. 목록은 CDN 에서 오므로 워커에 카드를
+ * 묻는 것보다 훨씬 빨리 온다. 목록에 없으면 넘겨받은 카드를 쓴다. 두 곳이 가리키는 파일이 같으면
+ * 주소도 같아서, 카드가 늦게 와도 그림을 다시 받지 않는다.
+ *
+ * 그림이 아직 없어도 **자리는 비워 둔다.** 칸이 늦게 생기면 이름이 옆으로 밀리며 표가 들썩인다.
+ * 카드 저장소도 그림 목록도 없는 환경에서는 자리도 만들지 않는다. 영영 채워지지 않을 빈칸을 두지 않는다.
  */
-export function ItemIcon({ card, size }: ItemIconProps) {
-  if (!isCardStoreConfigured()) return null;
+export function ItemIcon({ card, category, name, size }: ItemIconProps) {
+  if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
+  // 카테고리와 이름을 받은 칸만 목록을 본다. 카드만 넘기는 상세 창은 목록을 받을 이유가 없다.
+  if (category && name) return <MappedItemIcon card={card} category={category} name={name} size={size} />;
+  return <IconSlot src={card?.icon ? iconSrcOf(card) : ''} size={size} />;
+}
 
-  if (!card?.icon) {
-    return <div style={{ width: size, height: size, flex: `0 0 ${size}px` }} />;
-  }
+function MappedItemIcon({ card, category, name, size }: ItemIconProps & { category: string; name: string }) {
+  const brief = useItemBrief(category, name);
+  const src = brief?.icon ? iconFileUrl(brief.icon) : card?.icon ? iconSrcOf(card) : '';
+  return <IconSlot src={src} size={size} />;
+}
 
-  return <ItemImage src={iconSrcOf(card)} size={size} />;
+function IconSlot({ src, size }: { src: string; size: number }) {
+  if (!src) return <div style={{ width: size, height: size, flex: `0 0 ${size}px` }} />;
+  return <ItemImage src={src} size={size} />;
 }

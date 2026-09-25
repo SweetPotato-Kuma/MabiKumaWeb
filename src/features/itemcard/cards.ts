@@ -71,12 +71,10 @@ const preloadedIcons = new Set<string>();
  * 곧 보일 그림을 미리 받아 둔다. 다음 쪽으로 넘기는 순간 그림이 이미 브라우저에 있게 하려는 것이다.
  * 그림 한 장이 2KB 안팎이고 파일 이름이 내용 해시라 한 번 받으면 1년 동안 다시 받지 않는다.
  */
-export function preloadItemIcons(cards: readonly (ItemCard | null | undefined)[]): void {
+export function preloadItemIcons(srcs: readonly string[]): void {
   if (typeof Image === 'undefined') return;
-  for (const card of cards) {
-    if (!card?.icon) continue;
-    const src = iconSrcOf(card);
-    if (preloadedIcons.has(src)) continue;
+  for (const src of srcs) {
+    if (!src || preloadedIcons.has(src)) continue;
     preloadedIcons.add(src);
     const image = new Image();
     image.decoding = 'async';

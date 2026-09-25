@@ -29,6 +29,7 @@ import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } fr
 import { resolveSearch, searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { calculatePriceStats } from '@/features/auction/stats';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
+import { useIconMaps } from '@/features/itemcard/iconMap';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
@@ -68,14 +69,15 @@ function readSearchInput(params: URLSearchParams): AuctionSearchInput {
 const AUCTION_ICON_BOX = 48;
 
 /**
- * 그림 열. 사전 카드에서 온다.
+ * 그림 열. 카테고리별 그림 목록에서 바로 찾고, 목록을 받지 못했을 때만 카드를 쓴다.
  *
- * 이 칸이 자기 카드를 직접 지켜보는 이유는 표 전체가 메모로 굳어 있어서다. 카드가 뒤늦게
+ * 이 칸이 스스로 지켜보는 이유는 표 전체가 메모로 굳어 있어서다. 목록이나 카드가 뒤늦게
  * 도착해도 이 칸만 다시 그려진다.
  */
 function ItemIconCell({ rawName, category }: { rawName: string; category: string }) {
-  const card = useItemCard(category, canonicalItemName(rawName));
-  return <ItemIcon card={card} size={AUCTION_ICON_BOX} />;
+  const name = canonicalItemName(rawName);
+  const card = useItemCard(category, name);
+  return <ItemIcon category={category} name={name} card={card} size={AUCTION_ICON_BOX} />;
 }
 
 /** 이름 열은 표시 이름 한 줄이다. 인챈트를 뗀 원래 이름은 줄마다 되풀이되어 목록만 길어졌다. */
@@ -164,16 +166,27 @@ export function AuctionPage() {
   const historyLoaded = historyQuery.data?.loadedCount ?? 0;
 
   /**
-   * 지금 보고 있는 탭의 아이템 카드를 한꺼번에 받아 둔다.
+   * 지금 보고 있는 탭의 그림을 준비한다.
    *
-   * 칸마다 따로 물으면 500 줄짜리 표에서 요청이 500 번 나간다. 이름을 모아 한 번에 넘기면
+   * 그림은 카테고리별 그림 목록에서 찾는다. 목록은 CDN 에서 오고 카테고리마다 한 번이면 되므로,
+   * 결과가 오자마자 그림을 한꺼번에 받는다. 카테고리를 고르면 결과를 기다리지 않고 그 목록부터 받는다.
+   * 목록을 받지 못한 카테고리만 워커에 카드를 묻는다. 그때도 이름을 모아 한 번에 넘기므로
    * 같은 이름은 한 번만, 이미 아는 것은 아예 묻지 않는다. 보이지 않는 탭은 건드리지 않는다.
    */
   const cardKeys = useMemo(() => {
     const rows: { item_name: string; auction_item_category: string }[] = tab === 'items' ? items : history;
     return rows.map((row) => ({ category: row.auction_item_category, name: canonicalItemName(row.item_name) }));
   }, [tab, items, history]);
-  usePrefetchItemCards(cardKeys);
+  const mapCategories = useMemo(
+    () => [form.category, ...cardKeys.map((key) => key.category)],
+    [form.category, cardKeys],
+  );
+  const iconMaps = useIconMaps(mapCategories);
+  const lookupKeys = useMemo(
+    () => cardKeys.filter((key) => iconMaps.needsLookup(key.category)),
+    [cardKeys, iconMaps],
+  );
+  usePrefetchItemCards(lookupKeys);
 
   // 목록은 쪽으로 나눠 보여 준다. 새로 찾으면 첫 쪽으로 돌아간다.
   // 카드는 위에서 불러온 줄 전체를 한꺼번에 받아 두므로 쪽을 넘겨도 다시 묻지 않는다.

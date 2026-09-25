@@ -26,7 +26,8 @@ import { QueryState } from '@/components/QueryState';
 import { ITEMS_PATH, itemInfoPath, normalizeForSearch } from '@/features/auction/dictionary';
 import { searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { isEquipmentCategory } from '@/features/equipment/api';
-import { preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
+import { iconSrcOf, preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
+import { iconFileUrl, useIconMaps } from '@/features/itemcard/iconMap';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 import { EmptyState } from '@/components/EmptyState';
@@ -172,14 +173,26 @@ function ItemList({
   const { page, pageSize, pagination } = useListPagination(`${category}|${deferredKeyword}`);
 
   /**
-   * 카드는 지금 쪽과 다음 쪽을 한 번에 묻는다. 10줄씩이면 20개라 요청은 그대로 한 번이다.
-   * 다음 쪽 그림도 미리 받아 두어, 넘기는 순간 그림이 이미 와 있게 한다.
+   * 그림과 부제는 카테고리별 그림 목록에서 바로 찾는다. 워커에 묻지 않으므로 처음 보는 아이템도
+   * 목록이 오는 즉시 그림 10장을 한꺼번에 받는다. 고른 카테고리의 목록은 이름 인덱스를 기다리지
+   * 않고 곧바로 받는다. 목록을 받지 못한 카테고리만 예전처럼 워커에 카드를 묻는다.
+   *
+   * 지금 쪽과 다음 쪽을 같이 보고, 다음 쪽 그림은 미리 받아 두어 넘기는 순간 와 있게 한다.
    */
-  const cardKeys = useMemo(() => rows.slice((page - 1) * pageSize, (page + 1) * pageSize), [rows, page, pageSize]);
-  const cardOf = useItemCards(cardKeys);
+  const nearRows = useMemo(() => rows.slice((page - 1) * pageSize, (page + 1) * pageSize), [rows, page, pageSize]);
+  const mapCategories = useMemo(() => [category, ...nearRows.map((row) => row.category)], [category, nearRows]);
+  const maps = useIconMaps(mapCategories);
+  const lookupKeys = useMemo(() => nearRows.filter((row) => maps.needsLookup(row.category)), [nearRows, maps]);
+  const cardOf = useItemCards(lookupKeys);
+  const iconSrcFor = (row: ItemRow) => {
+    const brief = maps.brief(row.category, row.name);
+    if (brief?.icon) return iconFileUrl(brief.icon);
+    const card = cardOf(row.category, row.name);
+    return card?.icon ? iconSrcOf(card) : '';
+  };
   useEffect(() => {
-    preloadItemIcons(cardKeys.slice(pageSize).map((row) => cardOf(row.category, row.name)));
-  }, [cardKeys, pageSize, cardOf]);
+    preloadItemIcons(nearRows.slice(pageSize).map(iconSrcFor));
+  });
 
   /** 목록 아래쪽에서 눌러도 상세는 맨 위부터 보이게 한다. */
   const open = (row: ItemRow) => {
@@ -215,15 +228,17 @@ function ItemList({
       title: '',
       key: 'icon',
       width: ICON_BOX + 16,
-      render: (_value, row) => <ItemIcon card={cardOf(row.category, row.name)} size={ICON_BOX} />,
+      render: (_value, row) => (
+        <ItemIcon category={row.category} name={row.name} card={cardOf(row.category, row.name)} size={ICON_BOX} />
+      ),
     },
     {
       title: '아이템 이름',
       key: 'name',
       render: (_value, row) => {
-        const card = cardOf(row.category, row.name);
+        const subtitle = maps.brief(row.category, row.name)?.subtitle || cardOf(row.category, row.name)?.subtitle;
         // 전체에서 찾을 때는 어느 카테고리의 줄인지 적는다. 같은 이름이 두 줄일 수 있다.
-        const secondary = [category ? '' : row.category, card?.subtitle ?? ''].filter(Boolean).join(' · ');
+        const secondary = [category ? '' : row.category, subtitle ?? ''].filter(Boolean).join(' · ');
         return (
           <Flex vertical gap={2}>
             <Text strong>{row.name}</Text>

@@ -95,6 +95,54 @@ function cardBody(overrides = {}) {
   };
 }
 
+/** 카테고리별 그림 목록이 R2 에 놓이는 자리. 워커의 iconMapKey 와 같은 규칙이다. */
+async function iconMapKeyOf(category) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(category));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `maps/${hex.slice(0, 8)}.js`;
+}
+
+async function readIconMap(category) {
+  const raw = env.ICONS.store.get(await iconMapKeyOf(category));
+  return raw === undefined ? undefined : JSON.parse(raw);
+}
+
+describe('카테고리별 그림 목록', () => {
+  it('카드를 저장하면 그 카테고리의 그림 목록도 같이 쓴다', async () => {
+    // 화면은 이 목록을 CDN 에서 바로 받아 워커 조회 없이 그림을 띄운다.
+    const saved = await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+    const { card } = await saved.json();
+
+    expect(await readIconMap('기타 소모품')).toEqual({
+      category: '기타 소모품',
+      items: { "'도' 음 빈 병": [card.icon, '보통속도 3타 악기'] },
+    });
+  });
+
+  it('카드를 지우면 목록에서도 빠진다', async () => {
+    await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+    await call(`/item-card?name=${encodeURIComponent("'도' 음 빈 병")}&category=${encodeURIComponent('기타 소모품')}`, {
+      method: 'DELETE',
+      adminKey: ADMIN_KEY,
+    });
+
+    expect((await readIconMap('기타 소모품')).items).toEqual({});
+  });
+
+  it('목록을 칸에서 다시 만드는 경로는 운영자만 쓴다', async () => {
+    await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+    env.ICONS.store.delete(await iconMapKeyOf('기타 소모품'));
+    const path = `/item-card/maps?category=${encodeURIComponent('기타 소모품')}`;
+
+    expect((await call(path, { method: 'POST' })).status).toBe(401);
+    expect(await readIconMap('기타 소모품')).toBeUndefined();
+
+    const response = await call(path, { method: 'POST', adminKey: ADMIN_KEY });
+    expect(response.status).toBe(200);
+    expect(Object.keys((await readIconMap('기타 소모품')).items)).toEqual(["'도' 음 빈 병"]);
+  });
+});
+
 describe('아이템 카드 쓰기', () => {
   it('키가 없으면 저장하지 않는다', async () => {
     const response = await call('/item-card', { method: 'POST', body: cardBody() });

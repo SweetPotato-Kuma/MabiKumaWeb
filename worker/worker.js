@@ -51,6 +51,7 @@ const CARD_LOOKUP_PATH = '/item-card/lookup';
 /** 일괄 등록용 두 경로. 아이콘과 칸 쓰기를 갈라 둔 이유는 subrequest 한도 때문이다. */
 const CARD_ICONS_PATH = '/item-card/icons';
 const CARD_SHARD_PATH = '/item-card/shard';
+const CARD_MAPS_PATH = '/item-card/maps';
 const ICON_PATH_PREFIX = '/item-card/icons/';
 
 /**
@@ -620,7 +621,65 @@ async function writeShard(env, category, cards) {
   );
   // 이 인스턴스가 들고 있던 옛 칸도 바로 바꾼다. 방금 저장한 사람이 옛 것을 보지 않게.
   rememberShard(env, key, sorted);
+  await writeIconMap(env, category, sorted);
   return sorted.length;
+}
+
+/**
+ * 카테고리별 그림 목록. `이름 -> [그림 파일, 부제]` 만 담아 R2 에 둔다.
+ *
+ * 표의 그림은 원래 워커에 카드를 묻고, 그 답에 든 파일 이름으로 그림을 받았다. 처음 보는
+ * 아이템은 이 조회를 한 번 기다려야 해서 그림이 늦게 떴다. 이 목록은 그림 도메인
+ * (ICON_BASE_URL)의 CDN 에서 바로 나가므로 화면은 워커를 거치지 않고 가까운 곳에서 받는다.
+ * 목록에 없는 이름은 카드가 없다는 뜻이라 따로 묻지 않아도 된다.
+ *
+ * 칸을 쓸 때마다 같이 다시 쓴다. R2 쓰기 한 번이라 subrequest 한도에 부담이 없다.
+ *
+ * 내용은 JSON 인데 확장자는 `.js` 다. Cloudflare CDN 은 확장자를 보고 캐시할지 정하고, `.json` 은
+ * 그 목록에 없어 매번 R2 원본까지 갔다(2026-09 실측, 캐시 없이 한 번에 0.3~0.9초).
+ * `.js` 는 기본으로 캐시된다. 이름을 `.json` 으로 되돌리면 그림이 다시 늦어진다.
+ *
+ * CDN 과 브라우저는 한 시간 붙잡고, 그 뒤 하루까지는 옛 것을 내주면서 새로 받아 둔다.
+ * 새로 올린 카드가 표에 보이기까지 길어야 한 시간 남짓이다. KV 엣지 캐시(KV_EDGE_CACHE_SECONDS)와
+ * 같은 폭이다. 교차 출처 읽기는 버킷의 CORS 설정(모든 출처에 GET)이 연다.
+ */
+const ICON_MAP_PREFIX = 'maps/';
+const ICON_MAP_CACHE = 'public, max-age=3600, stale-while-revalidate=86400';
+
+async function iconMapKey(category) {
+  return `${ICON_MAP_PREFIX}${(await sha256Hex(category)).slice(0, 8)}.js`;
+}
+
+async function writeIconMap(env, category, cards) {
+  if (!env.ICONS) return;
+  const items = {};
+  for (const card of cards) items[card.name] = card.subtitle ? [card.icon, card.subtitle] : [card.icon];
+  await env.ICONS.put(await iconMapKey(category), JSON.stringify({ category, items }), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8', cacheControl: ICON_MAP_CACHE },
+  });
+}
+
+/**
+ * 그림 목록을 칸에서 다시 만든다. 목록이 생기기 전에 올린 칸을 채우는 운영자 경로다.
+ * 카테고리 하나씩 받는다. KV 읽기와 R2 쓰기가 한 번씩이라 한도 안에서 넉넉하다.
+ */
+async function rebuildIconMap(url, env, cors) {
+  if (!env.ICONS) {
+    return errorResponse('CARD_ICONS_NOT_CONFIGURED', '아이콘 저장소가 없습니다.', 503, cors);
+  }
+  const category = cleanText(url.searchParams.get('category'), CARD_NAME_MAX);
+  if (!category) return errorResponse('CARD_CATEGORY_REQUIRED', '카테고리가 없습니다.', 400, cors);
+
+  const cards = await readShard(env, category);
+  await writeIconMap(env, category, cards);
+
+  return new Response(JSON.stringify({ category, count: cards.length }), {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
 }
 
 function decodeBase64(value) {
@@ -1235,7 +1294,8 @@ export default {
       url.pathname === CARD_VERIFY_PATH ||
       url.pathname === CARD_PATH ||
       url.pathname === CARD_ICONS_PATH ||
-      url.pathname === CARD_SHARD_PATH
+      url.pathname === CARD_SHARD_PATH ||
+      url.pathname === CARD_MAPS_PATH
     ) {
       const problem = adminProblem(request, env, cors);
       if (problem) return problem;
@@ -1262,6 +1322,13 @@ export default {
           return errorResponse('CARD_METHOD_NOT_ALLOWED', 'PUT 으로 보내 주세요.', 405, cors);
         }
         return putShard(request, env, cors);
+      }
+
+      if (url.pathname === CARD_MAPS_PATH) {
+        if (request.method !== 'POST') {
+          return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+        }
+        return rebuildIconMap(url, env, cors);
       }
 
       if (request.method === 'POST') return saveCard(request, env, cors);
