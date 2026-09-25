@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Alert, Card, Empty, Flex, Skeleton, Space, Typography } from 'antd';
+import { Alert, Card, Flex, Skeleton, Space, Typography } from 'antd';
+import { EmptyState } from '@/components/EmptyState';
 import { NexonApiError } from '@/lib/nexonClient';
 
 const { Text } = Typography;
@@ -68,7 +69,7 @@ export function QueryState({
   if (isEmpty) {
     return (
       <Card>
-        <Empty description={emptyMessage} />
+        <EmptyState description={emptyMessage} />
       </Card>
     );
   }

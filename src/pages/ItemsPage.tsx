@@ -30,6 +30,7 @@ import { isEquipmentCategory } from '@/features/equipment/api';
 import { preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Title, Text } = Typography;
 
@@ -271,7 +272,7 @@ function ItemList({
           아이템 정보
         </Title>
         <Card>
-          <Empty description="아이템 목록이 아직 준비되지 않았습니다. 수집이 한 번 돌고 나면 채워집니다." />
+          <EmptyState description="아이템 목록이 아직 준비되지 않았습니다. 수집이 한 번 돌고 나면 채워집니다." />
         </Card>
       </Flex>
     );

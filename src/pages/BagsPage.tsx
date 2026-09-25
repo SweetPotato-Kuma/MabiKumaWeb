@@ -59,6 +59,7 @@ import { useGridFit } from '@/features/bags/useGridFit';
 import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Title, Text } = Typography;
 
@@ -576,7 +577,7 @@ export function BagsPage() {
       </Card>
     ) : listings.length === 0 ? (
       <Card>
-        <Empty description="조건에 맞는 주머니가 없습니다. 주머니 선택을 비우거나, 없는 파트(파트 C 등)를 검색 제외해 보세요." />
+        <EmptyState description="조건에 맞는 주머니가 없습니다. 주머니 선택을 비우거나, 없는 파트(파트 C 등)를 검색 제외해 보세요." />
       </Card>
     ) : view === 'grid' ? (
       <>

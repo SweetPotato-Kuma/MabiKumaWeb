@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   Col,
-  Empty,
   Flex,
   Form,
   Grid,
@@ -32,6 +31,7 @@ import { usePassSearch } from '@/features/magmell/usePassSearch';
 import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Title, Text } = Typography;
 
@@ -342,7 +342,7 @@ export function MagmellPassPage() {
           </Card>
         ) : (
           <Card>
-            <Empty description="조회 서버가 연결되면 이곳에 채널별 통행증 값이 나옵니다." />
+            <EmptyState description="조회 서버가 연결되면 이곳에 채널별 통행증 값이 나옵니다." />
           </Card>
         )
       ) : state.status === 'error' ? (
@@ -363,7 +363,7 @@ export function MagmellPassPage() {
         </Card>
       ) : listings.length === 0 ? (
         <Card>
-          <Empty description="고른 조건에 맞는 통행증이 없습니다. 서버를 모든 서버로 두거나 통행증을 바꿔 보세요." />
+          <EmptyState description="고른 조건에 맞는 통행증이 없습니다. 서버를 모든 서버로 두거나 통행증을 바꿔 보세요." />
         </Card>
       ) : (
         <Flex vertical gap={10}>

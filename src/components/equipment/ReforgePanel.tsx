@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Button, Empty, Flex, InputNumber, Select, Tag, Tooltip, Typography } from 'antd';
+import { Button, Flex, InputNumber, Select, Tag, Tooltip, Typography } from 'antd';
 import {
   REFORGE_MAX_OPTIONS,
   describeAbility,
@@ -12,6 +12,7 @@ import {
 } from '@/features/equipment/reforge';
 import type { ReforgePick } from '@/features/equipment/simulate';
 import type { AbilityDef, LevelRow } from '@/features/equipment/types';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Text } = Typography;
 
@@ -68,12 +69,7 @@ export function ReforgePanel({
   };
 
   if (abilities.length === 0) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="이 장비에 붙는 세공 옵션이 없습니다."
-      />
-    );
+    return <EmptyState size="small" description="이 장비에 붙는 세공 옵션이 없습니다." />;
   }
 
   return (

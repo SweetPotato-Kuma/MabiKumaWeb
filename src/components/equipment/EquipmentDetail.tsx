@@ -1,20 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { LinkOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Col,
-  Divider,
-  Empty,
-  Flex,
-  Grid,
-  Row,
-  Tooltip,
-  Typography,
-} from 'antd';
+import { Alert, App, Button, Card, Col, Divider, Flex, Grid, Row, Tooltip, Typography } from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
 import { BaseStatsPanel } from '@/components/equipment/BaseStatsPanel';
 import { EnchantPanel } from '@/components/equipment/EnchantPanel';
@@ -38,6 +25,7 @@ import {
 } from '@/features/equipment/simulate';
 import type { EquipmentLookup, EquipmentRecord } from '@/features/equipment/types';
 import { useItemCard, usePrefetchItemCards, type ItemCard } from '@/features/itemcard/cards';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Text, Paragraph } = Typography;
 
@@ -161,7 +149,7 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
         <Flex vertical gap={12}>
           {!hasAnything ? (
             <Card>
-              <Empty description="이 장비에는 고를 수 있는 유동 능력치, 개조, 인챈트, 세공, 특별 개조가 없습니다." />
+              <EmptyState description="이 장비에는 고를 수 있는 유동 능력치, 개조, 인챈트, 세공, 특별 개조가 없습니다." />
             </Card>
           ) : null}
 

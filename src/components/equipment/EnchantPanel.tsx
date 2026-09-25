@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import {
   Button,
   Checkbox,
-  Empty,
   Flex,
   Input,
   Segmented,
@@ -22,6 +21,7 @@ import {
 } from '@/features/equipment/enchantRanking';
 import type { EnchantPick } from '@/features/equipment/simulate';
 import type { EnchantDef } from '@/features/equipment/types';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Text } = Typography;
 
@@ -237,12 +237,7 @@ export function EnchantPanel({ category, enchants, pick, onChange }: EnchantPane
   );
 
   if (enchants.length === 0) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="이 장비에 바를 수 있는 인챈트가 없습니다."
-      />
-    );
+    return <EmptyState size="small" description="이 장비에 바를 수 있는 인챈트가 없습니다." />;
   }
 
   return (

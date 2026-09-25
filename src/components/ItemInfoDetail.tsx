@@ -1,13 +1,14 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
-import { Button, Card, Empty, Flex, Skeleton, Typography } from 'antd';
+import { Button, Card, Flex, Skeleton, Typography } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
   isCardStoreConfigured,
   useItemCard,
   usePrefetchItemCards,
 } from '@/features/itemcard/cards';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Text } = Typography;
 
@@ -35,8 +36,8 @@ export function ItemInfoDetail({ category, name }: { category: string; name: str
         {loading ? <Skeleton active title={false} paragraph={{ rows: 3 }} /> : null}
 
         {!loading && missing ? (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          <EmptyState
+            size="small"
             description="이 아이템은 아직 설명이 없습니다. 게임 데이터에 없거나 새로 들어온 아이템입니다."
           />
         ) : null}

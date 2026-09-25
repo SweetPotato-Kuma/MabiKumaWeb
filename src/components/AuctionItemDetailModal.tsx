@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOutlined } from '@ant-design/icons';
-import { Button, Descriptions, Empty, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
+import { Button, Descriptions, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
   colorPartLabel,
@@ -18,6 +18,7 @@ import { isEquipmentCategory } from '@/features/equipment/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Text } = Typography;
 
@@ -266,7 +267,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
               ) : null}
             </Flex>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="이 매물에는 세부 옵션이 없습니다." />
+            <EmptyState size="small" description="이 매물에는 세부 옵션이 없습니다." />
           )}
 
           {/*
