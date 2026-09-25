@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { Flex, Segmented, Table, Tag, Typography, theme, type TableColumnsType } from 'antd';
+import {
+  Flex,
+  Segmented,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  theme,
+  type TableColumnsType,
+} from 'antd';
+import { SERIES_COLORS } from '@/app/theme';
 import { ItemIcon } from '@/components/ItemIcon';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import {
@@ -10,11 +20,18 @@ import {
   type RecipeBook,
 } from '@/features/crafting/recipes';
 import { formatNumber } from '@/lib/format';
+import { useResolvedThemeMode } from '@/lib/themePreference';
 
 const { Text } = Typography;
 
 /** 재료 그림 칸. 제작 비용 트리의 재료 그림과 같은 크기. */
 const MATERIAL_ICON = 32;
+
+/** 게이지 아래 번호를 적을 만큼 넓은 칸(%). 이보다 좁으면 번호끼리 겹친다. */
+const MIN_LABELED_PERCENT = 4;
+
+/** 게이지 아래 번호에 재료 이름까지 붙일 만큼 넓은 칸(%). */
+const MIN_NAMED_PERCENT = 25;
 
 /** 추가 재료를 넣지 않을 때의 Segmented 값. */
 const NO_EXTRA = -1;
@@ -33,9 +50,10 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
   const categoryOf = (name: string) => nameIndex?.categoriesByName.get(name)?.[0];
 
   const steps = cookingRatios(recipe, extra === NO_EXTRA ? undefined : extra);
-  // 재료는 셋을 넘지 않는다(추가 재료는 기본 재료가 둘 이하일 때만 넣는다). 액센트 한 색의 진하기로 나눈다.
-  const shades = [token.colorPrimary, token.colorPrimaryBorderHover, token.colorPrimaryBorder];
-  const shadeOf = (order: number) => shades[order % shades.length];
+  // 재료마다 색이 다르다. 순서대로 쓰고 돌려 쓰지 않는다. 게임 데이터의 요리 재료는 셋을 넘지 않아
+  // (추가 재료는 기본 재료가 둘 이하일 때만 넣는다) 다섯 색이면 넉넉하다.
+  const colors = SERIES_COLORS[useResolvedThemeMode()];
+  const colorOf = (order: number) => colors[Math.min(order, colors.length - 1)];
   const nameOf = (step: CookingStep) => book.itemName(step.slot.ids[0]);
 
   const columns: TableColumnsType<CookingStep> = [
@@ -48,11 +66,11 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
           <span
             aria-hidden
             style={{
-              width: 10,
-              height: 10,
+              width: 12,
+              height: 12,
               borderRadius: token.borderRadiusXS,
-              background: shadeOf(order),
-              flex: '0 0 10px',
+              background: colorOf(order),
+              flex: '0 0 12px',
             }}
           />
           <Text className="tnum">{order + 1}</Text>
@@ -122,26 +140,55 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
         />
       ) : null}
 
-      {/* 게임의 요리 게이지. 재료마다 제 비율만큼의 칸을 차지한다. */}
-      <div
-        role="img"
-        aria-label={`재료 비율: ${steps.map((step) => `${nameOf(step)} ${formatPercent(step.percent)}`).join(', ')}`}
-        style={{
-          display: 'flex',
-          gap: 2,
-          height: 12,
-          borderRadius: token.borderRadiusXS,
-          overflow: 'hidden',
-          background: token.colorFillSecondary,
-        }}
-      >
-        {steps.map((step, order) => (
-          <div
-            key={`${order}-${step.slot.ids[0]}`}
-            style={{ flex: `${step.percent} 0 0`, minWidth: 0, background: shadeOf(order) }}
-          />
-        ))}
-      </div>
+      {/*
+        게임의 요리 게이지. 재료마다 제 비율만큼의 칸을 차지하고, 칸 사이는 바탕색 2px 로 띄운다.
+        색만으로 가르지 않게 칸 아래에 번호(넓으면 이름까지)를 적는다.
+      */}
+      <Flex vertical gap={4}>
+        <div
+          role="img"
+          aria-label={`재료 비율: ${steps.map((step) => `${nameOf(step)} ${formatPercent(step.percent)}`).join(', ')}`}
+          style={{ display: 'flex', gap: 2, height: 16 }}
+        >
+          {steps.map((step, order) => (
+            <Tooltip
+              key={`${order}-${step.slot.ids[0]}`}
+              title={`${order + 1}. ${nameOf(step)} ${formatPercent(step.percent)} (${formatPercent(step.cumulative)}까지)`}
+            >
+              <div
+                style={{
+                  flex: `${step.percent} 0 0`,
+                  minWidth: 2,
+                  background: colorOf(order),
+                  borderRadius: token.borderRadiusXS,
+                }}
+              />
+            </Tooltip>
+          ))}
+        </div>
+        <div aria-hidden style={{ display: 'flex', gap: 2 }}>
+          {steps.map((step, order) => (
+            <Text
+              key={`${order}-${step.slot.ids[0]}`}
+              type="secondary"
+              ellipsis
+              className="tnum"
+              style={{
+                flex: `${step.percent} 0 0`,
+                minWidth: 2,
+                fontSize: 12,
+                textAlign: 'center',
+              }}
+            >
+              {step.percent < MIN_LABELED_PERCENT
+                ? ''
+                : step.percent < MIN_NAMED_PERCENT
+                  ? order + 1
+                  : `${order + 1} ${nameOf(step)}`}
+            </Text>
+          ))}
+        </div>
+      </Flex>
 
       <Table<CookingStep>
         size="small"

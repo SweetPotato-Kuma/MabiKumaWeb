@@ -68,6 +68,20 @@ const SURFACE = {
  */
 const ON_ACCENT = { light: SURFACE.light.container, dark: SURFACE.dark.container } as const;
 
+/**
+ * 한 막대를 여러 항목으로 나눌 때의 데이터 색(요리 재료 게이지). 액센트가 아니라 "어느 항목인가" 를
+ * 가르는 색이라 액센트 규칙과 따로 둔다. 보라는 선택과 1위 표시 몫이라 넣지 않았다.
+ *
+ * 순서가 색각 이상 구분을 지키는 장치다. 이웃한 두 색이 색각 이상 시뮬레이션에서도 ΔE 8.9 이상,
+ * 보통 시각에서 15 이상 벌어지는 순서만 골랐다(카드 바탕 기준, 라이트와 다크 각각). 색을 바꾸거나
+ * 순서를 바꾸면 다시 검증한다. 라이트의 주황은 바탕 대비가 3:1 에 못 미쳐, 쓰는 곳에서 번호와 표를
+ * 함께 보여 색만으로 구분하지 않게 한다.
+ */
+export const SERIES_COLORS = {
+  light: ['#3b6fc6', '#d9822b', '#1f9a82', '#a88a0c', '#c2455a'],
+  dark: ['#5584d4', '#c7772c', '#22997f', '#a8901c', '#d0566b'],
+} as const satisfies Record<'light' | 'dark', readonly string[]>;
+
 /** 반경 스케일은 하나. antd 가 여기서 파생시키는 값을 그대로 쓴다. */
 const BORDER_RADIUS = 10;
 
