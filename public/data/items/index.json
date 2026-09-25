@@ -1,6 +1,6 @@
 {
   "updated": "2026-09-25",
-  "total": 16862,
+  "total": 16861,
   "categories": [
     {
       "name": "개조석",
@@ -150,7 +150,7 @@
     {
       "name": "모자/가발",
       "file": "008ae516.json",
-      "count": 1564
+      "count": 1563
     },
     {
       "name": "방패",
