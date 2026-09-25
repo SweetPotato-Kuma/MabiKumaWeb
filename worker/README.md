@@ -290,6 +290,29 @@ curl -X DELETE "https://<워커주소>/item-card?name=<이름>&category=<카테�
   가리킵니다(`enchantGroups`). 조회할 때 워커가 그 묶음을 풀어 싣습니다.
 - 가장 큰 칸(천옷, 약 2천 개)이 490KB 남짓입니다. 전부 올려도 KV 쓰기는 카테고리 수만큼(30여 건)입니다.
 
+## 경매장 시세 기록 (/market)
+
+거래 내역 API 는 최근 1시간만 돌려줍니다. 그래서 워커가 10분마다(크론) 받아 D1(`MARKET`,
+`mabikuma-market`)에 쌓고, 화면은 여기서 아이템별 최근 1일 통계와 날짜별 그래프를 읽습니다.
+코드는 `market.js`, 표는 `migrations/0001_market.sql` 입니다. 크론과 D1 을 쓰므로 유료 플랜이 필요합니다.
+
+| 경로 | 누가 | 하는 일 |
+| --- | --- | --- |
+| `GET /market/item?name=&days=30` | 공개 | 아이템 하나의 최근 1일 통계와 날짜별 요약 |
+| `POST /market/recent` `{ names }` | 공개 | 이름 여럿(60개까지)의 최근 1일 통계 |
+| `POST /market/collect` | 운영자 | 크론을 기다리지 않고 지금 한 번 받기 |
+
+- 거래 원본(`trades`)은 90일만 두고 10분마다 조금씩 지웁니다. 하루 요약(`daily`)은 지우지 않습니다.
+- 날짜는 한국 시각으로 가릅니다. 중위는 거래 건수 기준, 평균은 수량 가중입니다.
+- 조회는 엣지 캐시에 5분 남기고, `MARKET_RATE_LIMIT` 로 IP 당 분당 60번까지 받습니다.
+- 표를 바꾸면 `migrations/` 에 새 파일을 더하고 배포 전에 적용합니다.
+
+```bash
+npx wrangler d1 migrations apply mabikuma-market --remote
+# 쌓인 양 보기
+npx wrangler d1 execute mabikuma-market --remote --command "SELECT COUNT(*) FROM trades"
+```
+
 ## 앱에 연결
 
 워커 주소를 `VITE_PROXY_URL` 로 넘깁니다.

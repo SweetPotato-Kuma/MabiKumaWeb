@@ -61,3 +61,22 @@ bucket_name = "mabikuma-icons"
 #   npx wrangler secret put GITHUB_TOKEN
 #   npx wrangler secret put ADMIN_KEY
 # 또는 대시보드 → Workers → 해당 워커 → Settings → Variables → Add secret
+
+# 경매장 시세 기록. 거래 내역 API 는 최근 1시간만 주므로 10분마다 받아 쌓는다(market.js).
+# 표는 migrations/ 에 있다. 새 파일을 더하면 배포 전에 한 번 적용한다:
+#   npx wrangler d1 migrations apply mabikuma-market --remote
+[[d1_databases]]
+binding = "MARKET"
+database_name = "mabikuma-market"
+database_id = "cba3a0e7-3c6d-4e3f-a0d3-c741d1d53ab0"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+# 시세 조회 횟수 제한. 경매장 목록은 쪽을 넘길 때마다, 아이템 정보는 열 때마다 한 번 묻는다.
+[[unsafe.bindings]]
+name = "MARKET_RATE_LIMIT"
+type = "ratelimit"
+namespace_id = "1003"
+simple = { limit = 60, period = 60 }

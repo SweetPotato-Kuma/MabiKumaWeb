@@ -29,7 +29,22 @@
  *
  * 읽기는 공개다. 사전 화면이 모든 방문자에게 아이콘을 보여 주므로 숨길 수가 없다.
  * 잠그는 것은 쓰기뿐이다.
+ *
+ * 경매장 시세 기록(GET /market/item, POST /market/recent)은 market.js 에 있다. 크론이 10분마다
+ * 거래 내역을 받아 D1 에 쌓는다.
+ *   MARKET             (D1 바인딩, 시세 기록에 필수)
+ *   MARKET_RATE_LIMIT  (Rate limiting 바인딩, 선택)
  */
+
+import {
+  MARKET_COLLECT_PATH,
+  MARKET_ITEM_PATH,
+  MARKET_RECENT_PATH,
+  collectTrades,
+  marketCollect,
+  marketItem,
+  marketRecent,
+} from './market.js';
 
 const NEXON_ORIGIN = 'https://open.api.nexon.com';
 const ISSUE_PATH = '/report/issue';
@@ -1279,6 +1294,30 @@ export default {
       return lookupEquipment(request, url, env, cors);
     }
 
+    // 시세 기록 읽기. 아이템 하나의 그래프, 또는 목록 한 쪽의 최근 1일 값.
+    if (url.pathname === MARKET_ITEM_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return marketItem(request, url, env, cors);
+    }
+    if (url.pathname === MARKET_RECENT_PATH) {
+      if (request.method !== 'POST') {
+        return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+      }
+      return marketRecent(request, env, cors);
+    }
+
+    // 지금 한 번 받기는 운영자만. 크론을 기다리지 않고 수집이 도는지 볼 때 쓴다.
+    if (url.pathname === MARKET_COLLECT_PATH) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      if (request.method !== 'POST') {
+        return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+      }
+      return marketCollect(env, cors);
+    }
+
     // 장비 칸 쓰기는 운영자만.
     if (url.pathname === EQUIP_SHARD_PATH) {
       const problem = adminProblem(request, env, cors);
@@ -1391,5 +1430,11 @@ export default {
         'cache-control': cacheSeconds > 0 ? `public, max-age=${cacheSeconds}` : 'no-store',
       },
     });
+  },
+
+  /** 크론(wrangler.toml 의 [triggers]). 경매장 거래 내역을 받아 시세 기록에 쌓는다. */
+  async scheduled(_controller, env) {
+    const result = await collectTrades(env);
+    console.log(JSON.stringify({ market: result }));
   },
 };
