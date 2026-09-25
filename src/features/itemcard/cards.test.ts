@@ -90,7 +90,7 @@ describe('브라우저에 남겨 둔 카드', () => {
    * 하루 요청 한도를 경매장 검색과 같이 쓴다. 남겨 둔 것은 모듈을 처음 읽을 때 되살아나므로
    * 테스트마다 모듈을 새로 읽는다.
    */
-  const STORAGE_KEY = 'mabikuma:itemCards:v2';
+  const STORAGE_KEY = 'mabikuma:itemCards:v3';
   const DAY = 24 * 60 * 60 * 1000;
   const card: ItemCard = {
     name: '롱 소드',
@@ -178,8 +178,8 @@ describe('브라우저에 남겨 둔 카드', () => {
   });
 
   it('옛 이름으로 남긴 것은 읽지 않고 지운다', async () => {
-    // v1 에는 카드를 올리기 전에 적힌 "없더라" 가 남아 있다. 그대로 믿으면 그림이 빈칸이 된다.
-    const legacy = 'mabikuma:itemCards:v1';
+    // v2 에는 이름이 같은 다른 아이템의 카드가 남아 있다. 그대로 믿으면 검 목록에 간장(음식)이 보인다.
+    const legacy = 'mabikuma:itemCards:v2';
     window.localStorage.setItem(legacy, JSON.stringify([[key('대형 낫', '데빌 슬레이어'), Date.now(), null]]));
     vi.resetModules();
     const cards = await import('./cards');

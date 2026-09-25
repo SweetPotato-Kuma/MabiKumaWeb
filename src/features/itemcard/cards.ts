@@ -192,10 +192,11 @@ const keyOf = (category: string, name: string) => `${category}\u0000${name}`;
  * 가장 최근 것 4,000 개까지만 남긴다(1.5MB 남짓).
  *
  * 이름 끝 번호를 올리면 모두의 브라우저에 남은 것을 한 번에 버린다. v1 에는 대형 낫, 힐링 원드,
- * 애뮬릿을 올리기 전에 적힌 "없더라" 가 남아 있어서 v2 로 올렸다.
+ * 애뮬릿을 올리기 전에 적힌 "없더라" 가 남아 있어서 v2 로 올렸다. v2 에는 이름이 같은 다른 아이템의
+ * 카드(검 "간장" 에 붙은 음식 간장 설명 같은 것)가 남아 있어서 v3 으로 올렸다.
  */
-const STORAGE_KEY = 'mabikuma:itemCards:v2';
-const LEGACY_STORAGE_KEYS = ['mabikuma:itemCards:v1'];
+const STORAGE_KEY = 'mabikuma:itemCards:v3';
+const LEGACY_STORAGE_KEYS = ['mabikuma:itemCards:v1', 'mabikuma:itemCards:v2'];
 const CARD_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 const CARD_REFRESH_MS = 24 * 60 * 60 * 1000;
 const MISSING_TTL_MS = 60 * 60 * 1000;
