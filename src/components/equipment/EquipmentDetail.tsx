@@ -1,7 +1,20 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { LinkOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Col, Empty, Flex, Grid, Row, Tooltip, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Col,
+  Divider,
+  Empty,
+  Flex,
+  Grid,
+  Row,
+  Tooltip,
+  Typography,
+} from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
 import { BaseStatsPanel } from '@/components/equipment/BaseStatsPanel';
 import { EnchantPanel } from '@/components/equipment/EnchantPanel';
@@ -162,21 +175,50 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
             </Section>
           ) : null}
 
-          {item.upgrade ? (
-            <Section title={`개조 (일반 ${item.upgrade.max}회, 보석 ${item.upgrade.gemMax}회)`}>
-              <UpgradePanel
-                item={item}
-                upgrades={upgrades}
-                slots={state.slots}
-                gemSlots={state.gemSlots}
-                onChange={(slots, gemSlots) => update({ slots, gemSlots })}
-              />
+          {/*
+            개조와 특별 개조는 같은 무기에 이어서 하는 일이라 한 섹션에 둔다. 고르는 칸은 나눈다.
+          */}
+          {item.upgrade || item.special ? (
+            <Section
+              title={
+                item.upgrade
+                  ? `개조 (일반 ${item.upgrade.max}회, 보석 ${item.upgrade.gemMax}회)`
+                  : '개조'
+              }
+            >
+              {item.upgrade ? (
+                <UpgradePanel
+                  item={item}
+                  upgrades={upgrades}
+                  slots={state.slots}
+                  gemSlots={state.gemSlots}
+                  onChange={(slots, gemSlots) => update({ slots, gemSlots })}
+                />
+              ) : null}
+              {item.upgrade && item.special ? (
+                <Divider
+                  plain
+                  titlePlacement="start"
+                  style={{ margin: '12px 0 8px', fontSize: 13 }}
+                >
+                  특별 개조
+                </Divider>
+              ) : null}
+              {item.special ? (
+                <SpecialUpgradePanel
+                  special={item.special}
+                  kind={state.special.kind}
+                  level={state.special.level}
+                  onChange={(kind, level) => update({ special: { kind, level } })}
+                />
+              ) : null}
             </Section>
           ) : null}
 
           {enchants.length ? (
             <Section title="인챈트">
               <EnchantPanel
+                category={item.category}
                 enchants={enchants}
                 pick={state.enchant}
                 onChange={(enchant) => update({ enchant })}
@@ -190,20 +232,8 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
                 equipType={item.reforge.type}
                 abilities={abilities}
                 levels={levels}
-                rank={state.reforge.rank}
                 options={state.reforge.options}
-                onChange={(rank, options) => update({ reforge: { rank, options } })}
-              />
-            </Section>
-          ) : null}
-
-          {item.special ? (
-            <Section title="특별 개조">
-              <SpecialUpgradePanel
-                special={item.special}
-                kind={state.special.kind}
-                level={state.special.level}
-                onChange={(kind, level) => update({ special: { kind, level } })}
+                onChange={(options) => update({ reforge: { rank: 1, options } })}
               />
             </Section>
           ) : null}

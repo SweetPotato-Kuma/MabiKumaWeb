@@ -1,10 +1,4 @@
-import {
-  REFORGE_MAX_OPTIONS,
-  REFORGE_RANKS,
-  highestLevel,
-  levelRange,
-  type ReforgeRank,
-} from './reforge';
+import { REFORGE_MAX_OPTIONS, highestLevel, levelRange, type ReforgeRank } from './reforge';
 import { specialStep, type SpecialStep } from './specialUpgrade';
 import { NON_ADDITIVE_STATS, compareStats, roundStat } from './stats';
 import type { AbilityDef, EnchantDef, EquipmentRecord, LevelRow, UpgradeDef } from './types';
@@ -275,9 +269,10 @@ export function decodeState(
   state.slots = decodeSlots(params.up, item, upgrades, state.slots.length, false);
   state.gemSlots = decodeSlots(params.gm, item, upgrades, state.gemSlots.length, true);
 
-  const [rankText, optionText] = (params.rf ?? '').split('_');
-  const rank = Number(rankText) as ReforgeRank;
-  if (REFORGE_RANKS.includes(rank) && item.reforge) {
+  // 세공 랭크는 하나로 합쳐져 늘 1랭크로 읽는다. 예전 링크의 3랭크, 2랭크도 1랭크 폭으로 옮긴다.
+  const [, optionText] = (params.rf ?? '').split('_');
+  const rank: ReforgeRank = 1;
+  if (item.reforge && optionText) {
     state.reforge.rank = rank;
     const seen = new Set<number>();
     for (const part of (optionText ?? '').split('.')) {

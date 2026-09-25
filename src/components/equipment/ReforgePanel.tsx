@@ -1,19 +1,8 @@
 import { useMemo } from 'react';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import {
-  Button,
-  Empty,
-  Flex,
-  InputNumber,
-  Segmented,
-  Select,
-  Tag,
-  Tooltip,
-  Typography,
-} from 'antd';
+import { Button, Empty, Flex, InputNumber, Select, Tag, Tooltip, Typography } from 'antd';
 import {
   REFORGE_MAX_OPTIONS,
-  REFORGE_RANKS,
   describeAbility,
   highestLevel,
   isLimitBreakLevel,
@@ -30,28 +19,28 @@ interface ReforgePanelProps {
   equipType: string;
   abilities: AbilityDef[];
   levels: LevelRow[];
-  rank: ReforgeRank;
   options: ReforgePick[];
-  onChange: (rank: ReforgeRank, options: ReforgePick[]) => void;
+  onChange: (options: ReforgePick[]) => void;
 }
 
-const RANK_OPTIONS = REFORGE_RANKS.map((rank) => ({ value: rank, label: `${rank}랭크` }));
+/** 세공 랭크는 이제 하나로 합쳐졌다. 레벨 폭은 늘 1랭크 기준이다. */
+const RANK: ReforgeRank = 1;
 
 /**
- * 세공. 랭크를 고르고 옵션을 셋까지 붙여 본다. 옵션 하나가 한 줄이다: 옵션, 레벨, 값, 빼기.
+ * 세공. 옵션을 셋까지 붙여 본다. 옵션 하나가 한 줄이다: 옵션, 레벨, 값, 빼기.
  *
- * 랭크를 바꾸면 그 랭크에서 붙을 수 없는 옵션은 빼고, 레벨은 새 랭크의 폭 안으로 옮긴다.
- * 게임에서도 랭크가 레벨 폭을 정하므로 폭 밖의 조합은 만들 수 없다.
+ * 세공 랭크는 게임에서 하나로 합쳐져 따로 고르지 않는다. 레벨 폭은 1랭크 기준이다.
+ * 옵션은 장비 종류(한손검, 모자, 장신구 등)와 착용 종족에 맞는 것만 나온다.
  * 레벨 폭은 랭크 기준 전체 폭이며, 쓰는 세공 도구에 따라 실제로 나오는 폭은 더 좁을 수 있다.
  */
 export function ReforgePanel({
   equipType,
   abilities,
   levels,
-  rank,
   options,
   onChange,
 }: ReforgePanelProps) {
+  const rank = RANK;
   const candidates = useMemo(
     () => reforgeCandidates(abilities, rank, equipType, levels),
     [abilities, rank, equipType, levels],
@@ -61,23 +50,11 @@ export function ReforgePanel({
     [abilities],
   );
 
-  const changeRank = (next: ReforgeRank) => {
-    const kept: ReforgePick[] = [];
-    for (const pick of options) {
-      const ability = byId.get(pick.abilityId);
-      if (!ability) continue;
-      const range = levelRange(ability, next, equipType, levels);
-      if (range.max <= 0) continue;
-      kept.push({ ...pick, level: Math.min(Math.max(pick.level, range.min), highestLevel(range)) });
-    }
-    onChange(next, kept);
-  };
-
   const addOption = () => {
     const used = new Set(options.map((pick) => pick.abilityId));
     const first = candidates.find((ability) => !used.has(ability.id));
     if (!first) return;
-    onChange(rank, [
+    onChange([
       ...options,
       { abilityId: first.id, level: levelRange(first, rank, equipType, levels).max },
     ]);
@@ -87,7 +64,7 @@ export function ReforgePanel({
     const next = [...options];
     if (pick) next[index] = pick;
     else next.splice(index, 1);
-    onChange(rank, next);
+    onChange(next);
   };
 
   if (abilities.length === 0) {
@@ -102,13 +79,6 @@ export function ReforgePanel({
   return (
     <Flex vertical gap={8}>
       <Flex align="center" gap={8} wrap>
-        <Segmented<ReforgeRank>
-          aria-label="세공 랭크"
-          value={rank}
-          onChange={changeRank}
-          options={RANK_OPTIONS}
-          size="small"
-        />
         <Button
           size="small"
           icon={<PlusOutlined />}

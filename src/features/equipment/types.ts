@@ -109,6 +109,10 @@ export interface EnchantDef {
   effects: EnchantEffect[];
   /** 인챈트한 장비를 전용으로 만든다 */
   personal?: boolean;
+  /** 이 인챈트가 나오는 던전과 미션. 모르면 없다 */
+  src?: string[];
+  /** 출시 제너레이션. 모르면 없다 */
+  gen?: number;
 }
 
 export interface EquipmentLookup {

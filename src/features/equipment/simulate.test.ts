@@ -280,8 +280,9 @@ describe('링크로 저장하고 불러오기', () => {
     expect(state.random).toEqual({ attack_min: 10, attack_max: 0, critical: 0 });
     // 장인 개조는 다섯 번째 칸 개조라 첫 칸에 들어갈 수 없다.
     expect(state.slots).toEqual([null, 52500, null, null, null]);
-    // 3랭크 최대 레벨은 3이다. 없는 옵션 777 은 버린다.
-    expect(state.reforge).toEqual({ rank: 3, options: [{ abilityId: 1, level: 3 }] });
+    // 세공 랭크는 하나로 합쳐져 예전 3랭크 링크도 1랭크로 읽는다. 1랭크는 한계 돌파까지 12 레벨이다.
+    // 없는 옵션 777 은 버린다.
+    expect(state.reforge).toEqual({ rank: 1, options: [{ abilityId: 1, level: 12 }] });
     expect(state.special).toEqual({ kind: 's', level: 8 });
   });
 
