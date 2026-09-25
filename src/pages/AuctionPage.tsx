@@ -1,5 +1,6 @@
-import { useCallback, useDeferredValue, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   App,
   AutoComplete,
@@ -29,7 +30,12 @@ import { QueryState } from '@/components/QueryState';
 import { RecentTradeStats } from '@/components/market/RecentTradeStats';
 import { itemInfoPath } from '@/features/auction/dictionary';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
-import { resolveSearch, searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
+import {
+  itemNameIndexQueryOptions,
+  resolveSearch,
+  searchNames,
+  useItemNameIndexQuery,
+} from '@/features/auction/nameIndex';
 import { useMarketRecentQuery } from '@/features/market/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { useIconMaps } from '@/features/itemcard/iconMap';
@@ -150,11 +156,10 @@ export function AuctionPage() {
   // 아이템 정보에서 넘어올 때 조건이 주소에 실려 온다. 첫 렌더에서만 읽고 이후에는 화면이 주인이다.
   const [searchParams] = useSearchParams();
 
-  const [form, setForm] = useState<AuctionSearchInput>(() => readSearchInput(searchParams));
-  const [submitted, setSubmitted] = useState<AuctionSearchInput | null>(() => {
-    const initial = readSearchInput(searchParams);
-    return isAuctionSearchReady(initial) ? initial : null;
-  });
+  const [initialInput] = useState(() => readSearchInput(searchParams));
+  const [form, setForm] = useState<AuctionSearchInput>(initialInput);
+  // 주소로 온 조건도 찾기를 누른 것과 같은 길(runSearch)로 보낸다. 아래 효과에서 한 번 부른다.
+  const [submitted, setSubmitted] = useState<AuctionSearchInput | null>(null);
   const [tab, setTab] = useState<Tab>('items');
   const [detail, setDetail] = useState<AuctionItemDetail | null>(null);
 
@@ -240,6 +245,9 @@ export function AuctionPage() {
    * 끝내 두어서 15,000개를 훑어도 1ms 안쪽이다.
    */
   const nameIndexQuery = useItemNameIndexQuery();
+  const queryClient = useQueryClient();
+  /** 찾기를 눌렀는데 사전을 기다리는 중. 두 번 누르지 않게 버튼을 돌린다. */
+  const [resolving, setResolving] = useState(() => isAuctionSearchReady(initialInput));
   const deferredKeyword = useDeferredValue(form.keyword);
   const suggestions = useMemo(
     () =>
@@ -284,26 +292,46 @@ export function AuctionPage() {
    * 자동완성은 초성과 붙여 쓴 이름을 받아 주지만 넥슨 검색은 받지 않는다("ㅅㅅㄷ" 은 400,
    * "숏소드" 는 2건). 사전에서 이름을 찾아 제대로 띄어 쓴 이름으로 바꿔 보내고, 바뀐
    * 검색어는 입력칸에도 그대로 보여 준다. 무엇으로 찾았는지 사용자가 알아야 한다.
+   *
+   * 검색어가 있는데 사전을 아직 받는 중이면 다 받을 때까지 기다린다. 사전 없이 보내면
+   * "꿀우유" 가 그대로 넘어가 0건이 되고, 이름으로 정확히 찾지도 못한다. 사전은 700KB
+   * 남짓이라 첫 검색에서 흔히 겹친다.
    */
-  function runSearch(next: AuctionSearchInput) {
-    if (!isAuctionSearchReady(next)) return;
+  async function runSearch(next: AuctionSearchInput) {
+    if (!isAuctionSearchReady(next)) {
+      setResolving(false);
+      return;
+    }
 
-    const resolved = resolveSearch(nameIndexQuery.data, next);
+    let index = nameIndexQuery.data;
+    if (index === undefined && next.keyword.trim()) {
+      setResolving(true);
+      index = await queryClient.ensureQueryData(itemNameIndexQueryOptions).catch(() => null);
+    }
+    setResolving(false);
+
+    const resolved = resolveSearch(index, next);
     if (!resolved) {
       message.warning('초성으로 찾을 이름이 없습니다. 이름 일부를 입력하거나 카테고리를 먼저 골라 주세요.');
       return;
     }
 
     const final = { ...next, ...resolved };
-    if (final.keyword !== form.keyword || final.category !== form.category) setForm(final);
+    setForm((prev) => (final.keyword !== prev.keyword || final.category !== prev.category ? final : prev));
     setSubmitted(final);
   }
+
+  useEffect(() => {
+    void runSearch(initialInput);
+    // 첫 렌더에서 한 번만 부른다. 이후에는 화면이 주인이다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** 카테고리를 고르는 것 자체가 둘러보기 행동이라 바로 조회한다. */
   function selectCategory(category: string) {
     const next = { ...form, category };
     setForm(next);
-    if (isAuctionSearchReady(next)) runSearch(next);
+    if (isAuctionSearchReady(next)) void runSearch(next);
   }
 
   /**
@@ -600,22 +628,23 @@ export function AuctionPage() {
                       // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
                       const next = { ...form, keyword };
                       setForm(next);
-                      runSearch(next);
+                      void runSearch(next);
                     }}
                     style={{ flex: '1 1 260px', minWidth: 0 }}
                   >
                     <Input
                       placeholder="아이템명 검색"
                       allowClear
-                      onPressEnter={() => runSearch(form)}
+                      onPressEnter={() => void runSearch(form)}
                     />
                   </AutoComplete>
 
                   <Button
                     type="primary"
                     icon={<SearchIcon />}
+                    loading={resolving}
                     disabled={!canSubmit || !canQuery}
-                    onClick={() => runSearch(form)}
+                    onClick={() => void runSearch(form)}
                   >
                     찾기
                   </Button>
@@ -651,7 +680,11 @@ export function AuctionPage() {
               </Flex>
             </Card>
 
-            {submitted === null ? (
+            {submitted === null && resolving ? (
+              <Card variant="outlined">
+                <Skeleton active />
+              </Card>
+            ) : submitted === null ? (
               <Card variant="outlined">
                 <EmptyState
                   variant="search"

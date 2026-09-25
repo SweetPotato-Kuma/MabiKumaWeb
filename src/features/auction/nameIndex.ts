@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { queryOptions, useQuery } from '@tanstack/react-query';
 import { normalizeForSearch } from './dictionary';
 
 /**
@@ -99,19 +99,22 @@ function assetUrl(path: string): string {
 /**
  * 이름 인덱스. 한 번 받아 전처리까지 끝낸 것을 계속 쓴다.
  * 파일이 없는 빌드에서는 null 을 돌려 자동완성만 빠지고 검색은 그대로 된다.
+ * 찾기를 누른 순간 아직 받는 중이면 끝날 때까지 기다려야 해서 옵션을 따로 꺼내 둔다.
  */
+export const itemNameIndexQueryOptions = queryOptions({
+  queryKey: ['itemDictionary', 'names'],
+  queryFn: async ({ signal }): Promise<NameIndex | null> => {
+    const response = await fetch(assetUrl('names.json'), { signal });
+    if (!response.ok) return null;
+    return buildNameIndex((await response.json()) as RawNameIndex);
+  },
+  staleTime: Infinity,
+  gcTime: Infinity,
+  retry: false,
+});
+
 export function useItemNameIndexQuery() {
-  return useQuery({
-    queryKey: ['itemDictionary', 'names'],
-    queryFn: async ({ signal }): Promise<NameIndex | null> => {
-      const response = await fetch(assetUrl('names.json'), { signal });
-      if (!response.ok) return null;
-      return buildNameIndex((await response.json()) as RawNameIndex);
-    },
-    staleTime: Infinity,
-    gcTime: Infinity,
-    retry: false,
-  });
+  return useQuery(itemNameIndexQueryOptions);
 }
 
 interface SearchOptions {
@@ -188,6 +191,8 @@ export function isInitialsOnly(text: string): boolean {
 export interface ResolvedSearch {
   keyword: string;
   category: string;
+  /** keyword 가 사전에 있는 이름 그대로라 item_name 으로 정확히 찾을 수 있다. */
+  exact: boolean;
 }
 
 /**
@@ -205,6 +210,8 @@ export interface ResolvedSearch {
  * 카테고리를 이미 골랐으면 목록을 받아 화면에서 거르므로(초성도 거기서 처리한다)
  * 검색어를 바꾸지 않는다. 입력기가 조립 중인 끝 낱자만 뗀다.
  *
+ * 바꾼 검색어가 사전 이름 그대로면 exact 를 세운다. 그러면 이름으로 정확히 찾는다.
+ *
  * 초성인데 사전에 맞는 이름이 없으면 null. 넥슨에 보내 봐야 400 이다.
  */
 export function resolveSearch(
@@ -216,12 +223,16 @@ export function resolveSearch(
 
   if (!initialsOnly && TRAILING_JAMO.test(keyword)) keyword = keyword.slice(0, -1).trim();
 
-  if (input.category || !keyword) return { keyword, category: input.category };
-  if (!index) return initialsOnly ? null : { keyword, category: input.category };
+  const exactIn = (name: string) => Boolean(index?.categoriesByName.has(name));
+  const keep = (): ResolvedSearch => ({ keyword, category: input.category, exact: exactIn(keyword) });
+
+  if (input.category || !keyword) return keep();
+  if (!index) return initialsOnly ? null : keep();
 
   const narrowTo = (suggestion: NameSuggestion): ResolvedSearch => ({
     keyword: suggestion.name,
     category: suggestion.categories.length === 1 ? suggestion.categories[0] : '',
+    exact: true,
   });
 
   const needle = normalizeForSearch(keyword);
@@ -255,10 +266,10 @@ export function resolveSearch(
   for (const i of containing) respaced.add(respaceLike(index.names[i], needle));
   if (respaced.size === 1) {
     const [only] = respaced;
-    return { keyword: only, category: input.category };
+    return { keyword: only, category: input.category, exact: exactIn(only) };
   }
 
-  return { keyword, category: input.category };
+  return keep();
 }
 
 /**

@@ -40,8 +40,9 @@ function matchesKeyword(item: { item_name: string; item_display_name: string }, 
 /**
  * 매물 검색.
  *
- * 카테고리를 골랐으면 그 카테고리 목록을 받아 이름으로 거른다. 고르지 않았으면
- * 전체를 뒤질 방법이 keyword-search 뿐이라 그것을 쓴다.
+ * 검색어가 사전 이름 그대로면 item_name 으로 그 아이템만 받는다. 아니면 카테고리를
+ * 골랐을 때 그 카테고리 목록을 받아 이름으로 거르고, 고르지 않았으면 전체를 뒤질
+ * 방법이 keyword-search 뿐이라 그것을 쓴다.
  *
  * 카테고리를 고른 채로 keyword-search 를 쓰면 안 된다. 그쪽은 auction_item_category
  * 를 받고도 무시해서 500건이 전 카테고리에서 섞여 오고, 고른 카테고리가 그 안에
@@ -50,15 +51,18 @@ function matchesKeyword(item: { item_name: string; item_display_name: string }, 
 export function useAuctionItemsQuery(input: AuctionSearchInput, enabled: boolean) {
   const keyword = input.keyword.trim();
   const category = input.category.trim();
+  const exact = Boolean(input.exact && keyword);
   const terms = splitTerms(keyword);
 
   return useInfiniteQuery({
-    queryKey: ['auction', 'items', category, keyword],
+    queryKey: ['auction', 'items', category, keyword, exact],
     initialPageParam: '',
     queryFn: ({ pageParam, signal }) =>
-      category
-        ? fetchAuctionList({ category, cursor: pageParam }, signal)
-        : fetchAuctionKeywordSearch({ keyword, cursor: pageParam }, signal),
+      exact
+        ? fetchAuctionList({ category: category || undefined, itemName: keyword, cursor: pageParam }, signal)
+        : category
+          ? fetchAuctionList({ category, cursor: pageParam }, signal)
+          : fetchAuctionKeywordSearch({ keyword, cursor: pageParam }, signal),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     select: (data) => {
       const loaded = data.pages.flatMap((page) => page.auction_item ?? []) as AuctionItem[];
@@ -72,18 +76,22 @@ export function useAuctionItemsQuery(input: AuctionSearchInput, enabled: boolean
 
 /**
  * 최근 1시간 거래 내역. 카테고리는 API 가 받아 주지만 검색어는 받지 않으므로
- * 받아온 목록에서 단어로 거른다.
+ * 받아온 목록에서 단어로 거른다. 사전 이름 그대로면 item_name 으로 그 아이템만 받는다.
  */
 export function useAuctionHistoryQuery(input: AuctionSearchInput, enabled: boolean) {
   const keyword = input.keyword.trim();
   const category = input.category.trim();
+  const exact = Boolean(input.exact && keyword);
   const terms = splitTerms(keyword);
 
   return useInfiniteQuery({
-    queryKey: ['auction', 'history', category, keyword],
+    queryKey: ['auction', 'history', category, keyword, exact],
     initialPageParam: '',
     queryFn: ({ pageParam, signal }) =>
-      fetchAuctionHistory({ category: category || undefined, cursor: pageParam }, signal),
+      fetchAuctionHistory(
+        { category: category || undefined, itemName: exact ? keyword : undefined, cursor: pageParam },
+        signal,
+      ),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     select: (data) => {
       const loaded = data.pages.flatMap((page) => page.auction_history ?? []) as AuctionHistoryItem[];
