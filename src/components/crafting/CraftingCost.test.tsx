@@ -9,6 +9,9 @@ import { buildRecipeBook } from '@/features/crafting/recipes';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
+/** 트리를 펼치며 antd 표와 선택 칸을 여러 번 다시 그린다. 느린 기계에서 기본 제한 5초를 넘길 수 있다. */
+vi.setConfig({ testTimeout: 20_000 });
+
 /** 검(1) = 철괴(2) 3개 + 가죽(3) 1개. 철괴는 철광석(5) 2개로 10개씩 나온다. */
 const book = buildRecipeBook({
   updated: '2026-09-22',
