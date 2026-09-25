@@ -46,4 +46,14 @@ describe('ItemImage', () => {
     expect(image.style.width).toBe('24px');
     expect(image.style.height).toBe('48px');
   });
+
+  it('주소가 깨진 그림은 그림 없음 표시로 바꾼다', () => {
+    // 빈칸으로 두면 그림이 늦는 것인지 없는 것인지 알 수 없다.
+    const { container } = render(<ItemImage src="https://icons.example/broken.png" size={48} />);
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+
+    const image = container.querySelector('img') as HTMLImageElement;
+    expect(image.getAttribute('src')).toContain('item-missing');
+    expect(image.width).toBe(24);
+  });
 });
