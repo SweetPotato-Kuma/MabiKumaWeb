@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Card, Flex, Skeleton, Typography } from 'antd';
+import { Button, Card, Flex, Skeleton } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
   isCardStoreConfigured,
@@ -9,8 +9,6 @@ import {
 } from '@/features/itemcard/cards';
 import { EmptyState } from '@/components/EmptyState';
 import { SearchIcon } from '@/components/icons';
-
-const { Text } = Typography;
 
 /**
  * 장비가 아닌 아이템의 상세. 그림, 이름, 설명, 그리고 그 아이템의 시세로 가는 단추.
@@ -47,11 +45,6 @@ export function ItemInfoDetail({ category, name }: { category: string; name: str
             <Button icon={<SearchIcon />}>시세 보기</Button>
           </Link>
         </div>
-
-        {/* 어디서 온 값인지 섞이지 않게 적는다. 그림과 설명은 경매장 응답이 아니다. */}
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          그림과 설명은 게임 데이터에서 따로 모아 둔 것이며 경매장 API 가 주는 값이 아닙니다.
-        </Text>
       </Flex>
     </Card>
   );

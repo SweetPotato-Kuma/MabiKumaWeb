@@ -20,6 +20,7 @@ import { CategoryPicker } from '@/components/CategoryPicker';
 import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
+import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
 import { ITEMS_PATH, itemInfoPath, normalizeForSearch } from '@/features/auction/dictionary';
@@ -100,6 +101,8 @@ export function ItemsPage() {
           ) : (
             <ItemInfoDetail key={`${category}\u0000${detailName}`} category={category} name={detailName} />
           )}
+          {/* 시세 기록은 장비든 아니든 같다. 경매장에서 거래된 이름으로 찾는다. */}
+          <MarketHistoryCard name={detailName} />
         </Flex>
       ) : null}
 

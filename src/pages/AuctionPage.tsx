@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useMemo, useState, type KeyboardEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   App,
   AutoComplete,
@@ -10,8 +10,8 @@ import {
   Grid,
   Input,
   Row,
+  Skeleton,
   Spin,
-  Statistic,
   Table,
   Tabs,
   Tag,
@@ -25,9 +25,11 @@ import { CategoryPicker } from '@/components/CategoryPicker';
 import { ItemIcon } from '@/components/ItemIcon';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
+import { RecentTradeStats } from '@/components/market/RecentTradeStats';
+import { itemInfoPath } from '@/features/auction/dictionary';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
 import { resolveSearch, searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
-import { calculatePriceStats } from '@/features/auction/stats';
+import { useMarketRecentQuery } from '@/features/market/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { useIconMaps } from '@/features/itemcard/iconMap';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
@@ -164,7 +166,17 @@ export function AuctionPage() {
   // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
   const history = useMemo(() => historyQuery.data?.items ?? [], [historyQuery.data]);
-  const stats = useMemo(() => calculatePriceStats(items), [items]);
+  /**
+   * 최근 1일 시세. 불러온 매물이 전부 한 아이템이면 위에 요약 칸을 하나 두고, 여러 아이템이 섞이면
+   * 줄마다 그 아이템의 1일 중위 가격을 붙인다. 섞인 목록에서 한 줄 요약은 뜻이 없다.
+   *
+   * 판매 중 매물로 셈하지 않는다. 호가는 팔린 값이 아니고, 한 번에 받는 500건이 전부도 아니다.
+   * 이름은 경매장 이름 그대로(@ 포함) 묻는다. 기록도 그 이름으로 쌓인다.
+   */
+  const itemNames = useMemo(() => [...new Set(items.map((item) => item.item_name))], [items]);
+  const singleItem = itemNames.length === 1 ? items[0] : undefined;
+  const recent = useMarketRecentQuery(itemNames, enabled && tab === 'items' && itemNames.length > 0);
+  const recentByName = itemNames.length > 1 ? recent.items : null;
 
   const itemsLoaded = itemsQuery.data?.loadedCount ?? 0;
   const historyLoaded = historyQuery.data?.loadedCount ?? 0;
@@ -338,6 +350,25 @@ export function AuctionPage() {
       sorter: (a, b) => a.item_count - b.item_count,
       render: (value: number) => <span className="tnum">{formatNumber(value)}</span>,
     },
+    // 여러 아이템이 섞인 목록에서만. 호가 옆에 최근에 실제로 팔린 값을 두어 비싼지 싼지 바로 보이게 한다.
+    ...(recentByName
+      ? [
+          {
+            title: '1일 중위',
+            key: 'recent',
+            width: 120,
+            align: 'right' as const,
+            render: (_value: unknown, record: AuctionItem) => {
+              const summary = recentByName[record.item_name];
+              return summary ? (
+                <span className="tnum">{formatGold(summary.mid)}</span>
+              ) : (
+                <Text type="secondary">-</Text>
+              );
+            },
+          },
+        ]
+      : []),
     {
       title: '가격',
       dataIndex: 'auction_price_per_unit',
@@ -366,7 +397,7 @@ export function AuctionPage() {
         </Flex>
       ),
     },
-  ], []);
+  ], [recentByName]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => [
@@ -417,31 +448,24 @@ export function AuctionPage() {
    */
   const itemsPanel = useMemo(() => (
     <Flex vertical gap={16}>
-      {stats ? (
-        <Card variant="outlined" size="small">
-          <Row gutter={[16, 16]} aria-label="개당 가격 통계">
-            {(
-              [
-                ['매물 수', formatNumber(stats.count)],
-                ['최저', formatGold(stats.min)],
-                ['중위', formatGold(stats.median)],
-                ['평균', formatGold(stats.average)],
-                ['최고', formatGold(stats.max)],
-              ] as const
-            ).map(([label, value]) => (
-              // 값은 한 줄로 둔다. 칸이 좁으면 숫자를 쪼개지 않고 칸째 다음 줄로 넘긴다.
-              <Col key={label} flex="1 1 auto">
-                <Statistic
-                  title={label}
-                  value={value}
-                  styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
-                />
-              </Col>
-            ))}
-          </Row>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            지금까지 불러온 매물 {formatNumber(stats.count)}건만으로 계산한 값입니다. 뒤쪽으로 넘겨 더 불러오면 값이 바뀝니다.
-          </Text>
+      {singleItem ? (
+        <Card
+          variant="outlined"
+          size="small"
+          title="최근 1일 거래"
+          extra={
+            <Link to={itemInfoPath(singleItem.auction_item_category, canonicalItemName(singleItem.item_name))}>
+              한 달 시세 보기
+            </Link>
+          }
+        >
+          {recent.isLoading ? (
+            <Skeleton active title={false} paragraph={{ rows: 2 }} />
+          ) : recent.items[singleItem.item_name] ? (
+            <RecentTradeStats summary={recent.items[singleItem.item_name]} label="최근 1일 개당 가격" />
+          ) : (
+            <Text type="secondary">최근 1일 동안 거래된 기록이 없습니다.</Text>
+          )}
         </Card>
       ) : null}
 
@@ -494,7 +518,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, itemColumns, items, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, rowInteraction, stats]);
+  ), [enabled, itemColumns, items, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, recent, rowInteraction, singleItem]);
 
   const historyPanel = useMemo(() => (
     <QueryState
