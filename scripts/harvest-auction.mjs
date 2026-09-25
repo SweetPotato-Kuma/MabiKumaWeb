@@ -20,6 +20,14 @@ const OUT_DIR = resolve(process.cwd(), 'public/data/items');
 /** 전체 자동완성용 이름 인덱스. 카테고리 파일과 달리 category 필드가 없다. */
 const NAMES_FILE = 'names.json';
 const CONSTANTS_PATH = resolve(process.cwd(), 'src/features/auction/constants.ts');
+/**
+ * 사전에 넣지 않을 이름. 카테고리 -> 이름 목록.
+ *
+ * 경매장에 올라오지만 게임 안에서 설명도 그림도 찾을 수 없는 이름들이다. 사전에 두면 빈 줄만
+ * 늘어난다. 한 번 빼도 다음 수집 때 경매장에서 다시 보이므로 여기 적어 두고 매번 거른다.
+ * 나중에 게임 데이터에 생기면 이 파일에서 지우면 다음 수집에 돌아온다.
+ */
+const EXCLUDED_PATH = resolve(process.cwd(), 'scripts/dictionary-excluded.json');
 
 /** 넥슨 쪽에 부담을 주지 않도록 요청 간 간격을 둔다. */
 const REQUEST_DELAY_MS = 250;
@@ -79,8 +87,23 @@ async function requestPage(category, cursor) {
   throw new Error('재시도 한도를 넘었습니다.');
 }
 
-/** 기존 사전을 읽어 이름 → 레코드 맵으로 만든다. 없으면 빈 맵. */
-async function readExisting() {
+/** 뺄 이름을 "카테고리\u0000이름" 집합으로 읽는다. 파일이 없으면 빼지 않는다. */
+async function readExcluded() {
+  const excluded = new Set();
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(EXCLUDED_PATH, 'utf8'));
+  } catch {
+    return excluded;
+  }
+  for (const [category, names] of Object.entries(parsed)) {
+    for (const name of names) excluded.add(`${category}\u0000${name}`);
+  }
+  return excluded;
+}
+
+/** 기존 사전을 읽어 이름 → 레코드 맵으로 만든다. 없으면 빈 맵. 뺄 이름은 여기서 버린다. */
+async function readExisting(excluded) {
   const byCategory = new Map();
   let files;
   try {
@@ -94,7 +117,8 @@ async function readExisting() {
     try {
       const parsed = JSON.parse(await readFile(resolve(OUT_DIR, file), 'utf8'));
       if (!parsed?.category || !Array.isArray(parsed.items)) continue;
-      byCategory.set(parsed.category, new Map(parsed.items.map((item) => [item.name, item])));
+      const kept = parsed.items.filter((item) => !excluded.has(`${parsed.category}\u0000${item.name}`));
+      byCategory.set(parsed.category, new Map(kept.map((item) => [item.name, item])));
     } catch (cause) {
       console.warn(`  기존 파일을 읽지 못해 건너뜁니다: ${file} (${cause.message})`);
     }
@@ -106,10 +130,11 @@ async function readExisting() {
 async function main() {
   const categories = await readCategories();
   const known = new Set(categories);
-  const dictionary = await readExisting();
+  const excluded = await readExcluded();
+  const dictionary = await readExisting(excluded);
   const before = [...dictionary.values()].reduce((sum, items) => sum + items.size, 0);
 
-  console.log(`카테고리 ${categories.length}개, 기존 사전 ${before}개로 시작합니다.`);
+  console.log(`카테고리 ${categories.length}개, 기존 사전 ${before}개로 시작합니다. 뺄 이름 ${excluded.size}개.`);
 
   const failures = [];
   const unlisted = new Set();
@@ -136,7 +161,7 @@ async function main() {
 
           // item_name 이 원형이다. item_display_name 에는 인챈트 접두가 붙어 개체마다 달라진다.
           const name = (item.item_name ?? '').replace(/^@/, '').trim();
-          if (!name) continue;
+          if (!name || excluded.has(`${bucket}\u0000${name}`)) continue;
 
           let items = dictionary.get(bucket);
           if (!items) {
