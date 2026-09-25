@@ -1,15 +1,20 @@
 import type { ReactNode } from 'react';
 import { Empty } from 'antd';
+import emptyBearDark from '@/assets/empty-bear-dark.png';
 import emptyBear from '@/assets/empty-bear.png';
+import searchBearDark from '@/assets/empty-search-dark.png';
 import searchBear from '@/assets/empty-search.png';
+import { useResolvedThemeMode } from '@/lib/themePreference';
 
 /**
  * 곰 그림 두 장. 찾아봤는데 없을 때(empty)와, 아직 찾기 전이라 무엇을 넣으라고 안내할 때(search).
  * ratio 는 원본의 가로세로 비다. 너비와 높이를 미리 적어 두어 그림이 늦게 떠도 글이 밀리지 않게 한다.
+ *
+ * 다크 모드에는 크림색 테두리를 두른 판(dark)을 쓴다. 곰의 짙은 외곽선이 어두운 바탕에 묻혀 윤곽이 흐려진다.
  */
 const IMAGES = {
-  empty: { src: emptyBear, ratio: 279 / 240 },
-  search: { src: searchBear, ratio: 262 / 240 },
+  empty: { src: emptyBear, dark: emptyBearDark, ratio: 279 / 240 },
+  search: { src: searchBear, dark: searchBearDark, ratio: 262 / 240 },
 } as const;
 
 /** 카드 한 장을 채우는 빈 화면과, 모달이나 패널 안에서 한 줄을 대신하는 빈 칸. */
@@ -27,10 +32,13 @@ interface EmptyStateProps {
  */
 export function EmptyState({ description, size = 'default', variant = 'empty' }: EmptyStateProps) {
   const height = HEIGHT[size];
-  const { src, ratio } = IMAGES[variant];
+  const isDark = useResolvedThemeMode() === 'dark';
+  const { src, dark, ratio } = IMAGES[variant];
   return (
     <Empty
-      image={<img src={src} alt="" width={Math.round(height * ratio)} height={height} />}
+      image={
+        <img src={isDark ? dark : src} alt="" width={Math.round(height * ratio)} height={height} />
+      }
       styles={{ image: { height } }}
       description={description}
     />

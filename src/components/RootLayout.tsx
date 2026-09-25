@@ -15,6 +15,7 @@ import {
 } from 'antd';
 import { usePageMeta } from '@/app/pageMeta';
 import { HEADER_HEIGHT } from '@/app/theme';
+import logoMarkDark from '@/assets/logo-mark-dark.png';
 import logoMark from '@/assets/logo-mark.png';
 import wordmarkDark from '@/assets/wordmark-dark.png';
 import wordmark from '@/assets/wordmark.png';
@@ -156,10 +157,11 @@ export function RootLayout() {
           <NavLink to="/auction" aria-label="마비쿠마 홈">
             <Space size={8}>
               {/* 원본은 2배 크기로 담았다. 너비와 높이를 적어 두어야 그림이 늦게 떠도 글자가 밀리지 않는다. */}
-              <img src={logoMark} alt="" width={34} height={40} style={{ display: 'block' }} />
+              <img src={isDark ? logoMarkDark : logoMark} alt="" width={34} height={40} style={{ display: 'block' }} />
               {/*
                 로고 글자도 그림이다. 진한 갈색 글자는 어두운 배경에 묻혀서, 다크 모드에서는
-                같은 글자를 밝게 칠한 판을 쓴다. 대비는 두 판 모두 6:1 이 넘는다.
+                글자 속만 밝게 칠한 판을 쓴다. 외곽선은 짙게 남겨야 글자끼리 붙어 보이지 않는다.
+                곰은 다크 모드에서 크림색 테두리를 두른 판을 쓴다.
               */}
               <img
                 src={isDark ? wordmarkDark : wordmark}
