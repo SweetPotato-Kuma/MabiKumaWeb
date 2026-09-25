@@ -16,6 +16,14 @@
  * - 천옷만들기와 블랙스미스는 작업 재료와 마무리 재료가 따로다. 마무리는 첫 번째 묶음만 쓴다
  *   (게임에서도 첫 묶음이 기본 마무리다)
  * - 제작법에 나오는 모든 아이템의 이름과 거래 가능 여부. 거래 불가 아이템은 시세를 묻지 않는다
+ * - 요리는 제작 목록이 아니라 요리 목록에 따로 있다. 조리 방법(굽기, 끓이기)을 도구 자리에,
+ *   필요한 불을 설비 자리에 두고, 재료는 비율과 함께 적는다. 요리는 재료를 한 개씩 쓴다
+ *
+ * 요리 재료의 비율:
+ * - 게임 데이터의 재료 값은 기준 비율인데 합이 100 이 아닌 것이 많다(75 + 20 처럼). 게임 화면이
+ *   그러듯 합에 대한 비율로 바꾸고, 나머지가 큰 칸부터 1% 씩 채워 합을 100 으로 맞춘다
+ * - 기본 재료가 셋보다 적으면 추가 재료 하나를 더 넣을 수 있다(소금, 설탕, 후추 가운데 하나 등).
+ *   넣지 않아도 만들어지므로 비용에는 넣지 않고 extras 로만 적는다
  *
  * 실행: node scripts/build-recipes.mjs
  * 산출: public/data/recipes.json
@@ -60,6 +68,31 @@ const SKILL_NAME_FALLBACK = { 10038: '향수 조제' };
 
 /** 거래 불가 표시(RestrictionFlags). 그 도구의 ITEM_RESTRICTION_NO_TRADE 와 같다. */
 const NO_TRADE = 2;
+
+const COOKING_SKILL = 10020;
+
+/**
+ * 요리 목록에서 빼는 조리 방법. 탐험가의 요리는 이벤트 동안만 쓰는 방법이라 랭크 자리에
+ * 스킬 랭크가 아닌 값(20)이 들어 있고, 재료도 이벤트 재료다.
+ */
+const SKIPPED_COOKING_ACTIONS = new Set(['ie_expedition_cooking']);
+
+/** 기준 값들을 합이 100 인 정수 비율로. 나머지가 큰 칸부터 1 씩 더한다(같으면 앞 칸 먼저). */
+function toPercents(amounts) {
+  const total = amounts.reduce((sum, amount) => sum + amount, 0);
+  if (total === 0) return amounts.map(() => 0);
+  const exact = amounts.map((amount) => (amount / total) * 100);
+  const floors = exact.map(Math.floor);
+  const order = exact
+    .map((value, index) => ({ index, remainder: value - floors[index] }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  let left = 100 - floors.reduce((sum, value) => sum + value, 0);
+  for (const { index } of order) {
+    if (left-- <= 0) break;
+    floors[index] += 1;
+  }
+  return floors;
+}
 
 async function fetchOk(url) {
   const response = await fetch(url);
@@ -315,6 +348,41 @@ async function main() {
     console.warn(`스킬을 모르는 제작 종류라 뺐습니다: ${[...unknownTypes].join(', ')}`);
   if (droppedAlternatives)
     console.log(`이름이 없는 옛 대체 재료 ${droppedAlternatives}개를 뺐습니다.`);
+
+  // 요리. 재료 칸마다 들어갈 아이템은 하나뿐이고, 한 번에 한 개씩 쓴다.
+  const cookingActions = new Map(data.CookingActionList.map((action) => [action.Name, action]));
+  let skippedCooking = 0;
+  for (const cooking of data.CookingRecipeList) {
+    const action = cookingActions.get(cooking.Action);
+    if (!action || SKIPPED_COOKING_ACTIONS.has(cooking.Action)) {
+      skippedCooking += 1;
+      continue;
+    }
+    const essentials = cooking.Essentials ?? [];
+    const percents = toPercents(essentials.map((source) => Math.max(0, source.Amount ?? 0)));
+    usedItems.add(cooking.ItemId);
+    const recipe = {
+      item: cooking.ItemId,
+      skill: COOKING_SKILL,
+      rank: action.MinSkillLevel ?? 0,
+      yield: cooking.ResultBundle > 1 ? cooking.ResultBundle : 1,
+      materials: essentials.map((source, index) => {
+        usedItems.add(source.ItemId);
+        return [[source.ItemId], 1, percents[index]];
+      }),
+    };
+    const tool = text(action.LocalName);
+    if (tool) recipe.tool = tool;
+    const station = action.PropLocalName ? text(action.PropLocalName) : '';
+    if (station) recipe.station = station;
+    const extras = essentials.length < 3 ? (cooking.Additionals ?? []) : [];
+    if (extras.length) {
+      for (const source of extras) usedItems.add(source.ItemId);
+      recipe.extras = extras.map((source) => [[source.ItemId], 1]);
+    }
+    recipes.push(recipe);
+  }
+  if (skippedCooking) console.log(`이벤트 요리 ${skippedCooking}개를 뺐습니다.`);
 
   /** 아이템 번호 -> [이름, 거래 가능이면 1]. */
   const items = {};

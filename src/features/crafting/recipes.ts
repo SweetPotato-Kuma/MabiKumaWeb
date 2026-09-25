@@ -13,6 +13,8 @@ import { formatNumber } from '@/lib/format';
 export interface RecipeSlot {
   ids: number[];
   count: number;
+  /** 요리 재료의 비율(%). 요리는 개수가 아니라 비율을 맞춰 넣는다. 다른 스킬은 없다. */
+  ratio?: number;
 }
 
 export interface Recipe {
@@ -31,6 +33,11 @@ export interface Recipe {
   materials: RecipeSlot[];
   /** 천옷만들기와 블랙스미스의 마무리 재료. 다른 스킬은 비어 있다. */
   finish: RecipeSlot[];
+  /**
+   * 요리에서 하나 골라 더 넣을 수 있는 재료. 넣지 않아도 만들어지므로 비용에는 넣지 않는다.
+   * 다른 스킬은 비어 있다.
+   */
+  extras: RecipeSlot[];
 }
 
 export interface CraftSkill {
@@ -39,7 +46,8 @@ export interface CraftSkill {
   count: number;
 }
 
-type RawSlot = [number[], number];
+/** [아이템들, 개수, 요리 비율]. */
+type RawSlot = [number[], number, number?];
 
 interface RawRecipe {
   item: number;
@@ -50,6 +58,7 @@ interface RawRecipe {
   station?: string;
   materials: RawSlot[];
   finish?: RawSlot[];
+  extras?: RawSlot[];
 }
 
 export interface RawRecipeData {
@@ -82,7 +91,8 @@ export interface RecipeBook {
  */
 export const CONVERSION_SKILL = 35012;
 
-const toSlot = ([ids, count]: RawSlot): RecipeSlot => ({ ids, count });
+const toSlot = ([ids, count, ratio]: RawSlot): RecipeSlot =>
+  ratio === undefined ? { ids, count } : { ids, count, ratio };
 
 export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
   const recipes = raw.recipes.map((recipe, index): Recipe => ({
@@ -95,6 +105,7 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     station: recipe.station,
     materials: recipe.materials.map(toSlot),
     finish: (recipe.finish ?? []).map(toSlot),
+    extras: (recipe.extras ?? []).map(toSlot),
   }));
 
   const byItem = new Map<number, Recipe[]>();
@@ -147,11 +158,35 @@ export function stationNote(recipe: Recipe): string {
   return recipe.station && recipe.station !== recipe.tool ? `설비: ${recipe.station}` : '';
 }
 
-/** 재료를 한 줄로. "철괴 3, 가죽 1". 제작법을 고르는 목록과 스킬별 목록에서 쓴다. */
+/**
+ * 재료를 한 줄로. "철괴 3, 가죽 1". 제작법을 고르는 목록과 스킬별 목록에서 쓴다.
+ * 요리는 한 개씩 쓰고 비율이 중요해서 비율로 적는다. "달걀 79%, 올리브유 21% (+ 소금/설탕/후추 중 하나)"
+ */
 export function materialSummary(book: RecipeBook, recipe: Recipe): string {
-  return [...recipe.materials, ...recipe.finish]
-    .map((slot) => `${book.itemName(slot.ids[0])} ${formatNumber(slot.count)}`)
+  const main = [...recipe.materials, ...recipe.finish]
+    .map(
+      (slot) =>
+        `${book.itemName(slot.ids[0])} ${slot.ratio === undefined ? formatNumber(slot.count) : `${slot.ratio}%`}`,
+    )
     .join(', ');
+  if (recipe.extras.length === 0) return main;
+  return `${main} (+ ${recipe.extras.map((slot) => book.itemName(slot.ids[0])).join('/')} 중 하나)`;
+}
+
+/**
+ * 요리 재료를 넣는 비율. 요리는 재료를 한 개씩 쓰고 비율을 맞춰야 해서, 재료 트리의 개수만으로는
+ * 만들 수 없다. 비율이 없는 제작법이면 빈 문자열.
+ * "재료 비율: 달걀 79%, 올리브유 21%. 소금, 설탕 가운데 하나를 더 넣을 수 있습니다."
+ */
+export function ratioNote(book: RecipeBook, recipe: Recipe): string {
+  if (!recipe.materials.some((slot) => slot.ratio !== undefined)) return '';
+  const ratios = recipe.materials
+    .map((slot) => `${book.itemName(slot.ids[0])} ${slot.ratio ?? 0}%`)
+    .join(', ');
+  const extras = recipe.extras.map((slot) => book.itemName(slot.ids[0])).join(', ');
+  return extras
+    ? `재료 비율: ${ratios}. ${extras} 가운데 하나를 더 넣을 수 있습니다.`
+    : `재료 비율: ${ratios}`;
 }
 
 export const recipeBookQueryOptions = queryOptions({
