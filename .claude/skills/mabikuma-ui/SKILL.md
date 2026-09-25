@@ -157,7 +157,8 @@ LLM은 "성공한 정적 상태"만 만든다. 이 프로젝트에서는 **네 �
 ### 6.C 이모지
 
 기본 금지. 아이콘은 `@ant-design/icons`에서 가져온다.
-**허용 예외 1개**: 브랜드 마크 곰 이모지(MabiKuma). 그 외 UI 어디에도 이모지를 쓰지 않는다.
+예외 없음. 브랜드 마크는 이모지가 아니라 그림이다. 헤더는 `src/assets/logo-mark.png`,
+파비콘은 `public/favicon.png`, `favicon.ico`, `apple-touch-icon.png`를 쓴다. 로고를 바꾸면 넷을 함께 바꾼다.
 
 ## 7. 접근성과 성능
 

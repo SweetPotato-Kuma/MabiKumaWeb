@@ -27,6 +27,7 @@ import {
 } from 'antd';
 import { usePageMeta } from '@/app/pageMeta';
 import { HEADER_HEIGHT } from '@/app/theme';
+import logoMark from '@/assets/logo-mark.png';
 import { IssueReportButton } from '@/components/IssueReportButton';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
@@ -167,9 +168,8 @@ export function RootLayout() {
         <Flex align="center" gap={screens.md ? 28 : 12} style={{ ...containerStyle, lineHeight: 'normal' }}>
           <NavLink to="/auction" aria-label="MabiKuma 홈" style={{ color: token.colorText }}>
             <Space size={10}>
-              <span aria-hidden="true" style={{ fontSize: 26 }}>
-                🐻
-              </span>
+              {/* 원본은 2배 크기로 담았다. 너비와 높이를 적어 두어야 그림이 늦게 떠도 글자가 밀리지 않는다. */}
+              <img src={logoMark} alt="" width={34} height={40} style={{ display: 'block' }} />
               <Text strong style={{ fontSize: 20, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                 MabiKuma
               </Text>
