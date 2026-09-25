@@ -179,3 +179,39 @@ describe('buildPlan', () => {
     expect(result.nodes[1].alternatives).toEqual([4]);
   });
 });
+
+describe('buildPlan 의 NPC 판매가', () => {
+  it('NPC 가 파는 재료는 경매장을 묻지 않고 그 값에 모자람 없이 산다', () => {
+    const result = buildPlan({
+      book,
+      recipe: sword,
+      quantity: 2,
+      priceOf: () => undefined,
+      methods: {},
+      expanded: new Set(),
+      npcPriceOf: (id) => (id === 3 ? 350 : undefined),
+    });
+    // 가죽은 NPC 값, 철괴는 아직 시세를 받는 중.
+    expect(result.needed).toEqual([2]);
+    expect(result.nodes[1].price).toEqual({ status: 'npc', unit: 350 });
+    expect(result.nodes[1].quote).toEqual({ cost: 700, filled: 2, lowest: 350 });
+    expect(result.total.gold).toBe(700);
+    expect(result.total.pending).toBe(1);
+  });
+
+  it('거래 불가라도 NPC 가 팔면 살 수 있다', () => {
+    const result = buildPlan({
+      book,
+      recipe: sword,
+      quantity: 1,
+      priceOf: (id) => (id === 2 ? market([50, 10]) : market()),
+      methods: {},
+      expanded: new Set(),
+      // 가죽(3)은 매물이 없고, 거래 불가 가죽(4)을 NPC 가 판다고 친다.
+      npcPriceOf: (id) => (id === 4 ? 500 : undefined),
+    });
+    expect(result.nodes[1].itemId).toBe(4);
+    expect(result.total.gold).toBe(3 * 50 + 500);
+    expect(isComplete(result.total)).toBe(true);
+  });
+});

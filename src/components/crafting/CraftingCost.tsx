@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import {
   Card,
+  Checkbox,
   Flex,
   Form,
   InputNumber,
@@ -18,6 +19,12 @@ import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { useMarketPrices } from '@/features/crafting/market';
+import {
+  isWednesdayInKorea,
+  NPC_MATERIALS,
+  npcUnitPrice,
+  WEDNESDAY_DISCOUNT_PERCENT,
+} from '@/features/crafting/npcPrices';
 import {
   buildPlan,
   isComplete,
@@ -128,18 +135,39 @@ function RecipeCost({
   const [requested, setRequested] = useState<string[]>([]);
   const prices = useMarketPrices(requested);
 
-  const plan = buildPlan({
-    book,
-    recipe,
-    quantity,
-    priceOf: (id) => prices.get(book.itemName(id)),
-    methods,
-    expanded: new Set(expanded),
-  });
+  /**
+   * NPC 판매가. 재료마다가 아니라 한꺼번에 켜고 끈다. 켜면 NPC 가 파는 재료를 그 값에 사는 것으로
+   * 보고, 꺼진 계산(경매장만)과 총액을 나란히 보여 준다. 수요일 할인은 오늘이 수요일이면 켠 채로 시작한다.
+   */
+  const [useNpc, setUseNpc] = useState(true);
+  const [todayIsWednesday] = useState(() => isWednesdayInKorea());
+  const [wednesday, setWednesday] = useState(todayIsWednesday);
 
-  const missing = [...new Set(plan.needed.map(book.itemName))].filter(
-    (name) => !requested.includes(name),
-  );
+  const planWith = (npc: boolean) =>
+    buildPlan({
+      book,
+      recipe,
+      quantity,
+      priceOf: (id) => prices.get(book.itemName(id)),
+      methods,
+      expanded: new Set(expanded),
+      npcPriceOf: npc ? (id) => npcUnitPrice(book.itemName(id), wednesday) : undefined,
+    });
+  const plan = planWith(useNpc);
+  // 비교용. NPC 판매가를 쓰지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
+  const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
+  const auctionPlan = useNpc && usesNpc ? planWith(false) : undefined;
+  const npcNames = [
+    ...new Set(
+      plan.shopping
+        .filter((row) => row.price.status === 'npc')
+        .map((row) => book.itemName(row.itemId)),
+    ),
+  ];
+
+  const missing = [
+    ...new Set([...plan.needed, ...(auctionPlan?.needed ?? [])].map(book.itemName)),
+  ].filter((name) => !requested.includes(name));
   // 렌더 중에 상태를 고치는 React 의 "이전 렌더에서 파생" 방식. 새 이름이 있을 때만 바뀌므로 멈춘다.
   if (missing.length > 0) setRequested([...requested, ...missing]);
 
@@ -183,6 +211,19 @@ function RecipeCost({
               value={formatGold(plan.total.gold)}
               styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
             />
+            {auctionPlan ? (
+              <Statistic
+                title="경매장에서만 산다면"
+                value={formatGold(auctionPlan.total.gold)}
+                styles={{
+                  content: {
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap',
+                    fontSize: 20,
+                  },
+                }}
+              />
+            ) : null}
             {plan.total.pending > 0 ? (
               <Flex gap={8} align="center">
                 <Spin size="small" />
@@ -192,7 +233,25 @@ function RecipeCost({
               </Flex>
             ) : null}
           </Flex>
+          <Flex gap={16} wrap>
+            <Checkbox checked={useNpc} onChange={(event) => setUseNpc(event.target.checked)}>
+              NPC 판매 재료는 NPC 판매가로 계산
+            </Checkbox>
+            <Checkbox
+              checked={wednesday}
+              disabled={!useNpc}
+              onChange={(event) => setWednesday(event.target.checked)}
+            >
+              수요일 상점 할인 {WEDNESDAY_DISCOUNT_PERCENT}% 적용
+              {todayIsWednesday ? ' (오늘 수요일)' : ''}
+            </Checkbox>
+          </Flex>
           <Flex vertical gap={4}>
+            {useNpc && npcNames.length > 0 ? (
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                NPC 판매가로 계산한 재료: {npcNames.join(', ')}
+              </Text>
+            ) : null}
             {plan.crafts > 1 && recipe.yield > 1 ? (
               <Text type="secondary" style={{ fontSize: 13 }}>
                 한 번에 {formatNumber(recipe.yield)}개씩 {formatNumber(plan.crafts)}번 만듭니다.
@@ -201,7 +260,9 @@ function RecipeCost({
             <TotalNotes book={book} total={plan.total} shopping={plan.shopping} />
             <Text type="secondary" style={{ fontSize: 12 }}>
               경매장 매물을 싼 것부터 필요한 개수만큼 채워 계산했습니다. 시세는 넥슨 오픈 API
-              기준이며 평균 10분 지연됩니다. 수수료와 제작 실패는 넣지 않았습니다.
+              기준이며 평균 10분 지연됩니다. 수수료와 제작 실패는 넣지 않았습니다. NPC 판매가는 직접
+              모은 {Object.keys(NPC_MATERIALS).length}종만 들어 있어, 목록에 없는 NPC 재료는 경매장
+              값으로 계산됩니다.
             </Text>
             {progressNote ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -376,6 +437,8 @@ function priceStatusText(price: NodePrice): string {
       return '받는 중';
     case 'error':
       return '조회 실패';
+    case 'npc':
+      return '';
     default:
       return price.price.offers.length === 0 ? '매물 없음' : '';
   }
@@ -436,9 +499,10 @@ function treeColumns(
       title: '구하는 방법',
       key: 'method',
       render: (_value, { node }) => {
-        const tradable = book.isTradable(node.itemId);
+        const npc = node.price.status === 'npc';
+        const tradable = npc || book.isTradable(node.itemId);
         if (node.recipes.length === 0)
-          return <Text type="secondary">{tradable ? '구매' : '거래 불가'}</Text>;
+          return <Text type="secondary">{npc ? 'NPC 구매' : tradable ? '구매' : '거래 불가'}</Text>;
         return (
           <Select<Method>
             size="small"
@@ -447,7 +511,11 @@ function treeColumns(
             aria-label={`${book.itemName(node.itemId)} 구하는 방법`}
             popupMatchSelectWidth={false}
             options={[
-              { value: 'buy', label: tradable ? '구매' : '구매 (거래 불가)', disabled: !tradable },
+              {
+                value: 'buy',
+                label: npc ? 'NPC 구매' : tradable ? '구매' : '구매 (거래 불가)',
+                disabled: !tradable,
+              },
               ...node.recipes.map((each) => ({
                 value: each.index,
                 label: `제작: ${recipeTitle(book, each)}`,
@@ -463,7 +531,11 @@ function treeColumns(
       key: 'supply',
       align: 'right',
       render: (_value, { node }) =>
-        node.price.status === 'ok' && node.price.price.offers.length > 0 ? (
+        node.price.status === 'npc' ? (
+          <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
+            NPC 판매
+          </Text>
+        ) : node.price.status === 'ok' && node.price.price.offers.length > 0 ? (
           <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
             {formatNumber(node.price.price.supply)}개{node.price.price.complete ? '' : ' 이상'}
           </Text>

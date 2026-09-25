@@ -23,7 +23,11 @@ export type Method = 'buy' | number;
 /** 재료가 이 깊이를 넘으면 더 풀지 않는다. 게임 제작법은 다섯 단계를 넘지 않는다. */
 export const MAX_DEPTH = 8;
 
-export type NodePrice = PriceState | { status: 'untradable' };
+/**
+ * 재료 값을 어디서 매기는지. 경매장 시세(PriceState), NPC 판매가('npc'), 거래 불가.
+ * NPC 는 개수 제한 없이 같은 값에 판다고 본다.
+ */
+export type NodePrice = PriceState | { status: 'untradable' } | { status: 'npc'; unit: number };
 
 export interface CostSum {
   gold: number;
@@ -93,6 +97,11 @@ export interface PlanInput {
   priceOf: (itemId: number) => PriceState | undefined;
   methods: Readonly<Record<string, Method>>;
   expanded: ReadonlySet<string>;
+  /**
+   * NPC 가 파는 재료의 개당 값(할인까지 적용한 값). 주면 그 재료는 경매장 대신 이 값으로 산다.
+   * 경매장 시세는 묻지 않는다. 비교용 계산은 이것 없이 한 번 더 돌린다.
+   */
+  npcPriceOf?: (itemId: number) => number | undefined;
 }
 
 const emptyCost = (): CostSum => ({ gold: 0, unpriced: [], short: [], pending: 0 });
@@ -110,13 +119,25 @@ export function isComplete(cost: CostSum): boolean {
 }
 
 export function buildPlan(input: PlanInput): CraftPlan {
-  const { book, recipe, quantity, priceOf, methods, expanded } = input;
+  const { book, recipe, quantity, priceOf, methods, expanded, npcPriceOf } = input;
   const needed = new Set<number>();
 
+  /** 살 수 있는지. 경매장에서 거래되거나 NPC 가 판다. */
+  const canBuy = (itemId: number) => book.isTradable(itemId) || npcPriceOf?.(itemId) !== undefined;
+
   const priceFor = (itemId: number): NodePrice => {
+    const npc = npcPriceOf?.(itemId);
+    if (npc !== undefined) return { status: 'npc', unit: npc };
     if (!book.isTradable(itemId)) return { status: 'untradable' };
     needed.add(itemId);
     return priceOf(itemId) ?? { status: 'loading' };
+  };
+
+  /** 필요한 개수를 샀을 때. NPC 는 모자람 없이 같은 값이다. */
+  const quoteFor = (price: NodePrice, required: number): BuyQuote | undefined => {
+    if (price.status === 'npc')
+      return { cost: price.unit * required, filled: required, lowest: price.unit };
+    return price.status === 'ok' ? quoteBuy(price.price, required) : undefined;
   };
 
   const buyCostOf = (
@@ -127,7 +148,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
   ): CostSum => {
     const cost = emptyCost();
     if (price.status === 'loading') cost.pending = 1;
-    else if (price.status !== 'ok' || !quote || quote.filled === 0) cost.unpriced.push(itemId);
+    else if (!quote || quote.filled === 0) cost.unpriced.push(itemId);
     else {
       cost.gold = quote.cost;
       if (quote.filled < required) cost.short.push(itemId);
@@ -138,17 +159,16 @@ export function buildPlan(input: PlanInput): CraftPlan {
   /**
    * 칸에 넣을 아이템. 거래되는 것 가운데 필요한 개수를 가장 싸게 채우는 것을 쓴다.
    * 대부분의 칸은 "거래 가능 한 가지 + 거래 불가 한 가지" 라 거래 가능한 쪽이 뽑힌다.
+   * NPC 가 파는 것은 거래 불가여도 살 수 있으니 후보에 넣는다.
    */
   const pickSlotItem = (slot: RecipeSlot, required: number): number => {
-    const tradable = slot.ids.filter((id) => book.isTradable(id));
-    if (tradable.length === 0) return slot.ids[0];
-    let best = tradable[0];
+    const buyable = slot.ids.filter(canBuy);
+    if (buyable.length === 0) return slot.ids[0];
+    let best = buyable[0];
     let bestScore: [number, number] | undefined;
-    for (const id of tradable) {
-      const price = priceFor(id);
-      if (price.status !== 'ok') continue;
-      const quote = quoteBuy(price.price, required);
-      if (quote.filled === 0) continue;
+    for (const id of buyable) {
+      const quote = quoteFor(priceFor(id), required);
+      if (!quote || quote.filled === 0) continue;
       // 다 채우는 쪽이 먼저, 그다음 싼 쪽.
       const score: [number, number] = [required - quote.filled, quote.cost];
       if (
@@ -180,7 +200,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
     const required = slot.count * multiplier;
     const itemId = pickSlotItem(slot, required);
     const price = priceFor(itemId);
-    const quote = price.status === 'ok' ? quoteBuy(price.price, required) : undefined;
+    const quote = quoteFor(price, required);
     const buyCost = buyCostOf(itemId, price, required, quote);
     const recipes = depth < MAX_DEPTH && !ancestors.has(itemId) ? book.subRecipesOf(itemId) : [];
 
@@ -189,7 +209,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
       typeof choice === 'number' ? recipes.find((each) => each.index === choice) : undefined;
     const buyable = price.status === 'loading' || (quote !== undefined && quote.filled >= required);
     let method: Method = 'buy';
-    if (choice === 'buy' && book.isTradable(itemId)) method = 'buy';
+    if (choice === 'buy' && canBuy(itemId)) method = 'buy';
     else if (chosenRecipe) method = chosenRecipe.index;
     else if (!buyable && recipes.length > 0) method = recipes[0].index;
 
@@ -205,8 +225,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
       recipes,
       method,
       chosen:
-        choice !== undefined &&
-        (choice === 'buy' ? book.isTradable(itemId) : chosenRecipe !== undefined),
+        choice !== undefined && (choice === 'buy' ? canBuy(itemId) : chosenRecipe !== undefined),
       crafts: 0,
       yieldCount: 1,
       buyCost,
@@ -272,7 +291,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
   const total = emptyCost();
   const shopping = [...requiredById].map(([itemId, required]): ShoppingRow => {
     const price = priceFor(itemId);
-    const quote = price.status === 'ok' ? quoteBuy(price.price, required) : undefined;
+    const quote = quoteFor(price, required);
     addCost(total, buyCostOf(itemId, price, required, quote));
     return { itemId, required, price, quote };
   });
