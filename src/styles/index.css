@@ -25,6 +25,8 @@ body {
    */
   background: var(--app-bg, Canvas);
   color: var(--app-text, CanvasText);
+  /* antd 컴포넌트 바깥 글자도 같은 글꼴을 쓴다. 값은 theme.ts 의 FONT_FAMILY 에서 온다. */
+  font-family: var(--app-font, system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

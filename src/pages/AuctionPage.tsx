@@ -425,8 +425,13 @@ export function AuctionPage() {
                 ['최고', formatGold(stats.max)],
               ] as const
             ).map(([label, value]) => (
-              <Col key={label} flex="1 1 140px">
-                <Statistic title={label} value={value} styles={{ content: { fontVariantNumeric: 'tabular-nums' } }} />
+              // 값은 한 줄로 둔다. 칸이 좁으면 숫자를 쪼개지 않고 칸째 다음 줄로 넘긴다.
+              <Col key={label} flex="1 1 auto">
+                <Statistic
+                  title={label}
+                  value={value}
+                  styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
+                />
               </Col>
             ))}
           </Row>

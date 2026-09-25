@@ -66,7 +66,10 @@ npm i antd @ant-design/icons
 
 ### 3.A 색: Color Consistency Lock
 
-- **액센트는 1개.** 프로젝트 액센트는 기존 인디고 `#3f5bd9`(다크 `#7e93ff`)를 유지한다. 재디자인에서 브랜드 연속성은 보존 대상이다.
+- **색은 로고에서 온다.** 액센트는 1개, 고구마 껍질 보라 `#9e3563`(다크 `#e48db3`)다. 회색은 전부 갈색 쪽으로 데운 것을 쓴다
+  (라이트 바탕 크림 `#f7f2ee`, 다크 바탕 초콜릿 `#17120f`, 글자 `#2e201b`/`#f1e7e0`). 파란 기가 도는 회색을 새로 들이지 않는다.
+- 액센트 위 글자는 흰색이 아니라 `ON_ACCENT`(라이트는 카드 바탕, 다크는 어두운 바탕)다. 밝은 다크 액센트에 흰 글자는 대비가 무너진다.
+- 보라는 링크, 주 버튼, 선택 상태, "고른 것/1위" 표시에만 쓴다. 일반 가격과 수치는 본문색에 굵기로만 강조한다.
 - 페이지마다, 섹션마다 다른 액센트를 쓰지 않는다. 7번째 화면에서 갑자기 청록 배지가 나오면 실패다.
 - 의미 색은 액센트와 별개다. success / warning / error는 antd 시맨틱 토큰으로만 쓰고 장식으로 쓰지 않는다.
 - **순수 `#000` / `#fff` 금지.** off-black / off-white를 쓴다.
@@ -80,12 +83,13 @@ npm i antd @ant-design/icons
 
 ### 3.C 타이포
 
-- **폰트는 antd 기본값을 그대로 쓴다.** `fontFamily` 토큰을 지정하지 않는다.
-  직접 스택을 짜면 antd가 자기 컴포넌트에 맞춰 둔 줄 높이와 자간이 어긋나고,
-  웹폰트를 싣지 않는 한 한글은 어차피 OS 기본 서체로 떨어져 이득이 없다.
+- **글꼴은 Pretendard 하나.** npm `pretendard`의 dynamic subset CSS를 `main.tsx`에서 싣고(self-host, `font-display: swap`),
+  `theme.ts`의 `FONT_FAMILY`가 antd 토큰과 `--app-font`로 함께 내보낸다. 다른 글꼴을 섞지 않는다.
 - 세리프 금지. 이 브리프는 편집이나 럭셔리가 아니다.
-- 웹폰트를 붙이기로 정하면 그때 `fontFamily`를 `theme.ts`에 되살린다.
-  그 경우에도 `<link>`로 Google Fonts를 붙이지 않는다. self-host + `font-display: swap`.
+- `<link>`로 Google Fonts나 외부 CDN 글꼴을 붙이지 않는다.
+- 크기는 다섯 단계만: 페이지 제목 24(antd `Title level={3}`), 카드·섹션 제목 16, 본문 15, 보조 13, 주석 12.
+- 글자색은 세 단계만: 본문(`colorText`), 보조(`colorTextSecondary`, `type="secondary"`), 비활성(`colorTextTertiary`). 새 회색을 만들지 않는다.
+- Pretendard 숫자는 넓다. 큰 숫자는 `whiteSpace: 'nowrap'`으로 쪼개지 않고, 칸이 좁으면 칸째 다음 줄로 넘긴다.
 - 제목은 크기가 아니라 **굵기와 색으로 위계**를 만든다. 조회 도구에 화면을 뒤덮는 거대 제목은 없다.
 - 본문 가독 폭은 65ch 내외. 테이블과 폼은 예외.
 
