@@ -30,6 +30,8 @@ export interface EquipmentRecord {
   special?: { s: number; r: number; max: number };
   /** 붙일 수 있는 인챈트 묶음 번호. 워커가 풀어 `EquipmentLookup.enchants` 로 싣는다. */
   enchants?: number;
+  /** 에르그 무기 묶음 번호. 워커가 그 묶음의 효과표를 `EquipmentLookup.erg` 로 싣는다. */
+  erg?: number;
 }
 
 export interface UpgradeDef {
@@ -121,6 +123,22 @@ export interface EquipmentLookup {
   abilities?: AbilityDef[];
   enchants?: EnchantDef[];
   levels?: LevelRow[];
+  /** 에르그를 붙일 수 없는 장비면 없거나 null */
+  erg?: ErgSet | null;
   /** 운영자가 이 칸을 올린 날 */
   updated?: string;
 }
+
+/** 에르그 등급. D 는 S 등급 50레벨 위에 더하는 어둠의 에르그다. */
+export type ErgGrade = 'B' | 'A' | 'S' | 'D';
+
+/**
+ * 에르그 한 등급의 효과표. effects 는 "무기 공격력 {0} 증가" 같은 문장 틀이고, levels[레벨-1] 은 그
+ * 레벨에서 틀을 앞에서부터 채우는 값이다. 값이 모자라면 뒤쪽 효과는 아직 열리지 않은 것이다.
+ */
+export interface ErgGradeDef {
+  effects: string[];
+  levels: number[][];
+}
+
+export type ErgSet = Partial<Record<ErgGrade, ErgGradeDef>>;

@@ -4,7 +4,6 @@ import {
   equipClass,
   isNotableEnchant,
   keyStatValue,
-  sourceLabel,
   sourceTier,
 } from './enchantRanking';
 import type { EnchantDef } from './types';
@@ -81,12 +80,6 @@ describe('출처 등급', () => {
     expect(sourceTier(COLLISION, 'plate')).toBe(1);
     expect(sourceTier(OLD, 'physical')).toBe(3);
     expect(sourceTier(UNKNOWN, 'physical')).toBe(4);
-  });
-
-  it('태그는 가까운 출처에만 붙인다', () => {
-    expect(sourceLabel(RELENTLESS, 'physical')).toBe('브리 레흐');
-    expect(sourceLabel(COLLISION, 'physical')).toBe('크롬 바스');
-    expect(sourceLabel(OLD, 'physical')).toBeNull();
   });
 });
 

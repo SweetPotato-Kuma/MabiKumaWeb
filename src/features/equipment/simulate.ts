@@ -1,12 +1,21 @@
+import { availableGrades, ergStats, ergSummary, maxErgLevel, type ErgPick } from './erg';
 import { REFORGE_MAX_OPTIONS, highestLevel, levelRange, type ReforgeRank } from './reforge';
 import { specialStep, type SpecialStep } from './specialUpgrade';
 import { NON_ADDITIVE_STATS, compareStats, roundStat } from './stats';
-import type { AbilityDef, EnchantDef, EquipmentRecord, LevelRow, UpgradeDef } from './types';
+import type {
+  AbilityDef,
+  EnchantDef,
+  EquipmentRecord,
+  ErgGrade,
+  ErgSet,
+  LevelRow,
+  UpgradeDef,
+} from './types';
 
 /**
  * 장비 시뮬레이션의 상태와 계산. 화면과 떨어뜨려 두어 시험할 수 있게 했다.
  *
- * 최종 능력치 = 기본 능력치 + 고른 유동 능력치 + 고른 개조 + 고른 인챈트 + 특별 개조.
+ * 최종 능력치 = 기본 능력치 + 고른 유동 능력치 + 고른 개조 + 고른 인챈트 + 특별 개조 + 에르그.
  * 한 줄마다 어디서 얼마가 왔는지 따로 들고 있어서 화면이 합계와 구성을 같이 보여 준다.
  *
  * 세공은 능력치 칸에 더하지 않고 따로 적는다. 대부분 캐릭터 능력치나 스킬 효과를 올리는 옵션이라
@@ -39,6 +48,7 @@ export interface SimulationState {
   reforge: { rank: ReforgeRank; options: ReforgePick[] };
   special: { kind: SpecialKind | null; level: number };
   enchant: EnchantPick;
+  erg: ErgPick;
 }
 
 export function initialState(item: EquipmentRecord): SimulationState {
@@ -50,6 +60,7 @@ export function initialState(item: EquipmentRecord): SimulationState {
     reforge: { rank: 1, options: [] },
     special: { kind: null, level: 0 },
     enchant: { prefix: null, suffix: null, conditional: true },
+    erg: { grade: null, level: 0 },
   };
 }
 
@@ -112,15 +123,19 @@ export interface StatRow {
   upgrade: Range;
   enchant: Range;
   special: number;
+  erg: number;
   total: Range;
 }
 
-/** 능력치 표. 기본, 유동, 개조, 인챈트, 특별 개조를 칸별로 나눠 두어 어디서 온 값인지 보이게 한다. */
+/**
+ * 능력치 표. 기본, 유동, 개조, 인챈트, 특별 개조, 에르그를 칸별로 나눠 두어 어디서 온 값인지 보이게 한다.
+ */
 export function computeStats(
   item: EquipmentRecord,
   upgrades: Record<string, UpgradeDef>,
   state: SimulationState,
   enchants: readonly EnchantDef[] = [],
+  erg: ErgSet | null = null,
 ): StatRow[] {
   const rows = new Map<string, StatRow>();
   const row = (stat: string) => {
@@ -133,6 +148,7 @@ export function computeStats(
         upgrade: [0, 0],
         enchant: [0, 0],
         special: 0,
+        erg: 0,
         total: [0, 0],
       };
       rows.set(stat, entry);
@@ -160,12 +176,14 @@ export function computeStats(
     }
   }
   for (const [stat, value] of selectedSpecial(item, state) ?? []) row(stat).special += value;
+  for (const [stat, value] of ergStats(ergSummary(erg, state.erg))) row(stat).erg += value;
 
   return [...rows.values()]
     .map((entry) => {
-      const fixed = entry.base + entry.random + entry.special;
+      const fixed = entry.base + entry.random + entry.special + entry.erg;
       return {
         ...entry,
+        erg: roundStat(entry.erg),
         upgrade: [roundStat(entry.upgrade[0]), roundStat(entry.upgrade[1])] as Range,
         enchant: [roundStat(entry.enchant[0]), roundStat(entry.enchant[1])] as Range,
         total: [
@@ -200,9 +218,11 @@ export interface SimulationParams {
   en?: string;
   /** 조건 붙은 인챈트 효과를 뺐으면 "0" */
   ec?: string;
+  /** 에르그 "등급레벨". S50, D12 */
+  eg?: string;
 }
 
-export const SIMULATION_PARAM_KEYS = ['rv', 'up', 'gm', 'rf', 'sp', 'en', 'ec'] as const;
+export const SIMULATION_PARAM_KEYS = ['rv', 'up', 'gm', 'rf', 'sp', 'en', 'ec', 'eg'] as const;
 
 const joinSlots = (slots: (number | null)[]) =>
   slots.map((id) => (id === null ? '' : String(id))).join('.');
@@ -225,6 +245,7 @@ export function encodeState(item: EquipmentRecord, state: SimulationState): Simu
     params.en = joinSlots([state.enchant.prefix, state.enchant.suffix]);
   }
   if (!state.enchant.conditional) params.ec = '0';
+  if (state.erg.grade && state.erg.level > 0) params.eg = `${state.erg.grade}${state.erg.level}`;
   return params;
 }
 
@@ -255,6 +276,7 @@ export function decodeState(
   abilities: readonly AbilityDef[],
   levels: readonly LevelRow[],
   enchants: readonly EnchantDef[] = [],
+  erg: ErgSet | null = null,
 ): SimulationState {
   const state = initialState(item);
 
@@ -308,6 +330,15 @@ export function decodeState(
     suffix: pickEnchant(suffixText, 1),
     conditional: params.ec !== '0',
   };
+
+  // 에르그는 이 장비에 있는 등급만, 레벨은 그 등급의 폭 안으로.
+  const ergMatch = /^([BASD])(\d+)$/.exec(params.eg ?? '');
+  if (ergMatch) {
+    const grade = ergMatch[1] as ErgGrade;
+    if (availableGrades(erg).includes(grade)) {
+      state.erg = { grade, level: clamp(Number(ergMatch[2]), 1, maxErgLevel(erg, grade)) };
+    }
+  }
 
   return state;
 }

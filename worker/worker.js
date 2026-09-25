@@ -1172,12 +1172,16 @@ async function lookupEquipment(request, url, env, cors) {
     if (def) enchants.push({ id: Number(id), ...def });
   }
 
+  // 에르그는 무기 묶음(20종) 번호 하나로 가리킨다. 그 묶음의 등급별 효과표만 싣는다.
+  const erg = record.erg === undefined ? null : (shard.ergSets?.[record.erg] ?? null);
+
   const body = {
     item: { ...record, name, category },
     upgrades,
     abilities,
     enchants,
     levels: record.reforge ? (shard.levels ?? []) : [],
+    erg,
     updated: shard.updated ?? '',
   };
 
@@ -1219,6 +1223,7 @@ async function putEquipShard(request, env, cors) {
       levels: Array.isArray(payload.levels) ? payload.levels : [],
       enchants: isPlainObject(payload.enchants) ? payload.enchants : {},
       enchantGroups: isPlainObject(payload.enchantGroups) ? payload.enchantGroups : {},
+      ergSets: isPlainObject(payload.ergSets) ? payload.ergSets : {},
     }),
   );
   // 이 인스턴스가 들고 있던 옛 칸은 버린다. 방금 올린 사람이 옛 것을 보지 않게.

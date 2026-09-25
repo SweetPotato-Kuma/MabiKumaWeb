@@ -88,18 +88,6 @@ export function sourceTier(enchant: EnchantDef, cls: EquipClass): number {
   return 3;
 }
 
-/** 목록에 태그로 보일 출처. 등급 0~2 만 이름을 붙인다. 그 아래는 너무 흔해서 오히려 눈을 가린다. */
-export function sourceLabel(enchant: EnchantDef, cls: EquipClass): string | null {
-  const tier = sourceTier(enchant, cls);
-  if (tier > 2) return null;
-  if (tier === 0) return (enchant.src ?? []).find((name) => TOP_SOURCES.includes(name)) ?? null;
-  // 등급을 정한 그 던전 이름을 붙인다. 둘 다에서 나오면 이 장비에 더 가까운 쪽이다.
-  const [first, second] = isWeapon(cls)
-    ? ['크롬 바스', '글렌 베르나']
-    : ['글렌 베르나', '크롬 바스'];
-  return tier === 1 ? first : second;
-}
-
 /** 이 인챈트가 그 능력치를 가장 높게 올리는 값. 없으면 0. 깎는 효과는 0 으로 본다. */
 export function keyStatValue(enchant: EnchantDef, key: KeyStat): number {
   let best = 0;

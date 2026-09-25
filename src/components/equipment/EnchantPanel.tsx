@@ -7,7 +7,6 @@ import {
   Segmented,
   Table,
   Tabs,
-  Tag,
   Typography,
   type TableColumnsType,
 } from 'antd';
@@ -16,7 +15,6 @@ import {
   compareForEquipment,
   equipClass,
   isNotableEnchant,
-  sourceLabel,
   type EquipClass,
 } from '@/features/equipment/enchantRanking';
 import type { EnchantPick } from '@/features/equipment/simulate';
@@ -97,25 +95,7 @@ function EnchantList({
       key: 'name',
       width: 168,
       ellipsis: true,
-      render: (_, enchant) => {
-        const source = sourceLabel(enchant, cls);
-        return (
-          <Flex align="center" gap={4} style={{ minWidth: 0 }}>
-            <Text strong ellipsis>
-              {enchant.name}
-            </Text>
-            {source ? (
-              <Tag
-                bordered={false}
-                color="processing"
-                style={{ marginInlineEnd: 0, flex: '0 0 auto' }}
-              >
-                {source}
-              </Tag>
-            ) : null}
-          </Flex>
-        );
-      },
+      render: (_, enchant) => <Text strong>{enchant.name}</Text>,
     },
     {
       title: '효과',

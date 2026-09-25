@@ -4,13 +4,15 @@ import { Alert, App, Button, Card, Col, Divider, Flex, Grid, Row, Tooltip, Typog
 import { HEADER_HEIGHT } from '@/app/theme';
 import { BaseStatsPanel } from '@/components/equipment/BaseStatsPanel';
 import { EnchantPanel } from '@/components/equipment/EnchantPanel';
-import { EquipmentPreview } from '@/components/equipment/EquipmentPreview';
+import { EquipmentPreview, type ReforgeLine } from '@/components/equipment/EquipmentPreview';
+import { ErgPanel } from '@/components/equipment/ErgPanel';
 import { ReforgePanel } from '@/components/equipment/ReforgePanel';
 import { SpecialUpgradePanel } from '@/components/equipment/SpecialUpgradePanel';
 import { UpgradePanel } from '@/components/equipment/UpgradePanel';
 import { QueryState } from '@/components/QueryState';
 import { canLookupEquipment, useEquipmentQuery } from '@/features/equipment/api';
-import { describeAbility } from '@/features/equipment/reforge';
+import { availableGrades, ergSummary } from '@/features/equipment/erg';
+import { describeAbility, highestLevel, levelRange } from '@/features/equipment/reforge';
 import {
   SIMULATION_PARAM_KEYS,
   computeStats,
@@ -33,13 +35,22 @@ function Section({
   title,
   extra,
   children,
+  scrollBody = false,
 }: {
   title: string;
   extra?: ReactNode;
   children: ReactNode;
+  /** 바깥 높이를 넘으면 머리는 두고 몸만 스크롤한다. 붙어 따라오는 미리보기가 쓴다. */
+  scrollBody?: boolean;
 }) {
   return (
-    <Card size="small" title={title} extra={extra}>
+    <Card
+      size="small"
+      title={title}
+      extra={extra}
+      style={scrollBody ? { display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}
+      styles={scrollBody ? { body: { overflowY: 'auto', minHeight: 0 } } : undefined}
+    >
       {children}
     </Card>
   );
@@ -60,14 +71,15 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
   const abilities = useMemo(() => lookup.abilities ?? [], [lookup.abilities]);
   const levels = useMemo(() => lookup.levels ?? [], [lookup.levels]);
   const enchants = useMemo(() => lookup.enchants ?? [], [lookup.enchants]);
+  const erg = lookup.erg ?? null;
 
   const state = useMemo(
-    () => decodeState(params, item, upgrades, abilities, levels, enchants),
-    [params, item, upgrades, abilities, levels, enchants],
+    () => decodeState(params, item, upgrades, abilities, levels, enchants, erg),
+    [params, item, upgrades, abilities, levels, enchants, erg],
   );
   const rows = useMemo(
-    () => computeStats(item, upgrades, state, enchants),
-    [item, upgrades, state, enchants],
+    () => computeStats(item, upgrades, state, enchants, erg),
+    [item, upgrades, state, enchants, erg],
   );
   const update = (patch: Partial<SimulationState>) =>
     onParamsChange(encodeState(item, { ...state, ...patch }));
@@ -82,11 +94,18 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
   };
 
   const reforgeLines = state.reforge.options
-    .map((pick) => {
+    .map((pick): ReforgeLine | null => {
       const ability = abilities.find((entry) => entry.id === pick.abilityId);
-      return ability ? describeAbility(ability, pick.level) : null;
+      if (!ability || !item.reforge) return null;
+      const range = levelRange(ability, state.reforge.rank, item.reforge.type, levels);
+      return {
+        name: ability.name,
+        level: pick.level,
+        max: highestLevel(range),
+        effect: describeAbility(ability, pick.level),
+      };
     })
-    .filter((line): line is string => line !== null);
+    .filter((line): line is ReforgeLine => line !== null);
 
   const special =
     state.special.kind && item.special
@@ -102,16 +121,34 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
     item.upgrade ||
     item.reforge ||
     item.special ||
-    enchants.length,
+    enchants.length ||
+    availableGrades(erg).length,
   );
 
   return (
     <Row gutter={[16, 16]}>
       {/* 미리보기를 왼쪽에 붙여 둔다. 992px 미만에서는 미리보기가 위, 고르는 칸이 아래로 떨어진다. */}
       <Col xs={24} lg={10}>
-        {/* 넓은 화면에서는 고르는 동안 미리보기가 따라 내려온다. 좁은 화면에서는 붙이지 않는다. */}
-        <div style={screens.lg ? { position: 'sticky', top: HEADER_HEIGHT + 16 } : undefined}>
+        {/*
+          넓은 화면에서는 고르는 동안 미리보기가 따라 내려온다. 좁은 화면에서는 붙이지 않는다.
+          미리보기가 화면보다 길면 오른쪽 칸 끝에 밀려 머리가 헤더 밑으로 잘렸다. 화면 높이 안에
+          가두고 안에서 스크롤하게 한다.
+        */}
+        <div
+          style={
+            screens.lg
+              ? {
+                  position: 'sticky',
+                  top: HEADER_HEIGHT + 16,
+                  maxHeight: `calc(100dvh - ${HEADER_HEIGHT + 32}px)`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                }
+              : undefined
+          }
+        >
           <Section
+            scrollBody={screens.lg}
             title="장비 미리보기"
             extra={
               <Flex gap={4}>
@@ -138,8 +175,9 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
                 gemDone: state.gemSlots.filter((id) => id !== null).length,
                 gemMax: state.gemSlots.length,
               }}
-              reforgeLines={reforgeLines}
+              reforge={reforgeLines}
               special={special}
+              erg={ergSummary(erg, state.erg)}
             />
           </Section>
         </div>
@@ -223,6 +261,12 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
                 options={state.reforge.options}
                 onChange={(options) => update({ reforge: { rank: 1, options } })}
               />
+            </Section>
+          ) : null}
+
+          {erg && availableGrades(erg).length ? (
+            <Section title="에르그">
+              <ErgPanel erg={erg} pick={state.erg} onChange={(next) => update({ erg: next })} />
             </Section>
           ) : null}
         </Flex>

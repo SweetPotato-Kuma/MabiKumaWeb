@@ -719,8 +719,13 @@ describe('장비 정보', () => {
           reforge: { type: 'OHSword', races: 'heg' },
           special: { s: 201, r: 301, max: 8 },
           enchants: 0,
+          erg: 12,
         },
         '인챈트 없는 검': { id: 1, base: { attack_max: 10 } },
+      },
+      ergSets: {
+        12: { S: { effects: ['무기 공격력 {0} 증가'], levels: [[1], [1]] } },
+        9: { S: { effects: ['무기 마법 공격력 {0} 증가'], levels: [[1]] } },
       },
       enchants: {
         21643: { name: '거침없는', slot: 0, level: 10, desc: ['최대 생명력 100 증가'], effects: [] },
@@ -773,6 +778,14 @@ describe('장비 정보', () => {
     const body = await (await lookup('검', '소울 리버레이트 소드')).json();
     expect(body.enchants.map((enchant) => enchant.id).sort()).toEqual([10604, 21643]);
     expect(body.enchants.find((enchant) => enchant.id === 21643)).toMatchObject({ name: '거침없는' });
+  });
+
+  it('에르그는 그 아이템의 무기 묶음 것만 싣는다', async () => {
+    await call('/item-equip/shard', { method: 'PUT', adminKey: ADMIN_KEY, body: equipShard() });
+
+    const body = await (await lookup('검', '소울 리버레이트 소드')).json();
+    expect(body.erg).toEqual({ S: { effects: ['무기 공격력 {0} 증가'], levels: [[1], [1]] } });
+    expect((await (await lookup('검', '인챈트 없는 검')).json()).erg).toBeNull();
   });
 
   it('인챈트가 없는 아이템은 빈 목록이다', async () => {

@@ -9,7 +9,14 @@ import {
   upgradeCost,
   upgradesForSlot,
 } from './simulate';
-import type { AbilityDef, EnchantDef, EquipmentRecord, LevelRow, UpgradeDef } from './types';
+import type {
+  AbilityDef,
+  EnchantDef,
+  EquipmentRecord,
+  ErgSet,
+  LevelRow,
+  UpgradeDef,
+} from './types';
 
 /** 소울 리버레이트 소드. 2026-09 게임 데이터에서 뽑은 값을 줄여 옮겼다. */
 const SWORD: EquipmentRecord = {
@@ -247,6 +254,57 @@ describe('인챈트와 특별 개조', () => {
     expect(
       computeStats(SWORD, UPGRADES, state).find((row) => row.stat === 'critical_damage'),
     ).toBeUndefined();
+  });
+});
+
+describe('에르그', () => {
+  /** 한손검 묶음을 줄였다. S 50레벨: 무기 공격력 25, 방어/보호 25. */
+  const SWORD_ERG: ErgSet = {
+    S: {
+      effects: ['무기 공격력 {0} 증가', '방어, 보호, 마법방어, 마법보호 {0} 증가'],
+      levels: [[1], [25, 25]],
+    },
+    D: { effects: ['배쉬 대미지 {0}% 증가'], levels: [[1.5], [75]] },
+  };
+
+  it('무기 공격력은 최소와 최대 공격력 모두에 에르그 칸으로 더한다', () => {
+    const state = initialState(SWORD);
+    state.erg = { grade: 'S', level: 2 };
+
+    const rows = computeStats(SWORD, UPGRADES, state, [], SWORD_ERG);
+    expect(rows.find((row) => row.stat === 'attack_min')).toMatchObject({
+      erg: 25,
+      total: [114, 114],
+    });
+    expect(rows.find((row) => row.stat === 'attack_max')).toMatchObject({
+      erg: 25,
+      total: [164, 164],
+    });
+    expect(rows.find((row) => row.stat === 'protect')?.total).toEqual([25, 25]);
+  });
+
+  it('어둠의 에르그는 S 등급 끝 레벨 능력치를 그대로 가진다', () => {
+    const state = initialState(SWORD);
+    state.erg = { grade: 'D', level: 1 };
+    const rows = computeStats(SWORD, UPGRADES, state, [], SWORD_ERG);
+    expect(rows.find((row) => row.stat === 'attack_max')?.erg).toBe(25);
+  });
+
+  it('주소를 한 바퀴 돌아도 그대로이고 폭 밖의 레벨은 폭 안으로 넣는다', () => {
+    const state = initialState(SWORD);
+    state.erg = { grade: 'D', level: 2 };
+    const params = encodeState(SWORD, state);
+    expect(params.eg).toBe('D2');
+    expect(
+      decodeState(params, SWORD, UPGRADES, ABILITIES, LEVELS, ENCHANTS, SWORD_ERG).erg,
+    ).toEqual(state.erg);
+    expect(
+      decodeState({ eg: 'S99' }, SWORD, UPGRADES, ABILITIES, LEVELS, ENCHANTS, SWORD_ERG).erg,
+    ).toEqual({ grade: 'S', level: 2 });
+    // 이 장비에 없는 등급은 버린다.
+    expect(
+      decodeState({ eg: 'A10' }, SWORD, UPGRADES, ABILITIES, LEVELS, ENCHANTS, SWORD_ERG).erg,
+    ).toEqual({ grade: null, level: 0 });
   });
 });
 
