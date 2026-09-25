@@ -45,7 +45,7 @@ function renderCost() {
     <AppProviders>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
-          <CraftingCost book={book} itemId={1} />
+          <CraftingCost book={book} recipes={book.recipesOf(1)} />
         </MemoryRouter>
       </QueryClientProvider>
     </AppProviders>,

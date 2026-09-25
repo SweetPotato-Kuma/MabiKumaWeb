@@ -1,4 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AutoComplete,
@@ -10,6 +17,7 @@ import {
   Form,
   Input,
   Row,
+  Segmented,
   Skeleton,
   Table,
   Tag,
@@ -17,7 +25,8 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { CategoryPicker } from '@/components/CategoryPicker';
-import { RecipeSummaryCard } from '@/components/crafting/RecipeSummaryCard';
+import { CraftingSection } from '@/components/crafting/CraftingSection';
+import { RecipeBrowser } from '@/components/crafting/RecipeBrowser';
 import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
@@ -26,6 +35,7 @@ import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
 import { ITEMS_PATH, itemInfoPath, normalizeForSearch } from '@/features/auction/dictionary';
 import { searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
+import type { Recipe, RecipeBook } from '@/features/crafting/recipes';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { iconSrcOf, preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
 import { iconFileUrl, useIconMaps } from '@/features/itemcard/iconMap';
@@ -53,6 +63,14 @@ interface ItemRow {
   category: string;
 }
 
+/** 목록을 무엇으로 나눠 보는지. 경매장 카테고리이거나 제작 스킬이다. */
+type ListView = 'category' | 'craft';
+
+const parseId = (value: string | null): number | null => {
+  const id = Number(value);
+  return value && Number.isInteger(id) ? id : null;
+};
+
 /** 카테고리 목록으로 돌아가는 주소. 비우면 카테고리를 고르지 않은 목록이다. */
 const listPath = (category: string) =>
   category ? `${ITEMS_PATH}?category=${encodeURIComponent(category)}` : ITEMS_PATH;
@@ -71,14 +89,49 @@ export function ItemsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const category = searchParams.get('category') ?? '';
   const detailName = searchParams.get('name') ?? '';
+  const recipeParam = parseId(searchParams.get('recipe'));
 
   /**
-   * 목록이 보던 카테고리. 전체에서 찾다가 상세를 열면 주소의 카테고리가 그 아이템 것으로 바뀐다.
-   * 그 값을 숨겨 둔 목록에 그대로 넘기면 목록이 그 카테고리로 바뀌고 보던 쪽을 잃는다.
-   * 그래서 목록이 보일 때의 카테고리만 따라간다.
+   * 목록이 보던 조건(카테고리, 보기, 스킬). 전체에서 찾다가 상세를 열면 주소의 카테고리가 그 아이템
+   * 것으로 바뀐다. 그 값을 숨겨 둔 목록에 그대로 넘기면 목록이 그 카테고리로 바뀌고 보던 쪽을 잃는다.
+   * 그래서 목록이 보일 때의 주소만 따라간다.
    */
-  const [listCategory, setListCategory] = useState(category);
-  if (!detailName && listCategory !== category) setListCategory(category);
+  const [listSearch, setListSearch] = useState(searchParams.toString());
+  if (!detailName && listSearch !== searchParams.toString()) setListSearch(searchParams.toString());
+  const listParams = new URLSearchParams(listSearch);
+  const listCategory = listParams.get('category') ?? '';
+  const listView: ListView = listParams.get('view') === 'craft' ? 'craft' : 'category';
+  const listSkill = parseId(listParams.get('skill'));
+
+  // 카테고리나 스킬을 바꿀 때마다 방문 기록이 쌓이면 뒤로 가기가 쓸모없어진다. 자리만 바꾼다.
+  const replaceList = (next: Record<string, string>) => setSearchParams(next, { replace: true });
+
+  const viewSwitch = (
+    <Segmented<ListView>
+      value={listView}
+      onChange={(view) => replaceList(view === 'craft' ? { view } : {})}
+      options={[
+        { value: 'category', label: '카테고리별' },
+        { value: 'craft', label: '제작 스킬별' },
+      ]}
+      aria-label="목록 나누는 방법"
+      style={{ alignSelf: 'flex-start' }}
+    />
+  );
+
+  /**
+   * 제작법 목록에서 고르면 그 아이템의 상세로 간다. 사전에 있는 이름이면 그 카테고리로 열어
+   * 그림과 장비 시뮬레이터도 함께 보이게 한다. 같은 아이템의 제작법이 여럿이면 누른 것을 먼저 보인다.
+   */
+  const navigate = useNavigate();
+  const nameIndex = useItemNameIndexQuery().data;
+  const openRecipe = (recipe: Recipe, book: RecipeBook) => {
+    const name = book.itemName(recipe.item);
+    const itemCategory = nameIndex?.categoriesByName.get(name)?.[0] ?? '';
+    const several = book.idsByName(name).flatMap((id) => book.recipesOf(id)).length > 1;
+    window.scrollTo({ top: 0 });
+    navigate(`${itemInfoPath(itemCategory, name)}${several ? `&recipe=${recipe.index}` : ''}`);
+  };
 
   return (
     <>
@@ -98,23 +151,48 @@ export function ItemsPage() {
           </Flex>
           {/* 다른 아이템으로 넘어가면 받아 둔 것과 고른 것을 새로 시작한다. */}
           {isEquipmentCategory(category) ? (
-            <EquipmentDetail key={`${category}\u0000${detailName}`} category={category} name={detailName} />
+            <EquipmentDetail
+              key={`${category}\u0000${detailName}`}
+              category={category}
+              name={detailName}
+            />
           ) : (
-            <ItemInfoDetail key={`${category}\u0000${detailName}`} category={category} name={detailName} />
+            <ItemInfoDetail
+              key={`${category}\u0000${detailName}`}
+              category={category}
+              name={detailName}
+            />
           )}
-          {/* 만들 수 있는 아이템이면 제작법과 제작 비용 화면으로 가는 단추. 없으면 아무것도 그리지 않는다. */}
-          <RecipeSummaryCard name={detailName} />
+          {/* 만들 수 있는 아이템이면 재료 트리와 제작 비용. 없으면 아무것도 그리지 않는다. */}
+          <CraftingSection
+            key={`${detailName}\u0000${recipeParam ?? ''}`}
+            name={detailName}
+            initialRecipe={recipeParam ?? undefined}
+          />
           {/* 시세 기록은 장비든 아니든 같다. 경매장에서 거래된 이름으로 찾는다. */}
           <MarketHistoryCard name={detailName} />
         </Flex>
       ) : null}
 
       <div hidden={detailName !== ''}>
-        <ItemList
-          category={listCategory}
-          // 카테고리를 바꿀 때마다 방문 기록이 쌓이면 뒤로 가기가 쓸모없어진다. 자리만 바꾼다.
-          onCategoryChange={(next) => setSearchParams(next ? { category: next } : {}, { replace: true })}
-        />
+        {listView === 'craft' ? (
+          <RecipeBrowser
+            skill={listSkill}
+            onSkillChange={(next) =>
+              replaceList(
+                next === null ? { view: 'craft' } : { view: 'craft', skill: String(next) },
+              )
+            }
+            onOpen={openRecipe}
+            viewSwitch={viewSwitch}
+          />
+        ) : (
+          <ItemList
+            category={listCategory}
+            onCategoryChange={(next) => replaceList(next ? { category: next } : {})}
+            viewSwitch={viewSwitch}
+          />
+        )}
       </div>
     </>
   );
@@ -123,9 +201,11 @@ export function ItemsPage() {
 function ItemList({
   category,
   onCategoryChange: setCategory,
+  viewSwitch,
 }: {
   category: string;
   onCategoryChange: (category: string) => void;
+  viewSwitch: ReactNode;
 }) {
   const navigate = useNavigate();
   const nameIndexQuery = useItemNameIndexQuery();
@@ -164,11 +244,13 @@ function ItemList({
 
   const suggestionOptions = useMemo(() => {
     if (!index || !hasKeyword) return [];
-    return searchNames(index, deferredKeyword, { category, limit: SUGGESTION_LIMIT }).map((item) => ({
-      value: item.name,
-      label: <NameSuggestionLabel item={item} showCategory={!category} />,
-      item,
-    }));
+    return searchNames(index, deferredKeyword, { category, limit: SUGGESTION_LIMIT }).map(
+      (item) => ({
+        value: item.name,
+        label: <NameSuggestionLabel item={item} showCategory={!category} />,
+        item,
+      }),
+    );
   }, [index, hasKeyword, deferredKeyword, category]);
 
   /**
@@ -185,10 +267,19 @@ function ItemList({
    *
    * 지금 쪽과 다음 쪽을 같이 보고, 다음 쪽 그림은 미리 받아 두어 넘기는 순간 와 있게 한다.
    */
-  const nearRows = useMemo(() => rows.slice((page - 1) * pageSize, (page + 1) * pageSize), [rows, page, pageSize]);
-  const mapCategories = useMemo(() => [category, ...nearRows.map((row) => row.category)], [category, nearRows]);
+  const nearRows = useMemo(
+    () => rows.slice((page - 1) * pageSize, (page + 1) * pageSize),
+    [rows, page, pageSize],
+  );
+  const mapCategories = useMemo(
+    () => [category, ...nearRows.map((row) => row.category)],
+    [category, nearRows],
+  );
   const maps = useIconMaps(mapCategories);
-  const lookupKeys = useMemo(() => nearRows.filter((row) => maps.needsLookup(row.category)), [nearRows, maps]);
+  const lookupKeys = useMemo(
+    () => nearRows.filter((row) => maps.needsLookup(row.category)),
+    [nearRows, maps],
+  );
   const cardOf = useItemCards(lookupKeys);
   const iconSrcFor = (row: ItemRow) => {
     const brief = maps.brief(row.category, row.name);
@@ -235,16 +326,24 @@ function ItemList({
       key: 'icon',
       width: ICON_BOX + 16,
       render: (_value, row) => (
-        <ItemIcon category={row.category} name={row.name} card={cardOf(row.category, row.name)} size={ICON_BOX} />
+        <ItemIcon
+          category={row.category}
+          name={row.name}
+          card={cardOf(row.category, row.name)}
+          size={ICON_BOX}
+        />
       ),
     },
     {
       title: '아이템 이름',
       key: 'name',
       render: (_value, row) => {
-        const subtitle = maps.brief(row.category, row.name)?.subtitle || cardOf(row.category, row.name)?.subtitle;
+        const subtitle =
+          maps.brief(row.category, row.name)?.subtitle || cardOf(row.category, row.name)?.subtitle;
         // 전체에서 찾을 때는 어느 카테고리의 줄인지 적는다. 같은 이름이 두 줄일 수 있다.
-        const secondary = [category ? '' : row.category, subtitle ?? ''].filter(Boolean).join(' · ');
+        const secondary = [category ? '' : row.category, subtitle ?? '']
+          .filter(Boolean)
+          .join(' · ');
         return (
           <Flex vertical gap={2}>
             <Text strong>{row.name}</Text>
@@ -291,6 +390,7 @@ function ItemList({
         <Title level={3} style={{ margin: 0 }}>
           아이템 정보
         </Title>
+        {viewSwitch}
         <Card>
           <EmptyState description="아이템 목록이 아직 준비되지 않았습니다. 수집이 한 번 돌고 나면 채워집니다." />
         </Card>
@@ -307,11 +407,13 @@ function ItemList({
           아이템 정보
         </Title>
         <Text type="secondary">
-          경매장에서 관측한 아이템 <span className="tnum">{formatNumber(index.names.length)}</span>개입니다.{' '}
-          {index.updated} 기준이며, 경매장에 한 번도 올라오지 않은 아이템은 빠져 있습니다. 장비는 개조, 세공,
-          인챈트를 골라 능력치를 미리 볼 수 있습니다.
+          경매장에서 관측한 아이템 <span className="tnum">{formatNumber(index.names.length)}</span>
+          개입니다. {index.updated} 기준이며, 경매장에 한 번도 올라오지 않은 아이템은 빠져 있습니다.
+          장비는 개조, 세공, 인챈트를 골라 능력치를 미리 볼 수 있고, 만들 수 있는 아이템은 제작
+          비용도 봅니다.
         </Text>
       </Flex>
+      {viewSwitch}
 
       {/* 2단 레이아웃. 768px 미만에서는 카테고리 선택이 Select 로 바뀌며 한 단으로 떨어진다. */}
       <Row gutter={[20, 16]}>
@@ -323,7 +425,12 @@ function ItemList({
             styles={{ body: { maxHeight: 'calc(100dvh - 280px)', overflowY: 'auto' } }}
           >
             {/* 전체에서 찾는 일은 검색칸이 맡는다. 트리에는 고를 카테고리만 둔다. */}
-            <CategoryPicker value={category} onChange={setCategory} counts={counts} showAll={false} />
+            <CategoryPicker
+              value={category}
+              onChange={setCategory}
+              counts={counts}
+              showAll={false}
+            />
           </Card>
         </Col>
 
@@ -332,7 +439,11 @@ function ItemList({
             <Card variant="outlined" size="small">
               <Flex vertical gap={10}>
                 <Form layout="vertical" style={{ marginBottom: 0 }}>
-                  <Form.Item label="이름으로 찾기" htmlFor="items-keyword" style={{ marginBottom: 0 }}>
+                  <Form.Item
+                    label="이름으로 찾기"
+                    htmlFor="items-keyword"
+                    style={{ marginBottom: 0 }}
+                  >
                     <AutoComplete
                       id="items-keyword"
                       value={keyword}
@@ -363,7 +474,10 @@ function ItemList({
 
             {!category && !hasKeyword ? (
               <Card>
-                <EmptyState variant="search" description="아이템 이름을 입력하거나 카테고리를 고르면 목록이 나옵니다." />
+                <EmptyState
+                  variant="search"
+                  description="아이템 이름을 입력하거나 카테고리를 고르면 목록이 나옵니다."
+                />
               </Card>
             ) : (
               <QueryState
@@ -378,9 +492,10 @@ function ItemList({
               >
                 <Flex vertical gap={10}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    {category || '전체'} <span className="tnum">{formatNumber(scopeCount)}</span>개 가운데{' '}
-                    <span className="tnum">{formatNumber(rows.length)}</span>개를 보고 있습니다. 줄을 누르면 상세가
-                    열리고, 장비는 개조, 세공, 인챈트를 골라 보는 시뮬레이터가 열립니다.
+                    {category || '전체'} <span className="tnum">{formatNumber(scopeCount)}</span>개
+                    가운데 <span className="tnum">{formatNumber(rows.length)}</span>개를 보고
+                    있습니다. 줄을 누르면 상세가 열리고, 장비는 개조, 세공, 인챈트를 골라 보는
+                    시뮬레이터가 열립니다.
                   </Text>
                   <Table<ItemRow>
                     columns={columns}

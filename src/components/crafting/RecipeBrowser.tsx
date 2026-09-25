@@ -1,7 +1,5 @@
-import { useDeferredValue, useMemo, useState, type KeyboardEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useDeferredValue, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  Breadcrumb,
   Card,
   Col,
   Flex,
@@ -17,14 +15,11 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
-import { CraftingCost } from '@/components/crafting/CraftingCost';
 import { EmptyState } from '@/components/EmptyState';
 import { QueryState } from '@/components/QueryState';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import { isInitialsOnly, toInitials } from '@/features/auction/nameIndex';
 import {
-  CRAFTING_PATH,
-  craftingPath,
   materialSummary,
   rankLabel,
   stationNote,
@@ -37,33 +32,33 @@ import { useListPagination } from '@/lib/useListPagination';
 
 const { Title, Text } = Typography;
 
-/** 스킬 목록 주소. 비우면 전체. */
-const listPath = (skill: number | null) =>
-  skill === null ? CRAFTING_PATH : `${CRAFTING_PATH}?skill=${skill}`;
+interface RecipeBrowserProps {
+  /** 고른 스킬. null 이면 고르지 않았다. */
+  skill: number | null;
+  onSkillChange: (skill: number | null) => void;
+  /** 줄을 누르면. 아이템 정보 상세로 보낸다. */
+  onOpen: (recipe: Recipe, book: RecipeBook) => void;
+  /** 제목 아래에 둘 "카테고리별 / 제작 스킬별" 전환. */
+  viewSwitch: ReactNode;
+}
 
-const parseId = (value: string | null): number | null => {
-  const id = Number(value);
-  return value && Number.isInteger(id) ? id : null;
-};
+/** 이름 일부나 초성으로 찾는다. 아이템 정보 목록과 같은 규칙이다. */
+function matchesName(name: string, keyword: string): boolean {
+  const term = normalizeForSearch(keyword);
+  if (!term) return true;
+  const target = normalizeForSearch(name);
+  return isInitialsOnly(term) ? toInitials(target).includes(term) : target.includes(term);
+}
 
 /**
- * 제작 비용.
+ * 아이템 정보의 "제작 스킬별" 목록.
  *
- * 게임 데이터에서 모은 제작법을 스킬별로 나눠 보여 주고, 하나를 고르면 재료 트리와 경매장
- * 시세로 매긴 총액을 보여 준다. 스킬과 아이템을 주소에 둔다. 아이템 정보 화면처럼 상세를 보는
- * 동안에도 목록은 숨겨만 두어, 뒤로 가면 찾던 검색어와 보던 쪽이 그대로 있다.
+ * 게임 데이터에서 모은 제작법을 스킬로 나눠 보여 준다. 줄을 누르면 그 아이템의 상세가 열리고,
+ * 상세 안에서 재료 트리와 경매장 시세로 매긴 비용을 본다.
  */
-export function CraftingPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const skill = parseId(searchParams.get('skill'));
-  const itemId = parseId(searchParams.get('item'));
-  const recipeParam = parseId(searchParams.get('recipe'));
+export function RecipeBrowser(props: RecipeBrowserProps) {
   const bookQuery = useRecipeBookQuery();
   const book = bookQuery.data;
-
-  // 목록이 보던 스킬. 상세를 여는 동안 주소의 스킬이 비어도 숨겨 둔 목록은 그대로 둔다.
-  const [listSkill, setListSkill] = useState(skill);
-  if (itemId === null && listSkill !== skill) setListSkill(skill);
 
   if (bookQuery.isPending) {
     return (
@@ -77,8 +72,9 @@ export function CraftingPage() {
     return (
       <Flex vertical gap={20}>
         <Title level={3} style={{ margin: 0 }}>
-          제작 비용
+          아이템 정보
         </Title>
+        {props.viewSwitch}
         <Card>
           <EmptyState description="제작법 목록이 아직 준비되지 않았습니다. 수집이 한 번 돌고 나면 채워집니다." />
         </Card>
@@ -86,81 +82,16 @@ export function CraftingPage() {
     );
   }
 
-  const detailRecipes = itemId === null ? [] : book.recipesOf(itemId);
-
-  return (
-    <>
-      {itemId !== null ? (
-        <Flex vertical gap={20}>
-          <Flex vertical gap={6}>
-            <Title level={3} style={{ margin: 0 }}>
-              제작 비용
-            </Title>
-            <Breadcrumb
-              items={[
-                { title: <Link to={listPath(null)}>제작법 목록</Link> },
-                ...(detailRecipes[0]
-                  ? [
-                      {
-                        title: (
-                          <Link to={listPath(detailRecipes[0].skill)}>
-                            {book.skillName(detailRecipes[0].skill)}
-                          </Link>
-                        ),
-                      },
-                    ]
-                  : []),
-                { title: book.itemName(itemId) },
-              ]}
-            />
-          </Flex>
-          {detailRecipes.length > 0 ? (
-            <CraftingCost
-              key={`${itemId}\u0000${recipeParam ?? ''}`}
-              book={book}
-              itemId={itemId}
-              initialRecipe={recipeParam ?? undefined}
-            />
-          ) : (
-            <Card>
-              <EmptyState description="이 아이템의 제작법을 찾지 못했습니다. 목록에서 다시 골라 주세요." />
-            </Card>
-          )}
-        </Flex>
-      ) : null}
-
-      <div hidden={itemId !== null}>
-        <RecipeList
-          book={book}
-          skill={listSkill}
-          // 스킬을 바꿀 때마다 방문 기록이 쌓이면 뒤로 가기가 쓸모없어진다. 자리만 바꾼다.
-          onSkillChange={(next) =>
-            setSearchParams(next === null ? {} : { skill: String(next) }, { replace: true })
-          }
-        />
-      </div>
-    </>
-  );
-}
-
-/** 이름 일부나 초성으로 찾는다. 아이템 정보와 같은 규칙이다. */
-function matchesName(name: string, keyword: string): boolean {
-  const term = normalizeForSearch(keyword);
-  if (!term) return true;
-  const target = normalizeForSearch(name);
-  return isInitialsOnly(term) ? toInitials(target).includes(term) : target.includes(term);
+  return <RecipeList {...props} book={book} />;
 }
 
 function RecipeList({
   book,
   skill,
   onSkillChange,
-}: {
-  book: RecipeBook;
-  skill: number | null;
-  onSkillChange: (skill: number | null) => void;
-}) {
-  const navigate = useNavigate();
+  onOpen,
+  viewSwitch,
+}: RecipeBrowserProps & { book: RecipeBook }) {
   const screens = Grid.useBreakpoint();
   const [keyword, setKeyword] = useState('');
   const deferredKeyword = useDeferredValue(keyword);
@@ -177,22 +108,15 @@ function RecipeList({
 
   const { pagination } = useListPagination(`${skill}|${deferredKeyword}`);
 
-  const open = (recipe: Recipe) => {
-    window.scrollTo({ top: 0 });
-    // 같은 아이템의 제작법이 여럿이면 누른 줄의 것을 먼저 보여 준다.
-    const several = book.recipesOf(recipe.item).length > 1;
-    navigate(craftingPath(recipe.item, several ? recipe.index : undefined));
-  };
-
   /** 키보드로도 닿아야 하므로 줄에 초점을 주고 Enter 와 Space 를 받는다. */
   const openRow = (recipe: Recipe) => ({
     tabIndex: 0,
     style: { cursor: 'pointer' },
-    onClick: () => open(recipe),
+    onClick: () => onOpen(recipe, book),
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
-      open(recipe);
+      onOpen(recipe, book);
     },
   });
 
@@ -264,19 +188,20 @@ function RecipeList({
     <Flex vertical gap={20}>
       <Flex vertical gap={6}>
         <Title level={3} style={{ margin: 0 }}>
-          제작 비용
+          아이템 정보
         </Title>
         <Text type="secondary">
           게임 데이터에서 모은 제작법{' '}
           <span className="tnum">{formatNumber(book.recipes.length)}</span>개를 스킬별로 나눴습니다(
-          {book.updated} 기준). 하나를 고르면 재료 트리와 경매장 시세로 매긴 재료 값을 보여 줍니다.
+          {book.updated} 기준). 줄을 누르면 재료 트리와 경매장 시세로 매긴 제작 비용을 보여 줍니다.
         </Text>
       </Flex>
+      {viewSwitch}
 
       {/* 2단 레이아웃. 768px 미만에서는 스킬 목록이 Select 로 바뀌며 한 단으로 떨어진다. */}
       <Row gutter={[20, 16]}>
-        <Col xs={24} md={8} lg={7}>
-          <Card variant="outlined" size="small" title="스킬">
+        <Col xs={24} md={9} lg={8}>
+          <Card variant="outlined" size="small" title="제작 스킬">
             {screens.md ? (
               <Menu
                 mode="inline"
@@ -293,15 +218,15 @@ function RecipeList({
                   value: each.id,
                   label: `${each.name} (${formatNumber(each.count)})`,
                 }))}
-                placeholder="스킬"
-                aria-label="스킬"
+                placeholder="제작 스킬"
+                aria-label="제작 스킬"
                 style={{ width: '100%' }}
               />
             )}
           </Card>
         </Col>
 
-        <Col xs={24} md={16} lg={17}>
+        <Col xs={24} md={15} lg={16}>
           <Flex vertical gap={16}>
             <Card variant="outlined" size="small">
               <Flex vertical gap={10}>
@@ -339,7 +264,7 @@ function RecipeList({
               <Card>
                 <EmptyState
                   variant="search"
-                  description="스킬을 고르거나 만들 아이템 이름을 입력하면 목록이 나옵니다."
+                  description="제작 스킬을 고르거나 만들 아이템 이름을 입력하면 목록이 나옵니다."
                 />
               </Card>
             ) : (
@@ -353,7 +278,7 @@ function RecipeList({
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {scopeName} <span className="tnum">{formatNumber(scopeCount)}</span>개 가운데{' '}
                     <span className="tnum">{formatNumber(rows.length)}</span>개를 보고 있습니다.
-                    줄을 누르면 재료 트리와 비용이 열립니다.
+                    줄을 누르면 아이템 상세에서 재료 트리와 비용이 열립니다.
                   </Text>
                   <Table<Recipe>
                     columns={columns}

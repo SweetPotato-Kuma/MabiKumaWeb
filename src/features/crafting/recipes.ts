@@ -154,14 +154,6 @@ export function materialSummary(book: RecipeBook, recipe: Recipe): string {
     .join(', ');
 }
 
-/** 제작 비용 화면의 주소. */
-export const CRAFTING_PATH = '/crafting';
-
-/** 제작 비용 상세 주소. 아이템 정보 화면에서도 이 주소로 넘어온다. */
-export function craftingPath(itemId: number, recipe?: number): string {
-  return `${CRAFTING_PATH}?item=${itemId}${recipe === undefined ? '' : `&recipe=${recipe}`}`;
-}
-
 export const recipeBookQueryOptions = queryOptions({
   queryKey: ['crafting', 'recipes'],
   queryFn: async ({ signal }): Promise<RecipeBook | null> => {

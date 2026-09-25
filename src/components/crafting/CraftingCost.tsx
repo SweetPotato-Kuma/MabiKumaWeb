@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Card,
   Flex,
@@ -14,9 +13,6 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
-import { ItemIcon } from '@/components/ItemIcon';
-import { itemInfoPath } from '@/features/auction/dictionary';
-import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { useMarketPrices } from '@/features/crafting/market';
 import {
   buildPlan,
@@ -49,80 +45,67 @@ const PROGRESS_SKILLS = new Set([10001, 10016]);
 
 interface CraftingCostProps {
   book: RecipeBook;
-  itemId: number;
-  /** 제작법이 여럿이면 처음에 고를 것(Recipe.index). */
+  /** 같은 아이템을 만드는 제작법들. 둘 이상이면 고르는 칸이 생긴다. */
+  recipes: Recipe[];
+  /** 처음에 고를 제작법(Recipe.index). */
   initialRecipe?: number;
 }
 
 /**
- * 제작 비용.
+ * 제작 비용. 아이템 정보 상세 안에 들어간다.
  *
- * 위에는 총액, 가운데는 재료 트리, 아래는 살 재료 목록이다. 트리의 줄마다 "구매" 와 "제작" 을
- * 고를 수 있고, 제작을 고르면 그 재료의 재료가 값에 들어간다. 계산은 features/crafting/plan.ts.
+ * 위에는 제작법과 총액, 가운데는 재료 트리, 아래는 살 재료 목록이다. 트리의 줄마다 "구매" 와
+ * "제작" 을 고를 수 있고, 제작을 고르면 그 재료의 재료가 값에 들어간다. 계산은 features/crafting/plan.ts.
  */
-export function CraftingCost({ book, itemId, initialRecipe }: CraftingCostProps) {
-  const recipes = book.recipesOf(itemId);
+export function CraftingCost({ book, recipes, initialRecipe }: CraftingCostProps) {
   const [recipeIndex, setRecipeIndex] = useState(
     () => recipes.find((recipe) => recipe.index === initialRecipe)?.index ?? recipes[0]?.index,
   );
   const recipe = recipes.find((each) => each.index === recipeIndex) ?? recipes[0];
-  const nameIndex = useItemNameIndexQuery().data;
-
   if (!recipe) return null;
 
-  const name = book.itemName(itemId);
-  const category = nameIndex?.categoriesByName.get(name)?.[0];
-
-  return (
-    <Flex vertical gap={16}>
-      <Card>
-        <Flex vertical gap={16}>
-          <Flex gap={12} align="center">
-            {category ? <ItemIcon category={category} name={name} size={48} /> : null}
-            <Flex vertical gap={2} style={{ minWidth: 0 }}>
-              <Text strong style={{ fontSize: 16 }}>
-                {name}
-              </Text>
-              <Text type="secondary" style={{ fontSize: 13 }}>
-                {[recipeTitle(book, recipe), stationNote(recipe)].filter(Boolean).join(', ')}
-                {recipe.yield > 1 ? ` (한 번에 ${formatNumber(recipe.yield)}개)` : ''}
-              </Text>
-            </Flex>
-          </Flex>
-          {category ? (
-            <Text style={{ fontSize: 13 }}>
-              <Link to={itemInfoPath(category, name)}>아이템 정보와 시세 기록 보기</Link>
-            </Text>
-          ) : null}
-          {recipes.length > 1 ? (
-            <Form layout="vertical" style={{ marginBottom: 0 }}>
-              <Form.Item
-                label={`제작법 ${recipes.length}가지`}
-                htmlFor="crafting-recipe"
-                style={{ marginBottom: 0 }}
-              >
-                <Select
-                  id="crafting-recipe"
-                  value={recipe.index}
-                  onChange={setRecipeIndex}
-                  options={recipes.map((each, order) => ({
-                    value: each.index,
-                    label: `${order + 1}. ${recipeTitle(book, each)} - ${materialSummary(book, each)}`,
-                  }))}
-                  style={{ width: '100%' }}
-                />
-              </Form.Item>
-            </Form>
-          ) : null}
-        </Flex>
-      </Card>
-      {/* 제작법을 바꾸면 트리의 자리가 모두 달라진다. 고른 방법과 펼침을 새로 시작한다. */}
-      <RecipeCost key={recipe.index} book={book} recipe={recipe} />
+  const header = (
+    <Flex vertical gap={12}>
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        {[recipeTitle(book, recipe), stationNote(recipe)].filter(Boolean).join(', ')}
+        {recipe.yield > 1 ? ` (한 번에 ${formatNumber(recipe.yield)}개)` : ''}
+      </Text>
+      {recipes.length > 1 ? (
+        <Form layout="vertical" style={{ marginBottom: 0 }}>
+          <Form.Item
+            label={`제작법 ${recipes.length}가지`}
+            htmlFor="crafting-recipe"
+            style={{ marginBottom: 0 }}
+          >
+            <Select
+              id="crafting-recipe"
+              value={recipe.index}
+              onChange={setRecipeIndex}
+              options={recipes.map((each, order) => ({
+                value: each.index,
+                label: `${order + 1}. ${recipeTitle(book, each)} - ${materialSummary(book, each)}`,
+              }))}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+        </Form>
+      ) : null}
     </Flex>
   );
+
+  // 제작법을 바꾸면 트리의 자리가 모두 달라진다. 고른 방법과 펼침을 새로 시작한다.
+  return <RecipeCost key={recipe.index} book={book} recipe={recipe} header={header} />;
 }
 
-function RecipeCost({ book, recipe }: { book: RecipeBook; recipe: Recipe }) {
+function RecipeCost({
+  book,
+  recipe,
+  header,
+}: {
+  book: RecipeBook;
+  recipe: Recipe;
+  header: ReactNode;
+}) {
   const [quantity, setQuantity] = useState(1);
   const [methods, setMethods] = useState<Record<string, Method>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -159,8 +142,9 @@ function RecipeCost({ book, recipe }: { book: RecipeBook; recipe: Recipe }) {
 
   return (
     <>
-      <Card>
+      <Card title="제작 비용" size="small">
         <Flex vertical gap={16}>
+          {header}
           <Flex gap={24} wrap align="flex-end">
             <Form layout="vertical" style={{ marginBottom: 0 }}>
               <Form.Item label="만들 개수" htmlFor="crafting-quantity" style={{ marginBottom: 0 }}>

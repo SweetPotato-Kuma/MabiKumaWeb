@@ -4,7 +4,6 @@ import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
 import { ItemsPage } from '@/pages/ItemsPage';
-import { CraftingPage } from '@/pages/CraftingPage';
 import { LegacyRedirect } from '@/pages/LegacyRedirect';
 import { BagsPage } from '@/pages/BagsPage';
 import { MagmellPassPage } from '@/pages/MagmellPassPage';
@@ -32,7 +31,6 @@ export const router = createBrowserRouter(
         { index: true, element: <Navigate to="/auction" replace /> },
         { path: 'auction', element: <AuctionPage /> },
         { path: 'items', element: <ItemsPage /> },
-        { path: 'crafting', element: <CraftingPage /> },
         // 옮겨 간 화면의 예전 주소. 빌드가 같은 목록으로 검색엔진용 HTML 을 굽는다.
         ...pageMeta.redirects.map((redirect) => ({
           path: redirect.from.slice(1),
