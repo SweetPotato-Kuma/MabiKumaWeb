@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import {
   Card,
   Flex,
@@ -223,6 +223,8 @@ function RecipeCost({
             size="small"
             pagination={false}
             scroll={{ x: 'max-content' }}
+            components={TREE_COMPONENTS}
+            onRow={(row) => ({ 'data-depth': row.node.depth }) as HTMLAttributes<HTMLElement>}
             expandable={{
               expandedRowKeys: expanded,
               onExpand: (open, row) =>
@@ -306,6 +308,47 @@ function TotalNotes({
     </>
   );
 }
+
+/** 펼칠 때 하위 줄이 나타나는 시간. 눈에 걸리지 않을 만큼 짧게 둔다. */
+const ROW_ENTER_MS = 180;
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * 트리 표의 줄. 하위 재료 줄은 펼칠 때 새로 붙으므로, 붙는 순간 살짝 내려오며 나타나게 한다.
+ * 줄이 한꺼번에 튀어나오면 아래 줄들이 덜컹 밀려나 어디가 펼쳐졌는지 놓친다.
+ *
+ * 움직임은 transform 과 opacity 만 쓴다. 높이를 움직이면 표 전체를 매 프레임 다시 잰다.
+ * 화면 규칙상 CSS 파일에 컴포넌트 스타일을 두지 않으므로 Web Animations API 로 건다.
+ * 맨 위 줄은 처음 그릴 때 한꺼번에 나오는 것이라 움직이지 않는다. 움직임 줄이기 설정도 따른다.
+ */
+function TreeBodyRow({
+  'data-depth': depth,
+  ...props
+}: HTMLAttributes<HTMLTableRowElement> & { 'data-depth'?: number }) {
+  const ref = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    const row = ref.current;
+    if (!row || !depth || typeof row.animate !== 'function' || prefersReducedMotion()) return;
+    const animation = row.animate(
+      [
+        { opacity: 0, transform: 'translateY(-6px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ],
+      { duration: ROW_ENTER_MS, easing: 'cubic-bezier(0.2, 0, 0, 1)' },
+    );
+    return () => animation.cancel();
+    // 붙는 순간 한 번만 움직인다. 시세가 들어와 다시 그려질 때마다 움직이면 표가 깜빡인다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <tr ref={ref} {...props} />;
+}
+
+/** 모듈 상수로 둔다. 렌더마다 새 객체를 넘기면 antd 가 줄을 모두 새로 붙여 애니메이션이 매번 돈다. */
+const TREE_COMPONENTS = { body: { row: TreeBodyRow } };
 
 interface TreeRow {
   key: string;
