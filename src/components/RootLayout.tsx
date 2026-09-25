@@ -23,7 +23,7 @@ import { IssueReportButton } from '@/components/IssueReportButton';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
-import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, ImageIcon, KeyIcon, LightModeIcon, ShopIcon, TicketIcon } from '@/components/icons';
+import { AuctionIcon, BagIcon, BookIcon, CraftIcon, DarkModeIcon, ImageIcon, KeyIcon, LightModeIcon, ShopIcon, TicketIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -39,6 +39,7 @@ type NavItem = { key: string; icon: ReactNode; label: ReactNode; children?: NavI
 const NAV_ITEMS: NavItem[] = [
   { key: '/auction', icon: <AuctionIcon />, label: <NavLink to="/auction">경매장</NavLink> },
   { key: '/items', icon: <BookIcon />, label: <NavLink to="/items">아이템 정보</NavLink> },
+  { key: '/crafting', icon: <CraftIcon />, label: <NavLink to="/crafting">제작 비용</NavLink> },
   {
     key: 'npc-shop',
     icon: <ShopIcon />,

@@ -1,0 +1,281 @@
+import { quoteBuy, type BuyQuote, type PriceState } from './market';
+import type { Recipe, RecipeBook, RecipeSlot } from './recipes';
+
+/**
+ * 제작 비용 계획.
+ *
+ * 만들 아이템의 제작법에서 시작해 재료마다 "경매장에서 산다" 와 "직접 만든다" 가운데 하나를
+ * 고르고, 만든다면 그 재료의 재료로 다시 내려간다. 고른 대로 사야 할 것을 모아 값을 매긴다.
+ *
+ * 시세는 화면에 보이거나 값에 들어가는 재료만 묻는다. 무거운 장비는 끝까지 펼치면 거래되는
+ * 재료가 270종까지 나온다. 모두 물으면 호출량 제한에 걸리고, 그만큼 기다리게 된다.
+ * 그래서 이 함수는 가격을 받지 않고 "지금 필요한 시세" 목록(needed)을 돌려준다. 화면이 그것을
+ * 물어 가격을 넘기면 다시 계산하고, 그 사이 새로 필요해진 것이 있으면 또 묻는다.
+ *
+ * 고르지 않은 재료는 사는 쪽이 기본이다. 경매장에서 필요한 만큼 살 수 없을 때(거래 불가,
+ * 매물 없음, 모자람)만 만드는 쪽으로 간다. 만드는 값이 더 싼지는 사용자가 펼쳐 보고 고른다.
+ * 하위 재료 시세를 모두 알아야 판단할 수 있어서, 자동으로 고르려면 결국 전부 물어야 한다.
+ */
+
+/** 재료를 어떻게 구할지. 'buy' 이거나 제작법 순번(Recipe.index). */
+export type Method = 'buy' | number;
+
+/** 재료가 이 깊이를 넘으면 더 풀지 않는다. 게임 제작법은 다섯 단계를 넘지 않는다. */
+export const MAX_DEPTH = 8;
+
+export type NodePrice = PriceState | { status: 'untradable' };
+
+export interface CostSum {
+  gold: number;
+  /** 값을 모르는 재료(거래 불가, 매물 없음, 조회 실패). */
+  unpriced: number[];
+  /** 매물이 모자라 필요한 개수를 다 채우지 못한 재료. gold 에는 채운 만큼만 들어 있다. */
+  short: number[];
+  /** 아직 시세를 받는 중인 재료 수. */
+  pending: number;
+}
+
+export interface PlanNode {
+  /** 트리 안의 자리. 고른 방법과 펼침 상태를 이 값으로 기억한다. */
+  key: string;
+  itemId: number;
+  /** 같은 칸에 대신 넣을 수 있는 다른 아이템. */
+  alternatives: number[];
+  /** 마무리 재료 칸인지. */
+  finish: boolean;
+  required: number;
+  depth: number;
+  price: NodePrice;
+  /** 필요한 개수를 샀을 때. 시세를 모르면 undefined. */
+  quote?: BuyQuote;
+  /** 이 재료를 만드는 제작법(금속 변환 제외). 비어 있으면 사는 수밖에 없다. */
+  recipes: Recipe[];
+  method: Method;
+  /** 사용자가 고른 방법인지. 아니면 기본값이다. */
+  chosen: boolean;
+  /** 만든다면 몇 번 만들어야 하는지, 한 번에 몇 개 나오는지. */
+  crafts: number;
+  yieldCount: number;
+  /** 사는 값. */
+  buyCost: CostSum;
+  /** 만드는 값. 하위 재료를 계산했을 때만. */
+  craftCost?: CostSum;
+  /** 고른 방법의 값. */
+  cost: CostSum;
+  /** 하위 재료. 만들기로 했거나 화면에서 펼친 재료만 채운다. */
+  children?: PlanNode[];
+}
+
+export interface ShoppingRow {
+  itemId: number;
+  required: number;
+  price: NodePrice;
+  quote?: BuyQuote;
+}
+
+export interface CraftPlan {
+  /** 목표 개수를 만들려면 몇 번 만들어야 하는지. */
+  crafts: number;
+  nodes: PlanNode[];
+  /** 살 것을 아이템별로 모은 것. 같은 재료가 트리 여러 곳에 나와도 한 줄이다. */
+  shopping: ShoppingRow[];
+  /** 살 것 전부의 값. 같은 재료는 모은 개수로 싼 매물부터 채워 매긴다. */
+  total: CostSum;
+  /** 지금 시세가 필요한 아이템. 화면이 이것을 묻는다. */
+  needed: number[];
+}
+
+export interface PlanInput {
+  book: RecipeBook;
+  recipe: Recipe;
+  quantity: number;
+  /** 아이템 번호로 시세를 찾는다. 모르는 아이템은 undefined(아직 묻지 않음). */
+  priceOf: (itemId: number) => PriceState | undefined;
+  methods: Readonly<Record<string, Method>>;
+  expanded: ReadonlySet<string>;
+}
+
+const emptyCost = (): CostSum => ({ gold: 0, unpriced: [], short: [], pending: 0 });
+
+function addCost(target: CostSum, source: CostSum): void {
+  target.gold += source.gold;
+  target.pending += source.pending;
+  for (const id of source.unpriced) if (!target.unpriced.includes(id)) target.unpriced.push(id);
+  for (const id of source.short) if (!target.short.includes(id)) target.short.push(id);
+}
+
+/** 값을 다 아는지. 모르는 재료가 섞인 합은 실제보다 싸 보인다. */
+export function isComplete(cost: CostSum): boolean {
+  return cost.pending === 0 && cost.unpriced.length === 0 && cost.short.length === 0;
+}
+
+export function buildPlan(input: PlanInput): CraftPlan {
+  const { book, recipe, quantity, priceOf, methods, expanded } = input;
+  const needed = new Set<number>();
+
+  const priceFor = (itemId: number): NodePrice => {
+    if (!book.isTradable(itemId)) return { status: 'untradable' };
+    needed.add(itemId);
+    return priceOf(itemId) ?? { status: 'loading' };
+  };
+
+  const buyCostOf = (
+    itemId: number,
+    price: NodePrice,
+    required: number,
+    quote?: BuyQuote,
+  ): CostSum => {
+    const cost = emptyCost();
+    if (price.status === 'loading') cost.pending = 1;
+    else if (price.status !== 'ok' || !quote || quote.filled === 0) cost.unpriced.push(itemId);
+    else {
+      cost.gold = quote.cost;
+      if (quote.filled < required) cost.short.push(itemId);
+    }
+    return cost;
+  };
+
+  /**
+   * 칸에 넣을 아이템. 거래되는 것 가운데 필요한 개수를 가장 싸게 채우는 것을 쓴다.
+   * 대부분의 칸은 "거래 가능 한 가지 + 거래 불가 한 가지" 라 거래 가능한 쪽이 뽑힌다.
+   */
+  const pickSlotItem = (slot: RecipeSlot, required: number): number => {
+    const tradable = slot.ids.filter((id) => book.isTradable(id));
+    if (tradable.length === 0) return slot.ids[0];
+    let best = tradable[0];
+    let bestScore: [number, number] | undefined;
+    for (const id of tradable) {
+      const price = priceFor(id);
+      if (price.status !== 'ok') continue;
+      const quote = quoteBuy(price.price, required);
+      if (quote.filled === 0) continue;
+      // 다 채우는 쪽이 먼저, 그다음 싼 쪽.
+      const score: [number, number] = [required - quote.filled, quote.cost];
+      if (
+        !bestScore ||
+        score[0] < bestScore[0] ||
+        (score[0] === bestScore[0] && score[1] < bestScore[1])
+      ) {
+        best = id;
+        bestScore = score;
+      }
+    }
+    return best;
+  };
+
+  const slotsOf = (target: Recipe) => [
+    ...target.materials.map((slot, index) => ({ slot, finish: false, id: `m${index}` })),
+    ...target.finish.map((slot, index) => ({ slot, finish: true, id: `f${index}` })),
+  ];
+
+  /** 재료 칸 하나를 노드로. 하위 재료는 expand 가 채운다. */
+  const buildNode = (
+    slot: RecipeSlot,
+    finish: boolean,
+    key: string,
+    multiplier: number,
+    depth: number,
+    ancestors: ReadonlySet<number>,
+  ): PlanNode => {
+    const required = slot.count * multiplier;
+    const itemId = pickSlotItem(slot, required);
+    const price = priceFor(itemId);
+    const quote = price.status === 'ok' ? quoteBuy(price.price, required) : undefined;
+    const buyCost = buyCostOf(itemId, price, required, quote);
+    const recipes = depth < MAX_DEPTH && !ancestors.has(itemId) ? book.subRecipesOf(itemId) : [];
+
+    const choice = methods[key];
+    const chosenRecipe =
+      typeof choice === 'number' ? recipes.find((each) => each.index === choice) : undefined;
+    const buyable = price.status === 'loading' || (quote !== undefined && quote.filled >= required);
+    let method: Method = 'buy';
+    if (choice === 'buy' && book.isTradable(itemId)) method = 'buy';
+    else if (chosenRecipe) method = chosenRecipe.index;
+    else if (!buyable && recipes.length > 0) method = recipes[0].index;
+
+    const node: PlanNode = {
+      key,
+      itemId,
+      alternatives: slot.ids.filter((id) => id !== itemId),
+      finish,
+      required,
+      depth,
+      price,
+      quote,
+      recipes,
+      method,
+      chosen:
+        choice !== undefined &&
+        (choice === 'buy' ? book.isTradable(itemId) : chosenRecipe !== undefined),
+      crafts: 0,
+      yieldCount: 1,
+      buyCost,
+      cost: buyCost,
+    };
+    return node;
+  };
+
+  /**
+   * 노드의 하위 재료를 채운다. 만들기로 했으면 값도 하위 재료의 합으로 바꾼다.
+   *
+   * 만들기로 했거나(값에 들어간다) 화면에서 펼쳤을 때(보인다)만 내려간다. 사는 재료를 접어 두면
+   * 그 아래는 만들지도, 시세를 묻지도 않는다.
+   */
+  const expand = (node: PlanNode, ancestors: ReadonlySet<number>): void => {
+    const crafting = node.method !== 'buy';
+    if (node.recipes.length === 0 || (!crafting && !expanded.has(node.key))) return;
+
+    const target = crafting
+      ? (node.recipes.find((each) => each.index === node.method) ?? node.recipes[0])
+      : node.recipes[0];
+    node.yieldCount = target.yield;
+    node.crafts = Math.ceil(node.required / target.yield);
+    const nextAncestors = new Set(ancestors).add(node.itemId);
+    const prefix = `${node.key}.${target.index}`;
+    node.children = slotsOf(target).map(({ slot, finish, id }) => {
+      const child = buildNode(
+        slot,
+        finish,
+        `${prefix}/${id}`,
+        node.crafts,
+        node.depth + 1,
+        nextAncestors,
+      );
+      expand(child, nextAncestors);
+      return child;
+    });
+    const craftCost = emptyCost();
+    for (const child of node.children) addCost(craftCost, child.cost);
+    node.craftCost = craftCost;
+    if (crafting) node.cost = craftCost;
+  };
+
+  const crafts = Math.ceil(Math.max(1, quantity) / recipe.yield);
+  const rootAncestors = new Set([recipe.item]);
+  const nodes = slotsOf(recipe).map(({ slot, finish, id }) => {
+    const node = buildNode(slot, finish, id, crafts, 0, rootAncestors);
+    expand(node, rootAncestors);
+    return node;
+  });
+
+  // 살 것을 아이템별로 모은다. 합계에 들어가는 가지만 따라간다.
+  const requiredById = new Map<number, number>();
+  const collect = (node: PlanNode) => {
+    if (node.method !== 'buy' && node.children) {
+      node.children.forEach(collect);
+      return;
+    }
+    requiredById.set(node.itemId, (requiredById.get(node.itemId) ?? 0) + node.required);
+  };
+  nodes.forEach(collect);
+
+  const total = emptyCost();
+  const shopping = [...requiredById].map(([itemId, required]): ShoppingRow => {
+    const price = priceFor(itemId);
+    const quote = price.status === 'ok' ? quoteBuy(price.price, required) : undefined;
+    addCost(total, buyCostOf(itemId, price, required, quote));
+    return { itemId, required, price, quote };
+  });
+
+  return { crafts, nodes, shopping, total, needed: [...needed] };
+}

@@ -17,6 +17,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { RecipeSummaryCard } from '@/components/crafting/RecipeSummaryCard';
 import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
@@ -101,6 +102,8 @@ export function ItemsPage() {
           ) : (
             <ItemInfoDetail key={`${category}\u0000${detailName}`} category={category} name={detailName} />
           )}
+          {/* 만들 수 있는 아이템이면 제작법과 제작 비용 화면으로 가는 단추. 없으면 아무것도 그리지 않는다. */}
+          <RecipeSummaryCard name={detailName} />
           {/* 시세 기록은 장비든 아니든 같다. 경매장에서 거래된 이름으로 찾는다. */}
           <MarketHistoryCard name={detailName} />
         </Flex>
