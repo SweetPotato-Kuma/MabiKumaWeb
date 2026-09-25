@@ -14,8 +14,6 @@ interface ItemCardSummaryProps {
   card: ItemCard | null | undefined;
   /** 큰 제목. 경매장에서는 인챈트가 붙은 표시 이름, 사전에서는 아이템 이름이다. */
   title: string;
-  /** 원래 이름. 제목과 다를 때만 한 줄 더 보여 준다. */
-  rawName: string;
   category: string;
 }
 
@@ -25,7 +23,7 @@ interface ItemCardSummaryProps {
  * 경매장 매물 상세와 사전 상세가 같은 모양이어야 한다. 한쪽에서 본 창을 다른 쪽에서
  * 다르게 읽을 이유가 없다. 그래서 두 창이 이 조각을 같이 쓴다.
  */
-export function ItemCardSummary({ card, title, rawName, category }: ItemCardSummaryProps) {
+export function ItemCardSummary({ card, title, category }: ItemCardSummaryProps) {
   return (
     <>
       <Flex align="flex-start" gap={16}>
@@ -34,11 +32,6 @@ export function ItemCardSummary({ card, title, rawName, category }: ItemCardSumm
           <Title level={4} style={{ margin: 0 }}>
             {title}
           </Title>
-          {title !== rawName ? (
-            <Text type="secondary" style={{ fontSize: 13 }}>
-              {rawName}
-            </Text>
-          ) : null}
           {card?.subtitle ? (
             <Text type="secondary" style={{ fontSize: 13 }}>
               {card.subtitle}

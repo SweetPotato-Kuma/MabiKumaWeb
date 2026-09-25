@@ -192,7 +192,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
     <Modal open={detail !== null} onCancel={onClose} footer={null} width={860} title={null} destroyOnHidden>
       {detail === null ? null : (
         <Flex vertical gap={20}>
-          <ItemCardSummary card={card} title={detail.displayName} rawName={detail.rawName} category={detail.category} />
+          <ItemCardSummary card={card} title={detail.displayName} category={detail.category} />
 
           {/*
             이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다.
@@ -262,10 +262,6 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
                     아이템 색상
                   </Text>
                   <ColorSwatches colors={colors} />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    파트 A 부터 E 까지는 염색이 칠해지는 구역입니다. 어느 구역인지는 아이템마다 달라서 API 가
-                    알려 주지 않습니다.
-                  </Text>
                 </Flex>
               ) : null}
             </Flex>
@@ -288,15 +284,6 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             ) : null}
           </Flex>
 
-          {/*
-            어디서 온 값인지 섞이지 않게 적는다. 그림과 설명은 경매장 응답이 아니다.
-            카드가 없으면 예전 문구 그대로 둔다. 그때는 여기 있는 값이 정말 응답의 전부다.
-          */}
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {card
-              ? '그림과 설명은 경매장 API 가 아니라 게임 데이터에서 따로 모아 붙인 것입니다. 나머지는 이 매물의 응답에 담긴 값입니다.'
-              : '경매장 API 는 아이템 이미지와 도감 설명을 주지 않습니다. 여기 있는 값이 응답에 담긴 전부입니다.'}
-          </Text>
         </Flex>
       )}
     </Modal>

@@ -78,19 +78,12 @@ function ItemIconCell({ rawName, category }: { rawName: string; category: string
   return <ItemIcon card={card} size={AUCTION_ICON_BOX} />;
 }
 
-/** 이름 열은 표시 이름과 원래 이름이 다를 때만 두 줄이 된다. */
-function ItemNameCell({ displayName, rawName }: { displayName: string; rawName: string }) {
+/** 이름 열은 표시 이름 한 줄이다. 인챈트를 뗀 원래 이름은 줄마다 되풀이되어 목록만 길어졌다. */
+function ItemNameCell({ displayName }: { displayName: string }) {
   return (
-    <Flex vertical gap={0}>
-      <Text strong style={{ fontSize: 14 }}>
-        {displayName}
-      </Text>
-      {displayName !== rawName ? (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {rawName}
-        </Text>
-      ) : null}
-    </Flex>
+    <Text strong style={{ fontSize: 14 }}>
+      {displayName}
+    </Text>
   );
 }
 
@@ -318,7 +311,7 @@ export function AuctionPage() {
     {
       title: '이름',
       dataIndex: 'item_display_name',
-      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} />,
+      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} />,
     },
     {
       title: '수량',
@@ -369,7 +362,7 @@ export function AuctionPage() {
     {
       title: '이름',
       dataIndex: 'item_display_name',
-      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} rawName={record.item_name} />,
+      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} />,
     },
     {
       title: '수량',

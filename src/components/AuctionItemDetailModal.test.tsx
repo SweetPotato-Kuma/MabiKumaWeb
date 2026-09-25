@@ -39,11 +39,12 @@ describe('매물 상세 모달', () => {
     expect(screen.queryByText('글라디우스')).not.toBeInTheDocument();
   });
 
-  it('이름과 원래 이름, 카테고리를 보여 준다', () => {
+  it('이름과 카테고리를 보여 주고 원래 이름은 되풀이하지 않는다', () => {
     renderModal(DETAIL);
 
     expect(screen.getByText('글라디우스')).toBeInTheDocument();
-    expect(screen.getByText('@글라디우스')).toBeInTheDocument();
+    // 인챈트를 뗀 원래 이름은 회색으로 되풀이하지 않는다.
+    expect(screen.queryByText('@글라디우스')).not.toBeInTheDocument();
     expect(screen.getByText('검')).toBeInTheDocument();
   });
 
