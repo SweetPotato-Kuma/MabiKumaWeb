@@ -39,6 +39,7 @@ import {
 } from '@/features/auction/nameIndex';
 import {
   activeConditionCount,
+  buildOptionCatalog,
   describeMatch,
   EMPTY_OPTION_FILTER,
   matchesOptionFilter,
@@ -200,6 +201,11 @@ export function AuctionPage() {
   const [optionFilter, setOptionFilter] = useState<OptionFilter>(EMPTY_OPTION_FILTER);
   const deferredFilter = useDeferredValue(optionFilter);
   const filtering = activeConditionCount(deferredFilter) > 0;
+  /** 조건으로 고를 수 있는 옵션. 지금 보고 있는 탭의 불러온 매물에서 뽑는다. */
+  const optionCatalog = useMemo(
+    () => buildOptionCatalog(tab === 'items' ? items : history),
+    [tab, items, history],
+  );
   const visibleItems = useMemo(
     () => (filtering ? items.filter((item) => matchesOptionFilter(item, deferredFilter)) : items),
     [filtering, items, deferredFilter],
@@ -736,7 +742,11 @@ export function AuctionPage() {
                   </Text>
                 </Flex>
 
-                <AuctionOptionFilter value={optionFilter} onChange={setOptionFilter} />
+                <AuctionOptionFilter
+                  value={optionFilter}
+                  onChange={setOptionFilter}
+                  catalog={optionCatalog}
+                />
               </Flex>
             </Card>
 
