@@ -22,6 +22,7 @@ import { ApiKeyNotice } from '@/components/ApiKeyNotice';
 import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
@@ -652,7 +653,10 @@ export function AuctionPage() {
 
             {submitted === null ? (
               <Card variant="outlined">
-                <Text type="secondary">왼쪽에서 카테고리를 고르거나 아이템명을 입력한 뒤 찾기를 누르세요.</Text>
+                <EmptyState
+                  variant="search"
+                  description="왼쪽에서 카테고리를 고르거나 아이템명을 입력한 뒤 찾기를 누르세요."
+                />
               </Card>
             ) : (
               <Tabs

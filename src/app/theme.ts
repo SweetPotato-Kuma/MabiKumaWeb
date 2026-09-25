@@ -21,22 +21,42 @@ const ACCENT_DARK = '#e48db3';
  * 회색은 전부 로고의 갈색 쪽으로 살짝 데운다. 파란 기가 도는 회색은 곰과 어울리지 않는다.
  * 라이트 바탕은 곰 주둥이 크림, 글자와 다크 바탕은 로고 외곽선 초콜릿에서 왔다.
  */
+/**
+ * 대비 기준(카드 바탕 기준). 처음 값은 테두리 1.3:1, 카드와 바탕 1.08:1 이라 다크에서 경계가 사라졌다.
+ * - border: 입력칸과 기본 버튼의 테두리. 2:1 이상. 무엇을 누르고 쓰는지 보여야 한다.
+ * - borderSecondary: 카드와 표의 선. 1.4:1 이상. 칸을 나누되 앞으로 나서지 않는다.
+ * - container 와 layout: 1.13:1. 테두리 없이도 카드가 바탕에서 뜬다.
+ * - 글자 단계(antd 는 본문색에 투명도를 걸어 만드는데, 흐린 두 단계가 4.5:1 에 못 미쳤다):
+ *   textSecondary 7:1 이상, textTertiary(보조 안내문, Text type="secondary") 와 textPlaceholder 는 4.5:1 이상,
+ *   textQuaternary(비활성) 만 3:1 안팎으로 둔다. 비활성은 흐려 보여야 한다.
+ */
 const SURFACE = {
   light: {
-    layout: '#f7f2ee',
+    layout: '#f4ede7',
     container: '#fffcfa',
     elevated: '#fffdfb',
-    border: '#e8ded6',
-    borderSecondary: '#f1eae4',
+    // 표 머리와 줄 위에 올렸을 때의 바탕. 테두리 색을 빌려 쓰면 테두리가 진해질 때 같이 탁해진다.
+    subtle: '#f6f0eb',
+    border: '#c4b5a8',
+    borderSecondary: '#e2d6cc',
     text: '#2e201b',
+    textSecondary: '#5e4f48',
+    textTertiary: '#75665e',
+    textPlaceholder: '#7a6b63',
+    textQuaternary: '#a39489',
   },
   dark: {
-    layout: '#17120f',
-    container: '#201a17',
-    elevated: '#29221e',
-    border: '#3b312b',
-    borderSecondary: '#2e2622',
+    layout: '#120e0b',
+    container: '#221b18',
+    elevated: '#2c2420',
+    subtle: '#2c2420',
+    border: '#6b5b50',
+    borderSecondary: '#4a3d35',
     text: '#f1e7e0',
+    textSecondary: '#cbbfb7',
+    textTertiary: '#a89b92',
+    textPlaceholder: '#a0938a',
+    textQuaternary: '#7d7069',
   },
 } as const;
 
@@ -101,6 +121,11 @@ export function buildThemeConfig(mode: ThemeMode): ThemeConfig {
       colorBgElevated: surface.elevated,
       colorBorder: surface.border,
       colorBorderSecondary: surface.borderSecondary,
+      colorTextSecondary: surface.textSecondary,
+      colorTextTertiary: surface.textTertiary,
+      colorTextDescription: surface.textTertiary,
+      colorTextPlaceholder: surface.textPlaceholder,
+      colorTextQuaternary: surface.textQuaternary,
       borderRadius: BORDER_RADIUS,
       fontSize: 15,
       // VISUAL_DENSITY 6. 결과 영역은 촘촘하게, 진입 영역은 숨 쉬게.
@@ -132,10 +157,10 @@ export function buildThemeConfig(mode: ThemeMode): ThemeConfig {
         itemHoverColor: accent,
       },
       Table: {
-        headerBg: isDark ? surface.elevated : surface.borderSecondary,
+        headerBg: surface.subtle,
         headerSplitColor: 'transparent',
         cellPaddingBlockSM: 10,
-        rowHoverBg: isDark ? surface.elevated : surface.borderSecondary,
+        rowHoverBg: surface.subtle,
         borderColor: surface.borderSecondary,
       },
       Card: {
