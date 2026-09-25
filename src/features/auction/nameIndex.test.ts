@@ -3,7 +3,7 @@ import { buildNameIndex, resolveSearch, searchNames, toInitials } from './nameIn
 
 const index = buildNameIndex({
   updated: '2026-09-23',
-  categories: ['검', '둔기', '천옷'],
+  categories: ['검', '둔기', '천옷', '음식'],
   items: [
     ['주방장 숏 소드', 0],
     ['숏 소드', 0],
@@ -12,6 +12,7 @@ const index = buildNameIndex({
     ['메이스', 1],
     ['숏 소드', 1],
     ['코레스 셔츠', 2],
+    ['향기로운 꿀 우유', 3],
   ],
 });
 
@@ -78,6 +79,14 @@ describe('resolveSearch', () => {
 
   it('전체에서 붙여 쓴 이름은 띄어 쓴 이름으로 바꾸고, 한 카테고리뿐이면 좁힌다', () => {
     expect(all('롱소드')).toEqual({ keyword: '롱 소드', category: '검' });
+  });
+
+  it('이름 일부를 붙여 쓰면 그것이 든 이름이 하나일 때 그 이름으로 바꾼다', () => {
+    expect(all('꿀우유')).toEqual({ keyword: '향기로운 꿀 우유', category: '음식' });
+  });
+
+  it('이름 일부가 여러 이름에 들어 있으면 사전의 띄어쓰기대로 단어를 채워 보낸다', () => {
+    expect(all('숏소')).toEqual({ keyword: '숏 소드', category: '' });
   });
 
   it('조립 중인 끝 낱자를 뗀다', () => {

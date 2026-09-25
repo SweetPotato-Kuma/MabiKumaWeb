@@ -199,6 +199,8 @@ export interface ResolvedSearch {
  *   붙여 쓴 "숏소드" → 2건 (띄어 쓴 "숏 소드" 는 116건)
  * 그래서 사전에서 이름을 찾아 제대로 띄어 쓴 이름으로 바꿔 보낸다. 그 이름이 한
  * 카테고리에서만 보이면 카테고리도 좁힌다. 카테고리 경로는 이름 일부로 정확히 거른다.
+ * 이름 일부만 친 경우도 같다. 들어 있는 이름이 하나면 그 이름으로, 여럿이면 사전의
+ * 띄어쓰기대로 다시 띄어 쓴 검색어로 보낸다.
  *
  * 카테고리를 이미 골랐으면 목록을 받아 화면에서 거르므로(초성도 거기서 처리한다)
  * 검색어를 바꾸지 않는다. 입력기가 조립 중인 끝 낱자만 뗀다.
@@ -231,7 +233,57 @@ export function resolveSearch(
     return top ? narrowTo(top) : null;
   }
 
+  // 이름 일부만 쳤을 때. "꿀우유" 는 "향기로운 꿀 우유" 안에만 들어 있는데, 넥슨은
+  // 붙여 쓴 "꿀우유" 를 단어로 보지 않아 0건이 된다.
+  const containing = new Set<number>();
+  const seenNames = new Set<string>();
+  for (let i = 0; i < index.normalized.length; i += 1) {
+    if (!index.normalized[i].includes(needle) || seenNames.has(index.names[i])) continue;
+    seenNames.add(index.names[i]);
+    containing.add(i);
+  }
+
+  // 들어 있는 이름이 하나뿐이면 자동완성에서 그 이름을 고른 것과 같다.
+  if (containing.size === 1) {
+    const [only] = containing;
+    return narrowTo(toSuggestion(index, only));
+  }
+
+  // 여럿이면 사전이 띄어 쓴 대로 검색어를 다시 띄어 쓴다. 이름마다 띄어쓰기가 다르면
+  // 어느 쪽이 맞는지 알 수 없으니 그대로 보낸다.
+  const respaced = new Set<string>();
+  for (const i of containing) respaced.add(respaceLike(index.names[i], needle));
+  if (respaced.size === 1) {
+    const [only] = respaced;
+    return { keyword: only, category: input.category };
+  }
+
   return { keyword, category: input.category };
+}
+
+/**
+ * 붙여 쓴 검색어를 이름 속 띄어쓰기대로 되살린다. 넥슨은 단어 단위로 맞추므로 걸친
+ * 단어는 통째로 넓힌다. "꿀우유" 는 "향기로운 꿀 우유" 에서 "꿀 우유" 가 된다.
+ * needle 은 normalizeForSearch 를 거친 값이고 name 안에 들어 있어야 한다.
+ */
+function respaceLike(name: string, needle: string): string {
+  const at = normalizeForSearch(name).indexOf(needle);
+  // 띄어쓰기를 지운 위치를 원래 이름의 위치로 되돌린다.
+  let start = -1;
+  let end = name.length;
+  let seen = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    if (/\s/.test(name[i])) continue;
+    if (seen === at) start = i;
+    seen += 1;
+    if (seen === at + needle.length) {
+      end = i + 1;
+      break;
+    }
+  }
+  while (start > 0 && !/\s/.test(name[start - 1])) start -= 1;
+  while (end < name.length && !/\s/.test(name[end])) end += 1;
+  return name.slice(start, end).replace(/\s+/g, ' ');
 }
 
 function toSuggestion(index: NameIndex, i: number): NameSuggestion {
