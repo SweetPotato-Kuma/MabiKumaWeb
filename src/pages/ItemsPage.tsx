@@ -27,6 +27,7 @@ import {
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { CraftingSection } from '@/components/crafting/CraftingSection';
 import { RecipeBrowser } from '@/components/crafting/RecipeBrowser';
+import { SlidingStack } from '@/components/SlidingStack';
 import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
@@ -136,7 +137,8 @@ export function ItemsPage() {
   return (
     <>
       {detailName ? (
-        <Flex vertical gap={20}>
+        // 제작 비용 표를 펼쳐 높이가 바뀌면 아래 시세 기록 카드도 미끄러져 내려오게 한다.
+        <SlidingStack gap={20}>
           <Flex vertical gap={6}>
             <Title level={3} style={{ margin: 0 }}>
               아이템 정보
@@ -171,7 +173,7 @@ export function ItemsPage() {
           />
           {/* 시세 기록은 장비든 아니든 같다. 경매장에서 거래된 이름으로 찾는다. */}
           <MarketHistoryCard name={detailName} />
-        </Flex>
+        </SlidingStack>
       ) : null}
 
       <div hidden={detailName !== ''}>
