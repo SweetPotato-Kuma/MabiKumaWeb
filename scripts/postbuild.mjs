@@ -21,6 +21,27 @@ await writeFile(resolve(distDir, '.nojekyll'), '');
 const cname = await readFile(resolve(distDir, 'CNAME'), 'utf8').catch(() => '');
 const origin = cname.trim() ? `https://${cname.trim()}` : '';
 
+/**
+ * 링크를 붙여 넣으면 뜨는 미리보기 그림. 메신저는 상대 주소를 읽지 못하므로 사이트 주소를 알 때만 싣는다.
+ * 그림은 public/og-image.png 이고 1200x630 이다. 크기를 적어 두면 첫 공유부터 그림이 뜬다.
+ */
+const ogImageTags = origin
+  ? [
+      `<meta property="og:image" content="${origin}/og-image.png" />`,
+      `<meta property="og:image:width" content="1200" />`,
+      `<meta property="og:image:height" content="630" />`,
+      `<meta property="og:image:alt" content="마비쿠마 로고" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+    ]
+  : [];
+
+// 루트 주소(/)는 화면별 HTML 이 없어 index.html 이 그대로 나간다. 여기에도 그림을 싣는다.
+if (ogImageTags.length) {
+  const withImage = indexHtml.replace('</head>', `  ${ogImageTags.join('\n    ')}\n  </head>`);
+  await writeFile(resolve(distDir, 'index.html'), withImage);
+  await writeFile(resolve(distDir, '404.html'), withImage);
+}
+
 function escapeHtml(value) {
   return value
     .replaceAll('&', '&amp;')
@@ -47,6 +68,7 @@ function renderPage(page) {
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
     ...(url ? [`<link rel="canonical" href="${url}" />`, `<meta property="og:url" content="${url}" />`] : []),
+    ...ogImageTags,
   ].join('\n    ');
 
   return indexHtml

@@ -1,6 +1,7 @@
 import { isRouteErrorResponse, useRouteError } from 'react-router-dom';
 import { HomeOutlined } from '@ant-design/icons';
 import { Button, Flex, Result } from 'antd';
+import errorBear from '@/assets/error-bear.png';
 
 /** 라우터 바깥에서 터진 오류라 RootLayout 을 거치지 않는다. 배경과 여백을 여기서 잡는다. */
 export function RouteErrorPage() {
@@ -19,7 +20,7 @@ export function RouteErrorPage() {
   return (
     <Flex align="center" justify="center" style={{ minHeight: '100dvh', padding: 16 }}>
       <Result
-        status="error"
+        icon={<img src={errorBear} alt="" width={230} height={150} />}
         title={title}
         subTitle={detail}
         extra={

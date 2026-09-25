@@ -13,7 +13,6 @@ import {
   Checkbox,
   Col,
   ColorPicker,
-  Empty,
   Flex,
   Grid,
   Pagination,
@@ -562,7 +561,10 @@ export function BagsPage() {
   const results =
     state.status === 'idle' ? (
       <Card>
-        <Empty description="서버를 고르고 찾기를 누르세요. 주머니와 색은 찾은 뒤에 바꿔도 다시 받지 않습니다." />
+        <EmptyState
+          variant="search"
+          description="서버를 고르고 찾기를 누르세요. 주머니와 색은 찾은 뒤에 바꿔도 다시 받지 않습니다."
+        />
       </Card>
     ) : state.status === 'error' ? (
       <Alert

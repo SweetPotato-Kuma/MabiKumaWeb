@@ -12,7 +12,6 @@ import {
   Button,
   Card,
   Col,
-  Empty,
   Flex,
   Form,
   Input,
@@ -52,6 +51,7 @@ import {
 } from '@/features/itemcard/imageOps';
 import { checkModel, readTooltip, type ModelStatus } from '@/features/itemcard/promptModel';
 import { useItemIndexQuery } from '@/features/auction/dictionary';
+import { EmptyState } from '@/components/EmptyState';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -513,8 +513,9 @@ function ItemCardEditor({ onLock }: { onLock: () => void }) {
                   </Flex>
                 </Flex>
               ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                <EmptyState
+                  size="small"
+                  variant="search"
                   description={
                     source
                       ? '아이콘을 못 찾았습니다. 위 그림에서 아이콘 자리를 끌어 칠해 주세요.'

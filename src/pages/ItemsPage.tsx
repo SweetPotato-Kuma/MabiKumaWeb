@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   Col,
-  Empty,
   Flex,
   Form,
   Input,
@@ -343,7 +342,7 @@ function ItemList({
 
             {!category && !hasKeyword ? (
               <Card>
-                <Empty description="아이템 이름을 입력하거나 카테고리를 고르면 목록이 나옵니다." />
+                <EmptyState variant="search" description="아이템 이름을 입력하거나 카테고리를 고르면 목록이 나옵니다." />
               </Card>
             ) : (
               <QueryState

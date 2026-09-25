@@ -104,7 +104,7 @@ LLM은 "성공한 정적 상태"만 만든다. 이 프로젝트에서는 **네 �
 
 - **로딩**: 최종 레이아웃 모양을 닮은 `Skeleton`. 범용 스피너를 기본값으로 쓰지 않는다.
 - **빈 상태**: `src/components/EmptyState`(곰 그림을 끼운 antd `Empty`) + 무엇을 하면 채워지는지 한 줄. "결과 없음"만 던지지 않는다.
-  `Empty`를 직접 쓰지 않는다. 모달이나 패널 안에서는 `size="small"`. 표와 목록의 빈 칸은 `AppProviders`의 `renderEmpty`가 맡는다.
+  `Empty`를 직접 쓰지 않는다. 모달이나 패널 안에서는 `size="small"`. 찾기 전 안내("~를 고르면 나옵니다")는 `variant="search"`. 표와 목록의 빈 칸은 `AppProviders`의 `renderEmpty`가 맡는다.
 - **에러**: 폼 안이면 인라인, 조회 실패면 `Alert`나 `Result`. 토스트는 일시적 피드백에만.
 - **성공/결과**: 여기가 본론이다. 데이터 신선도(약 10분 지연)를 결과 근처에 명시한다.
 
@@ -158,7 +158,8 @@ LLM은 "성공한 정적 상태"만 만든다. 이 프로젝트에서는 **네 �
 ### 6.C 이모지
 
 기본 금지. 아이콘은 `@ant-design/icons`에서 가져온다.
-예외 없음. 브랜드 마크는 이모지가 아니라 그림이다. 헤더는 `src/assets/logo-mark.png`,
+예외 없음. 브랜드 마크는 이모지가 아니라 그림이다. 헤더는 `src/assets/logo-mark.png`와 로고 글자
+`wordmark.png`(다크 모드는 밝게 칠한 `wordmark-dark.png`), 공유 미리보기는 `public/og-image.png`,
 파비콘은 `public/favicon.png`, `favicon.ico`, `apple-touch-icon.png`를 쓴다. 로고를 바꾸면 넷을 함께 바꾼다.
 
 ## 7. 접근성과 성능

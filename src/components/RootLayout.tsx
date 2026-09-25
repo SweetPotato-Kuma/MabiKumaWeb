@@ -28,6 +28,8 @@ import {
 import { usePageMeta } from '@/app/pageMeta';
 import { HEADER_HEIGHT } from '@/app/theme';
 import logoMark from '@/assets/logo-mark.png';
+import wordmarkDark from '@/assets/wordmark-dark.png';
+import wordmark from '@/assets/wordmark.png';
 import { IssueReportButton } from '@/components/IssueReportButton';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
@@ -133,6 +135,7 @@ export function RootLayout() {
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const hasAdminKey = useHasAdminKey();
+  const isDark = useResolvedThemeMode() === 'dark';
   usePageMeta(location.pathname);
 
   const navItems: MenuProps['items'] = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
@@ -166,13 +169,21 @@ export function RootLayout() {
       >
         {/* Header 가 물려주는 line-height 를 여기서 끊는다. 배지와 글자가 세로로 늘어난다. */}
         <Flex align="center" gap={screens.md ? 28 : 12} style={{ ...containerStyle, lineHeight: 'normal' }}>
-          <NavLink to="/auction" aria-label="MabiKuma 홈" style={{ color: token.colorText }}>
-            <Space size={10}>
+          <NavLink to="/auction" aria-label="마비쿠마 홈">
+            <Space size={8}>
               {/* 원본은 2배 크기로 담았다. 너비와 높이를 적어 두어야 그림이 늦게 떠도 글자가 밀리지 않는다. */}
               <img src={logoMark} alt="" width={34} height={40} style={{ display: 'block' }} />
-              <Text strong style={{ fontSize: 20, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
-                MabiKuma
-              </Text>
+              {/*
+                로고 글자도 그림이다. 진한 갈색 글자는 어두운 배경에 묻혀서, 다크 모드에서는
+                같은 글자를 밝게 칠한 판을 쓴다. 대비는 두 판 모두 6:1 이 넘는다.
+              */}
+              <img
+                src={isDark ? wordmarkDark : wordmark}
+                alt=""
+                width={102}
+                height={28}
+                style={{ display: 'block' }}
+              />
             </Space>
           </NavLink>
 
