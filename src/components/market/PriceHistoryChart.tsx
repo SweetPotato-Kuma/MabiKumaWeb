@@ -1,5 +1,5 @@
-import { useMemo, type CSSProperties } from 'react';
-import { Flex, Tooltip, Typography, theme } from 'antd';
+import { useMemo, useState, type CSSProperties, type PointerEvent } from 'react';
+import { Flex, Typography, theme } from 'antd';
 import type { PriceSummary } from '@/features/market/api';
 import {
   isIsolated,
@@ -25,6 +25,8 @@ const AXIS_WIDTH = 92;
 const BAR_MAX_WIDTH = 24;
 /** 칸이 이보다 적으면 모든 날에 점을 찍는다. 많으면 앞뒤가 빈 점만 찍는다. */
 const DOT_ALL_BELOW = 45;
+/** 풍선 폭. 억 단위 가격 두 개가 한 줄에 든다. */
+const TOOLTIP_WIDTH = 200;
 
 export interface ChartSlot {
   key: string;
@@ -82,6 +84,10 @@ function LegendKey({ swatch, label }: { swatch: CSSProperties; label: string }) 
  * 최저와 최고는 그리지 않는다. 한 건만 터무니없는 값에 팔려도 세로 폭이 그쪽으로 늘어나 정작 중위의
  * 움직임이 납작해진다. 칸에 마우스를 올리면(누르면) 그 칸의 최저, 최고, 거래 수가 뜬다.
  *
+ * 풍선은 그래프 전체에 하나다. 칸마다 따로 달았더니 시간별(168칸)에서는 칸이 몇 px 밖에 안 돼,
+ * 마우스를 움직이는 동안 앞 풍선이 닫히기 전에 다음 풍선이 열려 여러 개가 겹쳐 보였다.
+ * 가로축에 날짜가 바뀌는 칸(at: 'start')이 있으면 그 자리에 세로 구분선을 그어 하루씩 끊어 보이게 한다.
+ *
  * 선은 SVG 를 가로세로로 늘려 그리고(선 굵기는 그대로), 점과 막대와 마우스 칸은 같은 좌표를
  * 백분율로 써서 HTML 로 얹는다. 차트 라이브러리를 들이지 않으려는 것이다.
  */
@@ -96,9 +102,22 @@ export function PriceHistoryChart({
 }) {
   const { token } = theme.useToken();
   const count = slots.length;
+  const [hover, setHover] = useState<number | null>(null);
+
+  // 마우스(또는 손가락) 가로 위치로 칸을 고른다. 칸마다 이벤트를 달지 않는다.
+  const pick = (event: PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || count === 0) return;
+    const index = Math.floor(((event.clientX - rect.left) / rect.width) * count);
+    setHover(Math.min(count - 1, Math.max(0, index)));
+  };
+  const hovered = hover === null ? null : slots[hover];
+  const dayLines = ticks.filter((tick) => tick.at === 'start' && tick.index > 0);
 
   const { range, midPath, avgPath, maxQty, bands } = useMemo(() => {
-    const values = slots.flatMap((slot) => (slot.summary ? [slot.summary.mid, slot.summary.avg] : []));
+    const values = slots.flatMap((slot) =>
+      slot.summary ? [slot.summary.mid, slot.summary.avg] : [],
+    );
     const valueRangeOf = valueRange(values);
     return {
       range: valueRangeOf,
@@ -273,14 +292,71 @@ export function PriceHistoryChart({
             )}
           </div>
 
-          {/* 칸마다 한 줄. 위아래 두 칸을 통째로 덮어, 어디에 올려도 그 칸의 값이 뜬다. */}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-            {slots.map((slot) => (
-              <Tooltip key={slot.key} title={<SlotTooltip slot={slot} />} mouseEnterDelay={0}>
-                <div style={{ flex: '1 1 0', height: '100%' }} />
-              </Tooltip>
-            ))}
-          </div>
+          {/* 날이 바뀌는 자리의 구분선. 시간별 그래프에서 하루씩 끊어 보이게 한다. */}
+          {dayLines.map((tick) => (
+            <div
+              key={`line-${tick.index}`}
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: `${tick.index * slotWidth}%`,
+                borderLeft: `1px dashed ${token.colorBorder}`,
+                pointerEvents: 'none',
+              }}
+            />
+          ))}
+
+          {/* 올린 칸. 위아래 두 칸을 이어 옅게 칠한다. */}
+          {hover !== null ? (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: `${hover * slotWidth}%`,
+                width: `max(${slotWidth}%, 2px)`,
+                background: token.colorFillSecondary,
+                pointerEvents: 'none',
+              }}
+            />
+          ) : null}
+
+          {/* 그래프 전체를 덮는 한 겹. 가로 위치로 칸을 골라 풍선 하나만 띄운다. */}
+          <div
+            data-testid="chart-hover-layer"
+            style={{ position: 'absolute', inset: 0, touchAction: 'pan-y' }}
+            onPointerMove={pick}
+            onPointerDown={pick}
+            onPointerLeave={() => setHover(null)}
+          />
+
+          {hovered && hover !== null ? (
+            <div
+              role="status"
+              data-testid="chart-tooltip"
+              style={{
+                position: 'absolute',
+                top: 4,
+                // 오른쪽 절반에서는 칸 왼쪽에, 왼쪽 절반에서는 칸 오른쪽에 붙여 선을 가리지 않는다.
+                ...(slotX(hover, count) > 50
+                  ? { right: `calc(${100 - hover * slotWidth}% + 8px)` }
+                  : { left: `calc(${(hover + 1) * slotWidth}% + 8px)` }),
+                width: TOOLTIP_WIDTH,
+                padding: '6px 10px',
+                background: token.colorBgElevated,
+                color: token.colorText,
+                borderRadius: token.borderRadius,
+                boxShadow: token.boxShadowSecondary,
+                fontSize: 12,
+                lineHeight: 1.6,
+                pointerEvents: 'none',
+                zIndex: 1,
+              }}
+            >
+              <SlotTooltip slot={hovered} />
+            </div>
+          ) : null}
         </div>
       </Flex>
 
