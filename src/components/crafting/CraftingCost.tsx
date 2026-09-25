@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   Card,
   Checkbox,
@@ -27,6 +27,7 @@ import {
 } from '@/features/crafting/npcPrices';
 import {
   buildPlan,
+  isBuying,
   isComplete,
   type CostSum,
   type Method,
@@ -136,8 +137,10 @@ function RecipeCost({
   const prices = useMarketPrices(requested);
 
   /**
-   * NPC 판매가. 재료마다가 아니라 한꺼번에 켜고 끈다. 켜면 NPC 가 파는 재료를 그 값에 사는 것으로
-   * 보고, 꺼진 계산(경매장만)과 총액을 나란히 보여 준다. 수요일 할인은 오늘이 수요일이면 켠 채로 시작한다.
+   * NPC 판매가. 체크박스는 NPC 가 파는 재료를 어디서 살지 기본값을 한꺼번에 정한다. 줄마다 "경매장 구매"
+   * 와 "NPC 구매" 를 따로 고를 수도 있고, 체크박스를 바꾸면 줄마다 고른 구매처는 기본값으로 돌아간다.
+   * NPC 에서 사는 재료가 있으면 경매장만 썼을 때의 총액을 나란히 보여 준다.
+   * 수요일 할인은 오늘이 수요일이면 켠 채로 시작한다.
    */
   const [useNpc, setUseNpc] = useState(true);
   const [todayIsWednesday] = useState(() => isWednesdayInKorea());
@@ -152,11 +155,12 @@ function RecipeCost({
       methods,
       expanded: new Set(expanded),
       npcPriceOf: npc ? (id) => npcUnitPrice(book.itemName(id), wednesday) : undefined,
+      preferNpc: useNpc,
     });
-  const plan = planWith(useNpc);
-  // 비교용. NPC 판매가를 쓰지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
+  const plan = planWith(true);
+  // 비교용. NPC 에서 하나도 사지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
   const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
-  const auctionPlan = useNpc && usesNpc ? planWith(false) : undefined;
+  const auctionPlan = usesNpc ? planWith(false) : undefined;
   const npcNames = [
     ...new Set(
       plan.shopping
@@ -174,8 +178,19 @@ function RecipeCost({
   const setMethod = (key: string, method: Method) => {
     setMethods((prev) => ({ ...prev, [key]: method }));
     // 제작으로 바꾸면 무엇이 들어가는지 바로 보이게 펼친다.
-    if (method !== 'buy') setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    if (!isBuying(method)) setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
   };
+
+  /** 전체 기본값을 바꾸면 줄마다 고른 구매처는 지운다. 제작을 고른 것은 그대로 둔다. */
+  const changeUseNpc = (next: boolean) => {
+    setUseNpc(next);
+    setMethods((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([, method]) => !isBuying(method))),
+    );
+  };
+
+  const tableRef = useRef<HTMLDivElement>(null);
+  useSlidingRows(tableRef);
 
   const progressNote = PROGRESS_SKILLS.has(recipe.skill);
 
@@ -234,22 +249,18 @@ function RecipeCost({
             ) : null}
           </Flex>
           <Flex gap={16} wrap>
-            <Checkbox checked={useNpc} onChange={(event) => setUseNpc(event.target.checked)}>
-              NPC 판매 재료는 NPC 판매가로 계산
+            <Checkbox checked={useNpc} onChange={(event) => changeUseNpc(event.target.checked)}>
+              NPC 판매 재료는 NPC 에서 사는 것을 기본으로
             </Checkbox>
-            <Checkbox
-              checked={wednesday}
-              disabled={!useNpc}
-              onChange={(event) => setWednesday(event.target.checked)}
-            >
+            <Checkbox checked={wednesday} onChange={(event) => setWednesday(event.target.checked)}>
               수요일 상점 할인 {WEDNESDAY_DISCOUNT_PERCENT}% 적용
               {todayIsWednesday ? ' (오늘 수요일)' : ''}
             </Checkbox>
           </Flex>
           <Flex vertical gap={4}>
-            {useNpc && npcNames.length > 0 ? (
+            {npcNames.length > 0 ? (
               <Text type="secondary" style={{ fontSize: 13 }}>
-                NPC 판매가로 계산한 재료: {npcNames.join(', ')}
+                NPC 에서 사는 재료: {npcNames.join(', ')}
               </Text>
             ) : null}
             {plan.crafts > 1 && recipe.yield > 1 ? (
@@ -277,47 +288,47 @@ function RecipeCost({
             </Text>
           </Flex>
 
-          <Table<TreeRow>
-            columns={treeColumns(book, setMethod, categoryOf)}
-            dataSource={toTreeRows(plan.nodes)}
-            rowKey="key"
-            size="small"
-            pagination={false}
-            scroll={{ x: 'max-content' }}
-            components={TREE_COMPONENTS}
-            onRow={(row) => ({ 'data-depth': row.node.depth }) as HTMLAttributes<HTMLElement>}
-            expandable={{
-              expandedRowKeys: expanded,
-              onExpand: (open, row) =>
-                setExpanded((prev) =>
-                  open ? [...prev, row.key] : prev.filter((key) => key !== row.key),
-                ),
-              indentSize: 16,
-            }}
-            summary={() => (
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={TREE_COLUMN_COUNT - 1}>
-                  <Flex vertical gap={2}>
-                    <Text strong>합계</Text>
-                    {/*
-                     * 합계는 줄마다의 금액을 더한 것이 아니다. 같은 재료가 트리 여러 곳에 나오면
-                     * 개수를 합쳐 싼 매물부터 한 번에 채운다. 따로 사면 같은 싼 매물을 두 번 세게 된다.
-                     */}
-                    {plan.shopping.length < countBuyRows(plan.nodes) ? (
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        여러 곳에 나오는 재료는 개수를 합쳐 한 번에 산 값으로 계산했습니다.
-                      </Text>
-                    ) : null}
-                  </Flex>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={1} align="right">
-                  <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
-                    {formatGold(plan.total.gold)}
-                  </Text>
-                </Table.Summary.Cell>
-              </Table.Summary.Row>
-            )}
-          />
+          <div ref={tableRef}>
+            <Table<TreeRow>
+              columns={treeColumns(book, setMethod, categoryOf)}
+              dataSource={toTreeRows(plan.nodes)}
+              rowKey="key"
+              size="small"
+              pagination={false}
+              scroll={{ x: 'max-content' }}
+              expandable={{
+                expandedRowKeys: expanded,
+                onExpand: (open, row) =>
+                  setExpanded((prev) =>
+                    open ? [...prev, row.key] : prev.filter((key) => key !== row.key),
+                  ),
+                indentSize: 16,
+              }}
+              summary={() => (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} colSpan={TREE_COLUMN_COUNT - 1}>
+                    <Flex vertical gap={2}>
+                      <Text strong>합계</Text>
+                      {/*
+                       * 합계는 줄마다의 금액을 더한 것이 아니다. 같은 재료가 트리 여러 곳에 나오면
+                       * 개수를 합쳐 싼 매물부터 한 번에 채운다. 따로 사면 같은 싼 매물을 두 번 세게 된다.
+                       */}
+                      {plan.shopping.length < countBuyRows(plan.nodes) ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          여러 곳에 나오는 재료는 개수를 합쳐 한 번에 산 값으로 계산했습니다.
+                        </Text>
+                      ) : null}
+                    </Flex>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} align="right">
+                    <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
+                      {formatGold(plan.total.gold)}
+                    </Text>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              )}
+            />
+          </div>
         </Flex>
       </Card>
     </>
@@ -328,7 +339,7 @@ function RecipeCost({
 function countBuyRows(nodes: PlanNode[]): number {
   let count = 0;
   const walk = (node: PlanNode) => {
-    if (node.method !== 'buy' && node.children) node.children.forEach(walk);
+    if (!isBuying(node.method) && node.children) node.children.forEach(walk);
     else count += 1;
   };
   nodes.forEach(walk);
@@ -370,46 +381,89 @@ function TotalNotes({
   );
 }
 
-/** 펼칠 때 하위 줄이 나타나는 시간. 눈에 걸리지 않을 만큼 짧게 둔다. */
-const ROW_ENTER_MS = 180;
+/** 줄이 새 자리로 미끄러지는 시간. 눈에 걸리지 않을 만큼 짧게 둔다. */
+const ROW_MOVE_MS = 200;
+const ROW_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
+/** 이동 애니메이션의 이름. 나타나는 애니메이션과 갈라 이동만 새로 건다. */
+const ROW_MOVE_ID = 'row-move';
 
-const prefersReducedMotion = () =>
-  typeof window !== 'undefined' &&
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canAnimate = (element: HTMLElement) =>
+  typeof element.animate === 'function' &&
+  !(
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 
 /**
- * 트리 표의 줄. 하위 재료 줄은 펼칠 때 새로 붙으므로, 붙는 순간 살짝 내려오며 나타나게 한다.
- * 줄이 한꺼번에 튀어나오면 아래 줄들이 덜컹 밀려나 어디가 펼쳐졌는지 놓친다.
+ * 트리 표의 줄을 새 자리로 미끄러뜨린다(FLIP).
  *
- * 움직임은 transform 과 opacity 만 쓴다. 높이를 움직이면 표 전체를 매 프레임 다시 잰다.
- * 화면 규칙상 CSS 파일에 컴포넌트 스타일을 두지 않으므로 Web Animations API 로 건다.
- * 맨 위 줄은 처음 그릴 때 한꺼번에 나오는 것이라 움직이지 않는다. 움직임 줄이기 설정도 따른다.
+ * 재료를 펼치면 하위 줄이 끼어들고 그 아래 줄이 한 번에 밀려나 덜컹거린다. 시세가 들어와 줄 높이가
+ * 바뀔 때도 그렇다. 그래서 그릴 때마다 줄의 자리를 적어 두고, 다음에 그렸을 때 자리가 바뀐 줄은
+ * 예전 자리에서 새 자리로 옮겨 가게 한다. 새로 생긴 줄은 흐리게 시작해 나타난다.
+ *
+ * 높이를 움직이면 표 전체를 매 프레임 다시 재야 해서 transform 과 opacity 만 쓴다. 자리는 transform 을
+ * 뺀 제자리로 적어, 움직이던 중에 다시 그려도 보이던 자리에서 이어 간다.
+ * CSS 파일에 컴포넌트 스타일을 두지 않는 규칙이라 Web Animations API 로 건다. 움직임 줄이기 설정을 따른다.
  */
-function TreeBodyRow({
-  'data-depth': depth,
-  ...props
-}: HTMLAttributes<HTMLTableRowElement> & { 'data-depth'?: number }) {
-  const ref = useRef<HTMLTableRowElement>(null);
-  useEffect(() => {
-    const row = ref.current;
-    if (!row || !depth || typeof row.animate !== 'function' || prefersReducedMotion()) return;
-    const animation = row.animate(
-      [
-        { opacity: 0, transform: 'translateY(-6px)' },
-        { opacity: 1, transform: 'translateY(0)' },
-      ],
-      { duration: ROW_ENTER_MS, easing: 'cubic-bezier(0.2, 0, 0, 1)' },
-    );
-    return () => animation.cancel();
-    // 붙는 순간 한 번만 움직인다. 시세가 들어와 다시 그려질 때마다 움직이면 표가 깜빡인다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return <tr ref={ref} {...props} />;
+/** 줄에 지금 걸린 세로 이동량. 움직이는 중이면 그 순간의 값이다. */
+function currentShiftY(row: HTMLElement): number {
+  const transform = getComputedStyle(row).transform;
+  if (!transform || transform === 'none' || typeof DOMMatrixReadOnly === 'undefined') return 0;
+  return new DOMMatrixReadOnly(transform).m42;
 }
 
-/** 모듈 상수로 둔다. 렌더마다 새 객체를 넘기면 antd 가 줄을 모두 새로 붙여 애니메이션이 매번 돈다. */
-const TREE_COMPONENTS = { body: { row: TreeBodyRow } };
+function useSlidingRows(containerRef: RefObject<HTMLDivElement | null>) {
+  const lastTops = useRef<Map<string, number> | null>(null);
+  useLayoutEffect(() => {
+    const table = containerRef.current?.querySelector('table');
+    if (!table) return;
+    const rows = [
+      ...table.querySelectorAll<HTMLTableRowElement>('tbody tr[data-row-key], tfoot tr'),
+    ];
+    const tableTop = table.getBoundingClientRect().top;
+    const previous = lastTops.current;
+    const next = new Map<string, number>();
+
+    let footOrder = 0;
+    rows.forEach((row) => {
+      // 합계 줄은 키가 없다. 몇 번째 줄인지로 부르되 본문 줄 수와 상관없게 tfoot 안에서만 센다.
+      const key = row.dataset.rowKey ?? `foot:${footOrder++}`;
+      // 보이는 자리에서 지금 걸린 transform 을 빼면 제자리다. offsetTop 은 합계 줄에서 기준이 tfoot 이라 못 쓴다.
+      const shown = row.getBoundingClientRect().top - tableTop;
+      const shift = currentShiftY(row);
+      const top = shown - shift;
+      next.set(key, top);
+      if (!previous || !canAnimate(row)) return;
+
+      const before = previous.get(key);
+      if (before === undefined) {
+        row.animate(
+          [
+            { opacity: 0, transform: 'translateY(-6px)' },
+            { opacity: 1, transform: 'none' },
+          ],
+          { id: 'row-enter', duration: ROW_MOVE_MS, easing: ROW_EASING },
+        );
+        return;
+      }
+      // 제자리가 그대로면 움직이던 것은 그대로 끝까지 가게 둔다. 시세만 들어와 다시 그린 경우다.
+      if (Math.abs(before - top) < 1) return;
+      // 지금 걸려 있는 transform 만큼 더해, 방금 보이던 자리에서 출발한다. 나타나는 중인 줄의
+      // 흐려짐은 그대로 두고 이동만 새로 건다.
+      const from = before + shift - top;
+      row
+        .getAnimations()
+        .filter((animation) => animation.id === ROW_MOVE_ID)
+        .forEach((animation) => animation.cancel());
+      row.animate([{ transform: `translateY(${from}px)` }, { transform: 'none' }], {
+        id: ROW_MOVE_ID,
+        duration: ROW_MOVE_MS,
+        easing: ROW_EASING,
+      });
+    });
+    lastTops.current = next;
+  });
+}
 
 interface TreeRow {
   key: string;
@@ -487,7 +541,7 @@ function treeColumns(
           <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
             {formatNumber(node.required)}
           </Text>
-          {node.method !== 'buy' && node.yieldCount > 1 ? (
+          {!isBuying(node.method) && node.yieldCount > 1 ? (
             <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
               {formatNumber(node.yieldCount)}개씩 {formatNumber(node.crafts)}번
             </Text>
@@ -499,10 +553,9 @@ function treeColumns(
       title: '구하는 방법',
       key: 'method',
       render: (_value, { node }) => {
-        const npc = node.price.status === 'npc';
-        const tradable = npc || book.isTradable(node.itemId);
-        if (node.recipes.length === 0)
-          return <Text type="secondary">{npc ? 'NPC 구매' : tradable ? '구매' : '거래 불가'}</Text>;
+        const npcSold = node.npcUnit !== undefined;
+        if (node.recipes.length === 0 && !npcSold)
+          return <Text type="secondary">{node.tradable ? '경매장 구매' : '거래 불가'}</Text>;
         return (
           <Select<Method>
             size="small"
@@ -513,9 +566,12 @@ function treeColumns(
             options={[
               {
                 value: 'buy',
-                label: npc ? 'NPC 구매' : tradable ? '구매' : '구매 (거래 불가)',
-                disabled: !tradable,
+                label: node.tradable ? '경매장 구매' : '경매장 구매 (거래 불가)',
+                disabled: !node.tradable,
               },
+              ...(npcSold
+                ? [{ value: 'npc' as const, label: `NPC 구매 (${formatGold(node.npcUnit)})` }]
+                : []),
               ...node.recipes.map((each) => ({
                 value: each.index,
                 label: `제작: ${recipeTitle(book, each)}`,
@@ -554,14 +610,13 @@ function treeColumns(
       key: 'cost',
       align: 'right',
       render: (_value, { node }) => {
-        const other =
-          node.method === 'buy'
-            ? node.craftCost && isComplete(node.craftCost)
-              ? `제작 시 ${formatGold(node.craftCost.gold)}`
-              : ''
-            : isComplete(node.buyCost)
-              ? `구매 시 ${formatGold(node.buyCost.gold)}`
-              : '';
+        const other = isBuying(node.method)
+          ? node.craftCost && isComplete(node.craftCost)
+            ? `제작 시 ${formatGold(node.craftCost.gold)}`
+            : ''
+          : isComplete(node.buyCost)
+            ? `구매 시 ${formatGold(node.buyCost.gold)}`
+            : '';
         return (
           <Flex vertical align="flex-end">
             <CostText cost={node.cost} />

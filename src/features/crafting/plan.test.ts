@@ -190,6 +190,7 @@ describe('buildPlan 의 NPC 판매가', () => {
       methods: {},
       expanded: new Set(),
       npcPriceOf: (id) => (id === 3 ? 350 : undefined),
+      preferNpc: true,
     });
     // 가죽은 NPC 값, 철괴는 아직 시세를 받는 중.
     expect(result.needed).toEqual([2]);
@@ -209,9 +210,33 @@ describe('buildPlan 의 NPC 판매가', () => {
       expanded: new Set(),
       // 가죽(3)은 매물이 없고, 거래 불가 가죽(4)을 NPC 가 판다고 친다.
       npcPriceOf: (id) => (id === 4 ? 500 : undefined),
+      preferNpc: true,
     });
     expect(result.nodes[1].itemId).toBe(4);
     expect(result.total.gold).toBe(3 * 50 + 500);
     expect(isComplete(result.total)).toBe(true);
+  });
+
+  it('줄마다 경매장과 NPC 가운데 고른 곳에서 산다', () => {
+    const base = {
+      book,
+      recipe: sword,
+      quantity: 1,
+      priceOf: (id: number) => (id === 2 ? market([50, 10]) : market([300, 5])),
+      expanded: new Set<string>(),
+      npcPriceOf: (id: number) => (id === 3 ? 350 : undefined),
+    };
+    // 기본은 NPC 인데 가죽 줄만 경매장으로 바꾼다.
+    const auction = buildPlan({ ...base, preferNpc: true, methods: { m1: 'buy' } });
+    expect(auction.nodes[1].method).toBe('buy');
+    expect(auction.total.gold).toBe(3 * 50 + 300);
+    // 기본은 경매장인데 가죽 줄만 NPC 로 바꾼다.
+    const npc = buildPlan({ ...base, preferNpc: false, methods: { m1: 'npc' } });
+    expect(npc.nodes[1].method).toBe('npc');
+    expect(npc.nodes[1].npcUnit).toBe(350);
+    expect(npc.total.gold).toBe(3 * 50 + 350);
+    // NPC 목록이 없는 비교 계산에서는 NPC 를 고른 것이 무효라 경매장으로 돌아간다.
+    const compare = buildPlan({ ...base, npcPriceOf: undefined, methods: { m1: 'npc' } });
+    expect(compare.nodes[1].method).toBe('buy');
   });
 });

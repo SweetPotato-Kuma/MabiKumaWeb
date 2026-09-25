@@ -17,8 +17,11 @@ import type { Recipe, RecipeBook, RecipeSlot } from './recipes';
  * 하위 재료 시세를 모두 알아야 판단할 수 있어서, 자동으로 고르려면 결국 전부 물어야 한다.
  */
 
-/** 재료를 어떻게 구할지. 'buy' 이거나 제작법 순번(Recipe.index). */
-export type Method = 'buy' | number;
+/** 재료를 어떻게 구할지. 경매장 구매('buy'), NPC 구매('npc'), 제작법 순번(Recipe.index). */
+export type Method = 'buy' | 'npc' | number;
+
+/** 사는 쪽인지(경매장이든 NPC 든). 아니면 만드는 쪽이다. */
+export const isBuying = (method: Method): method is 'buy' | 'npc' => typeof method !== 'number';
 
 /** 재료가 이 깊이를 넘으면 더 풀지 않는다. 게임 제작법은 다섯 단계를 넘지 않는다. */
 export const MAX_DEPTH = 8;
@@ -54,6 +57,10 @@ export interface PlanNode {
   quote?: BuyQuote;
   /** 이 재료를 만드는 제작법(금속 변환 제외). 비어 있으면 사는 수밖에 없다. */
   recipes: Recipe[];
+  /** 경매장에서 거래되는지. */
+  tradable: boolean;
+  /** NPC 가 판다면 개당 값. */
+  npcUnit?: number;
   method: Method;
   /** 사용자가 고른 방법인지. 아니면 기본값이다. */
   chosen: boolean;
@@ -98,10 +105,12 @@ export interface PlanInput {
   methods: Readonly<Record<string, Method>>;
   expanded: ReadonlySet<string>;
   /**
-   * NPC 가 파는 재료의 개당 값(할인까지 적용한 값). 주면 그 재료는 경매장 대신 이 값으로 산다.
-   * 경매장 시세는 묻지 않는다. 비교용 계산은 이것 없이 한 번 더 돌린다.
+   * NPC 가 파는 재료의 개당 값(할인까지 적용한 값). 없으면 NPC 구매를 고를 수 없다.
+   * 경매장만 썼을 때의 비교 계산은 이것을 빼고 한 번 더 돌린다.
    */
   npcPriceOf?: (itemId: number) => number | undefined;
+  /** 따로 고르지 않은 재료를 NPC 가 팔면 NPC 에서 사는 것을 기본으로 할지. */
+  preferNpc?: boolean;
 }
 
 const emptyCost = (): CostSum => ({ gold: 0, unpriced: [], short: [], pending: 0 });
@@ -119,18 +128,37 @@ export function isComplete(cost: CostSum): boolean {
 }
 
 export function buildPlan(input: PlanInput): CraftPlan {
-  const { book, recipe, quantity, priceOf, methods, expanded, npcPriceOf } = input;
+  const {
+    book,
+    recipe,
+    quantity,
+    priceOf,
+    methods,
+    expanded,
+    npcPriceOf,
+    preferNpc = false,
+  } = input;
   const needed = new Set<number>();
 
   /** 살 수 있는지. 경매장에서 거래되거나 NPC 가 판다. */
   const canBuy = (itemId: number) => book.isTradable(itemId) || npcPriceOf?.(itemId) !== undefined;
 
-  const priceFor = (itemId: number): NodePrice => {
-    const npc = npcPriceOf?.(itemId);
-    if (npc !== undefined) return { status: 'npc', unit: npc };
+  /** 경매장 시세. 거래되는 아이템만 묻는다. */
+  const auctionPriceFor = (itemId: number): NodePrice => {
     if (!book.isTradable(itemId)) return { status: 'untradable' };
     needed.add(itemId);
     return priceOf(itemId) ?? { status: 'loading' };
+  };
+
+  /** 고르지 않았을 때 어디서 살지. NPC 가 팔고 NPC 를 기본으로 했으면 NPC. */
+  const defaultSource = (itemId: number): 'buy' | 'npc' =>
+    preferNpc && npcPriceOf?.(itemId) !== undefined ? 'npc' : 'buy';
+
+  const priceFor = (itemId: number, source: 'buy' | 'npc'): NodePrice => {
+    const npc = npcPriceOf?.(itemId);
+    return source === 'npc' && npc !== undefined
+      ? { status: 'npc', unit: npc }
+      : auctionPriceFor(itemId);
   };
 
   /** 필요한 개수를 샀을 때. NPC 는 모자람 없이 같은 값이다. */
@@ -167,7 +195,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
     let best = buyable[0];
     let bestScore: [number, number] | undefined;
     for (const id of buyable) {
-      const quote = quoteFor(priceFor(id), required);
+      const quote = quoteFor(priceFor(id, defaultSource(id)), required);
       if (!quote || quote.filled === 0) continue;
       // 다 채우는 쪽이 먼저, 그다음 싼 쪽.
       const score: [number, number] = [required - quote.filled, quote.cost];
@@ -199,19 +227,29 @@ export function buildPlan(input: PlanInput): CraftPlan {
   ): PlanNode => {
     const required = slot.count * multiplier;
     const itemId = pickSlotItem(slot, required);
-    const price = priceFor(itemId);
-    const quote = quoteFor(price, required);
-    const buyCost = buyCostOf(itemId, price, required, quote);
+    const tradable = book.isTradable(itemId);
+    const npcUnit = npcPriceOf?.(itemId);
     const recipes = depth < MAX_DEPTH && !ancestors.has(itemId) ? book.subRecipesOf(itemId) : [];
 
+    // 고른 방법이 지금도 가능한지. NPC 목록이 빠진 비교 계산에서는 NPC 구매를 고른 것이 무효가 된다.
     const choice = methods[key];
     const chosenRecipe =
       typeof choice === 'number' ? recipes.find((each) => each.index === choice) : undefined;
+    const chosenSource =
+      (choice === 'npc' && npcUnit !== undefined) || (choice === 'buy' && tradable)
+        ? choice
+        : undefined;
+
+    // 사는 값은 고른 곳에서, 고르지 않았으면 기본 구매처에서 매긴다. 만들기로 해도 "구매 시" 비교에 쓴다.
+    const source = chosenSource ?? defaultSource(itemId);
+    const price = priceFor(itemId, source);
+    const quote = quoteFor(price, required);
+    const buyCost = buyCostOf(itemId, price, required, quote);
+
     const buyable = price.status === 'loading' || (quote !== undefined && quote.filled >= required);
-    let method: Method = 'buy';
-    if (choice === 'buy' && canBuy(itemId)) method = 'buy';
-    else if (chosenRecipe) method = chosenRecipe.index;
-    else if (!buyable && recipes.length > 0) method = recipes[0].index;
+    let method: Method = source;
+    if (chosenRecipe) method = chosenRecipe.index;
+    else if (!chosenSource && !buyable && recipes.length > 0) method = recipes[0].index;
 
     const node: PlanNode = {
       key,
@@ -223,9 +261,10 @@ export function buildPlan(input: PlanInput): CraftPlan {
       price,
       quote,
       recipes,
+      tradable,
+      npcUnit,
       method,
-      chosen:
-        choice !== undefined && (choice === 'buy' ? canBuy(itemId) : chosenRecipe !== undefined),
+      chosen: chosenSource !== undefined || chosenRecipe !== undefined,
       crafts: 0,
       yieldCount: 1,
       buyCost,
@@ -241,7 +280,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
    * 그 아래는 만들지도, 시세를 묻지도 않는다.
    */
   const expand = (node: PlanNode, ancestors: ReadonlySet<number>): void => {
-    const crafting = node.method !== 'buy';
+    const crafting = !isBuying(node.method);
     if (node.recipes.length === 0 || (!crafting && !expanded.has(node.key))) return;
 
     const target = crafting
@@ -277,20 +316,27 @@ export function buildPlan(input: PlanInput): CraftPlan {
     return node;
   });
 
-  // 살 것을 아이템별로 모은다. 합계에 들어가는 가지만 따라간다.
-  const requiredById = new Map<number, number>();
+  // 살 것을 아이템과 구매처별로 모은다. 합계에 들어가는 가지만 따라간다.
+  const requiredByKey = new Map<
+    string,
+    { itemId: number; source: 'buy' | 'npc'; required: number }
+  >();
   const collect = (node: PlanNode) => {
-    if (node.method !== 'buy' && node.children) {
+    if (!isBuying(node.method) && node.children) {
       node.children.forEach(collect);
       return;
     }
-    requiredById.set(node.itemId, (requiredById.get(node.itemId) ?? 0) + node.required);
+    const source = node.price.status === 'npc' ? 'npc' : 'buy';
+    const key = `${source}:${node.itemId}`;
+    const entry = requiredByKey.get(key);
+    if (entry) entry.required += node.required;
+    else requiredByKey.set(key, { itemId: node.itemId, source, required: node.required });
   };
   nodes.forEach(collect);
 
   const total = emptyCost();
-  const shopping = [...requiredById].map(([itemId, required]): ShoppingRow => {
-    const price = priceFor(itemId);
+  const shopping = [...requiredByKey.values()].map(({ itemId, source, required }): ShoppingRow => {
+    const price = priceFor(itemId, source);
     const quote = quoteFor(price, required);
     addCost(total, buyCostOf(itemId, price, required, quote));
     return { itemId, required, price, quote };
