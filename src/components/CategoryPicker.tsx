@@ -19,6 +19,11 @@ interface CategoryPickerProps {
   /** 카테고리별 아이템 수. 주면 잎 옆에 함께 보여 준다. */
   counts?: Readonly<Record<string, number>>;
   allLabel?: string;
+  /**
+   * '전체' 줄을 둘지. 아이템 정보처럼 전체 찾기를 검색칸이 맡는 화면은 끈다.
+   * 끄면 빈 값은 아무것도 고르지 않은 상태가 된다.
+   */
+  showAll?: boolean;
 }
 
 const ALL_CATEGORIES = '';
@@ -41,7 +46,11 @@ function leafTitle(category: string, counts?: Readonly<Record<string, number>>) 
  * 묶음은 펼치기만 하고 고를 수 없다. 요청에 실리는 것은 언제나 잎이다.
  * 묶음에서 빠진 카테고리가 생기면 맨 아래에 그대로 붙여 하나도 잃지 않는다.
  */
-function buildTreeData(counts: CategoryPickerProps['counts'], allLabel: string): TreeDataNode[] {
+function buildTreeData(
+  counts: CategoryPickerProps['counts'],
+  allLabel: string,
+  showAll: boolean,
+): TreeDataNode[] {
   const groups: TreeDataNode[] = CATEGORY_GROUPS.map((group) => ({
     key: groupKeyOf(group.name),
     title: group.name,
@@ -62,13 +71,13 @@ function buildTreeData(counts: CategoryPickerProps['counts'], allLabel: string):
     });
   }
 
-  return [{ key: ALL_CATEGORIES, title: allLabel }, ...groups];
+  return showAll ? [{ key: ALL_CATEGORIES, title: allLabel }, ...groups] : groups;
 }
 
 /** 좁은 화면에서는 트리 대신 묶음별 Select 를 쓴다. 트리는 손가락으로 펼치기 어렵다. */
-function buildSelectOptions(allLabel: string) {
+function buildSelectOptions(allLabel: string, showAll: boolean) {
   return [
-    { value: ALL_CATEGORIES, label: allLabel },
+    ...(showAll ? [{ value: ALL_CATEGORIES, label: allLabel }] : []),
     ...CATEGORY_GROUPS.map((group) => ({
       label: group.name,
       options: group.categories.map((category) => ({ value: category, label: category })),
@@ -80,12 +89,18 @@ function buildSelectOptions(allLabel: string) {
  * 82개 카테고리를 고르는 컨트롤. 넓은 화면은 트리, 좁은 화면은 Select 하나로 떨어진다.
  * 묶음은 화면에서만 쓰는 분류이고 API 에는 존재하지 않는다.
  */
-export function CategoryPicker({ value, onChange, counts, allLabel = '전체' }: CategoryPickerProps) {
+export function CategoryPicker({
+  value,
+  onChange,
+  counts,
+  allLabel = '전체',
+  showAll = true,
+}: CategoryPickerProps) {
   const screens = Grid.useBreakpoint();
   const isWide = Boolean(screens.md);
 
-  const treeData = useMemo(() => buildTreeData(counts, allLabel), [counts, allLabel]);
-  const selectOptions = useMemo(() => buildSelectOptions(allLabel), [allLabel]);
+  const treeData = useMemo(() => buildTreeData(counts, allLabel, showAll), [counts, allLabel, showAll]);
+  const selectOptions = useMemo(() => buildSelectOptions(allLabel, showAll), [allLabel, showAll]);
   const expandedGroup = findGroupOf(value);
 
   const [expandedKeys, setExpandedKeys] = useState<Key[]>(() =>
@@ -110,7 +125,8 @@ export function CategoryPicker({ value, onChange, counts, allLabel = '전체' }:
   if (!isWide) {
     return (
       <Select
-        value={value}
+        // '전체' 줄이 없으면 빈 값에 맞는 항목이 없다. 그때는 placeholder 를 보여 준다.
+        value={showAll || value ? value : undefined}
         onChange={onChange}
         options={selectOptions}
         showSearch

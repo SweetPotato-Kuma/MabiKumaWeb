@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ToolOutlined } from '@ant-design/icons';
+import { BookOutlined } from '@ant-design/icons';
 import { Button, Descriptions, Empty, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
@@ -13,7 +13,8 @@ import {
   type OptionGroup,
 } from '@/features/auction/itemOptions';
 import { bundlePrice } from '@/features/auction/price';
-import { equipmentPath, isEquipmentCategory } from '@/features/equipment/api';
+import { itemInfoPath } from '@/features/auction/dictionary';
+import { isEquipmentCategory } from '@/features/equipment/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
@@ -272,14 +273,20 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="이 매물에는 세부 옵션이 없습니다." />
           )}
 
-          {/* 매물에 붙은 옵션과 별개로, 같은 장비를 개조하고 세공하면 어떻게 되는지 보러 간다. */}
-          {isEquipmentCategory(detail.category) ? (
-            <div>
-              <Link to={equipmentPath(detail.category, cardName)} onClick={onClose}>
-                <Button icon={<ToolOutlined />}>장비 시뮬레이터</Button>
-              </Link>
-            </div>
-          ) : null}
+          {/*
+            매물 하나에서 아이템 자체로 넘어간다. 장비면 같은 장비를 개조하고 세공하면 어떻게 되는지,
+            아니면 그림과 설명을 본다. 이 매물에 붙은 옵션과는 별개다.
+          */}
+          <Flex gap={8} wrap align="center">
+            <Link to={itemInfoPath(detail.category, cardName)} onClick={onClose}>
+              <Button icon={<BookOutlined />}>아이템 정보 보기</Button>
+            </Link>
+            {isEquipmentCategory(detail.category) ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                장비 시뮬레이터에서 개조, 세공, 인챈트를 골라 볼 수 있습니다.
+              </Text>
+            ) : null}
+          </Flex>
 
           {/*
             어디서 온 값인지 섞이지 않게 적는다. 그림과 설명은 경매장 응답이 아니다.
@@ -287,7 +294,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
           */}
           <Text type="secondary" style={{ fontSize: 12 }}>
             {card
-              ? '그림과 설명은 경매장 API 가 아니라 아이템 사전에서 붙인 것입니다. 나머지는 이 매물의 응답에 담긴 값입니다.'
+              ? '그림과 설명은 경매장 API 가 아니라 게임 데이터에서 따로 모아 붙인 것입니다. 나머지는 이 매물의 응답에 담긴 값입니다.'
               : '경매장 API 는 아이템 이미지와 도감 설명을 주지 않습니다. 여기 있는 값이 응답에 담긴 전부입니다.'}
           </Text>
         </Flex>

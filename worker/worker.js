@@ -519,7 +519,7 @@ async function sha256Hex(input) {
  * 카테고리로 쪼개면 가장 큰 것(천옷)이 536KB, 푸는 데 0.8ms 라 여유 있게 들어간다.
  *
  * 사전 화면이 카테고리를 먼저 고르게 되어 있어서, 조회 한 번에 칸 하나만 읽으면 된다.
- * `public/items/` 의 이름 사전이 이미 같은 방식으로 나뉘어 있다.
+ * `public/data/items/` 의 이름 사전이 이미 같은 방식으로 나뉘어 있다.
  */
 async function shardKey(category) {
   return `${CARDS_KEY_PREFIX}${(await sha256Hex(category)).slice(0, 8)}`;

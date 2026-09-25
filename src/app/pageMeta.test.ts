@@ -19,4 +19,13 @@ describe('pageMetaFor', () => {
       expect(page.path).toMatch(/^\/[a-z-]+$/);
     }
   });
+
+  it('예전 주소는 목록에 있는 화면으로만 넘기고, 화면 경로와 겹치지 않는다', () => {
+    const paths = new Set(pageMeta.pages.map((page) => page.path));
+    for (const redirect of pageMeta.redirects) {
+      expect(redirect.from).toMatch(/^\/[a-z-]+$/);
+      expect(paths.has(redirect.to)).toBe(true);
+      expect(paths.has(redirect.from)).toBe(false);
+    }
+  });
 });

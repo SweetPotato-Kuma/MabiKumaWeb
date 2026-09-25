@@ -23,14 +23,10 @@ import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { ItemIcon } from '@/components/ItemIcon';
+import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
 import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
-import {
-  resolveSearch,
-  searchNames,
-  useItemNameIndexQuery,
-  type NameSuggestion,
-} from '@/features/auction/nameIndex';
+import { resolveSearch, searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { calculatePriceStats } from '@/features/auction/stats';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
@@ -52,29 +48,12 @@ const ALL_CATEGORIES = '';
  */
 const SUGGESTION_LIMIT = 20;
 
-/**
- * 자동완성 한 줄. 전체에서 찾을 때만 카테고리를 옆에 붙인다.
- * 같은 이름이 여러 카테고리에 있으면 어디서 보이는지 모두 알려야 고를 수 있다.
- */
-function SuggestionLabel({ item, showCategory }: { item: NameSuggestion; showCategory: boolean }) {
-  return (
-    <Flex justify="space-between" gap={12}>
-      <span>{item.name}</span>
-      {showCategory ? (
-        <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-          {item.categories.join(', ')}
-        </Text>
-      ) : null}
-    </Flex>
-  );
-}
-
 const EMPTY_INPUT: AuctionSearchInput = {
   category: ALL_CATEGORIES,
   keyword: '',
 };
 
-/** 주소에 실려 온 검색 조건. 아이템 사전에서 "시세 보기" 로 넘어오는 경로다. */
+/** 주소에 실려 온 검색 조건. 아이템 정보에서 "시세 보기" 로 넘어오는 경로다. */
 function readSearchInput(params: URLSearchParams): AuctionSearchInput {
   return {
     category: params.get('category') ?? ALL_CATEGORIES,
@@ -166,7 +145,7 @@ export function AuctionPage() {
   const screens = Grid.useBreakpoint();
   const isWide = Boolean(screens.md);
 
-  // 아이템 사전에서 넘어올 때 조건이 주소에 실려 온다. 첫 렌더에서만 읽고 이후에는 화면이 주인이다.
+  // 아이템 정보에서 넘어올 때 조건이 주소에 실려 온다. 첫 렌더에서만 읽고 이후에는 화면이 주인이다.
   const [searchParams] = useSearchParams();
 
   const [form, setForm] = useState<AuctionSearchInput>(() => readSearchInput(searchParams));
@@ -250,7 +229,7 @@ export function AuctionPage() {
     () =>
       suggestions.map((item) => ({
         value: item.name,
-        label: <SuggestionLabel item={item} showCategory={!form.category} />,
+        label: <NameSuggestionLabel item={item} showCategory={!form.category} />,
       })),
     [suggestions, form.category],
   );
@@ -307,7 +286,7 @@ export function AuctionPage() {
   /**
    * 트리는 CategoryPicker 하나만 쓴다.
    *
-   * 여기에 같은 트리를 따로 들고 있던 탓에 아이템 사전에서 고친 것(묶음을 눌러 펼치기)이
+   * 여기에 같은 트리를 따로 들고 있던 탓에 아이템 정보 화면에서 고친 것(묶음을 눌러 펼치기)이
    * 경매장에는 반영되지 않았다. 화면마다 복사본을 두면 이런 차이가 조용히 생긴다.
    */
   const categoryPanel = isWide ? (

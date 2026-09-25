@@ -16,7 +16,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const API_ORIGIN = 'https://open.api.nexon.com';
-const OUT_DIR = resolve(process.cwd(), 'public/items');
+const OUT_DIR = resolve(process.cwd(), 'public/data/items');
 /** 전체 자동완성용 이름 인덱스. 카테고리 파일과 달리 category 필드가 없다. */
 const NAMES_FILE = 'names.json';
 const CONSTANTS_PATH = resolve(process.cwd(), 'src/features/auction/constants.ts');

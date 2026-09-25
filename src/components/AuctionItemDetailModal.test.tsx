@@ -126,17 +126,22 @@ describe('매물 상세 모달', () => {
     expect(screen.queryByText('남은 시간')).not.toBeInTheDocument();
   });
 
-  it('장비면 사전의 장비 시뮬레이터로 가는 단추를 둔다', () => {
+  it('아이템 정보로 가는 단추를 둔다', () => {
     renderModal(DETAIL);
 
-    const link = screen.getByRole('link', { name: /장비 시뮬레이터/ });
-    // 경매장 이름 앞의 @ 는 떼고 사전 이름으로 보낸다.
-    expect(link).toHaveAttribute('href', '/dictionary?category=%EA%B2%80&name=%EA%B8%80%EB%9D%BC%EB%94%94%EC%9A%B0%EC%8A%A4');
+    const link = screen.getByRole('link', { name: /아이템 정보 보기/ });
+    // 경매장 이름 앞의 @ 는 떼고 아이템 정보의 이름으로 보낸다.
+    expect(link).toHaveAttribute('href', '/items?category=%EA%B2%80&name=%EA%B8%80%EB%9D%BC%EB%94%94%EC%9A%B0%EC%8A%A4');
+    expect(screen.getByText(/장비 시뮬레이터에서/)).toBeInTheDocument();
   });
 
-  it('장비가 아니면 시뮬레이터 단추가 없다', () => {
+  it('장비가 아니어도 아이템 정보로 갈 수 있다', () => {
     renderModal({ ...DETAIL, category: '포션' });
 
-    expect(screen.queryByRole('link', { name: /장비 시뮬레이터/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /아이템 정보 보기/ })).toHaveAttribute(
+      'href',
+      '/items?category=%ED%8F%AC%EC%85%98&name=%EA%B8%80%EB%9D%BC%EB%94%94%EC%9A%B0%EC%8A%A4',
+    );
+    expect(screen.queryByText(/장비 시뮬레이터에서/)).not.toBeInTheDocument();
   });
 });

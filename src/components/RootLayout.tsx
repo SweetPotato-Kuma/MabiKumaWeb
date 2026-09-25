@@ -45,7 +45,7 @@ type NavItem = { key: string; icon: ReactNode; label: ReactNode; children?: NavI
  */
 const NAV_ITEMS: NavItem[] = [
   { key: '/auction', icon: <TagOutlined />, label: <NavLink to="/auction">경매장</NavLink> },
-  { key: '/dictionary', icon: <BookOutlined />, label: <NavLink to="/dictionary">아이템 사전</NavLink> },
+  { key: '/items', icon: <BookOutlined />, label: <NavLink to="/items">아이템 정보</NavLink> },
   {
     key: 'npc-shop',
     icon: <ShopOutlined />,

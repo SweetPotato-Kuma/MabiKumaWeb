@@ -3,8 +3,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
-import { DictionaryPage } from '@/pages/DictionaryPage';
-import { EquipmentRedirect } from '@/pages/EquipmentRedirect';
+import { ItemsPage } from '@/pages/ItemsPage';
+import { LegacyRedirect } from '@/pages/LegacyRedirect';
 import type { EquipmentLookup } from '@/features/equipment/types';
 import type * as Settings from '@/lib/settings';
 
@@ -80,29 +80,19 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/item-equip?')) return new Response(JSON.stringify(lookup));
-      if (url.endsWith('items/index.json')) {
+      if (url.endsWith('data/items/names.json')) {
         return new Response(
           JSON.stringify({
             updated: '2026-09-24',
-            total: 2,
-            categories: [
-              { name: '검', file: 'sword.json', count: 1 },
-              { name: '포션', file: 'potion.json', count: 1 },
+            categories: ['검', '포션'],
+            items: [
+              ['소울 리버레이트 소드', 0],
+              ['생명력 50 포션', 1],
             ],
           }),
         );
       }
-      if (url.endsWith('items/sword.json')) {
-        return new Response(
-          JSON.stringify({ category: '검', items: [{ name: '소울 리버레이트 소드' }] }),
-        );
-      }
-      if (url.endsWith('items/potion.json')) {
-        return new Response(
-          JSON.stringify({ category: '포션', items: [{ name: '생명력 50 포션' }] }),
-        );
-      }
-      // 이름 사전과 카드는 이 시험의 관심사가 아니다. 없다고 답한다.
+      // 카드는 이 시험의 관심사가 아니다. 없다고 답한다.
       return new Response('not found', { status: 404 });
     }),
   );
@@ -119,8 +109,9 @@ function renderPage(path: string) {
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route path="/dictionary" element={<DictionaryPage />} />
-            <Route path="/equipment" element={<EquipmentRedirect />} />
+            <Route path="/items" element={<ItemsPage />} />
+            <Route path="/dictionary" element={<LegacyRedirect to="/items" />} />
+            <Route path="/equipment" element={<LegacyRedirect to="/items" />} />
           </Routes>
           <CurrentUrl />
         </MemoryRouter>
@@ -137,45 +128,105 @@ function CurrentUrl() {
   );
 }
 
-const SWORD_PATH = `/dictionary?category=${encodeURIComponent('검')}&name=${encodeURIComponent('소울 리버레이트 소드')}`;
+/** 목록 표의 줄. 검색어를 치면 같은 이름이 자동완성 칸에도 떠서 표 쪽만 고른다. */
+async function findListRow(name: string): Promise<HTMLElement> {
+  const matches = await screen.findAllByText(name);
+  const row = matches.map((element) => element.closest('tr')).find(Boolean);
+  expect(row).toBeTruthy();
+  return row as HTMLElement;
+}
 
-describe('아이템 사전의 장비 시뮬레이터', () => {
-  it('장비 카테고리의 줄을 누르면 사전 안에서 시뮬레이터가 열린다', async () => {
-    renderPage(`/dictionary?category=${encodeURIComponent('검')}`);
+const SWORD_PATH = `/items?category=${encodeURIComponent('검')}&name=${encodeURIComponent('소울 리버레이트 소드')}`;
+
+describe('아이템 정보 목록', () => {
+  it('카테고리를 고르지 않아도 전체에서 이름으로 찾는다', async () => {
+    renderPage('/items');
+
+    expect(await screen.findByText(/이름을 입력하거나 카테고리를 고르면/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('이름으로 찾기'), { target: { value: '포션' } });
+
+    // 전체에서 찾을 때는 어느 카테고리의 줄인지 같이 적는다.
+    const row = await findListRow('생명력 50 포션');
+    expect(within(row).getByText('포션')).toBeInTheDocument();
+    expect(screen.queryByText('소울 리버레이트 소드')).not.toBeInTheDocument();
+  });
+
+  it('초성으로도 찾는다', async () => {
+    renderPage('/items');
+
+    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: 'ㅅㅇㄹㅂ' } });
+
+    expect(await findListRow('소울 리버레이트 소드')).toBeInTheDocument();
+  });
+
+  it('자동완성에서 고르면 그 아이템 상세로 바로 간다', async () => {
+    renderPage('/items');
+
+    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: '소울' } });
+    const matches = await screen.findAllByText('소울 리버레이트 소드');
+    const option = matches.map((element) => element.closest('.ant-select-item-option')).find(Boolean);
+    fireEvent.click(option as HTMLElement);
+
+    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=검&name=소울 리버레이트 소드');
+    expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
+  });
+
+  it('카테고리 트리에 고르지 않음 줄이 없다', async () => {
+    renderPage('/items');
+
+    await screen.findByLabelText('이름으로 찾기');
+    expect(screen.queryByText('고르지 않음')).not.toBeInTheDocument();
+  });
+
+  it('전체에서 찾다 상세를 열고 돌아와도 치던 검색어가 그대로다', async () => {
+    renderPage('/items');
+
+    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: '포션' } });
+    fireEvent.click(await findListRow('생명력 50 포션'));
+    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=포션&name=생명력 50 포션');
+
+    fireEvent.click(await screen.findByRole('link', { name: '목록' }));
+    expect(screen.getByTestId('url')).toHaveTextContent(/^\/items$/);
+    expect(screen.getByLabelText('이름으로 찾기')).toHaveValue('포션');
+  });
+});
+
+describe('아이템 정보의 장비 시뮬레이터', () => {
+  it('장비 카테고리의 줄을 누르면 아이템 정보 안에서 시뮬레이터가 열린다', async () => {
+    renderPage(`/items?category=${encodeURIComponent('검')}`);
 
     fireEvent.click(await screen.findByText('소울 리버레이트 소드'));
 
-    expect(screen.getByTestId('url')).toHaveTextContent(
-      '/dictionary?category=검&name=소울 리버레이트 소드',
-    );
+    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=검&name=소울 리버레이트 소드');
     expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '검' })).toHaveAttribute(
       'href',
-      `/dictionary?category=${encodeURIComponent('검')}`,
+      `/items?category=${encodeURIComponent('검')}`,
     );
   });
 
   it('상세에서 카테고리로 돌아오면 치던 검색어가 그대로다', async () => {
-    renderPage(`/dictionary?category=${encodeURIComponent('검')}`);
+    renderPage(`/items?category=${encodeURIComponent('검')}`);
 
     fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: '소울' } });
-    fireEvent.click(await screen.findByText('소울 리버레이트 소드'));
+    fireEvent.click(await findListRow('소울 리버레이트 소드'));
     fireEvent.click(await screen.findByRole('link', { name: '검' }));
 
-    expect(screen.getByTestId('url')).toHaveTextContent('/dictionary?category=검');
+    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=검');
     expect(screen.getByLabelText('이름으로 찾기')).toHaveValue('소울');
   });
 
-  it('장비가 아니면 사전을 떠나지 않고 창을 띄운다', async () => {
-    renderPage(`/dictionary?category=${encodeURIComponent('포션')}`);
+  it('장비가 아니면 그림과 설명을 보여 주는 상세가 열린다', async () => {
+    renderPage(`/items?category=${encodeURIComponent('포션')}`);
 
     fireEvent.click(await screen.findByText('생명력 50 포션'));
 
-    expect(screen.getByTestId('url')).toHaveTextContent('/dictionary?category=포션');
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=포션&name=생명력 50 포션');
+    expect(await screen.findByRole('heading', { name: '생명력 50 포션' })).toBeInTheDocument();
+    expect(screen.queryByText('장비 미리보기')).not.toBeInTheDocument();
   });
 
-  it('예전 시뮬레이터 주소는 고른 조합을 그대로 들고 사전으로 넘어간다', async () => {
+  it('예전 시뮬레이터 주소는 고른 조합을 그대로 들고 아이템 정보로 넘어간다', async () => {
     renderPage(
       `/equipment?category=${encodeURIComponent('검')}&name=${encodeURIComponent('소울 리버레이트 소드')}&sp=s7`,
     );
@@ -183,7 +234,14 @@ describe('아이템 사전의 장비 시뮬레이터', () => {
     expect(
       await screen.findAllByText('최소 공격력 +60, 최대 공격력 +120, 보너스 대미지 +5%'),
     ).not.toHaveLength(0);
-    expect(screen.getByTestId('url')).toHaveTextContent('/dictionary?category=검');
+    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=검');
+  });
+
+  it('예전 사전 주소도 아이템 정보로 넘어간다', async () => {
+    renderPage(`/dictionary?category=${encodeURIComponent('포션')}`);
+
+    expect(await screen.findByText('생명력 50 포션')).toBeInTheDocument();
+    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=포션');
   });
 
   it('주소에 담긴 조합을 불러와 최종 능력치에 더한다', async () => {

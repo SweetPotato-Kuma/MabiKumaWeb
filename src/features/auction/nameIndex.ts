@@ -93,7 +93,7 @@ export function buildNameIndex(raw: RawNameIndex): NameIndex {
 
 /** 사전은 빌드 산출물과 함께 올라가므로 앱의 base 경로를 따른다. */
 function assetUrl(path: string): string {
-  return `${import.meta.env.BASE_URL}items/${path}`;
+  return `${import.meta.env.BASE_URL}data/items/${path}`;
 }
 
 /**

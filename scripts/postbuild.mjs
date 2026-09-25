@@ -64,6 +64,44 @@ for (const page of pageMeta.pages) {
   await writeFile(resolve(distDir, `${page.path.slice(1)}.html`), renderPage(page));
 }
 
+/**
+ * 옮겨 간 화면의 예전 주소.
+ *
+ * GitHub Pages 는 서버 쪽 301 을 걸 수 없다. 그래서 예전 경로에 작은 HTML 을 굽고, 그 안에서
+ * 새 주소를 canonical 로 알리고 바로 넘긴다. 구글은 이 둘을 옮겨 간 신호로 읽는다.
+ * 쿼리(카테고리, 이름, 장비 조합)를 들고 가야 복사해 둔 링크가 살아서 스크립트로 넘긴다.
+ * 스크립트가 없는 곳을 위해 meta refresh 를 noscript 에 둔다. 이쪽은 쿼리를 잃는다.
+ * sitemap 에는 새 주소만 싣는다.
+ */
+function renderRedirect(redirect) {
+  const target = pageMeta.pages.find((page) => page.path === redirect.to);
+  if (!target) throw new Error(`[postbuild] ${redirect.from} 가 가리키는 ${redirect.to} 가 pages 에 없습니다.`);
+  const title = escapeHtml(`${target.title} · ${pageMeta.siteName}`);
+  const to = escapeHtml(redirect.to);
+  const canonical = origin ? `\n    <link rel="canonical" href="${origin}${to}" />` : '';
+
+  return `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>${title}</title>${canonical}
+    <script>location.replace(${JSON.stringify(redirect.to)} + location.search + location.hash);</script>
+    <noscript><meta http-equiv="refresh" content="0; url=${to}" /></noscript>
+  </head>
+  <body>
+    <p>주소가 바뀌었습니다. <a href="${to}">새 주소</a>로 이동합니다.</p>
+  </body>
+</html>
+`;
+}
+
+for (const redirect of pageMeta.redirects) {
+  if (await stat(resolve(distDir, redirect.from.slice(1))).catch(() => null)) {
+    throw new Error(`[postbuild] dist${redirect.from} 폴더가 예전 경로 ${redirect.from} 와 겹칩니다.`);
+  }
+  await writeFile(resolve(distDir, `${redirect.from.slice(1)}.html`), renderRedirect(redirect));
+}
+
 if (origin) {
   const urls = pageMeta.pages.map((page) => `  <url><loc>${origin}${page.path}</loc></url>`).join('\n');
   await writeFile(
@@ -74,6 +112,6 @@ if (origin) {
 }
 
 console.log(
-  `[postbuild] 404.html, .nojekyll, 화면별 HTML ${pageMeta.pages.length}개` +
+  `[postbuild] 404.html, .nojekyll, 화면별 HTML ${pageMeta.pages.length}개, 옮긴 주소 ${pageMeta.redirects.length}개` +
     (origin ? ', sitemap.xml, robots.txt 생성 완료' : ' 생성 완료 (CNAME 없음: sitemap 생략)'),
 );
