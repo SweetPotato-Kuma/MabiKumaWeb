@@ -31,11 +31,21 @@ export interface DailySummary extends PriceSummary {
   date: string;
 }
 
+/** 한 시간의 요약. 시간은 한국 시각이다. */
+export interface HourlySummary extends PriceSummary {
+  /** 한국 시각 날짜 "2026-09-25" */
+  date: string;
+  /** 0~23 */
+  hour: number;
+}
+
 export interface MarketItemResponse {
   name: string;
   days: number;
   recent: RecentSummary | null;
   daily: DailySummary[];
+  /** 최근 7일 시간별 요약. 거래가 없던 시간은 빠진다. 워커가 예전 모양으로 답하면 없다. */
+  hourly?: HourlySummary[];
   /** 기록을 모으기 시작한 날. 그보다 앞은 비어 있는 것이 정상이다. */
   since: string | null;
   /** 마지막으로 받은 시각(ISO) */

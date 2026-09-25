@@ -49,6 +49,13 @@ export const RECENT_MAX_NAMES = 60;
 const SERIES_DAYS = 30;
 const SERIES_MAX_DAYS = 365;
 
+/**
+ * 시간별 그래프의 칸 수. 지금 시각을 포함해 최근 7일(168시간)이다. 한 주를 통째로 보여야
+ * 공급이 몰리는 목요일과 다른 요일을 견줄 수 있다. 원본(trades)에서 바로 센다.
+ */
+export const HOURLY_HOURS = 7 * 24;
+const HOUR_SECONDS = 3600;
+
 const NAME_MAX = 120;
 
 /** 같은 질문은 이 시간 동안 엣지 캐시에서 답한다. 수집이 10분마다라 더 자주 볼 이유가 없다. */
@@ -61,6 +68,11 @@ export function kstDay(ts) {
 
 function dayStart(day) {
   return day * DAY_SECONDS - KST_OFFSET_SECONDS;
+}
+
+/** 한국 시각 기준 시간 번호. 1970-01-01 00시가 0 이다. */
+export function kstHour(ts) {
+  return Math.floor((ts + KST_OFFSET_SECONDS) / HOUR_SECONDS);
 }
 
 /** 날짜 번호를 "2026-09-25" 로. */
@@ -136,6 +148,24 @@ SELECT name, MAX(category) AS category, COUNT(*) AS n, SUM(count) AS qty,
   CAST(ROUND(AVG(CASE WHEN rn IN ((c + 1) / 2, (c + 2) / 2) THEN price END)) AS INTEGER) AS mid
 FROM picked
 GROUP BY name`;
+
+/**
+ * 아이템 하나의 시간별 통계. 시간은 한국 시각 기준 번호(kstHour)다. 셈은 STATS_SQL 과 같다.
+ * 원본에서 바로 센다. 7일치여도 붐비는 아이템이 수천 건이라 (name, ts) 색인으로 충분하다.
+ */
+const HOURLY_SQL = `WITH picked AS (
+  SELECT (ts + ${KST_OFFSET_SECONDS}) / ${HOUR_SECONDS} AS h, count, price,
+    ROW_NUMBER() OVER (PARTITION BY (ts + ${KST_OFFSET_SECONDS}) / ${HOUR_SECONDS} ORDER BY price) AS rn,
+    COUNT(*) OVER (PARTITION BY (ts + ${KST_OFFSET_SECONDS}) / ${HOUR_SECONDS}) AS c
+  FROM trades
+  WHERE name = ?1 AND ts >= ?2 AND ts < ?3
+)
+SELECT h, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total, MIN(price) AS lo,
+  MAX(price) AS hi,
+  CAST(ROUND(AVG(CASE WHEN rn IN ((c + 1) / 2, (c + 2) / 2) THEN price END)) AS INTEGER) AS mid
+FROM picked
+GROUP BY h
+ORDER BY h`;
 
 const DAILY_SQL = `INSERT OR REPLACE INTO daily (name, day, category, n, qty, total, lo, hi, mid)
 SELECT name, ?4, category, n, qty, total, lo, hi, mid FROM (${STATS_SQL})`;
@@ -287,6 +317,23 @@ export async function dailySeries(db, name, days, now = Date.now()) {
   return (results ?? []).map((row) => ({ date: dayLabel(row.day), ...summarize(row) }));
 }
 
+/**
+ * 시간별 요약 목록. 지금 시각이 든 시간을 끝으로 hours 칸, 오래된 시간부터. 거래가 없던 시간은 빠진다.
+ * 칸마다 한국 시각 날짜와 시(0~23)를 붙인다. 요일과 날 경계는 화면이 날짜로 가른다.
+ */
+export async function hourlySeries(db, name, hours = HOURLY_HOURS, now = Date.now()) {
+  const current = kstHour(Math.floor(now / 1000));
+  const first = current - hours + 1;
+  const start = first * HOUR_SECONDS - KST_OFFSET_SECONDS;
+  const end = (current + 1) * HOUR_SECONDS - KST_OFFSET_SECONDS;
+  const { results } = await db.prepare(HOURLY_SQL).bind(name, start, end).all();
+  return (results ?? []).map((row) => ({
+    date: dayLabel(Math.floor(row.h / 24)),
+    hour: row.h % 24,
+    ...summarize(row),
+  }));
+}
+
 async function collectionInfo(db) {
   const { results } = await db
     .prepare("SELECT key, value FROM meta WHERE key IN ('started', 'collected_at')")
@@ -359,7 +406,7 @@ function cleanName(value) {
     .slice(0, NAME_MAX);
 }
 
-/** GET /market/item?name=...&days=30 → 최근 1일 통계와 날짜별 요약. 아이템 정보의 그래프가 쓴다. */
+/** GET /market/item?name=...&days=30 → 최근 1일 통계, 날짜별 요약, 최근 7일 시간별 요약. 아이템 정보의 그래프가 쓴다. */
 export async function marketItem(request, url, env, cors, now = Date.now()) {
   if (!env.MARKET)
     return marketError('MARKET_NOT_CONFIGURED', '시세 기록이 아직 없습니다.', 503, cors);
@@ -375,14 +422,16 @@ export async function marketItem(request, url, env, cors, now = Date.now()) {
     return marketError('MARKET_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
   }
 
-  const cacheKey = `https://market.cache${MARKET_ITEM_PATH}?name=${encodeURIComponent(name)}&days=${days}`;
+  // v2: 시간별 요약이 붙었다. 예전 모양으로 캐시된 답을 내주지 않게 키를 바꾼다.
+  const cacheKey = `https://market.cache${MARKET_ITEM_PATH}?v=2&name=${encodeURIComponent(name)}&days=${days}`;
   const { body, hit } = await withEdgeCache(cacheKey, async () => {
-    const [recent, daily, info] = await Promise.all([
+    const [recent, daily, hourly, info] = await Promise.all([
       recentStats(env.MARKET, [name], now),
       dailySeries(env.MARKET, name, days, now),
+      hourlySeries(env.MARKET, name, HOURLY_HOURS, now),
       collectionInfo(env.MARKET),
     ]);
-    return { name, days, recent: recent[name] ?? null, daily, ...info };
+    return { name, days, recent: recent[name] ?? null, daily, hourly, ...info };
   });
   return new Response(body, {
     headers: {

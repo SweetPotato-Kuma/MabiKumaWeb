@@ -7,6 +7,7 @@ import {
   collectTrades,
   compactOptions,
   dailySeries,
+  hourlySeries,
   kstDay,
   recentStats,
   toTradeRow,
@@ -265,6 +266,38 @@ describe('통계', () => {
     expect(kstDay(NOW / 1000)).toBe(kstDay(NOW / 1000 - 12 * 3600 + 1));
   });
 
+  it('시간별 요약은 한국 시각의 시(時)로 가르고 칸마다 날짜와 시를 붙인다', async () => {
+    // NOW 는 KST 12:00. 1분 전은 11시, 11시간 59분 전은 00시, 12시간 1분 전은 전날 23시다.
+    pages = [
+      [
+        trade(1, 60, { price: 100, count: 3 }),
+        trade(2, 120, { price: 300 }),
+        trade(3, 11 * 3600 + 59 * 60, { price: 50 }),
+        trade(4, 12 * 3600 + 60, { price: 70 }),
+      ],
+    ];
+    stubHistory();
+    await collectTrades(env, NOW);
+
+    const series = await hourlySeries(env.MARKET, '싱싱한 풀', 7 * 24, NOW);
+    expect(series).toEqual([
+      { date: '2026-09-24', hour: 23, n: 1, qty: 1, lo: 70, hi: 70, mid: 70, avg: 70 },
+      { date: '2026-09-25', hour: 0, n: 1, qty: 1, lo: 50, hi: 50, mid: 50, avg: 50 },
+      // 100 x 3 과 300 x 1. 중위는 건수로 200, 평균은 수량으로 (300 + 300) / 4 = 150
+      { date: '2026-09-25', hour: 11, n: 2, qty: 4, lo: 100, hi: 300, mid: 200, avg: 150 },
+    ]);
+  });
+
+  it('시간별 요약은 정한 칸 수보다 앞의 거래를 세지 않는다', async () => {
+    // 지금 시간(12시)을 포함해 2칸이면 11시와 12시다. 11시 전 거래는 빠진다.
+    pages = [[trade(1, 60, { price: 100 }), trade(2, 3 * 3600, { price: 300 })]];
+    stubHistory();
+    await collectTrades(env, NOW + 30 * 60 * 1000);
+
+    const series = await hourlySeries(env.MARKET, '싱싱한 풀', 2, NOW + 30 * 60 * 1000);
+    expect(series.map((row) => row.hour)).toEqual([11]);
+  });
+
   it('같은 날 거래가 더 들어오면 그날 요약을 다시 센다', async () => {
     pages = [[trade(1, 600, { price: 100 })]];
     stubHistory();
@@ -320,6 +353,11 @@ describe('시세 경로', () => {
     const body = await response.json();
     expect(body.recent).toMatchObject({ n: 2, lo: 100, hi: 300, mid: 200 });
     expect(body.daily.map((row) => row.date)).toEqual(['2026-09-23', '2026-09-25']);
+    // 시간별은 최근 7일이라 이틀 전(12:00) 거래도 든다. 1, 2번은 같은 11시 칸이다.
+    expect(body.hourly.map((row) => `${row.date} ${row.hour}`)).toEqual([
+      '2026-09-23 12',
+      '2026-09-25 11',
+    ]);
     expect(body.since).toBe('2026-09-23');
     expect(body.updated).toBe(new Date(NOW).toISOString());
   });
