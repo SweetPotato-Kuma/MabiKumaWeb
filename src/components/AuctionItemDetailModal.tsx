@@ -17,7 +17,6 @@ import { isEquipmentCategory } from '@/features/equipment/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
-import { EmptyState } from '@/components/EmptyState';
 import { BookIcon } from '@/components/icons';
 
 const { Text } = Typography;
@@ -249,6 +248,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             ]}
           />
 
+          {/* 옵션이 없는 매물은 이 자리를 통째로 비운다. 없다는 안내가 창의 절반을 차지할 이유가 없다. */}
           {hasOptions ? (
             <Flex vertical gap={16}>
               {protections.length > 0 ? <ProtectionTags protections={protections} /> : null}
@@ -266,9 +266,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
                 </Flex>
               ) : null}
             </Flex>
-          ) : (
-            <EmptyState size="small" description="이 매물에는 세부 옵션이 없습니다." />
-          )}
+          ) : null}
 
           {/*
             매물 하나에서 아이템 자체로 넘어간다. 장비면 같은 장비를 개조하고 세공하면 어떻게 되는지,

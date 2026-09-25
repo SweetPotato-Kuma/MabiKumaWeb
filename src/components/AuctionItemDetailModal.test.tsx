@@ -61,10 +61,11 @@ describe('매물 상세 모달', () => {
     expect(screen.getByText('17 ~ 34')).toBeInTheDocument();
   });
 
-  it('옵션이 없으면 없다고 말한다', () => {
+  it('옵션이 없으면 옵션 자리를 아예 그리지 않는다', () => {
     renderModal({ ...DETAIL, options: [] });
 
-    expect(screen.getByText(/세부 옵션이 없습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/세부 옵션이 없습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText('17 ~ 34')).not.toBeInTheDocument();
   });
 
 
