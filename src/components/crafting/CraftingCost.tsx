@@ -13,6 +13,10 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
+import { ItemIcon } from '@/components/ItemIcon';
+import { isCardStoreConfigured } from '@/features/itemcard/cards';
+import { isIconMapConfigured } from '@/features/itemcard/iconMap';
+import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { useMarketPrices } from '@/features/crafting/market';
 import {
   buildPlan,
@@ -43,6 +47,12 @@ const MAX_QUANTITY = 9999;
  */
 const PROGRESS_SKILLS = new Set([10001, 10016]);
 
+/** 재료 그림 칸. 표 한 줄 높이를 크게 늘리지 않으면서 알아볼 수 있는 크기. */
+const MATERIAL_ICON = 32;
+
+/** 트리 표의 칸 수. 합계 줄이 앞 칸들을 한 칸으로 묶을 때 쓴다. */
+const TREE_COLUMN_COUNT = 6;
+
 interface CraftingCostProps {
   book: RecipeBook;
   /** 같은 아이템을 만드는 제작법들. 둘 이상이면 고르는 칸이 생긴다. */
@@ -54,8 +64,9 @@ interface CraftingCostProps {
 /**
  * 제작 비용. 아이템 정보 상세 안에 들어간다.
  *
- * 위에는 제작법과 총액, 가운데는 재료 트리, 아래는 살 재료 목록이다. 트리의 줄마다 "구매" 와
- * "제작" 을 고를 수 있고, 제작을 고르면 그 재료의 재료가 값에 들어간다. 계산은 features/crafting/plan.ts.
+ * 카드 하나에 제작법과 총액, 그 아래 재료 트리를 둔다. 예전에는 살 재료를 따로 모은 표가 있었지만
+ * 트리와 같은 줄이 되풀이될 뿐이라 합계 줄 하나로 줄였다. 트리의 줄마다 "구매" 와 "제작" 을 고를 수
+ * 있고, 제작을 고르면 그 재료의 재료가 값에 들어간다. 계산은 features/crafting/plan.ts.
  */
 export function CraftingCost({ book, recipes, initialRecipe }: CraftingCostProps) {
   const [recipeIndex, setRecipeIndex] = useState(
@@ -140,6 +151,13 @@ function RecipeCost({
 
   const progressNote = PROGRESS_SKILLS.has(recipe.skill);
 
+  /**
+   * 재료 그림은 아이템 정보의 그림 목록에서 찾는다. 목록은 카테고리별이라 이름 사전으로 카테고리를
+   * 알아낸다. 경매장에 오른 적 없는 재료(거래 불가 등)는 사전에 없어 그림이 비어 있다.
+   */
+  const nameIndex = useItemNameIndexQuery().data;
+  const categoryOf = (name: string) => nameIndex?.categoriesByName.get(name)?.[0];
+
   return (
     <>
       <Card title="제작 비용" size="small">
@@ -191,19 +209,15 @@ function RecipeCost({
                 하면 그만큼 더 듭니다. 옷본과 도면 값도 들어 있지 않습니다.
               </Text>
             ) : null}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              만들 수 있는 재료는 펼쳐서 하위 재료를 보고, 구하는 방법을 제작으로 바꾸면 하위 재료
+              값이 총액에 들어갑니다. 경매장에서 필요한 만큼 살 수 없는 재료는 처음부터 제작으로
+              둡니다.
+            </Text>
           </Flex>
-        </Flex>
-      </Card>
 
-      <Card title="재료 트리" size="small">
-        <Flex vertical gap={10}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            만들 수 있는 재료는 펼쳐서 하위 재료를 보고, 구하는 방법을 제작으로 바꾸면 하위 재료
-            값이 총액에 들어갑니다. 경매장에서 필요한 만큼 살 수 없는 재료는 처음부터 제작으로
-            둡니다.
-          </Text>
           <Table<TreeRow>
-            columns={treeColumns(book, setMethod)}
+            columns={treeColumns(book, setMethod, categoryOf)}
             dataSource={toTreeRows(plan.nodes)}
             rowKey="key"
             size="small"
@@ -217,27 +231,21 @@ function RecipeCost({
                 ),
               indentSize: 16,
             }}
-          />
-        </Flex>
-      </Card>
-
-      <Card title="살 재료" size="small">
-        <Flex vertical gap={10}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            트리에서 구매로 둔 재료를 아이템별로 모았습니다. 같은 재료가 여러 곳에 나오면 개수를
-            합쳐 한 번에 샀을 때로 계산합니다.
-          </Text>
-          <Table<ShoppingRow>
-            columns={shoppingColumns(book)}
-            dataSource={plan.shopping}
-            rowKey="itemId"
-            size="small"
-            pagination={false}
-            scroll={{ x: 'max-content' }}
             summary={() => (
               <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={4}>
-                  <Text strong>합계</Text>
+                <Table.Summary.Cell index={0} colSpan={TREE_COLUMN_COUNT - 1}>
+                  <Flex vertical gap={2}>
+                    <Text strong>합계</Text>
+                    {/*
+                     * 합계는 줄마다의 금액을 더한 것이 아니다. 같은 재료가 트리 여러 곳에 나오면
+                     * 개수를 합쳐 싼 매물부터 한 번에 채운다. 따로 사면 같은 싼 매물을 두 번 세게 된다.
+                     */}
+                    {plan.shopping.length < countBuyRows(plan.nodes) ? (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        여러 곳에 나오는 재료는 개수를 합쳐 한 번에 산 값으로 계산했습니다.
+                      </Text>
+                    ) : null}
+                  </Flex>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
                   <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
@@ -251,6 +259,17 @@ function RecipeCost({
       </Card>
     </>
   );
+}
+
+/** 합계에 들어가는 "구매" 줄 수. 살 재료 종류보다 많으면 같은 재료가 여러 곳에 나온 것이다. */
+function countBuyRows(nodes: PlanNode[]): number {
+  let count = 0;
+  const walk = (node: PlanNode) => {
+    if (node.method !== 'buy' && node.children) node.children.forEach(walk);
+    else count += 1;
+  };
+  nodes.forEach(walk);
+  return count;
 }
 
 /** 총액에 빠진 것. 모르는 값이 섞인 합은 실제보다 싸 보이므로 무엇이 빠졌는지 적는다. */
@@ -322,24 +341,36 @@ function priceStatusText(price: NodePrice): string {
 function treeColumns(
   book: RecipeBook,
   setMethod: (key: string, method: Method) => void,
+  categoryOf: (name: string) => string | undefined,
 ): TableColumnsType<TreeRow> {
   return [
     {
       title: '재료',
       key: 'name',
-      render: (_value, { node }) => (
-        <Flex gap={6} align="center" wrap>
-          <Text>{book.itemName(node.itemId)}</Text>
-          {node.finish ? <Tag>마무리</Tag> : null}
-          {node.alternatives.length > 0 ? (
-            <Tooltip
-              title={`대신 쓸 수 있는 것: ${node.alternatives.map(book.itemName).join(', ')}`}
-            >
-              <Tag tabIndex={0}>대체 {node.alternatives.length}</Tag>
-            </Tooltip>
-          ) : null}
-        </Flex>
-      ),
+      render: (_value, { node }) => {
+        const name = book.itemName(node.itemId);
+        const category = categoryOf(name);
+        return (
+          <Flex gap={8} align="center">
+            {category ? (
+              <ItemIcon category={category} name={name} size={MATERIAL_ICON} />
+            ) : (
+              <MaterialIconSlot />
+            )}
+            <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
+              <Text>{name}</Text>
+              {node.finish ? <Tag>마무리</Tag> : null}
+              {node.alternatives.length > 0 ? (
+                <Tooltip
+                  title={`대신 쓸 수 있는 것: ${node.alternatives.map(book.itemName).join(', ')}`}
+                >
+                  <Tag tabIndex={0}>대체 {node.alternatives.length}</Tag>
+                </Tooltip>
+              ) : null}
+            </Flex>
+          </Flex>
+        );
+      },
     },
     {
       title: '필요 개수',
@@ -383,6 +414,19 @@ function treeColumns(
           />
         );
       },
+    },
+    {
+      title: '매물',
+      key: 'supply',
+      align: 'right',
+      render: (_value, { node }) =>
+        node.price.status === 'ok' && node.price.price.offers.length > 0 ? (
+          <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
+            {formatNumber(node.price.price.supply)}개{node.price.price.complete ? '' : ' 이상'}
+          </Text>
+        ) : (
+          <Text type="secondary">-</Text>
+        ),
     },
     {
       title: '개당 최저가',
@@ -455,62 +499,13 @@ function CostText({ cost }: { cost: CostSum }) {
   );
 }
 
-function shoppingColumns(book: RecipeBook): TableColumnsType<ShoppingRow> {
-  return [
-    {
-      title: '재료',
-      key: 'name',
-      render: (_value, row) => <Text>{book.itemName(row.itemId)}</Text>,
-    },
-    {
-      title: '필요 개수',
-      key: 'required',
-      align: 'right',
-      render: (_value, row) => (
-        <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-          {formatNumber(row.required)}
-        </Text>
-      ),
-    },
-    {
-      title: '매물',
-      key: 'supply',
-      align: 'right',
-      render: (_value, row) =>
-        row.price.status === 'ok' ? (
-          <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-            {formatNumber(row.price.price.supply)}개{row.price.price.complete ? '' : ' 이상'}
-          </Text>
-        ) : (
-          <LowestPrice price={row.price} />
-        ),
-    },
-    {
-      title: '개당 최저가',
-      key: 'lowest',
-      align: 'right',
-      render: (_value, row) => <LowestPrice price={row.price} lowest={row.quote?.lowest} />,
-    },
-    {
-      title: '금액',
-      key: 'cost',
-      align: 'right',
-      render: (_value, row) => {
-        if (row.price.status === 'loading') return <Spin size="small" />;
-        if (!row.quote || row.quote.filled === 0) return <Text type="secondary">값 모름</Text>;
-        return (
-          <Flex vertical align="flex-end">
-            <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-              {formatGold(row.quote.cost)}
-            </Text>
-            {row.quote.filled < row.required ? (
-              <Text type="warning" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                {formatNumber(row.quote.filled)}개만 있음
-              </Text>
-            ) : null}
-          </Flex>
-        );
-      },
-    },
-  ];
+/**
+ * 그림을 찾을 수 없는 재료의 자리. 이름이 줄마다 다른 자리에서 시작하면 트리의 들여쓰기가 읽히지
+ * 않으므로 칸은 비워 둔다. 그림 저장소가 없는 환경에서는 ItemIcon 처럼 자리도 두지 않는다.
+ */
+function MaterialIconSlot() {
+  if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
+  return (
+    <div style={{ width: MATERIAL_ICON, height: MATERIAL_ICON, flex: `0 0 ${MATERIAL_ICON}px` }} />
+  );
 }

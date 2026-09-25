@@ -94,7 +94,7 @@ describe('제작 비용', () => {
     renderCost();
     await screen.findAllByText('550 G');
 
-    const tree = screen.getByText('재료 트리').closest('.ant-card') as HTMLElement;
+    const tree = screen.getByText('제작 비용').closest('.ant-card') as HTMLElement;
     fireEvent.click(within(tree).getAllByRole('button', { name: /펼치기|Expand row/i })[0]);
 
     // 철괴 3개 = 10개씩 한 번, 철광석 2개 x 1
