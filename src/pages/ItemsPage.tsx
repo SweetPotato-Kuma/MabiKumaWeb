@@ -35,7 +35,11 @@ import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
 import { ITEMS_PATH, itemInfoPath, normalizeForSearch } from '@/features/auction/dictionary';
-import { searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
+import {
+  searchNames,
+  useItemNameIndexQuery,
+  type NameSuggestion,
+} from '@/features/auction/nameIndex';
 import type { Recipe, RecipeBook } from '@/features/crafting/recipes';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { iconSrcOf, preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
@@ -234,25 +238,39 @@ function ItemList({
   /**
    * 카테고리를 골랐으면 그 안에서, 아니면 전체에서 찾는다. 전체에서 찾을 때 같은 이름이 여러
    * 카테고리에 있으면 카테고리마다 한 줄씩 둔다. 장비 정보와 카드가 카테고리마다 따로다.
+   *
+   * 고른 카테고리 안에 맞는 이름이 없으면 전체로 넓혀 찾는다(widened). 카테고리를 골라 둔 것을
+   * 잊고 "ㅅㅇㄹㅂ" 을 치면 소울 리버레이트 무기가 하나도 안 나와 검색이 고장 난 것처럼 보였다.
+   * 넓혔다는 것은 화면에 적고, 줄마다 어느 카테고리인지도 적는다.
    */
-  const rows = useMemo<ItemRow[]>(() => {
-    if (!index || (!category && !hasKeyword)) return [];
-    return searchNames(index, deferredKeyword, { category, limit: NO_LIMIT }).flatMap((item) =>
-      category
-        ? [{ name: item.name, category }]
-        : item.categories.map((itemCategory) => ({ name: item.name, category: itemCategory })),
-    );
+  const { rows, widened } = useMemo((): { rows: ItemRow[]; widened: boolean } => {
+    if (!index || (!category && !hasKeyword)) return { rows: [], widened: false };
+    const spread = (items: NameSuggestion[]) =>
+      items.flatMap((item) =>
+        item.categories.map((itemCategory) => ({ name: item.name, category: itemCategory })),
+      );
+    const scoped = searchNames(index, deferredKeyword, { category, limit: NO_LIMIT });
+    if (!category) return { rows: spread(scoped), widened: false };
+    if (scoped.length > 0 || !hasKeyword)
+      return { rows: scoped.map((item) => ({ name: item.name, category })), widened: false };
+    const everywhere = spread(searchNames(index, deferredKeyword, { limit: NO_LIMIT }));
+    return { rows: everywhere, widened: everywhere.length > 0 };
   }, [index, category, hasKeyword, deferredKeyword]);
 
-  const suggestionOptions = useMemo(() => {
-    if (!index || !hasKeyword) return [];
-    return searchNames(index, deferredKeyword, { category, limit: SUGGESTION_LIMIT }).map(
-      (item) => ({
+  /** 자동완성도 목록과 같이, 고른 카테고리에 없으면 전체에서 찾는다. */
+  const { suggestionOptions, suggestionsWidened } = useMemo(() => {
+    if (!index || !hasKeyword) return { suggestionOptions: [], suggestionsWidened: false };
+    const scoped = searchNames(index, deferredKeyword, { category, limit: SUGGESTION_LIMIT });
+    const wide = Boolean(category) && scoped.length === 0;
+    const items = wide ? searchNames(index, deferredKeyword, { limit: SUGGESTION_LIMIT }) : scoped;
+    return {
+      suggestionOptions: items.map((item) => ({
         value: item.name,
-        label: <NameSuggestionLabel item={item} showCategory={!category} />,
+        label: <NameSuggestionLabel item={item} showCategory={!category || wide} />,
         item,
-      }),
-    );
+      })),
+      suggestionsWidened: wide && items.length > 0,
+    };
   }, [index, hasKeyword, deferredKeyword, category]);
 
   /**
@@ -306,7 +324,9 @@ function ItemList({
   const selectSuggestion = (name: string) => {
     setKeyword(name);
     const picked = suggestionOptions.find((option) => option.value === name)?.item;
-    const target = category || (picked?.categories.length === 1 ? picked.categories[0] : '');
+    // 전체로 넓혀 찾은 것이면 고른 카테고리가 아니라 그 아이템의 카테고리로 연다.
+    const scope = suggestionsWidened ? '' : category;
+    const target = scope || (picked?.categories.length === 1 ? picked.categories[0] : '');
     if (target) open({ name, category: target });
   };
 
@@ -343,7 +363,7 @@ function ItemList({
         const subtitle =
           maps.brief(row.category, row.name)?.subtitle || cardOf(row.category, row.name)?.subtitle;
         // 전체에서 찾을 때는 어느 카테고리의 줄인지 적는다. 같은 이름이 두 줄일 수 있다.
-        const secondary = [category ? '' : row.category, subtitle ?? '']
+        const secondary = [category && !widened ? '' : row.category, subtitle ?? '']
           .filter(Boolean)
           .join(' · ');
         return (
@@ -493,12 +513,20 @@ function ItemList({
                 }
               >
                 <Flex vertical gap={10}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {category || '전체'} <span className="tnum">{formatNumber(scopeCount)}</span>개
-                    가운데 <span className="tnum">{formatNumber(rows.length)}</span>개를 보고
-                    있습니다. 줄을 누르면 상세가 열리고, 장비는 개조, 세공, 인챈트를 골라 보는
-                    시뮬레이터가 열립니다.
-                  </Text>
+                  {widened ? (
+                    <Text type="warning" style={{ fontSize: 12 }}>
+                      {category}에는 "{deferredKeyword.trim()}" 와 맞는 이름이 없어 전체
+                      카테고리에서 찾은 <span className="tnum">{formatNumber(rows.length)}</span>
+                      개를 보여 줍니다.
+                    </Text>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {category || '전체'} <span className="tnum">{formatNumber(scopeCount)}</span>
+                      개 가운데 <span className="tnum">{formatNumber(rows.length)}</span>개를 보고
+                      있습니다. 줄을 누르면 상세가 열리고, 장비는 개조, 세공, 인챈트를 골라 보는
+                      시뮬레이터가 열립니다.
+                    </Text>
+                  )}
                   <Table<ItemRow>
                     columns={columns}
                     dataSource={rows}

@@ -159,6 +159,16 @@ describe('아이템 정보 목록', () => {
     expect(await findListRow('소울 리버레이트 소드')).toBeInTheDocument();
   });
 
+  it('고른 카테고리에 맞는 이름이 없으면 전체에서 찾고 그렇다고 알린다', async () => {
+    // 포션을 고른 것을 잊고 무기 이름을 쳐도 빈 화면이 아니라 검 카테고리의 무기가 나와야 한다.
+    renderPage('/items?category=포션');
+
+    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: 'ㅅㅇㄹㅂ' } });
+
+    expect(await findListRow('소울 리버레이트 소드')).toBeInTheDocument();
+    expect(screen.getByText(/포션에는 "ㅅㅇㄹㅂ" 와 맞는 이름이 없어 전체/)).toBeInTheDocument();
+  });
+
   it('자동완성에서 고르면 그 아이템 상세로 바로 간다', async () => {
     renderPage('/items');
 
