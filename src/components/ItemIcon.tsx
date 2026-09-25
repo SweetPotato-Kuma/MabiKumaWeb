@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { iconUrl, isCardStoreConfigured, type ItemCard } from '@/features/itemcard/cards';
+import { iconSrcOf, isCardStoreConfigured, type ItemCard } from '@/features/itemcard/cards';
 import { pixelScale } from '@/features/itemcard/pixelScale';
 
 interface ItemImageProps {
@@ -43,7 +43,7 @@ export function ItemImage({ src, size }: ItemImageProps) {
         src={src}
         // 이름이 바로 옆에 있으므로 그림은 꾸밈이다. 화면 읽기 프로그램이 이름을 두 번 읽지 않게 비운다.
         alt=""
-        loading="lazy"
+        // lazy 로 두면 화면 배치가 끝날 때까지 받기를 미룬다. 2KB 남짓한 그림이라 바로 받는 편이 낫다.
         decoding="async"
         onLoad={(event) => measure(event.currentTarget)}
         style={
@@ -75,6 +75,5 @@ export function ItemIcon({ card, size }: ItemIconProps) {
     return <div style={{ width: size, height: size, flex: `0 0 ${size}px` }} />;
   }
 
-  // 워커가 자체 도메인 주소를 붙여 주면 그쪽으로 받는다. 워커 요청 한도를 쓰지 않는다.
-  return <ItemImage src={card.iconUrl ?? iconUrl(card.icon)} size={size} />;
+  return <ItemImage src={iconSrcOf(card)} size={size} />;
 }

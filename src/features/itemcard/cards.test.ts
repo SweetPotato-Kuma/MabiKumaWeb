@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LOOKUP_MAX_GROUPS,
   LOOKUP_MAX_NAMES,
@@ -8,6 +8,13 @@ import {
   type ItemCard,
   type ItemCardKey,
 } from './cards';
+import type * as Settings from '@/lib/settings';
+
+// 워커가 붙어 있는 것처럼 둔다. 붙어 있지 않으면 카드 조회 자체가 꺼진다.
+vi.mock('@/lib/settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof Settings>()),
+  getProxyUrl: () => 'https://worker.test',
+}));
 
 const keys = (category: string, count: number, prefix = category): ItemCardKey[] =>
   Array.from({ length: count }, (_, i) => ({ category, name: `${prefix} ${i}` }));
@@ -106,16 +113,53 @@ describe('브라우저에 남겨 둔 카드', () => {
     window.localStorage.clear();
   });
 
-  it('사흘이 안 된 카드는 다시 묻지 않고 되살린다', async () => {
-    const cards = await freshModule([[key('검', '롱 소드'), Date.now() - DAY, card]]);
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** 워커 조회를 가로챈다. 무엇을 어떻게 물었는지 본다. */
+  function stubLookup(found: ItemCard[] = []) {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ cards: found })));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('하루가 안 된 카드는 다시 묻지 않고 되살린다', async () => {
+    const fetchMock = stubLookup();
+    const cards = await freshModule([[key('검', '롱 소드'), Date.now() - DAY / 2, card]]);
+    renderHook(() => cards.usePrefetchItemCards([{ category: '검', name: '롱 소드' }]));
     const { result } = renderHook(() => cards.useItemCard('검', '롱 소드'));
 
     expect(result.current).toEqual(card);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('사흘이 지난 카드는 버린다', async () => {
-    // 설명을 고쳐 올렸으면 늦어도 사흘 안에는 새로 받는다.
-    const cards = await freshModule([[key('검', '롱 소드'), Date.now() - 4 * DAY, card]]);
+  it('하루가 지난 카드도 바로 보여 주고, 뒤에서 한 번 더 물어 바꿔 둔다', async () => {
+    // 그림은 조회가 끝나야 받기 시작한다. 묻는 동안 빈칸으로 두지 않는다.
+    const fetchMock = stubLookup([{ ...card, description: '고친 설명' }]);
+    const cards = await freshModule([[key('검', '롱 소드'), Date.now() - 10 * DAY, card]]);
+    const { result } = renderHook(() => cards.useItemCard('검', '롱 소드'));
+
+    expect(result.current).toEqual(card);
+    renderHook(() => cards.usePrefetchItemCards([{ category: '검', name: '롱 소드' }]));
+
+    await vi.waitFor(() => expect(result.current?.description).toBe('고친 설명'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('조회는 CORS 사전 요청이 나가지 않는 모양으로 보낸다', async () => {
+    // application/json 이면 브라우저가 OPTIONS 를 먼저 보내고 기다린다. 그만큼 그림이 늦다.
+    const fetchMock = stubLookup();
+    const cards = await freshModule([]);
+    renderHook(() => cards.usePrefetchItemCards([{ category: '검', name: '롱 소드' }]));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['content-type']).toMatch(/^text\/plain/);
+  });
+
+  it('30일이 지난 카드는 버린다', async () => {
+    const cards = await freshModule([[key('검', '롱 소드'), Date.now() - 31 * DAY, card]]);
     const { result } = renderHook(() => cards.useItemCard('검', '롱 소드'));
 
     expect(result.current).toBeUndefined();

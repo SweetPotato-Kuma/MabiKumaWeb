@@ -60,6 +60,30 @@ export function iconUrl(file: string): string {
   return `${getProxyUrl()}${ICON_PATH}${file}`;
 }
 
+/** 카드 그림의 실제 주소. 워커가 자체 도메인 주소를 붙여 주면 그쪽이다. 워커 요청 한도를 쓰지 않는다. */
+export function iconSrcOf(card: Pick<ItemCard, 'icon' | 'iconUrl'>): string {
+  return card.iconUrl ?? iconUrl(card.icon);
+}
+
+const preloadedIcons = new Set<string>();
+
+/**
+ * 곧 보일 그림을 미리 받아 둔다. 다음 쪽으로 넘기는 순간 그림이 이미 브라우저에 있게 하려는 것이다.
+ * 그림 한 장이 2KB 안팎이고 파일 이름이 내용 해시라 한 번 받으면 1년 동안 다시 받지 않는다.
+ */
+export function preloadItemIcons(cards: readonly (ItemCard | null | undefined)[]): void {
+  if (typeof Image === 'undefined') return;
+  for (const card of cards) {
+    if (!card?.icon) continue;
+    const src = iconSrcOf(card);
+    if (preloadedIcons.has(src)) continue;
+    preloadedIcons.add(src);
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = src;
+  }
+}
+
 /** 워커가 붙어 있는지. 없으면 카드 기능 전체가 꺼진 것으로 본다. */
 export function isCardStoreConfigured(): boolean {
   return getProxyUrl() !== '';
@@ -159,26 +183,37 @@ const keyOf = (category: string, name: string) => `${category}\u0000${name}`;
  *
  * 카드는 거의 바뀌지 않는다. 다시 찾아온 사람이 같은 아이템을 볼 때마다 워커에 묻는 것은
  * 낭비이고, 무료 플랜 워커는 하루 요청 수가 정해져 있으며 그 한도를 경매장 검색과 같이 쓴다.
+ * 무엇보다 표의 그림은 이 조회가 끝나야 받기 시작하므로, 묻는 동안 그림 칸이 비어 있다.
  *
- * 카드가 있는 것은 사흘, "없더라" 는 한 시간만 믿는다. 없던 카드는 새 아이템을 사전에 넣고
- * 카드를 올리면 생긴다. 반나절씩 믿었더니 올리기 전에 한 번 본 사람은 올린 뒤에도 그림이
- * 빈칸으로 남았다. 가장 최근 것 4,000 개까지만 남긴다(1.5MB 남짓).
+ * 그래서 카드가 있는 것은 30일 동안 남겨 두고 **바로 보여 준다.** 하루가 지난 것은 보여 주면서
+ * 뒤에서 한 번 더 물어 바꿔 둔다. 설명을 고쳐도 하루 안에는 바뀌고, 그림은 파일 이름이 내용
+ * 해시라 옛 카드가 가리키는 그림도 여전히 열린다.
+ *
+ * "없더라" 는 한 시간만 믿는다. 없던 카드는 새 아이템을 사전에 넣고 카드를 올리면 생긴다.
+ * 반나절씩 믿었더니 올리기 전에 한 번 본 사람은 올린 뒤에도 그림이 빈칸으로 남았다.
+ * 가장 최근 것 4,000 개까지만 남긴다(1.5MB 남짓).
  *
  * 이름 끝 번호를 올리면 모두의 브라우저에 남은 것을 한 번에 버린다. v1 에는 대형 낫, 힐링 원드,
  * 애뮬릿을 올리기 전에 적힌 "없더라" 가 남아 있어서 v2 로 올렸다.
  */
 const STORAGE_KEY = 'mabikuma:itemCards:v2';
 const LEGACY_STORAGE_KEYS = ['mabikuma:itemCards:v1'];
-const CARD_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+const CARD_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+const CARD_REFRESH_MS = 24 * 60 * 60 * 1000;
 const MISSING_TTL_MS = 60 * 60 * 1000;
 const STORAGE_MAX_ENTRIES = 4000;
 
 /** 언제 받았는지. 남겨 둘 때 오래된 것부터 버리고, 불러올 때 유효 기간을 본다. */
 const fetchedAt = new Map<string, number>();
 
-/** "없더라" 가 오래돼 다시 물어야 하는지. 탭을 오래 열어 둔 사람도 새 카드를 보게 한다. */
-function isStaleMissing(key: string, now: number): boolean {
-  return known.get(key) === null && now - (fetchedAt.get(key) ?? 0) > MISSING_TTL_MS;
+/**
+ * 워커에 (다시) 물어야 하는지. 모르는 것, 한 시간 지난 "없더라", 하루 지난 카드.
+ * 하루 지난 카드는 묻는 동안에도 그대로 보인다. 탭을 오래 열어 둔 사람도 새 카드를 보게 한다.
+ */
+function needsLookup(key: string, now: number): boolean {
+  if (!known.has(key)) return true;
+  const age = now - (fetchedAt.get(key) ?? 0);
+  return age > (known.get(key) ? CARD_REFRESH_MS : MISSING_TTL_MS);
 }
 
 function restoreFromStorage(): void {
@@ -196,7 +231,7 @@ function restoreFromStorage(): void {
   try {
     const now = Date.now();
     for (const [key, at, card] of JSON.parse(raw) as [string, number, ItemCard | null][]) {
-      if (now - at > (card ? CARD_TTL_MS : MISSING_TTL_MS)) continue;
+      if (now - at > (card ? CARD_KEEP_MS : MISSING_TTL_MS)) continue;
       known.set(key, card);
       fetchedAt.set(key, at);
     }
@@ -245,7 +280,12 @@ async function lookupBatch(batch: { category: string; names: string[] }[]): Prom
   try {
     const response = await fetch(`${getProxyUrl()}${LOOKUP_PATH}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      /**
+       * 본문은 JSON 이지만 text/plain 으로 보낸다. application/json 이면 브라우저가 CORS 사전 요청
+       * (OPTIONS)을 먼저 보내고 그 답을 기다린다. 그만큼 그림이 늦게 뜬다. 워커는 머리를 보지
+       * 않고 본문을 JSON 으로 읽는다. 누구나 읽는 조회라 막을 이유도 없다.
+       */
+      headers: { 'content-type': 'text/plain;charset=UTF-8' },
       body: JSON.stringify({ groups: batch }),
     });
     // 횟수 제한(429)이나 워커가 잠시 흔들린 경우. "없다" 고 적어 두면 다시 묻지 않으므로
@@ -284,7 +324,7 @@ export function usePrefetchItemCards(keys: readonly ItemCardKey[]): void {
     const missing: ItemCardKey[] = [];
     const now = Date.now();
     for (const key of signature.split('\u0001')) {
-      if ((known.has(key) && !isStaleMissing(key, now)) || inFlight.has(key)) continue;
+      if (!needsLookup(key, now) || inFlight.has(key)) continue;
       const [category, name] = key.split('\u0000');
       if (category && name) missing.push({ category, name });
     }

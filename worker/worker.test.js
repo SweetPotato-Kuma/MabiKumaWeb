@@ -13,9 +13,11 @@ function fakeKv() {
   const store = new Map();
   return {
     store,
-    async get(key, type) {
+    // 워커는 `get(key, { type, cacheTtl })` 로 부른다. 예전 모양 `get(key, 'json')` 도 받는다.
+    async get(key, options) {
       const value = store.get(key);
       if (value === undefined) return null;
+      const type = typeof options === 'string' ? options : options?.type;
       return type === 'json' ? JSON.parse(value) : value;
     },
     async put(key, value) {
@@ -248,6 +250,20 @@ describe('아이템 카드 읽기', () => {
     expect(reads).toBe(0);
     expect(first.headers.get('x-card-shards')).toBe('1/1');
     expect((await second.json()).cards).toHaveLength(1);
+  });
+
+  it('KV 를 읽을 때 그 지역 엣지에 한 시간 남겨 두라고 한다', async () => {
+    // 인스턴스 메모리에 없을 때 중앙 저장소까지 가지 않게 하려는 것이다.
+    const calls = [];
+    const get = env.ITEM_CARDS.get.bind(env.ITEM_CARDS);
+    env.ITEM_CARDS.get = async (key, options) => {
+      calls.push(options);
+      return get(key, options);
+    };
+
+    await call('/item-card/lookup', { method: 'POST', body: { category: '처음 보는 칸', names: ['없는 이름'] } });
+
+    expect(calls).toEqual([{ type: 'json', cacheTtl: 3600 }]);
   });
 
   it('칸을 새로 쓰면 들고 있던 옛 칸도 바로 바뀐다', async () => {

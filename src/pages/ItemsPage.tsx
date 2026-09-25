@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState, type KeyboardEvent } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import {
@@ -27,7 +27,7 @@ import { QueryState } from '@/components/QueryState';
 import { ITEMS_PATH, itemInfoPath, normalizeForSearch } from '@/features/auction/dictionary';
 import { searchNames, useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { isEquipmentCategory } from '@/features/equipment/api';
-import { useItemCards } from '@/features/itemcard/cards';
+import { preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 
@@ -170,8 +170,16 @@ function ItemList({
    * 카테고리나 검색어가 바뀌면 첫 쪽으로 돌아간다.
    */
   const { page, pageSize, pagination } = useListPagination(`${category}|${deferredKeyword}`);
-  const cardKeys = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [rows, page, pageSize]);
+
+  /**
+   * 카드는 지금 쪽과 다음 쪽을 한 번에 묻는다. 10줄씩이면 20개라 요청은 그대로 한 번이다.
+   * 다음 쪽 그림도 미리 받아 두어, 넘기는 순간 그림이 이미 와 있게 한다.
+   */
+  const cardKeys = useMemo(() => rows.slice((page - 1) * pageSize, (page + 1) * pageSize), [rows, page, pageSize]);
   const cardOf = useItemCards(cardKeys);
+  useEffect(() => {
+    preloadItemIcons(cardKeys.slice(pageSize).map((row) => cardOf(row.category, row.name)));
+  }, [cardKeys, pageSize, cardOf]);
 
   /** 목록 아래쪽에서 눌러도 상세는 맨 위부터 보이게 한다. */
   const open = (row: ItemRow) => {

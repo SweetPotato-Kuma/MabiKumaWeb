@@ -540,6 +540,19 @@ const SHARD_CACHE_MS = 60_000;
 const SHARD_CACHE_MAX = 8;
 
 /**
+ * KV 를 읽을 때 그 지역 엣지에 남겨 두는 시간(초).
+ *
+ * 위의 메모리 캐시는 같은 인스턴스에서만 먹는다. 방문이 드문 시간에는 요청마다 인스턴스가
+ * 달라 거의 매번 KV 까지 가고, 처음 읽는 칸은 중앙 저장소까지 다녀오느라 한국에서 수백 ms 가
+ * 든다. 표의 그림은 이 조회가 끝나야 받기 시작하므로 그만큼 늦게 뜬다.
+ *
+ * 엣지에 한 시간 남겨 두면 같은 지역의 다음 방문자는 가까운 곳에서 바로 읽는다. 대신 새로 올린
+ * 카드가 다른 지역에 보이기까지 최대 한 시간이 걸린다. 화면이 "없더라" 를 한 시간 믿는 것과
+ * 같은 폭이다(src/features/itemcard/cards.ts 의 MISSING_TTL_MS).
+ */
+const KV_EDGE_CACHE_SECONDS = 3600;
+
+/**
  * KV 바인딩마다 따로 든다. 바인딩은 인스턴스가 사는 동안 같은 객체라 운영에서는 하나를 계속
  * 쓰고, 테스트는 매번 새 가짜 KV 를 넘기므로 저절로 섞이지 않는다.
  */
@@ -576,7 +589,7 @@ async function readCachedKv(env, key, pick) {
     return { value: hit.value, fromMemory: true };
   }
 
-  const value = pick(await env.ITEM_CARDS.get(key, 'json'));
+  const value = pick(await env.ITEM_CARDS.get(key, { type: 'json', cacheTtl: KV_EDGE_CACHE_SECONDS }));
   rememberShard(env, key, value);
   return { value, fromMemory: false };
 }
