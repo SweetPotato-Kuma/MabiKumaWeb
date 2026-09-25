@@ -20,6 +20,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
+import { AuctionOptionFilter } from '@/components/AuctionOptionFilter';
 import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { CategoryPicker } from '@/components/CategoryPicker';
@@ -36,6 +37,13 @@ import {
   searchNames,
   useItemNameIndexQuery,
 } from '@/features/auction/nameIndex';
+import {
+  activeConditionCount,
+  describeMatch,
+  EMPTY_OPTION_FILTER,
+  matchesOptionFilter,
+  type OptionFilter,
+} from '@/features/auction/optionFilter';
 import { useMarketRecentQuery } from '@/features/market/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { useIconMaps } from '@/features/itemcard/iconMap';
@@ -90,12 +98,23 @@ function ItemIconCell({ rawName, category }: { rawName: string; category: string
   return <ItemIcon category={category} name={name} card={card} size={AUCTION_ICON_BOX} />;
 }
 
-/** 이름 열은 표시 이름 한 줄이다. 인챈트를 뗀 원래 이름은 줄마다 되풀이되어 목록만 길어졌다. */
-function ItemNameCell({ displayName }: { displayName: string }) {
+/**
+ * 이름 열은 표시 이름 한 줄이다. 인챈트를 뗀 원래 이름은 줄마다 되풀이되어 목록만 길어졌다.
+ * 세부 옵션으로 거르는 중이면 걸린 옵션을 아래에 적는다. 표에는 옵션 칸이 없어 누르지 않고는
+ * 왜 걸렸는지 보이지 않는다.
+ */
+function ItemNameCell({ displayName, notes }: { displayName: string; notes?: string[] }) {
   return (
-    <Text strong style={{ fontSize: 14 }}>
-      {displayName}
-    </Text>
+    <Flex vertical gap={2}>
+      <Text strong style={{ fontSize: 14 }}>
+        {displayName}
+      </Text>
+      {notes?.map((note) => (
+        <Text key={note} type="secondary" style={{ fontSize: 12 }}>
+          {note}
+        </Text>
+      ))}
+    </Flex>
   );
 }
 
@@ -172,6 +191,29 @@ export function AuctionPage() {
   // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
   const history = useMemo(() => historyQuery.data?.items ?? [], [historyQuery.data]);
+
+  /**
+   * 세부 옵션 조건. 넥슨 API 는 옵션으로 찾지 못해 불러온 매물을 화면에서 거른다.
+   * 찾기를 다시 누르지 않아도 바로 걸리고, 계산은 입력 뒤로 미뤄 타이핑이 밀리지 않게 한다.
+   * 맞는 것이 모자라면 아래 자동 불러오기가 다음 묶음을 더 받는다.
+   */
+  const [optionFilter, setOptionFilter] = useState<OptionFilter>(EMPTY_OPTION_FILTER);
+  const deferredFilter = useDeferredValue(optionFilter);
+  const filtering = activeConditionCount(deferredFilter) > 0;
+  const visibleItems = useMemo(
+    () => (filtering ? items.filter((item) => matchesOptionFilter(item, deferredFilter)) : items),
+    [filtering, items, deferredFilter],
+  );
+  const visibleHistory = useMemo(
+    () =>
+      filtering ? history.filter((item) => matchesOptionFilter(item, deferredFilter)) : history,
+    [filtering, history, deferredFilter],
+  );
+  /** 조건이 바뀌면 옛 쪽 번호는 뜻이 없다. 찾기를 새로 한 것처럼 첫 쪽으로 돌아간다. */
+  const pagingKey = useMemo(
+    () => `${JSON.stringify(submitted)}|${JSON.stringify(deferredFilter)}`,
+    [submitted, deferredFilter],
+  );
   /**
    * 최근 1일 시세. 불러온 매물이 전부 한 아이템이면 위에 요약 칸을 하나 두고, 여러 아이템이 섞이면
    * 줄마다 그 아이템의 1일 중위 가격을 붙인다. 섞인 목록에서 한 줄 요약은 뜻이 없다.
@@ -212,14 +254,14 @@ export function AuctionPage() {
 
   // 목록은 쪽으로 나눠 보여 준다. 새로 찾으면 첫 쪽으로 돌아간다.
   // 카드는 위에서 불러온 줄 전체를 한꺼번에 받아 두므로 쪽을 넘겨도 다시 묻지 않는다.
-  const itemsPaging = useListPagination(submitted);
-  const historyPaging = useListPagination(submitted);
+  const itemsPaging = useListPagination(pagingKey);
+  const historyPaging = useListPagination(pagingKey);
 
   // 끝쪽에 닿으면 다음 500건을 알아서 받는다. 쪽이 끝없이 이어지는 것처럼 보인다.
   const itemsMore = useAutoLoadMore({
     page: itemsPaging.page,
     pageSize: itemsPaging.pageSize,
-    rowCount: items.length,
+    rowCount: visibleItems.length,
     hasNextPage: itemsQuery.hasNextPage,
     isFetching: itemsQuery.isFetching,
     fetchNextPage: itemsQuery.fetchNextPage,
@@ -229,7 +271,7 @@ export function AuctionPage() {
   const historyMore = useAutoLoadMore({
     page: historyPaging.page,
     pageSize: historyPaging.pageSize,
-    rowCount: history.length,
+    rowCount: visibleHistory.length,
     hasNextPage: historyQuery.hasNextPage,
     isFetching: historyQuery.isFetching,
     fetchNextPage: historyQuery.fetchNextPage,
@@ -371,7 +413,12 @@ export function AuctionPage() {
     {
       title: '이름',
       dataIndex: 'item_display_name',
-      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} />,
+      render: (_value, record) => (
+        <ItemNameCell
+          displayName={record.item_display_name}
+          notes={filtering ? describeMatch(record, deferredFilter) : undefined}
+        />
+      ),
     },
     {
       title: '수량',
@@ -428,7 +475,7 @@ export function AuctionPage() {
         </Flex>
       ),
     },
-  ], [recentByName]);
+  ], [recentByName, filtering, deferredFilter]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => [
@@ -441,7 +488,12 @@ export function AuctionPage() {
     {
       title: '이름',
       dataIndex: 'item_display_name',
-      render: (_value, record) => <ItemNameCell displayName={record.item_display_name} />,
+      render: (_value, record) => (
+        <ItemNameCell
+          displayName={record.item_display_name}
+          notes={filtering ? describeMatch(record, deferredFilter) : undefined}
+        />
+      ),
     },
     {
       title: '수량',
@@ -469,7 +521,7 @@ export function AuctionPage() {
       sorter: (a, b) => Date.parse(a.date_auction_buy) - Date.parse(b.date_auction_buy),
       render: (value: string) => <span className="tnum">{formatDateTime(value)}</span>,
     },
-  ], []);
+  ], [filtering, deferredFilter]);
 
   /**
    * 결과 영역은 검색어 타이핑과 분리한다.
@@ -503,7 +555,7 @@ export function AuctionPage() {
       <QueryState
         isLoading={itemsQuery.isPending && enabled}
         error={itemsQuery.error}
-        isEmpty={items.length === 0}
+        isEmpty={visibleItems.length === 0}
         emptyMessage={
           itemsLoaded > 0
             ? itemsQuery.hasNextPage && !itemsMore.paused
@@ -513,14 +565,14 @@ export function AuctionPage() {
         }
       >
         <Flex vertical gap={12}>
-          {items.length !== itemsLoaded ? (
+          {visibleItems.length !== itemsLoaded ? (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              불러온 {formatNumber(itemsLoaded)}건 가운데 조건에 맞는 {formatNumber(items.length)}건을 보고 있습니다.
+              불러온 {formatNumber(itemsLoaded)}건 가운데 조건에 맞는 {formatNumber(visibleItems.length)}건을 보고 있습니다.
             </Text>
           ) : null}
           <Table<AuctionItem>
             columns={itemColumns}
-            dataSource={items}
+            dataSource={visibleItems}
             onRow={(record) =>
               rowInteraction(() => ({
                 displayName: record.item_display_name,
@@ -549,13 +601,13 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, itemColumns, items, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, recent, rowInteraction, singleItem]);
+  ), [enabled, itemColumns, visibleItems, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, recent, rowInteraction, singleItem]);
 
   const historyPanel = useMemo(() => (
     <QueryState
       isLoading={historyQuery.isPending && enabled}
       error={historyQuery.error}
-      isEmpty={history.length === 0}
+      isEmpty={visibleHistory.length === 0}
       emptyMessage={
         historyLoaded > 0
           ? historyQuery.hasNextPage && !historyMore.paused
@@ -565,15 +617,15 @@ export function AuctionPage() {
       }
     >
       <Flex vertical gap={12}>
-        {history.length !== historyLoaded ? (
+        {visibleHistory.length !== historyLoaded ? (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            최근 1시간 거래 {formatNumber(historyLoaded)}건 가운데 {formatNumber(history.length)}건이 검색어와
+            최근 1시간 거래 {formatNumber(historyLoaded)}건 가운데 {formatNumber(visibleHistory.length)}건이 조건과
             맞습니다.
           </Text>
         ) : null}
         <Table<AuctionHistoryItem>
           columns={historyColumns}
-          dataSource={history}
+          dataSource={visibleHistory}
           onRow={(record) =>
             rowInteraction(() => ({
               displayName: record.item_display_name,
@@ -601,7 +653,7 @@ export function AuctionPage() {
         />
       </Flex>
     </QueryState>
-  ), [enabled, history, historyColumns, historyLoaded, historyMore, historyPaging.pagination, historyQuery, rowInteraction]);
+  ), [enabled, visibleHistory, historyColumns, historyLoaded, historyMore, historyPaging.pagination, historyQuery, rowInteraction]);
 
   return (
     <Flex vertical gap={16}>
@@ -655,6 +707,7 @@ export function AuctionPage() {
                     onClick={() => {
                       setForm(EMPTY_INPUT);
                       setSubmitted(null);
+                      setOptionFilter(EMPTY_OPTION_FILTER);
                     }}
                   >
                     검색 초기화
@@ -682,6 +735,8 @@ export function AuctionPage() {
                           : '이름 일부로 찾습니다. 띄어쓰기는 달라도 됩니다.'}
                   </Text>
                 </Flex>
+
+                <AuctionOptionFilter value={optionFilter} onChange={setOptionFilter} />
               </Flex>
             </Card>
 
