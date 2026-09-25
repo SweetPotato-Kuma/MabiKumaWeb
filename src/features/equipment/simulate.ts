@@ -29,14 +29,13 @@ export interface ReforgePick {
 
 export type SpecialKind = 's' | 'r';
 
+/**
+ * 고른 인챈트. 조건이 붙은 효과(스킬 랭크, 레벨 등)도 늘 채웠다고 보고 더한다. 인챈트를 고르는 사람은
+ * 그 조건을 노리고 고른다.
+ */
 export interface EnchantPick {
   prefix: number | null;
   suffix: number | null;
-  /**
-   * 조건이 붙은 효과(스킬 랭크, 레벨 등)도 더할지. 조건을 채웠는지는 캐릭터마다 달라 여기서 알 수
-   * 없다. 기본은 채웠다고 본다. 인챈트를 고르는 사람은 보통 그 조건을 노린다.
-   */
-  conditional: boolean;
 }
 
 export interface SimulationState {
@@ -59,7 +58,7 @@ export function initialState(item: EquipmentRecord): SimulationState {
     gemSlots: new Array<number | null>(item.upgrade?.gemMax ?? 0).fill(null),
     reforge: { rank: 1, options: [] },
     special: { kind: null, level: 0 },
-    enchant: { prefix: null, suffix: null, conditional: true },
+    enchant: { prefix: null, suffix: null },
     erg: { grade: null, level: 0 },
   };
 }
@@ -169,8 +168,7 @@ export function computeStats(
     }
   }
   for (const enchant of selectedEnchants(state.enchant, enchants)) {
-    for (const [stat, min, max, conditional] of enchant.effects) {
-      if (conditional && !state.enchant.conditional) continue;
+    for (const [stat, min, max] of enchant.effects) {
       row(stat).enchant[0] += min;
       row(stat).enchant[1] += max;
     }
@@ -216,13 +214,11 @@ export interface SimulationParams {
   sp?: string;
   /** 인챈트 "접두.접미" */
   en?: string;
-  /** 조건 붙은 인챈트 효과를 뺐으면 "0" */
-  ec?: string;
   /** 에르그 "등급레벨". S50, D12 */
   eg?: string;
 }
 
-export const SIMULATION_PARAM_KEYS = ['rv', 'up', 'gm', 'rf', 'sp', 'en', 'ec', 'eg'] as const;
+export const SIMULATION_PARAM_KEYS = ['rv', 'up', 'gm', 'rf', 'sp', 'en', 'eg'] as const;
 
 const joinSlots = (slots: (number | null)[]) =>
   slots.map((id) => (id === null ? '' : String(id))).join('.');
@@ -244,7 +240,6 @@ export function encodeState(item: EquipmentRecord, state: SimulationState): Simu
   if (state.enchant.prefix !== null || state.enchant.suffix !== null) {
     params.en = joinSlots([state.enchant.prefix, state.enchant.suffix]);
   }
-  if (!state.enchant.conditional) params.ec = '0';
   if (state.erg.grade && state.erg.level > 0) params.eg = `${state.erg.grade}${state.erg.level}`;
   return params;
 }
@@ -328,7 +323,6 @@ export function decodeState(
   state.enchant = {
     prefix: pickEnchant(prefixText, 0),
     suffix: pickEnchant(suffixText, 1),
-    conditional: params.ec !== '0',
   };
 
   // 에르그는 이 장비에 있는 등급만, 레벨은 그 등급의 폭 안으로.

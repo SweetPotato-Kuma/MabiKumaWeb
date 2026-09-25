@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   Button,
-  Checkbox,
   Flex,
   Input,
   Segmented,
@@ -196,8 +195,8 @@ function EnchantList({
  * 게임 데이터의 "이 인챈트를 바를 수 있는 아이템" 에서 이 장비가 들어 있는 것만 모은 것이다.
  * 정렬은 `enchantRanking.ts` 가 정한다: 가까운 던전, 장비 분류별 중요 능력치, 출시 순.
  *
- * 효과 수치는 폭이 있어서(최대 대미지 50~60) 최종 능력치에 범위로 더한다. 조건이 붙은 효과는 그
- * 조건을 채웠는지 이 화면이 알 수 없으므로 더할지 말지를 고르게 한다.
+ * 효과 수치는 폭이 있어서(최대 대미지 50~60) 최종 능력치에 범위로 더한다. 조건이 붙은 효과(스킬
+ * 랭크 등)도 채웠다고 보고 더한다.
  */
 export function EnchantPanel({ category, enchants, pick, onChange }: EnchantPanelProps) {
   const cls = equipClass(category);
@@ -210,11 +209,6 @@ export function EnchantPanel({ category, enchants, pick, onChange }: EnchantPane
     () => enchants.filter((enchant) => enchant.slot === 1).sort(compare),
     [enchants, compare],
   );
-  const hasConditional = enchants.some(
-    (enchant) =>
-      (enchant.id === pick.prefix || enchant.id === pick.suffix) &&
-      enchant.effects.some(([, , , conditional]) => conditional),
-  );
 
   if (enchants.length === 0) {
     return <EmptyState size="small" description="이 장비에 바를 수 있는 인챈트가 없습니다." />;
@@ -225,11 +219,6 @@ export function EnchantPanel({ category, enchants, pick, onChange }: EnchantPane
       <Tabs
         size="small"
         tabBarStyle={{ marginBottom: 8 }}
-        tabBarExtraContent={
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            상위 던전 인챈트부터, 접두와 접미 하나씩
-          </Text>
-        }
         items={[
           {
             key: 'prefix',
@@ -259,15 +248,6 @@ export function EnchantPanel({ category, enchants, pick, onChange }: EnchantPane
           },
         ]}
       />
-
-      {hasConditional ? (
-        <Checkbox
-          checked={pick.conditional}
-          onChange={(event) => onChange({ ...pick, conditional: event.target.checked })}
-        >
-          조건이 붙은 효과도 최종 능력치에 더하기 (스킬 랭크, 레벨 조건을 채웠다고 봅니다)
-        </Checkbox>
-      ) : null}
     </Flex>
   );
 }

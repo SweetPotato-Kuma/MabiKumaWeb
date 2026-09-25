@@ -211,7 +211,7 @@ describe('능력치 합산', () => {
 describe('인챈트와 특별 개조', () => {
   it('고른 인챈트의 효과를 인챈트 칸에 범위로 더한다', () => {
     const state = initialState(SWORD);
-    state.enchant = { prefix: 21643, suffix: 10604, conditional: true };
+    state.enchant = { prefix: 21643, suffix: 10604 };
 
     const rows = computeStats(SWORD, UPGRADES, state, ENCHANTS);
     expect(rows.find((row) => row.stat === 'attack_max')).toMatchObject({
@@ -224,12 +224,13 @@ describe('인챈트와 특별 개조', () => {
     });
   });
 
-  it('조건 붙은 효과를 빼라고 하면 조건 없는 효과만 더한다', () => {
+  it('조건 붙은 효과도 늘 채웠다고 보고 더한다', () => {
     const state = initialState(SWORD);
-    state.enchant = { prefix: 21643, suffix: null, conditional: false };
+    state.enchant = { prefix: 21643, suffix: null };
 
     const rows = computeStats(SWORD, UPGRADES, state, ENCHANTS);
-    expect(rows.find((row) => row.stat === 'attack_max')?.enchant).toEqual([0, 0]);
+    // 윈드밀 랭크 조건이 붙은 최대 대미지도 들어간다.
+    expect(rows.find((row) => row.stat === 'attack_max')?.enchant).toEqual([50, 60]);
     expect(rows.find((row) => row.stat === 'life_max')?.total).toEqual([100, 100]);
   });
 
@@ -316,7 +317,7 @@ describe('링크로 저장하고 불러오기', () => {
     state.gemSlots = [52472];
     state.reforge = { rank: 1, options: [{ abilityId: 1, level: 12 }] };
     state.special = { kind: 'r', level: 7 };
-    state.enchant = { prefix: 21643, suffix: 10604, conditional: false };
+    state.enchant = { prefix: 21643, suffix: 10604 };
 
     const params = encodeState(SWORD, state);
     expect(decodeState(params, SWORD, UPGRADES, ABILITIES, LEVELS, ENCHANTS)).toEqual(state);
@@ -346,6 +347,6 @@ describe('링크로 저장하고 불러오기', () => {
 
   it('접두 자리에 접미 인챈트를 넣은 주소는 버린다', () => {
     const state = decodeState({ en: '10604.21643' }, SWORD, UPGRADES, ABILITIES, LEVELS, ENCHANTS);
-    expect(state.enchant).toEqual({ prefix: null, suffix: null, conditional: true });
+    expect(state.enchant).toEqual({ prefix: null, suffix: null });
   });
 });

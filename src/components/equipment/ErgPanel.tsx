@@ -134,11 +134,6 @@ export function ErgPanel({
       ) : grade ? (
         <EffectList def={erg[grade]} level={pick.level} />
       ) : null}
-
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        무기 공격력은 최소와 최대 공격력에 모두 더합니다. 스킬 대미지나 재사용 대기 시간 같은 효과는
-        능력치 표에 더하지 않고 글로만 보여 줍니다.
-      </Text>
     </Flex>
   );
 }

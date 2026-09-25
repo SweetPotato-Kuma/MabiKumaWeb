@@ -29,7 +29,7 @@ import { useItemCard, usePrefetchItemCards, type ItemCard } from '@/features/ite
 import { EmptyState } from '@/components/EmptyState';
 import { LinkIcon, RefreshIcon, SearchIcon } from '@/components/icons';
 
-const { Text, Paragraph } = Typography;
+const { Paragraph } = Typography;
 
 function Section({
   title,
@@ -366,14 +366,6 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
           />
         ) : null}
       </QueryState>
-
-      {/* 어디서 온 값인지 섞이지 않게 적는다. 경매장 API 가 주는 값이 아니다. */}
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        능력치와 개조, 인챈트, 세공 정보는 게임 클라이언트 데이터에서 모아 둔 것이며 경매장 API 가
-        주는 값이 아닙니다.
-        {lookup?.updated ? ` ${lookup.updated} 기준입니다.` : ''} 특별 개조 수치만 공개된 커뮤니티
-        표에서 옮겼습니다. 게임 업데이트 직후에는 실제와 다를 수 있습니다.
-      </Text>
     </Flex>
   );
 }
