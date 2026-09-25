@@ -17,11 +17,12 @@
  *   (게임에서도 첫 묶음이 기본 마무리다)
  * - 제작법에 나오는 모든 아이템의 이름과 거래 가능 여부. 거래 불가 아이템은 시세를 묻지 않는다
  * - 요리는 제작 목록이 아니라 요리 목록에 따로 있다. 조리 방법(굽기, 끓이기)을 도구 자리에,
- *   필요한 불을 설비 자리에 두고, 재료는 비율과 함께 적는다. 요리는 재료를 한 개씩 쓴다
+ *   필요한 불을 설비 자리에 두고, 재료마다 기준 값과 요리 경험치를 적는다. 요리는 재료를 한 개씩 쓴다
  *
- * 요리 재료의 비율:
- * - 게임 데이터의 재료 값은 기준 비율인데 합이 100 이 아닌 것이 많다(75 + 20 처럼). 게임 화면이
- *   그러듯 합에 대한 비율로 바꾸고, 나머지가 큰 칸부터 1% 씩 채워 합을 100 으로 맞춘다
+ * 요리 재료의 기준 값:
+ * - 게임 데이터의 재료 값은 비율의 기준인데 합이 100 이 아닌 것이 많다(75 + 20 처럼). 넣는 비율은
+ *   합에 대한 비율이라 추가 재료를 넣으면 달라진다. 그래서 비율로 바꾸지 않고 기준 값 그대로 두고
+ *   화면이 계산한다(features/crafting/recipes.ts 의 cookingRatios)
  * - 기본 재료가 셋보다 적으면 추가 재료 하나를 더 넣을 수 있다(소금, 설탕, 후추 가운데 하나 등).
  *   넣지 않아도 만들어지므로 비용에는 넣지 않고 extras 로만 적는다
  *
@@ -76,23 +77,6 @@ const COOKING_SKILL = 10020;
  * 스킬 랭크가 아닌 값(20)이 들어 있고, 재료도 이벤트 재료다.
  */
 const SKIPPED_COOKING_ACTIONS = new Set(['ie_expedition_cooking']);
-
-/** 기준 값들을 합이 100 인 정수 비율로. 나머지가 큰 칸부터 1 씩 더한다(같으면 앞 칸 먼저). */
-function toPercents(amounts) {
-  const total = amounts.reduce((sum, amount) => sum + amount, 0);
-  if (total === 0) return amounts.map(() => 0);
-  const exact = amounts.map((amount) => (amount / total) * 100);
-  const floors = exact.map(Math.floor);
-  const order = exact
-    .map((value, index) => ({ index, remainder: value - floors[index] }))
-    .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
-  let left = 100 - floors.reduce((sum, value) => sum + value, 0);
-  for (const { index } of order) {
-    if (left-- <= 0) break;
-    floors[index] += 1;
-  }
-  return floors;
-}
 
 async function fetchOk(url) {
   const response = await fetch(url);
@@ -359,18 +343,18 @@ async function main() {
       continue;
     }
     const essentials = cooking.Essentials ?? [];
-    const percents = toPercents(essentials.map((source) => Math.max(0, source.Amount ?? 0)));
     usedItems.add(cooking.ItemId);
     const recipe = {
       item: cooking.ItemId,
       skill: COOKING_SKILL,
       rank: action.MinSkillLevel ?? 0,
       yield: cooking.ResultBundle > 1 ? cooking.ResultBundle : 1,
-      materials: essentials.map((source, index) => {
+      materials: essentials.map((source) => {
         usedItems.add(source.ItemId);
-        return [[source.ItemId], 1, percents[index]];
+        return [[source.ItemId], 1, Math.max(0, source.Amount ?? 0)];
       }),
     };
+    if (cooking.CookExp) recipe.exp = cooking.CookExp;
     const tool = text(action.LocalName);
     if (tool) recipe.tool = tool;
     const station = action.PropLocalName ? text(action.PropLocalName) : '';
@@ -378,7 +362,7 @@ async function main() {
     const extras = essentials.length < 3 ? (cooking.Additionals ?? []) : [];
     if (extras.length) {
       for (const source of extras) usedItems.add(source.ItemId);
-      recipe.extras = extras.map((source) => [[source.ItemId], 1]);
+      recipe.extras = extras.map((source) => [[source.ItemId], 1, Math.max(0, source.Amount ?? 0)]);
     }
     recipes.push(recipe);
   }

@@ -14,6 +14,7 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
+import { CookingGuide } from '@/components/crafting/CookingGuide';
 import { ItemIcon } from '@/components/ItemIcon';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
@@ -36,8 +37,8 @@ import {
   type ShoppingRow,
 } from '@/features/crafting/plan';
 import {
+  isCooking,
   materialSummary,
-  ratioNote,
   recipeTitle,
   stationNote,
   type Recipe,
@@ -86,18 +87,10 @@ export function CraftingCost({ book, recipes, initialRecipe }: CraftingCostProps
 
   const header = (
     <Flex vertical gap={12}>
-      <Flex vertical gap={2}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {[recipeTitle(book, recipe), stationNote(recipe)].filter(Boolean).join(', ')}
-          {recipe.yield > 1 ? ` (한 번에 ${formatNumber(recipe.yield)}개)` : ''}
-        </Text>
-        {/* 요리는 재료를 한 개씩 쓰고 비율을 맞춰 넣는다. 트리의 개수만으로는 만들 수 없다. */}
-        {ratioNote(book, recipe) ? (
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            {ratioNote(book, recipe)}
-          </Text>
-        ) : null}
-      </Flex>
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        {[recipeTitle(book, recipe), stationNote(recipe)].filter(Boolean).join(', ')}
+        {recipe.yield > 1 ? ` (한 번에 ${formatNumber(recipe.yield)}개)` : ''}
+      </Text>
       {recipes.length > 1 ? (
         <Form layout="vertical" style={{ marginBottom: 0 }}>
           <Form.Item
@@ -118,6 +111,8 @@ export function CraftingCost({ book, recipes, initialRecipe }: CraftingCostProps
           </Form.Item>
         </Form>
       ) : null}
+      {/* 요리는 재료를 한 개씩 쓰고 비율을 맞춰 넣는다. 트리의 개수만으로는 만들 수 없다. */}
+      {isCooking(recipe) ? <CookingGuide key={recipe.index} book={book} recipe={recipe} /> : null}
     </Flex>
   );
 

@@ -13,8 +13,11 @@ import { formatNumber } from '@/lib/format';
 export interface RecipeSlot {
   ids: number[];
   count: number;
-  /** 요리 재료의 비율(%). 요리는 개수가 아니라 비율을 맞춰 넣는다. 다른 스킬은 없다. */
-  ratio?: number;
+  /**
+   * 요리 재료의 기준 값. 넣는 비율은 넣은 재료들의 기준 값 합에 대한 몫이다(cookingRatios).
+   * 다른 스킬은 없다.
+   */
+  amount?: number;
 }
 
 export interface Recipe {
@@ -38,6 +41,8 @@ export interface Recipe {
    * 다른 스킬은 비어 있다.
    */
   extras: RecipeSlot[];
+  /** 요리 한 번에 얻는 요리 경험치. 요리만 있다. */
+  exp?: number;
 }
 
 export interface CraftSkill {
@@ -46,7 +51,7 @@ export interface CraftSkill {
   count: number;
 }
 
-/** [아이템들, 개수, 요리 비율]. */
+/** [아이템들, 개수, 요리 기준 값]. */
 type RawSlot = [number[], number, number?];
 
 interface RawRecipe {
@@ -59,6 +64,7 @@ interface RawRecipe {
   materials: RawSlot[];
   finish?: RawSlot[];
   extras?: RawSlot[];
+  exp?: number;
 }
 
 export interface RawRecipeData {
@@ -91,8 +97,8 @@ export interface RecipeBook {
  */
 export const CONVERSION_SKILL = 35012;
 
-const toSlot = ([ids, count, ratio]: RawSlot): RecipeSlot =>
-  ratio === undefined ? { ids, count } : { ids, count, ratio };
+const toSlot = ([ids, count, amount]: RawSlot): RecipeSlot =>
+  amount === undefined ? { ids, count } : { ids, count, amount };
 
 export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
   const recipes = raw.recipes.map((recipe, index): Recipe => ({
@@ -106,6 +112,7 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     materials: recipe.materials.map(toSlot),
     finish: (recipe.finish ?? []).map(toSlot),
     extras: (recipe.extras ?? []).map(toSlot),
+    exp: recipe.exp,
   }));
 
   const byItem = new Map<number, Recipe[]>();
@@ -160,33 +167,72 @@ export function stationNote(recipe: Recipe): string {
 
 /**
  * 재료를 한 줄로. "철괴 3, 가죽 1". 제작법을 고르는 목록과 스킬별 목록에서 쓴다.
- * 요리는 한 개씩 쓰고 비율이 중요해서 비율로 적는다. "달걀 79%, 올리브유 21% (+ 소금/설탕/후추 중 하나)"
+ * 요리는 한 개씩 쓰고 비율이 중요해서 비율로 적는다. "달걀 75%, 올리브유 25% (+ 소금/설탕/후추 중 하나)"
  */
 export function materialSummary(book: RecipeBook, recipe: Recipe): string {
-  const main = [...recipe.materials, ...recipe.finish]
-    .map(
-      (slot) =>
-        `${book.itemName(slot.ids[0])} ${slot.ratio === undefined ? formatNumber(slot.count) : `${slot.ratio}%`}`,
-    )
+  if (isCooking(recipe)) {
+    const main = cookingRatios(recipe)
+      .map((step) => `${book.itemName(step.slot.ids[0])} ${formatPercent(step.percent)}`)
+      .join(', ');
+    if (recipe.extras.length === 0) return main;
+    return `${main} (+ ${recipe.extras.map((slot) => book.itemName(slot.ids[0])).join('/')} 중 하나)`;
+  }
+  return [...recipe.materials, ...recipe.finish]
+    .map((slot) => `${book.itemName(slot.ids[0])} ${formatNumber(slot.count)}`)
     .join(', ');
-  if (recipe.extras.length === 0) return main;
-  return `${main} (+ ${recipe.extras.map((slot) => book.itemName(slot.ids[0])).join('/')} 중 하나)`;
+}
+
+/** 비율을 맞춰 넣는 제작법인지(요리). */
+export function isCooking(recipe: Recipe): boolean {
+  return recipe.materials.some((slot) => slot.amount !== undefined);
+}
+
+/** 요리 재료 하나를 넣는 차례. */
+export interface CookingStep {
+  slot: RecipeSlot;
+  /** 추가 재료인지. */
+  extra: boolean;
+  /** 이 재료의 비율(%). 소수 첫째 자리까지. */
+  percent: number;
+  /** 이 재료까지 넣었을 때 게이지가 닿아야 하는 곳(%). 마지막 재료는 100. */
+  cumulative: number;
 }
 
 /**
- * 요리 재료를 넣는 비율. 요리는 재료를 한 개씩 쓰고 비율을 맞춰야 해서, 재료 트리의 개수만으로는
- * 만들 수 없다. 비율이 없는 제작법이면 빈 문자열.
- * "재료 비율: 달걀 79%, 올리브유 21%. 소금, 설탕 가운데 하나를 더 넣을 수 있습니다."
+ * 요리 재료를 넣는 차례와 비율. 기본 재료 뒤에 고른 추가 재료(extras 의 순번)를 붙이고, 기준 값의
+ * 합에 대한 몫으로 나눈다. 0.1% 단위로 자르고 모자란 만큼은 잘린 나머지가 큰 칸부터 채워 합을 100 으로
+ * 맞춘다(같으면 앞 칸 먼저). 게임 화면도 넣은 재료의 합으로 나눈다.
  */
-export function ratioNote(book: RecipeBook, recipe: Recipe): string {
-  if (!recipe.materials.some((slot) => slot.ratio !== undefined)) return '';
-  const ratios = recipe.materials
-    .map((slot) => `${book.itemName(slot.ids[0])} ${slot.ratio ?? 0}%`)
-    .join(', ');
-  const extras = recipe.extras.map((slot) => book.itemName(slot.ids[0])).join(', ');
-  return extras
-    ? `재료 비율: ${ratios}. ${extras} 가운데 하나를 더 넣을 수 있습니다.`
-    : `재료 비율: ${ratios}`;
+export function cookingRatios(recipe: Recipe, extraIndex?: number): CookingStep[] {
+  const extra = extraIndex === undefined ? undefined : recipe.extras[extraIndex];
+  const slots = [
+    ...recipe.materials.map((slot) => ({ slot, extra: false })),
+    ...(extra ? [{ slot: extra, extra: true }] : []),
+  ];
+  const amounts = slots.map(({ slot }) => Math.max(0, slot.amount ?? 0));
+  const total = amounts.reduce((sum, amount) => sum + amount, 0);
+  const tenths = amounts.map((amount) => (total === 0 ? 0 : (amount / total) * 1000));
+  const floors = tenths.map(Math.floor);
+  if (total > 0) {
+    let left = 1000 - floors.reduce((sum, value) => sum + value, 0);
+    const order = tenths
+      .map((value, index) => ({ index, remainder: value - floors[index] }))
+      .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+    for (const { index } of order) {
+      if (left-- <= 0) break;
+      floors[index] += 1;
+    }
+  }
+  let reached = 0;
+  return slots.map(({ slot, extra: isExtra }, index) => {
+    reached += floors[index];
+    return { slot, extra: isExtra, percent: floors[index] / 10, cumulative: reached / 10 };
+  });
+}
+
+/** "85%", "78.9%". 소수점 아래가 0 이면 뗀다. */
+export function formatPercent(value: number): string {
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
 }
 
 export const recipeBookQueryOptions = queryOptions({

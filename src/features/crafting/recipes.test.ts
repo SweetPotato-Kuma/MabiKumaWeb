@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRecipeBook,
+  cookingRatios,
+  formatPercent,
+  isCooking,
   materialSummary,
-  ratioNote,
   recipeTitle,
   stationNote,
   type RawRecipeData,
 } from './recipes';
 
 /**
- * 요리 둘과 블랙스미스 하나.
- * - 마요네즈(1)는 달걀(2)과 올리브유(3)를 섞는다. 소금(4)이나 설탕(5)을 하나 더 넣을 수 있다.
+ * 요리 둘과 블랙스미스 하나. 요리 재료의 셋째 값은 게임 데이터의 기준 값이다.
+ * - 마요네즈(1)는 달걀(2) 75 와 올리브유(3) 20 을 섞는다. 소금(4) 10 이나 설탕(5) 5 를 하나 더 넣을 수 있다.
  * - 버터구이(6)는 불 앞에서 굽는다.
  * - 검(7)은 철괴(8) 3개로 만든다.
  */
@@ -37,13 +39,14 @@ const RAW: RawRecipeData = {
       rank: 0,
       yield: 1,
       tool: '혼합',
+      exp: 100,
       materials: [
-        [[2], 1, 79],
-        [[3], 1, 21],
+        [[2], 1, 75],
+        [[3], 1, 20],
       ],
       extras: [
-        [[4], 1],
-        [[5], 1],
+        [[4], 1, 10],
+        [[5], 1, 5],
       ],
     },
     {
@@ -60,42 +63,65 @@ const RAW: RawRecipeData = {
 };
 
 const book = buildRecipeBook(RAW);
+const [mayo] = book.recipesOf(1);
+const [grill] = book.recipesOf(6);
+const [sword] = book.recipesOf(7);
+
+const summarize = (extra?: number) =>
+  cookingRatios(mayo, extra).map((step) => [
+    book.itemName(step.slot.ids[0]),
+    step.percent,
+    step.cumulative,
+  ]);
 
 describe('요리 제작법', () => {
-  it('재료는 한 개씩 쓰고 비율을 함께 가진다', () => {
-    const [mayo] = book.recipesOf(1);
+  it('재료는 한 개씩 쓰고 기준 값과 경험치를 가진다', () => {
+    expect(isCooking(mayo)).toBe(true);
     expect(mayo.materials).toEqual([
-      { ids: [2], count: 1, ratio: 79 },
-      { ids: [3], count: 1, ratio: 21 },
+      { ids: [2], count: 1, amount: 75 },
+      { ids: [3], count: 1, amount: 20 },
     ]);
     expect(mayo.extras).toEqual([
-      { ids: [4], count: 1 },
-      { ids: [5], count: 1 },
+      { ids: [4], count: 1, amount: 10 },
+      { ids: [5], count: 1, amount: 5 },
+    ]);
+    expect(mayo.exp).toBe(100);
+  });
+
+  it('비율은 기준 값의 합에 대한 몫이고, 게이지 자리는 앞 재료부터 쌓는다', () => {
+    // 75 / 95 = 78.947..., 20 / 95 = 21.052... 잘린 나머지가 큰 올리브유에 0.1 을 준다.
+    expect(summarize()).toEqual([
+      ['달걀', 78.9, 78.9],
+      ['올리브유', 21.1, 100],
     ]);
   });
 
-  it('재료는 비율로, 추가 재료는 고를 수 있는 것으로 적는다', () => {
-    expect(materialSummary(book, book.recipesOf(1)[0])).toBe(
-      '달걀 79%, 올리브유 21% (+ 소금/설탕 중 하나)',
-    );
+  it('추가 재료를 넣으면 모든 비율이 다시 나뉜다', () => {
+    expect(summarize(0)).toEqual([
+      ['달걀', 71.4, 71.4],
+      ['올리브유', 19.1, 90.5],
+      ['소금', 9.5, 100],
+    ]);
+    expect(cookingRatios(mayo, 0).map((step) => step.extra)).toEqual([false, false, true]);
   });
 
-  it('상세 화면에는 비율과 더 넣을 수 있는 재료를 문장으로 적는다', () => {
-    expect(ratioNote(book, book.recipesOf(1)[0])).toBe(
-      '재료 비율: 달걀 79%, 올리브유 21%. 소금, 설탕 가운데 하나를 더 넣을 수 있습니다.',
-    );
-    expect(ratioNote(book, book.recipesOf(6)[0])).toBe('재료 비율: 달걀 100%');
-    expect(ratioNote(book, book.recipesOf(7)[0])).toBe('');
+  it('비율은 소수점 아래가 0 이면 떼고 적는다', () => {
+    expect(formatPercent(85)).toBe('85%');
+    expect(formatPercent(78.9)).toBe('78.9%');
+  });
+
+  it('목록에는 재료를 비율로, 추가 재료는 고를 수 있는 것으로 적는다', () => {
+    expect(materialSummary(book, mayo)).toBe('달걀 78.9%, 올리브유 21.1% (+ 소금/설탕 중 하나)');
+    expect(materialSummary(book, grill)).toBe('달걀 100%');
   });
 
   it('조리 방법이 도구 자리에, 불이 설비 자리에 온다', () => {
-    const [grill] = book.recipesOf(6);
     expect(recipeTitle(book, grill)).toBe('요리(굽기) F');
     expect(stationNote(grill)).toBe('설비: 불');
   });
 
-  it('다른 스킬은 비율도 추가 재료도 없다', () => {
-    const [sword] = book.recipesOf(7);
+  it('다른 스킬은 기준 값도 추가 재료도 없다', () => {
+    expect(isCooking(sword)).toBe(false);
     expect(sword.materials).toEqual([{ ids: [8], count: 3 }]);
     expect(sword.extras).toEqual([]);
     expect(materialSummary(book, sword)).toBe('철괴 3');
