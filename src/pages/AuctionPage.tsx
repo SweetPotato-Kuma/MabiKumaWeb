@@ -289,13 +289,12 @@ export function AuctionPage() {
   /**
    * 검색을 보낸다. 보내기 전에 사전으로 검색어를 다듬는다.
    *
-   * 자동완성은 초성과 붙여 쓴 이름을 받아 주지만 넥슨 검색은 받지 않는다("ㅅㅅㄷ" 은 400,
-   * "숏소드" 는 2건). 사전에서 이름을 찾아 제대로 띄어 쓴 이름으로 바꿔 보내고, 바뀐
-   * 검색어는 입력칸에도 그대로 보여 준다. 무엇으로 찾았는지 사용자가 알아야 한다.
+   * 넥슨 검색은 단어 단위로만 맞아서 "꿀우유" 로는 "향기로운 꿀 우유" 가, "우유" 로는
+   * "딸기우유" 가 안 걸린다. 사전에서 걸리는 이름을 모두 찾아 넥슨이 알아듣는 검색어로
+   * 나눠 보낸다(resolveSearch). 초성은 사전의 이름으로 바꾸고 입력칸에도 보여 준다.
    *
    * 검색어가 있는데 사전을 아직 받는 중이면 다 받을 때까지 기다린다. 사전 없이 보내면
-   * "꿀우유" 가 그대로 넘어가 0건이 되고, 이름으로 정확히 찾지도 못한다. 사전은 700KB
-   * 남짓이라 첫 검색에서 흔히 겹친다.
+   * "꿀우유" 가 그대로 넘어가 0건이 된다. 사전은 700KB 남짓이라 첫 검색에서 흔히 겹친다.
    */
   async function runSearch(next: AuctionSearchInput) {
     if (!isAuctionSearchReady(next)) {
@@ -316,9 +315,12 @@ export function AuctionPage() {
       return;
     }
 
-    const final = { ...next, ...resolved };
-    setForm((prev) => (final.keyword !== prev.keyword || final.category !== prev.category ? final : prev));
-    setSubmitted(final);
+    setForm((prev) =>
+      resolved.keyword !== prev.keyword || resolved.category !== prev.category
+        ? { keyword: resolved.keyword, category: resolved.category }
+        : prev,
+    );
+    setSubmitted(resolved);
   }
 
   useEffect(() => {
@@ -667,14 +669,17 @@ export function AuctionPage() {
                   ) : null}
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {/*
-                      찾는 방식이 둘이라 그대로 알린다. 전체 검색은 넥슨 쪽 keyword-search 라
-                      단어가 맞아야 하고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
+                      찾는 방식이 둘이라 그대로 알린다. 전체 검색은 사전으로 걸리는 이름을 골라
+                      keyword-search 를 나눠 부르고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
+                      걸리는 이름이 너무 많으면 다 부르지 못하니 그때만 알린다.
                     */}
                     {nameIndexQuery.isPending
                       ? '아이템 이름을 불러오는 중입니다.'
                       : form.category
                         ? `${form.category} 매물에서 이름 일부로 찾습니다.`
-                        : '전체 검색은 단어가 맞아야 찾습니다. 자동완성에서 고르면 그 카테고리로 좁혀 정확히 찾습니다.'}
+                        : submitted?.keywordsTruncated && !submitted.category
+                          ? '걸리는 이름이 많아 일부만 찾았습니다. 조금 더 길게 입력하거나 카테고리를 골라 주세요.'
+                          : '이름 일부로 찾습니다. 띄어쓰기는 달라도 됩니다.'}
                   </Text>
                 </Flex>
               </Flex>

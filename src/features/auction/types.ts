@@ -43,18 +43,20 @@ export interface AuctionHistoryResponse {
 /**
  * 매물 검색 조건.
  *
- * 이름 일부로 찾을 때는 keyword-search 를 쓴다. auction/list 의 item_name 은 정확한
+ * 이름으로 찾을 때는 keyword-search 만 쓴다. auction/list 의 item_name 은 정확한
  * 전체 이름만 받아서(부분 문자열은 OPENAPI00004) 검색어로 쓸 수 없다.
  * keyword-search 는 auction_item_category 를 무시하므로 카테고리는 화면에서 거른다.
- *
- * 검색어가 사전에 있는 이름 그대로면(exact) item_name 으로 보낸다. 그 아이템만 한 번에
- * 다 온다. 카테고리 목록 500건을 받아 거르면 "향기로운 꿀 우유" 는 233건 중 11건만 보였다.
  */
 export interface AuctionSearchInput {
   /** 비우면 전체. 키워드와 함께 쓰면 받아온 결과를 이 카테고리로 거른다. */
   category: string;
   /** 쉼표나 공백으로 여러 단어. 단어가 이름에 모두 들어간 아이템을 찾는다. */
   keyword: string;
-  /** keyword 가 사전에 있는 아이템 이름 그대로다. 찾기를 누를 때 사전으로 정한다. */
-  exact?: boolean;
+  /**
+   * 전체 검색에서 keyword-search 로 나눠 보낼 검색어. 찾기를 누를 때 사전으로 정한다.
+   * 비어 있으면 keyword 를 그대로 보낸다.
+   */
+  keywords?: string[];
+  /** 걸린 이름이 너무 많아 keywords 를 다 보내지 못했다. */
+  keywordsTruncated?: boolean;
 }

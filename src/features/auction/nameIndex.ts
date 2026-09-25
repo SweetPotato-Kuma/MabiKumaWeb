@@ -191,26 +191,23 @@ export function isInitialsOnly(text: string): boolean {
 export interface ResolvedSearch {
   keyword: string;
   category: string;
-  /** keyword 가 사전에 있는 이름 그대로라 item_name 으로 정확히 찾을 수 있다. */
-  exact: boolean;
+  /**
+   * 넥슨 keyword-search 로 나눠 보낼 검색어. 전체 검색일 때만 채운다.
+   * 비어 있으면 keyword 를 그대로 한 번 보낸다.
+   */
+  keywords?: string[];
+  /** 걸린 이름이 너무 많아 keywords 를 다 보내지 못했다. */
+  keywordsTruncated?: boolean;
 }
 
 /**
  * 찾기를 눌렀을 때 실제로 보낼 검색어를 다듬는다.
  *
- * 전체 검색은 넥슨 keyword-search 라 띄어쓰기까지 맞은 단어여야 한다. 자동완성이
- * 받아 주는 입력 가운데 넥슨은 받지 않는 것이 있다.
- *   초성 "ㅅㅅㄷ"   → 400 으로 거절
- *   붙여 쓴 "숏소드" → 2건 (띄어 쓴 "숏 소드" 는 116건)
- * 그래서 사전에서 이름을 찾아 제대로 띄어 쓴 이름으로 바꿔 보낸다. 그 이름이 한
- * 카테고리에서만 보이면 카테고리도 좁힌다. 카테고리 경로는 이름 일부로 정확히 거른다.
- * 이름 일부만 친 경우도 같다. 들어 있는 이름이 하나면 그 이름으로, 여럿이면 사전의
- * 띄어쓰기대로 다시 띄어 쓴 검색어로 보낸다.
+ * 입력기가 조립 중인 끝 낱자를 떼고, 초성 "ㅅㅅㄷ" 은 사전에서 가장 맞는 이름으로
+ * 바꾼다(넥슨은 초성을 400 으로 거절한다). 바뀐 검색어는 입력칸에도 보인다.
  *
- * 카테고리를 이미 골랐으면 목록을 받아 화면에서 거르므로(초성도 거기서 처리한다)
- * 검색어를 바꾸지 않는다. 입력기가 조립 중인 끝 낱자만 뗀다.
- *
- * 바꾼 검색어가 사전 이름 그대로면 exact 를 세운다. 그러면 이름으로 정확히 찾는다.
+ * 전체 검색이면 planKeywordSearch 로 넥슨에 보낼 검색어를 정한다. 카테고리를 골랐으면
+ * 그 목록을 받아 화면에서 거르므로(초성도 거기서 처리한다) 검색어를 바꾸지 않는다.
  *
  * 초성인데 사전에 맞는 이름이 없으면 null. 넥슨에 보내 봐야 400 이다.
  */
@@ -223,71 +220,107 @@ export function resolveSearch(
 
   if (!initialsOnly && TRAILING_JAMO.test(keyword)) keyword = keyword.slice(0, -1).trim();
 
-  const exactIn = (name: string) => Boolean(index?.categoriesByName.has(name));
-  const keep = (): ResolvedSearch => ({ keyword, category: input.category, exact: exactIn(keyword) });
-
-  if (input.category || !keyword) return keep();
-  if (!index) return initialsOnly ? null : keep();
-
-  const narrowTo = (suggestion: NameSuggestion): ResolvedSearch => ({
-    keyword: suggestion.name,
-    category: suggestion.categories.length === 1 ? suggestion.categories[0] : '',
-    exact: true,
-  });
-
-  const needle = normalizeForSearch(keyword);
-  const exact = index.normalized.indexOf(needle);
-  if (exact >= 0) return narrowTo(toSuggestion(index, exact));
+  if (input.category || !keyword) return { keyword, category: input.category };
+  if (!index) return initialsOnly ? null : { keyword, category: input.category };
 
   if (initialsOnly) {
     const [top] = searchNames(index, keyword, { limit: 1 });
-    return top ? narrowTo(top) : null;
+    if (!top) return null;
+    keyword = top.name;
   }
 
-  // 이름 일부만 쳤을 때. "꿀우유" 는 "향기로운 꿀 우유" 안에만 들어 있는데, 넥슨은
-  // 붙여 쓴 "꿀우유" 를 단어로 보지 않아 0건이 된다.
-  const containing = new Set<number>();
-  const seenNames = new Set<string>();
-  for (let i = 0; i < index.normalized.length; i += 1) {
-    if (!index.normalized[i].includes(needle) || seenNames.has(index.names[i])) continue;
-    seenNames.add(index.names[i]);
-    containing.add(i);
-  }
+  const plan = planKeywordSearch(index, splitTerms(keyword));
+  return plan ? { keyword, category: input.category, ...plan } : { keyword, category: input.category };
+}
 
-  // 들어 있는 이름이 하나뿐이면 자동완성에서 그 이름을 고른 것과 같다.
-  if (containing.size === 1) {
-    const [only] = containing;
-    return narrowTo(toSuggestion(index, only));
-  }
+/** 검색어를 단어로 쪼갠다. 쉼표든 공백이든 구분자로 보고, 띄어쓰기는 지운 채로 비교한다. */
+export function splitTerms(keyword: string): string[] {
+  return keyword
+    .split(/[,\s]+/)
+    .map((term) => normalizeForSearch(term))
+    .filter(Boolean);
+}
 
-  // 여럿이면 사전이 띄어 쓴 대로 검색어를 다시 띄어 쓴다. 이름마다 띄어쓰기가 다르면
-  // 어느 쪽이 맞는지 알 수 없으니 그대로 보낸다.
-  const respaced = new Set<string>();
-  for (const i of containing) respaced.add(respaceLike(index.names[i], needle));
-  if (respaced.size === 1) {
-    const [only] = respaced;
-    return { keyword: only, category: input.category, exact: exactIn(only) };
-  }
+/** 한 번 찾을 때 keyword-search 를 몇 번까지 나눠 부를지. 넥슨 호출량을 지킨다. */
+export const MAX_KEYWORD_SEARCHES = 8;
+/** keyword-search 가 쉼표로 받는 단어 수. */
+const MAX_KEYWORD_WORDS = 10;
 
-  return keep();
+/**
+ * 이름 일부로 전체를 찾을 때 넥슨에 무엇을 보낼지 정한다.
+ *
+ * 넥슨 keyword-search 는 단어 단위로만 맞춘다. "우유" 로는 "딸기우유" 와 "우유식빵" 이
+ * 안 걸리고, 붙여 쓴 "꿀우유" 로는 "향기로운 꿀 우유" 가 안 걸린다. 쉼표로 여러 단어를
+ * 넣으면 모두 들어간 것만 준다(OR 이 아니다).
+ *
+ * 그래서 사전에서 띄어쓰기를 무시하고 검색어가 들어 있는 이름을 모두 찾고, 이름마다
+ * 넥슨이 알아듣는 말(searchKeyOf)로 바꾼 뒤 같은 것끼리 묶어 한 번씩 보낸다.
+ *   "우유"   → "우유"(우유, 브리움 우유, 향기로운 꿀 우유 …), "딸기우유", "우유식빵"
+ *   "꿀우유" → "꿀 우유"
+ * 이름을 많이 묶는 말부터 MAX_KEYWORD_SEARCHES 개까지만 보낸다.
+ *
+ * 사전에 걸리는 이름이 없으면 null. 새로 나온 아이템일 수 있으니 입력 그대로 보낸다.
+ */
+export function planKeywordSearch(
+  index: NameIndex,
+  terms: string[],
+): { keywords: string[]; keywordsTruncated: boolean } | null {
+  if (terms.length === 0 || terms.length > MAX_KEYWORD_WORDS) return null;
+
+  const namesByKey = new Map<string, number>();
+  const seen = new Set<string>();
+  for (let i = 0; i < index.names.length; i += 1) {
+    const name = index.names[i];
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (!terms.every((term) => index.normalized[i].includes(term))) continue;
+    const key = searchKeyOf(name, terms);
+    if (key) namesByKey.set(key, (namesByKey.get(key) ?? 0) + 1);
+  }
+  if (namesByKey.size === 0) return null;
+
+  const keywords = [...namesByKey.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)
+    .slice(0, MAX_KEYWORD_SEARCHES)
+    .map(([key]) => key);
+  return { keywords, keywordsTruncated: namesByKey.size > keywords.length };
 }
 
 /**
- * 붙여 쓴 검색어를 이름 속 띄어쓰기대로 되살린다. 넥슨은 단어 단위로 맞추므로 걸친
- * 단어는 통째로 넓힌다. "꿀우유" 는 "향기로운 꿀 우유" 에서 "꿀 우유" 가 된다.
- * needle 은 normalizeForSearch 를 거친 값이고 name 안에 들어 있어야 한다.
+ * 이 이름을 넥슨 keyword-search 로 찾으려면 무엇을 보내야 하는지.
+ *
+ * 검색어 단어마다 이름 속에서 걸친 단어를 통째로 잘라 이름의 띄어쓰기대로 되살리고,
+ * 쉼표로 잇는다. "향기로운 꿀 우유" 에서 "꿀우유" 는 "꿀 우유", "딸기우유" 에서 "우유" 는
+ * "딸기우유" 다. 결과를 합칠 때 매물이 어느 검색어 몫인지 가르는 데도 쓴다.
+ * 단어 하나라도 이름에 없으면 null.
  */
-function respaceLike(name: string, needle: string): string {
-  const at = normalizeForSearch(name).indexOf(needle);
+export function searchKeyOf(name: string, terms: string[]): string | null {
+  const bare = name.replace(/^@/, '');
+  const spans: string[] = [];
+  for (const term of terms) {
+    const span = wordSpan(bare, term);
+    if (span === null) return null;
+    if (!spans.includes(span)) spans.push(span);
+  }
+  return spans.join(',');
+}
+
+/**
+ * 띄어쓰기를 지운 term 이 name 에 걸친 단어들. 넥슨은 단어 단위로 맞추므로 걸친
+ * 단어는 통째로 넓힌다. 들어 있지 않으면 null.
+ */
+function wordSpan(name: string, term: string): string | null {
+  const at = normalizeForSearch(name).indexOf(term);
+  if (at < 0) return null;
   // 띄어쓰기를 지운 위치를 원래 이름의 위치로 되돌린다.
-  let start = -1;
+  let start = 0;
   let end = name.length;
   let seen = 0;
   for (let i = 0; i < name.length; i += 1) {
     if (/\s/.test(name[i])) continue;
     if (seen === at) start = i;
     seen += 1;
-    if (seen === at + needle.length) {
+    if (seen === at + term.length) {
       end = i + 1;
       break;
     }
