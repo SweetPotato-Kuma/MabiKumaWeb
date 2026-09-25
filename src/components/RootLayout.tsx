@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  ApiOutlined,
   BookOutlined,
   IdcardOutlined,
   KeyOutlined,
@@ -82,7 +81,8 @@ function selectedKeyFor(pathname: string): string {
 }
 
 /**
- * 지금 요청이 어디로 나가는지. 실제 상태라서 배지로 보여 줄 값이 맞다.
+ * 조회가 평소와 다를 때만 알린다. 프록시를 거치는 것은 방문자 대부분이 늘 보는 기본 상태라
+ * 배지로 띄워도 알려 주는 것이 없다. 그때는 아무것도 그리지 않는다.
  * 설정 화면이 없으므로 키를 직접 넣는 경로는 없다. 상태만 알린다.
  */
 function EndpointTag() {
@@ -95,13 +95,7 @@ function EndpointTag() {
       </Tag>
     );
   }
-  if (endpoint.viaProxy) {
-    return (
-      <Tag icon={<ApiOutlined />} color="processing" style={{ marginInlineEnd: 0 }}>
-        프록시 경유
-      </Tag>
-    );
-  }
+  if (endpoint.viaProxy) return null;
   return (
     <Tag icon={<KeyOutlined />} color="warning" style={{ marginInlineEnd: 0 }}>
       조회 불가
