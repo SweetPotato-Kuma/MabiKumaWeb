@@ -1,8 +1,8 @@
-import { InfoCircleOutlined } from '@ant-design/icons';
 import { Flex, Segmented, Select, Tooltip, Typography } from 'antd';
 import type { SpecialKind } from '@/features/equipment/simulate';
 import { describeSpecialStep, specialStep } from '@/features/equipment/specialUpgrade';
 import type { EquipmentRecord } from '@/features/equipment/types';
+import { InfoIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -64,7 +64,7 @@ export function SpecialUpgradePanel({ special, kind, level, onChange }: SpecialU
       <Tooltip
         title={`S 는 푸른 개조석으로 공격력과 보너스 대미지를, R 은 붉은 개조석으로 크리티컬 대미지를 올립니다. 단계별 수치는 게임 데이터에 없어 공개된 커뮤니티 표를 옮겼으며, 그 표가 오래되어 실제와 다를 수 있습니다.`}
       >
-        <InfoCircleOutlined aria-label="특별 개조 수치 안내" />
+        <InfoIcon aria-label="특별 개조 수치 안내" />
       </Tooltip>
     </Flex>
   );

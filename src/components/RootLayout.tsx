@@ -1,17 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  BookOutlined,
-  IdcardOutlined,
-  KeyOutlined,
-  MoonOutlined,
-  PictureOutlined,
-  ShopOutlined,
-  ShoppingOutlined,
-  SunOutlined,
-  TagOutlined,
-} from '@ant-design/icons';
-import {
   Button,
   Flex,
   Grid,
@@ -33,6 +22,7 @@ import { IssueReportButton } from '@/components/IssueReportButton';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
+import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, ImageIcon, KeyIcon, LightModeIcon, ShopIcon, TicketIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -46,17 +36,17 @@ type NavItem = { key: string; icon: ReactNode; label: ReactNode; children?: NavI
  * 한 줄을 넘지 않게 하려는 것이다. 묶음 칸 자체는 화면이 없어 누르면 펼쳐지기만 한다.
  */
 const NAV_ITEMS: NavItem[] = [
-  { key: '/auction', icon: <TagOutlined />, label: <NavLink to="/auction">경매장</NavLink> },
-  { key: '/items', icon: <BookOutlined />, label: <NavLink to="/items">아이템 정보</NavLink> },
+  { key: '/auction', icon: <AuctionIcon />, label: <NavLink to="/auction">경매장</NavLink> },
+  { key: '/items', icon: <BookIcon />, label: <NavLink to="/items">아이템 정보</NavLink> },
   {
     key: 'npc-shop',
-    icon: <ShopOutlined />,
+    icon: <ShopIcon />,
     label: 'NPC 상점',
     children: [
-      { key: '/bags', icon: <ShoppingOutlined />, label: <NavLink to="/bags">튼튼한 주머니</NavLink> },
+      { key: '/bags', icon: <BagIcon />, label: <NavLink to="/bags">튼튼한 주머니</NavLink> },
       {
         key: '/magmell-pass',
-        icon: <IdcardOutlined />,
+        icon: <TicketIcon />,
         label: <NavLink to="/magmell-pass">마그 멜 통행증</NavLink>,
       },
     ],
@@ -69,7 +59,7 @@ const NAV_ITEMS: NavItem[] = [
  */
 const ADMIN_NAV_ITEM: NavItem = {
   key: '/item-card',
-  icon: <PictureOutlined />,
+  icon: <ImageIcon />,
   label: <NavLink to="/item-card">카드 만들기</NavLink>,
 };
 
@@ -90,14 +80,14 @@ function EndpointTag() {
 
   if (endpoint.apiKey) {
     return (
-      <Tag icon={<KeyOutlined />} color="success" style={{ marginInlineEnd: 0 }}>
+      <Tag icon={<KeyIcon />} color="success" style={{ marginInlineEnd: 0 }}>
         내 API 키
       </Tag>
     );
   }
   if (endpoint.viaProxy) return null;
   return (
-    <Tag icon={<KeyOutlined />} color="warning" style={{ marginInlineEnd: 0 }}>
+    <Tag icon={<KeyIcon />} color="warning" style={{ marginInlineEnd: 0 }}>
       조회 불가
     </Tag>
   );
@@ -117,7 +107,7 @@ function ThemeToggle() {
       <Button
         type="text"
         aria-label={isDark ? '라이트 모드로 전환' : '다크 모드로 전환'}
-        icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+        icon={isDark ? <LightModeIcon /> : <DarkModeIcon />}
         onClick={() => setPreference(isDark ? 'light' : 'dark')}
       />
     </Tooltip>

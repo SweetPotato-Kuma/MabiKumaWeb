@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ReloadOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -32,6 +31,7 @@ import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 import { EmptyState } from '@/components/EmptyState';
+import { RefreshIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
@@ -283,7 +283,7 @@ export function MagmellPassPage() {
             <Col xs={24} md={5}>
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
-                  icon={<ReloadOutlined />}
+                  icon={<RefreshIcon />}
                   onClick={() => void search()}
                   disabled={!available}
                   loading={loading}

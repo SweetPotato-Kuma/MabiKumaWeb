@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InboxOutlined,
-  LockOutlined,
-  ReadOutlined,
-  RedoOutlined,
-  SaveOutlined,
-} from '@ant-design/icons';
-import {
   Alert,
   App,
   Button,
@@ -52,6 +45,7 @@ import {
 import { checkModel, readTooltip, type ModelStatus } from '@/features/itemcard/promptModel';
 import { useItemIndexQuery } from '@/features/auction/dictionary';
 import { EmptyState } from '@/components/EmptyState';
+import { LockIcon, ReadIcon, ResetIcon, SaveIcon, UploadIcon } from '@/components/icons';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -160,7 +154,7 @@ function AdminKeyGate({ onUnlock }: { onUnlock: (key: string) => void }) {
               <Button
                 type="primary"
                 htmlType="submit"
-                icon={<LockOutlined />}
+                icon={<LockIcon />}
                 loading={isChecking}
                 disabled={value.trim() === ''}
               >
@@ -399,7 +393,7 @@ function ItemCardEditor({ onLock }: { onLock: () => void }) {
             게임에서 찍은 툴팁 스크린샷을 붙여 넣으면 아이콘을 잘라내고 글자를 읽어 사전에 넣습니다.
           </Text>
         </Flex>
-        <Button icon={<LockOutlined />} onClick={onLock}>
+        <Button icon={<LockIcon />} onClick={onLock}>
           키 지우기
         </Button>
       </Flex>
@@ -414,7 +408,7 @@ function ItemCardEditor({ onLock }: { onLock: () => void }) {
               title="스크린샷"
               extra={
                 source ? (
-                  <Button size="small" icon={<RedoOutlined />} onClick={resetBoxes}>
+                  <Button size="small" icon={<ResetIcon />} onClick={resetBoxes}>
                     자리 다시 찾기
                   </Button>
                 ) : null
@@ -463,7 +457,7 @@ function ItemCardEditor({ onLock }: { onLock: () => void }) {
                   }}
                 >
                   <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
+                    <UploadIcon />
                   </p>
                   <p className="ant-upload-text">여기에 끌어다 놓거나 눌러서 고르세요</p>
                   <p className="ant-upload-hint">화면 아무 데서나 Ctrl+V 로 붙여 넣어도 됩니다.</p>
@@ -576,7 +570,7 @@ function ItemCardEditor({ onLock }: { onLock: () => void }) {
 
                 <Button
                   type="primary"
-                  icon={<ReadOutlined />}
+                  icon={<ReadIcon />}
                   loading={isReading}
                   disabled={!panel || !modelUsable}
                   onClick={() => void runModel()}
@@ -627,12 +621,7 @@ function ItemCardEditor({ onLock }: { onLock: () => void }) {
 
                 <Form.Item style={{ marginBottom: 0 }}>
                   <Space>
-                    <Button
-                      type="primary"
-                      htmlType="submit"
-                      icon={<SaveOutlined />}
-                      loading={isSaving}
-                    >
+                    <Button type="primary" htmlType="submit" icon={<SaveIcon />} loading={isSaving}>
                       사전에 저장
                     </Button>
                     <Button onClick={() => form.resetFields()}>비우기</Button>

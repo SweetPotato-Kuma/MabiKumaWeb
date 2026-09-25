@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { BugOutlined, MessageOutlined } from '@ant-design/icons';
 import { Alert, App, Button, FloatButton, Form, Input, Modal, Radio, Typography } from 'antd';
 import { canReportIssue, submitIssueReport, type IssueCategory } from '@/features/report/api';
+import { BugIcon, ChatIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -85,7 +85,7 @@ export function IssueReportButton() {
       <FloatButton
         type="primary"
         shape="square"
-        icon={<MessageOutlined />}
+        icon={<ChatIcon />}
         description="의견 보내기"
         tooltip="버그 신고나 기능 요청을 보냅니다"
         aria-label="의견 보내기. 버그 신고나 기능 요청을 보냅니다"
@@ -163,7 +163,7 @@ export function IssueReportButton() {
             <Alert
               type="error"
               showIcon
-              icon={<BugOutlined />}
+              icon={<BugIcon />}
               message="제보를 보내지 못했습니다"
               description={failure}
             />

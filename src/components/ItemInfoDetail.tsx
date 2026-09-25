@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { SearchOutlined } from '@ant-design/icons';
 import { Button, Card, Flex, Skeleton, Typography } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
@@ -9,6 +8,7 @@ import {
   usePrefetchItemCards,
 } from '@/features/itemcard/cards';
 import { EmptyState } from '@/components/EmptyState';
+import { SearchIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -44,7 +44,7 @@ export function ItemInfoDetail({ category, name }: { category: string; name: str
 
         <div>
           <Link to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`}>
-            <Button icon={<SearchOutlined />}>시세 보기</Button>
+            <Button icon={<SearchIcon />}>시세 보기</Button>
           </Link>
         </div>
 

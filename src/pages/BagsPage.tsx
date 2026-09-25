@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AppstoreOutlined,
-  SearchOutlined,
-  StarFilled,
-  StarOutlined,
-  UnorderedListOutlined,
-} from '@ant-design/icons';
-import {
   Alert,
   Button,
   Card,
@@ -59,6 +52,7 @@ import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 import { EmptyState } from '@/components/EmptyState';
+import { GridIcon, ListIcon, SearchIcon, StarFillIcon, StarIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
@@ -69,8 +63,8 @@ const SERVER_OPTIONS = SERVER_NAMES.map((server) => ({ value: server, label: ser
 type ViewMode = 'grid' | 'table';
 
 const VIEW_OPTIONS = [
-  { value: 'grid', label: '그림', icon: <AppstoreOutlined /> },
-  { value: 'table', label: '표', icon: <UnorderedListOutlined /> },
+  { value: 'grid', label: '그림', icon: <GridIcon /> },
+  { value: 'table', label: '표', icon: <ListIcon /> },
 ];
 
 /** 파트마다 원하는 색. 검색에서 뺀 파트는 어떤 색이든 된다. */
@@ -292,17 +286,13 @@ function PartColorRow({
               {saved ? (
                 <Button
                   size="small"
-                  icon={<StarFilled />}
+                  icon={<StarFillIcon />}
                   onClick={() => removeSavedColor(target.color)}
                 >
                   저장에서 빼기
                 </Button>
               ) : (
-                <Button
-                  size="small"
-                  icon={<StarOutlined />}
-                  onClick={() => saveColor(target.color)}
-                >
+                <Button size="small" icon={<StarIcon />} onClick={() => saveColor(target.color)}>
                   이 색 저장
                 </Button>
               )}
@@ -509,7 +499,7 @@ export function BagsPage() {
         </Flex>
         <Button
           type="primary"
-          icon={<SearchOutlined />}
+          icon={<SearchIcon />}
           disabled={!available}
           loading={loading}
           onClick={() => void search(server)}

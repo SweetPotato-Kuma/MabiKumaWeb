@@ -1,6 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { SearchOutlined } from '@ant-design/icons';
 import {
   AutoComplete,
   Breadcrumb,
@@ -31,6 +30,7 @@ import { iconFileUrl, useIconMaps } from '@/features/itemcard/iconMap';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 import { EmptyState } from '@/components/EmptyState';
+import { SearchIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
@@ -263,7 +263,7 @@ function ItemList({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          <Button size="small" icon={<SearchOutlined />}>
+          <Button size="small" icon={<SearchIcon />}>
             시세 보기
           </Button>
         </Link>

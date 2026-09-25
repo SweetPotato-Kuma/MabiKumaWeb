@@ -1,6 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { LinkOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Card, Col, Divider, Flex, Grid, Row, Tooltip, Typography } from 'antd';
 import { HEADER_HEIGHT } from '@/app/theme';
 import { BaseStatsPanel } from '@/components/equipment/BaseStatsPanel';
@@ -26,6 +25,7 @@ import {
 import type { EquipmentLookup, EquipmentRecord } from '@/features/equipment/types';
 import { useItemCard, usePrefetchItemCards, type ItemCard } from '@/features/itemcard/cards';
 import { EmptyState } from '@/components/EmptyState';
+import { LinkIcon, RefreshIcon, SearchIcon } from '@/components/icons';
 
 const { Text, Paragraph } = Typography;
 
@@ -116,11 +116,11 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
             extra={
               <Flex gap={4}>
                 <Tooltip title="고른 조합이 주소에 담겨 있습니다. 링크를 저장해 두면 같은 조합으로 다시 열립니다.">
-                  <Button size="small" icon={<LinkOutlined />} onClick={() => void copyLink()}>
+                  <Button size="small" icon={<LinkIcon />} onClick={() => void copyLink()}>
                     링크 복사
                   </Button>
                 </Tooltip>
-                <Button size="small" icon={<ReloadOutlined />} onClick={() => onParamsChange({})}>
+                <Button size="small" icon={<RefreshIcon />} onClick={() => onParamsChange({})}>
                   처음으로
                 </Button>
               </Flex>
@@ -300,7 +300,7 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
           <Link
             to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`}
           >
-            <Button size="small" icon={<SearchOutlined />}>
+            <Button size="small" icon={<SearchIcon />}>
               시세 보기
             </Button>
           </Link>

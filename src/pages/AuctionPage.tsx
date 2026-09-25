@@ -1,6 +1,5 @@
 import { useCallback, useDeferredValue, useMemo, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LoadingOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   App,
   AutoComplete,
@@ -11,6 +10,7 @@ import {
   Grid,
   Input,
   Row,
+  Spin,
   Statistic,
   Table,
   Tabs,
@@ -35,6 +35,7 @@ import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib
 import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useListPagination } from '@/lib/useListPagination';
+import { RefreshIcon, SearchIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
@@ -109,9 +110,12 @@ function LoadMoreStatus({
 }) {
   if (isFetching) {
     return (
-      <Text type="secondary" role="status" style={{ fontSize: 12 }}>
-        <LoadingOutlined /> 다음 매물을 불러오는 중입니다.
-      </Text>
+      <Flex align="center" gap={8} role="status">
+        <Spin size="small" />
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          다음 매물을 불러오는 중입니다.
+        </Text>
+      </Flex>
     );
   }
   if (!hasNextPage) return null;
@@ -584,14 +588,14 @@ export function AuctionPage() {
 
                   <Button
                     type="primary"
-                    icon={<SearchOutlined />}
+                    icon={<SearchIcon />}
                     disabled={!canSubmit || !canQuery}
                     onClick={() => runSearch(form)}
                   >
                     찾기
                   </Button>
                   <Button
-                    icon={<ReloadOutlined />}
+                    icon={<RefreshIcon />}
                     onClick={() => {
                       setForm(EMPTY_INPUT);
                       setSubmitted(null);

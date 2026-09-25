@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOutlined } from '@ant-design/icons';
 import { Button, Descriptions, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
@@ -19,6 +18,7 @@ import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { EmptyState } from '@/components/EmptyState';
+import { BookIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -276,7 +276,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
           */}
           <Flex gap={8} wrap align="center">
             <Link to={itemInfoPath(detail.category, cardName)} onClick={onClose}>
-              <Button icon={<BookOutlined />}>아이템 정보 보기</Button>
+              <Button icon={<BookIcon />}>아이템 정보 보기</Button>
             </Link>
             {isEquipmentCategory(detail.category) ? (
               <Text type="secondary" style={{ fontSize: 12 }}>

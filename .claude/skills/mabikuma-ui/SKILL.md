@@ -38,7 +38,10 @@ Taste Skill 기본값 8/6/4는 랜딩용이므로 적용하지 않는다. 사용
 Tailwind, shadcn/ui, MUI, Chakra, Bootstrap 전부 금지. 새 UI 의존성은 사용자 승인 없이 추가하지 않는다.
 
 - 컴포넌트: `antd`
-- 아이콘: `@ant-design/icons` **단일 패밀리**. SVG 아이콘을 손으로 그리지 않는다. 이모지로 아이콘을 대체하지 않는다.
+- 아이콘: 구글 **Material Symbols Rounded(굵기 400) 단일 패밀리**. `src/components/icons.tsx`에서만 가져온다.
+  새 아이콘은 `@material-symbols/svg-400/rounded/<이름>.svg?raw`를 그 파일에 한 줄 더해 쓴다.
+  SVG 아이콘을 손으로 그리지 않는다. 이모지로 아이콘을 대체하지 않는다. `@ant-design/icons`를 직접 import 하지 않는다
+  (antd 내부의 닫기, 화살표 같은 글리프는 antd 몫이라 그대로 둔다). 돌아가는 로딩 표시는 아이콘 대신 antd `Spin`.
 - 애니메이션 라이브러리 추가 금지. antd 내장 모션으로 충분하다 (`MOTION_INTENSITY 3`).
 
 ### 2.A 의존성 검증 (필수)
@@ -46,7 +49,7 @@ Tailwind, shadcn/ui, MUI, Chakra, Bootstrap 전부 금지. 새 UI 의존성은 �
 import 전에 `package.json`을 확인한다. 없으면 **먼저 설치 명령을 제시**한다. 존재를 가정하지 않는다.
 
 ```bash
-npm i antd @ant-design/icons
+npm i antd @material-symbols/svg-400
 ```
 
 ### 2.B antd를 쓴다는 것의 의미
@@ -161,7 +164,7 @@ LLM은 "성공한 정적 상태"만 만든다. 이 프로젝트에서는 **네 �
 
 ### 6.C 이모지
 
-기본 금지. 아이콘은 `@ant-design/icons`에서 가져온다.
+기본 금지. 아이콘은 `src/components/icons.tsx`(Material Symbols)에서 가져온다.
 예외 없음. 브랜드 마크는 이모지가 아니라 그림이다. 헤더는 `src/assets/logo-mark.png`와 로고 글자
 `wordmark.png`(다크 모드는 밝게 칠한 `wordmark-dark.png`), 공유 미리보기는 `public/og-image.png`,
 파비콘은 `public/favicon.png`, `favicon.ico`, `apple-touch-icon.png`를 쓴다. 로고를 바꾸면 넷을 함께 바꾼다.

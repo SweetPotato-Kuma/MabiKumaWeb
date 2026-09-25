@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Flex, InputNumber, Select, Tag, Tooltip, Typography } from 'antd';
 import {
   REFORGE_MAX_OPTIONS,
@@ -13,6 +12,7 @@ import {
 import type { ReforgePick } from '@/features/equipment/simulate';
 import type { AbilityDef, LevelRow } from '@/features/equipment/types';
 import { EmptyState } from '@/components/EmptyState';
+import { AddIcon, DeleteIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -77,7 +77,7 @@ export function ReforgePanel({
       <Flex align="center" gap={8} wrap>
         <Button
           size="small"
-          icon={<PlusOutlined />}
+          icon={<AddIcon />}
           onClick={addOption}
           disabled={options.length >= REFORGE_MAX_OPTIONS || candidates.length <= options.length}
         >
@@ -153,7 +153,7 @@ export function ReforgePanel({
             <Button
               size="small"
               type="text"
-              icon={<DeleteOutlined />}
+              icon={<DeleteIcon />}
               aria-label={`세공 옵션 ${index + 1} 빼기`}
               onClick={() => replace(index, null)}
             />
