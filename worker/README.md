@@ -226,6 +226,20 @@ Rate limiting rules 에서 `/item-card/lookup` 경로에 규칙을 하나 걸어
 주므로, 도메인을 바꿔도 사이트는 다시 배포하지 않아도 됩니다. 비우면 워커 경로로 돌아갑니다.
 자체 도메인은 R2 버킷의 **Settings → Custom Domains** 에 연결되어 있습니다.
 
+**R2 자체 도메인은 그대로 두면 엣지에 캐시되지 않습니다.** 2026-09-26 에 재 보니 그림과 그림 목록이
+모두 `cf-cache-status: DYNAMIC` 이라 매번 R2 까지 가서 한 장에 0.45~0.85초가 걸렸습니다.
+그래서 `spkuma.com` 존에 캐시 규칙을 하나 두었습니다(Caching → Cache Rules).
+
+| 항목 | 값 |
+| --- | --- |
+| 조건 | `http.host eq "icons.spkuma.com"` |
+| 캐시 | Eligible for cache |
+| Edge TTL, Browser TTL | 원본의 Cache-Control 을 따름(그림 1년 `immutable`, 그림 목록 1시간) |
+
+적용 뒤에는 `HIT` 가 나오고, 한 번 받은 그림은 가까운 엣지에서 바로 나갑니다. 확인은
+`curl -s -o /dev/null -D - https://icons.spkuma.com/<파일>.png | grep cf-cache-status` 로 합니다
+(`curl -I` 같은 HEAD 요청은 캐시되지 않아 늘 DYNAMIC 이 나옵니다).
+
 ### 관리
 
 ```bash
