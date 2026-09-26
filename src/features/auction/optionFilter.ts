@@ -4,23 +4,23 @@ import { isCurrentMaxOption } from './itemOptions';
 import type { ItemOption } from './types';
 
 /**
- * 매물 세부 옵션으로 거르기.
+ * 경매장 상세 검색(세부 옵션 조건).
  *
  * 넥슨 경매장 API 는 이름과 카테고리로만 찾고 옵션으로는 찾지 못한다. 그래서 받아 온 매물을
- * 화면에서 옵션으로 거른다. 거른 결과는 "불러온 것 가운데" 맞는 것이라, 화면은 불러온 건수와
+ * 화면에서 옵션으로 거른다. 결과는 "불러온 것 가운데" 맞는 것이라, 화면은 불러온 건수와
  * 맞는 건수를 같이 적고, 모자라면 다음 묶음을 더 받는다.
  *
- * 조건은 사용자가 하나씩 더하는 블록이다. 더할 수 있는 옵션과 그 선택지(세공 이름, 인챈트 이름,
- * 세트 효과 이름)는 지금 불러온 매물에서 뽑는다(buildOptionCatalog). 카테고리마다 있는 옵션이
- * 달라서 고정 목록을 두면 없는 옵션을 고르게 되고, 게임에 새 옵션이 생기면 목록이 낡는다.
+ * 조건은 사용자가 하나씩 더하는 블록이다. 더할 수 있는 옵션과 자동완성 거리(세공 이름, 인챈트
+ * 이름, 세트 효과 이름, 레벨 값)는 지금 불러온 매물에서 뽑는다(buildOptionCatalog). 카테고리마다
+ * 있는 옵션이 달라서 고정 목록을 두면 없는 옵션을 고르게 되고, 게임에 새 옵션이 생기면 낡는다.
  */
 
 /** 조건 종류. 옵션 모양에 따라 입력칸이 다르다. */
 export type Condition =
   /** 세공. name 이 비면 아무 세공. "스매시 대미지" 가 5레벨 이상. */
   | { id: number; kind: 'reforge'; name: string; minLevel: number | null }
-  /** 인챈트 이름(랭크를 뗀 것). 접두와 접미 가운데 아무거나. */
-  | { id: number; kind: 'enchant'; name: string }
+  /** 인챈트. 접두와 접미를 따로 본다. 이름은 랭크를 뗀 것. 둘 다 주면 둘 다 맞아야 한다. */
+  | { id: number; kind: 'enchant'; prefix: string; suffix: string }
   /** 특별 개조. type 이 비면 R, S 아무거나. */
   | { id: number; kind: 'special'; type: '' | 'R' | 'S'; minStep: number | null }
   /** 에르그. grade 가 비면 아무 등급. */
@@ -29,7 +29,7 @@ export type Condition =
   | { id: number; kind: 'color'; hex: string; part: string; minSimilarity: number }
   /** 숫자 옵션(최대 공격, 크리티컬, 방어력 등)이 min 이상. */
   | { id: number; kind: 'number'; optionType: string; min: number | null }
-  /** 그 밖의 옵션(세트 효과, 장인 개조 등)에 문구가 들어 있다. optionType 이 비면 어느 옵션이든. */
+  /** 그 밖의 옵션(세트 효과, 장인 개조 등)에 문구가 들어 있다. */
   | { id: number; kind: 'text'; optionType: string; text: string };
 
 export type ConditionKind = Condition['kind'];
@@ -39,6 +39,10 @@ export interface OptionFilter {
 }
 
 export const EMPTY_OPTION_FILTER: OptionFilter = { conditions: [] };
+
+/** 인챈트 칸 이름. 넥슨이 option_sub_type 에 이 글자로 준다. */
+export const ENCHANT_PREFIX = '접두';
+export const ENCHANT_SUFFIX = '접미';
 
 /** 옵션 이름으로 어떤 입력칸을 쓸지. 숫자인지 문구인지는 값을 보고 가른다(buildOptionCatalog). */
 const KIND_BY_TYPE: Record<string, ConditionKind> = {
@@ -59,7 +63,9 @@ export function isConditionActive(condition: Condition): boolean {
     case 'reforge':
       return normalizeForSearch(condition.name) !== '' || condition.minLevel !== null;
     case 'enchant':
-      return normalizeForSearch(condition.name) !== '';
+      return (
+        normalizeForSearch(condition.prefix) !== '' || normalizeForSearch(condition.suffix) !== ''
+      );
     case 'special':
       return condition.type !== '' || condition.minStep !== null;
     case 'erg':
@@ -126,17 +132,26 @@ const reforgesOf = (options: ItemOption[]) =>
     .map((option) => parseReforge(option.option_value))
     .filter((reforge): reforge is Reforge => reforge !== null);
 
+const enchantIn = (options: ItemOption[], slot: string, name: string) => {
+  const needle = normalizeForSearch(name);
+  return options.some(
+    (option) =>
+      option.option_type === '인챈트' &&
+      option.option_sub_type === slot &&
+      normalizeForSearch(enchantName(option.option_value)).includes(needle),
+  );
+};
+
+type ReforgeCondition = Extract<Condition, { kind: 'reforge' }>;
+
 /**
  * 세공 조건을 모두 채우는지. 한 세공 옵션이 두 조건을 한꺼번에 채울 수는 없다.
  * 조건과 옵션이 세 개 이하라 모든 짝을 다 대 본다.
  */
-function matchesReforges(
-  options: ItemOption[],
-  conditions: Extract<Condition, { kind: 'reforge' }>[],
-): boolean {
+function matchesReforges(options: ItemOption[], conditions: ReforgeCondition[]): boolean {
   if (conditions.length === 0) return true;
   const reforges = reforgesOf(options);
-  const fits = (reforge: Reforge, condition: (typeof conditions)[number]) =>
+  const fits = (reforge: Reforge, condition: ReforgeCondition) =>
     normalizeForSearch(reforge.name).includes(normalizeForSearch(condition.name)) &&
     (condition.minLevel === null || reforge.level >= condition.minLevel);
   const assign = (index: number, used: Set<number>): boolean => {
@@ -156,14 +171,13 @@ function matchesCondition(options: ItemOption[], condition: Condition): boolean 
   switch (condition.kind) {
     case 'reforge':
       return true;
-    case 'enchant': {
-      const name = normalizeForSearch(condition.name);
-      return options.some(
-        (option) =>
-          option.option_type === '인챈트' &&
-          normalizeForSearch(option.option_value ?? '').includes(name),
+    case 'enchant':
+      return (
+        (!normalizeForSearch(condition.prefix) ||
+          enchantIn(options, ENCHANT_PREFIX, condition.prefix)) &&
+        (!normalizeForSearch(condition.suffix) ||
+          enchantIn(options, ENCHANT_SUFFIX, condition.suffix))
       );
-    }
     case 'special':
       return options.some((option) => {
         if (option.option_type !== '특별 개조') return false;
@@ -206,13 +220,7 @@ function matchesCondition(options: ItemOption[], condition: Condition): boolean 
         (option) =>
           (!condition.optionType || option.option_type === condition.optionType) &&
           normalizeForSearch(
-            [
-              condition.optionType ? '' : option.option_type,
-              option.option_sub_type,
-              option.option_value,
-              option.option_value2,
-              option.option_desc,
-            ]
+            [option.option_sub_type, option.option_value, option.option_value2, option.option_desc]
               .filter(Boolean)
               .join(' '),
           ).includes(text),
@@ -229,11 +237,91 @@ export function matchesOptionFilter(
   const options = item.item_option ?? [];
   const active = filter.conditions.filter(isConditionActive);
   const reforges = active.filter(
-    (condition): condition is Extract<Condition, { kind: 'reforge' }> =>
-      condition.kind === 'reforge',
+    (condition): condition is ReforgeCondition => condition.kind === 'reforge',
   );
   if (!matchesReforges(options, reforges)) return false;
   return active.every((condition) => matchesCondition(options, condition));
+}
+
+/** 숫자 조건의 이름. 공격은 범위의 큰 쪽을 보므로 "최대 공격" 이라 부른다. */
+export function numberLabel(optionType: string): string {
+  if (optionType === '공격') return '최대 공격';
+  if (optionType === '부상률') return '최대 부상률';
+  return optionType;
+}
+
+/** 조건 블록의 이름. */
+export function conditionLabel(condition: Condition): string {
+  switch (condition.kind) {
+    case 'reforge':
+      return '세공';
+    case 'enchant':
+      return '인챈트';
+    case 'special':
+      return '특별 개조';
+    case 'erg':
+      return '에르그';
+    case 'color':
+      return '색상';
+    case 'number':
+      return numberLabel(condition.optionType);
+    case 'text':
+      return condition.optionType;
+  }
+}
+
+/**
+ * 조건을 한 줄로. 검색 칸 아래 칩에 쓴다. "세공 스매시 대미지 7레벨 이상".
+ * 빈 조건은 빈 문자열이다.
+ */
+export function summarizeCondition(condition: Condition): string {
+  if (!isConditionActive(condition)) return '';
+  const label = conditionLabel(condition);
+  switch (condition.kind) {
+    case 'reforge':
+      return [
+        label,
+        condition.name.trim() || '아무 세공',
+        condition.minLevel !== null ? `${condition.minLevel}레벨 이상` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+    case 'enchant':
+      return [
+        label,
+        condition.prefix.trim() ? `접두 ${condition.prefix.trim()}` : '',
+        condition.suffix.trim() ? `접미 ${condition.suffix.trim()}` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+    case 'special':
+      return [
+        label,
+        condition.type,
+        condition.minStep !== null ? `${condition.minStep}단계 이상` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+    case 'erg':
+      return [
+        label,
+        condition.grade ? `${condition.grade}등급` : '',
+        condition.minLevel !== null ? `${condition.minLevel}레벨 이상` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+    case 'color': {
+      const rgb = hexToRgb(condition.hex);
+      const part = condition.part ? `파트 ${condition.part} ` : '';
+      return rgb
+        ? `${label} ${part}R:${rgb.r} G:${rgb.g} B:${rgb.b} (${condition.minSimilarity}% 이상)`
+        : label;
+    }
+    case 'number':
+      return `${label} ${condition.min} 이상`;
+    case 'text':
+      return `${label} "${condition.text.trim()}"`;
+  }
 }
 
 /**
@@ -261,7 +349,7 @@ export function describeMatch(
     } else if (condition.kind === 'enchant') {
       const enchants = options
         .filter((option) => option.option_type === '인챈트')
-        .map((option) => option.option_value ?? '');
+        .map((option) => `${option.option_sub_type ?? ''} ${option.option_value ?? ''}`.trim());
       if (enchants.length > 0) notes.push(`인챈트: ${enchants.join(', ')}`);
     } else if (condition.kind === 'special') {
       const special = options.find((option) => option.option_type === '특별 개조');
@@ -289,14 +377,13 @@ export function describeMatch(
       const value = option ? optionNumber(option) : null;
       if (value !== null) notes.push(`${numberLabel(condition.optionType)} ${value}`);
     } else {
-      const matched = options.filter(
-        (option) => !condition.optionType || option.option_type === condition.optionType,
-      );
       const text = normalizeForSearch(condition.text);
-      const hit = matched.find((option) =>
-        normalizeForSearch(`${option.option_value ?? ''} ${option.option_desc ?? ''}`).includes(
-          text,
-        ),
+      const hit = options.find(
+        (option) =>
+          option.option_type === condition.optionType &&
+          normalizeForSearch(`${option.option_value ?? ''} ${option.option_desc ?? ''}`).includes(
+            text,
+          ),
       );
       if (hit) notes.push(`${hit.option_type}: ${hit.option_value ?? ''}`);
     }
@@ -304,14 +391,13 @@ export function describeMatch(
   return notes;
 }
 
-/** 숫자 조건의 이름. 공격은 범위의 큰 쪽을 보므로 "최대 공격" 이라 부른다. */
-export function numberLabel(optionType: string): string {
-  if (optionType === '공격') return '최대 공격';
-  if (optionType === '부상률') return '최대 부상률';
-  return optionType;
+/** 자동완성에 쓸 이름 하나와 그 이름이 있는 매물 수. */
+export interface NameCount {
+  value: string;
+  count: number;
 }
 
-/** 조건을 더할 때 고를 수 있는 옵션 하나. */
+/** 조건을 더할 때 고를 수 있는 옵션 하나. 자동완성 거리도 여기 있다. */
 export interface CatalogEntry {
   /** 화면에 보이는 이름. 두 색 옵션은 "색상" 하나로 모은다. */
   label: string;
@@ -320,15 +406,37 @@ export interface CatalogEntry {
   optionType: string;
   /** 이 옵션이 있는 매물 수. */
   count: number;
-  /** 고를 수 있는 값(세공 이름, 인챈트 이름, 세트 효과 이름 등). 많이 나온 순. */
-  values: { value: string; count: number }[];
-  /** 에르그 등급처럼 옵션 아래 구분 값. */
+  /** 이름 자동완성(세공 이름, 세트 효과 이름 등). 많이 나온 순. */
+  values: NameCount[];
+  /** 옵션 아래 구분 값별 이름(인챈트의 접두, 접미). */
+  valuesBySub: Record<string, NameCount[]>;
+  /** 에르그 등급, 특별 개조 종류처럼 옵션 아래 구분 값. */
   subTypes: string[];
+  /**
+   * 숫자 자동완성용. 매물마다 이 옵션에서 가장 큰 숫자(세공 레벨, 에르그 레벨, 특별 개조 단계,
+   * 숫자 옵션 값). 키 '' 는 전체, 세공은 이름별로도 둔다. "7 이상이면 몇 건" 을 셀 때 쓴다.
+   */
+  numbers: Record<string, number[]>;
+}
+
+/** 이 조건 종류가 숫자 자동완성에 쓸 값. */
+function numberOf(kind: ConditionKind | null, option: ItemOption): number | null {
+  switch (kind) {
+    case 'reforge':
+      return parseReforge(option.option_value)?.level ?? null;
+    case 'special':
+    case 'erg':
+      return toNumber(option.option_value);
+    case null:
+      return optionNumber(option);
+    default:
+      return null;
+  }
 }
 
 /**
- * 불러온 매물에 있는 옵션으로 "조건 추가" 목록을 만든다. 많이 나온 옵션이 위에 온다.
- * 값이 모두 숫자인 옵션은 숫자 조건, 아니면 문구 조건이다.
+ * 불러온 매물에 있는 옵션으로 "조건 추가" 목록과 자동완성 거리를 만든다. 많이 나온 옵션이 위에
+ * 온다. 값이 모두 숫자인 옵션은 숫자 조건, 아니면 문구 조건이다.
  */
 export function buildOptionCatalog(
   items: readonly { item_option?: ItemOption[] }[],
@@ -339,12 +447,19 @@ export function buildOptionCatalog(
     items: number;
     numeric: boolean;
     values: Map<string, number>;
+    valuesBySub: Map<string, Map<string, number>>;
     subTypes: Set<string>;
+    numbers: Map<string, number[]>;
   }
   const tallies = new Map<string, Tally>();
+  const bump = (map: Map<string, number>, key: string) => map.set(key, (map.get(key) ?? 0) + 1);
 
   for (const item of items) {
+    // 한 매물 안에서 옵션마다(세공은 이름마다) 가장 큰 숫자 하나만 센다.
+    const maxHere = new Map<string, Map<string, number>>();
     const seenHere = new Set<string>();
+    const namesHere = new Set<string>();
+
     for (const option of item.item_option ?? []) {
       const fixed = KIND_BY_TYPE[option.option_type] ?? null;
       const label = fixed === 'color' ? COLOR_OPTION_LABEL : option.option_type;
@@ -356,7 +471,9 @@ export function buildOptionCatalog(
           items: 0,
           numeric: true,
           values: new Map(),
+          valuesBySub: new Map(),
           subTypes: new Set(),
+          numbers: new Map(),
         };
         tallies.set(label, tally);
       }
@@ -364,11 +481,12 @@ export function buildOptionCatalog(
         tally.items += 1;
         seenHere.add(label);
       }
-      if (option.option_sub_type) tally.subTypes.add(option.option_sub_type);
+      if (option.option_sub_type && fixed !== 'color' && fixed !== 'reforge')
+        tally.subTypes.add(option.option_sub_type);
       // 세트 효과처럼 이름 옆에 숫자(레벨)가 붙은 것은 숫자 옵션이 아니다. 첫 값으로 가른다.
       if (fixed === null && toNumber(option.option_value) === null) tally.numeric = false;
 
-      const value =
+      const name =
         fixed === 'reforge'
           ? parseReforge(option.option_value)?.name
           : fixed === 'enchant'
@@ -376,9 +494,41 @@ export function buildOptionCatalog(
             : fixed === null
               ? option.option_value
               : undefined;
-      if (value) tally.values.set(value, (tally.values.get(value) ?? 0) + 1);
+      // 같은 매물에 같은 이름이 두 번 나와도 한 건으로 센다.
+      const nameKey = `${label}\u0000${option.option_sub_type ?? ''}\u0000${name ?? ''}`;
+      if (name && !namesHere.has(nameKey)) {
+        namesHere.add(nameKey);
+        bump(tally.values, name);
+        if (fixed === 'enchant' && option.option_sub_type) {
+          const bySub = tally.valuesBySub.get(option.option_sub_type) ?? new Map();
+          tally.valuesBySub.set(option.option_sub_type, bump(bySub, name));
+        }
+      }
+
+      const number = numberOf(fixed, option);
+      if (number !== null) {
+        const perLabel = maxHere.get(label) ?? new Map<string, number>();
+        maxHere.set(label, perLabel);
+        const keys = fixed === 'reforge' && name ? ['', name] : [''];
+        for (const key of keys) perLabel.set(key, Math.max(perLabel.get(key) ?? -Infinity, number));
+      }
+    }
+
+    for (const [label, perLabel] of maxHere) {
+      const tally = tallies.get(label);
+      if (!tally) continue;
+      for (const [key, number] of perLabel) {
+        const list = tally.numbers.get(key) ?? [];
+        list.push(number);
+        tally.numbers.set(key, list);
+      }
     }
   }
+
+  const sortNames = (map: Map<string, number>): NameCount[] =>
+    [...map.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'ko'));
 
   return [...tallies.entries()]
     .map(([label, tally]): CatalogEntry => {
@@ -388,16 +538,37 @@ export function buildOptionCatalog(
         kind,
         optionType: tally.optionType,
         count: tally.items,
-        values:
-          kind === 'number'
-            ? []
-            : [...tally.values.entries()]
-                .map(([value, count]) => ({ value, count }))
-                .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'ko')),
+        values: kind === 'number' ? [] : sortNames(tally.values),
+        valuesBySub: Object.fromEntries(
+          [...tally.valuesBySub.entries()].map(([sub, map]) => [sub, sortNames(map)]),
+        ),
         subTypes: [...tally.subTypes].sort(),
+        numbers: Object.fromEntries(tally.numbers),
       };
     })
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ko'));
+}
+
+/**
+ * 숫자 자동완성. 매물마다의 값에서 "N 이상이면 몇 건" 을 큰 값부터 만든다. 입력한 글자로
+ * 시작하는 값만 남긴다. 같은 건수가 이어지면 가장 큰 N 만 남겨 목록이 길어지지 않게 한다.
+ */
+export function thresholdSuggestions(
+  values: readonly number[] | undefined,
+  typed = '',
+  limit = 12,
+): { value: number; count: number }[] {
+  if (!values || values.length === 0) return [];
+  const distinct = [...new Set(values)].sort((a, b) => b - a);
+  const result: { value: number; count: number }[] = [];
+  for (const value of distinct) {
+    if (typed && !String(value).startsWith(typed.trim())) continue;
+    const count = values.filter((each) => each >= value).length;
+    if (result.length > 0 && result[result.length - 1].count === count) continue;
+    result.push({ value, count });
+    if (result.length >= limit) break;
+  }
+  return result;
 }
 
 let nextId = 1;
@@ -409,7 +580,7 @@ export function newCondition(entry: Pick<CatalogEntry, 'kind' | 'optionType'>): 
     case 'reforge':
       return { id, kind: 'reforge', name: '', minLevel: null };
     case 'enchant':
-      return { id, kind: 'enchant', name: '' };
+      return { id, kind: 'enchant', prefix: '', suffix: '' };
     case 'special':
       return { id, kind: 'special', type: '', minStep: null };
     case 'erg':
@@ -422,3 +593,15 @@ export function newCondition(entry: Pick<CatalogEntry, 'kind' | 'optionType'>): 
       return { id, kind: 'text', optionType: entry.optionType, text: '' };
   }
 }
+
+/**
+ * 매물을 불러오기 전에도 바로 더할 수 있는 자주 쓰는 조건. 불러온 매물에 없는 옵션이어도 둔다.
+ * 조건을 먼저 정하고 찾기를 누르는 사람도 있다.
+ */
+export const QUICK_CONDITIONS: { label: string; kind: ConditionKind; optionType: string }[] = [
+  { label: '세공', kind: 'reforge', optionType: '세공 옵션' },
+  { label: '인챈트', kind: 'enchant', optionType: '인챈트' },
+  { label: '특별 개조', kind: 'special', optionType: '특별 개조' },
+  { label: '에르그', kind: 'erg', optionType: '에르그' },
+  { label: '색상', kind: 'color', optionType: '색상' },
+];

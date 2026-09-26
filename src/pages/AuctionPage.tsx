@@ -20,7 +20,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
-import { AuctionOptionFilter } from '@/components/AuctionOptionFilter';
+import { ConditionChips, DetailSearchDrawer } from '@/components/AuctionOptionFilter';
 import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { CategoryPicker } from '@/components/CategoryPicker';
@@ -53,7 +53,7 @@ import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib
 import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useListPagination } from '@/lib/useListPagination';
-import { RefreshIcon, SearchIcon } from '@/components/icons';
+import { RefreshIcon, SearchIcon, TuneIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
@@ -199,6 +199,8 @@ export function AuctionPage() {
    * 맞는 것이 모자라면 아래 자동 불러오기가 다음 묶음을 더 받는다.
    */
   const [optionFilter, setOptionFilter] = useState<OptionFilter>(EMPTY_OPTION_FILTER);
+  /** 상세 검색 서랍. 조건 입력칸은 서랍에 두고 검색 카드에는 칩만 둔다. 카드가 길어지면 결과가 밀린다. */
+  const [detailOpen, setDetailOpen] = useState(false);
   const deferredFilter = useDeferredValue(optionFilter);
   const filtering = activeConditionCount(deferredFilter) > 0;
   /** 조건으로 고를 수 있는 옵션. 지금 보고 있는 탭의 불러온 매물에서 뽑는다. */
@@ -708,6 +710,12 @@ export function AuctionPage() {
                   >
                     찾기
                   </Button>
+                  <Button icon={<TuneIcon />} onClick={() => setDetailOpen(true)}>
+                    상세 검색
+                    {activeConditionCount(optionFilter) > 0 ? (
+                      <span className="tnum"> {activeConditionCount(optionFilter)}</span>
+                    ) : null}
+                  </Button>
                   <Button
                     icon={<RefreshIcon />}
                     onClick={() => {
@@ -742,10 +750,10 @@ export function AuctionPage() {
                   </Text>
                 </Flex>
 
-                <AuctionOptionFilter
+                <ConditionChips
                   value={optionFilter}
                   onChange={setOptionFilter}
-                  catalog={optionCatalog}
+                  onEdit={() => setDetailOpen(true)}
                 />
               </Flex>
             </Card>
@@ -776,6 +784,15 @@ export function AuctionPage() {
       </Row>
 
       <AuctionItemDetailModal detail={detail} onClose={() => setDetail(null)} />
+      <DetailSearchDrawer
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        value={optionFilter}
+        onChange={setOptionFilter}
+        catalog={optionCatalog}
+        loadedCount={tab === 'items' ? itemsLoaded : historyLoaded}
+        matchedCount={tab === 'items' ? visibleItems.length : visibleHistory.length}
+      />
     </Flex>
   );
 }

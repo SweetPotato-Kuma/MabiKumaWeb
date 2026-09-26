@@ -9,6 +9,8 @@ import {
   newCondition,
   optionNumber,
   parseReforge,
+  summarizeCondition,
+  thresholdSuggestions,
   type Condition,
   type OptionFilter,
 } from './optionFilter';
@@ -30,6 +32,7 @@ const sword = {
     option('아이템 색상', '198,193,188', '파트 A'),
     option('아이템 색상', '247,205,125', '파트 B'),
     option('인챈트', '울프헌터 (랭크 C)', '접두'),
+    option('인챈트', '블러드 (랭크 A)', '접미'),
     option('세공 옵션', '스매시 대미지(5레벨:10 % 증가)', '1'),
     option('세공 옵션', '윈드밀 대미지(3레벨:6 % 증가)', '2'),
     option('특별 개조', '6', 'R'),
@@ -92,8 +95,12 @@ describe('matchesOptionFilter', () => {
 
   it('인챈트, 특별 개조, 에르그, 숫자, 문구로 거른다', () => {
     const match = (condition: Draft) => matchesOptionFilter(sword, only(condition));
-    expect(match({ kind: 'enchant', name: '울프 헌터' })).toBe(true);
-    expect(match({ kind: 'enchant', name: '블러드' })).toBe(false);
+    // 접두와 접미를 따로 본다. 접두 칸에 접미 인챈트 이름을 넣으면 걸리지 않는다.
+    expect(match({ kind: 'enchant', prefix: '울프 헌터', suffix: '' })).toBe(true);
+    expect(match({ kind: 'enchant', prefix: '', suffix: '블러드' })).toBe(true);
+    expect(match({ kind: 'enchant', prefix: '블러드', suffix: '' })).toBe(false);
+    expect(match({ kind: 'enchant', prefix: '울프헌터', suffix: '블러드' })).toBe(true);
+    expect(match({ kind: 'enchant', prefix: '울프헌터', suffix: '기운찬' })).toBe(false);
     expect(match({ kind: 'special', type: 'R', minStep: 6 })).toBe(true);
     expect(match({ kind: 'special', type: 'S', minStep: null })).toBe(false);
     expect(match({ kind: 'erg', grade: 'S', minLevel: 35 })).toBe(true);
@@ -144,7 +151,17 @@ describe('buildOptionCatalog', () => {
       { value: '스매시 대미지', count: 2 },
       { value: '윈드밀 대미지', count: 2 },
     ]);
-    expect(byLabel['인챈트'].values).toEqual([{ value: '울프헌터', count: 2 }]);
+    expect(byLabel['인챈트'].valuesBySub).toEqual({
+      접두: [{ value: '울프헌터', count: 2 }],
+      접미: [{ value: '블러드', count: 2 }],
+    });
+    // 숫자 자동완성용: 매물마다 가장 큰 값. 세공은 이름별로도 둔다.
+    expect(byLabel['세공 옵션'].numbers).toEqual({
+      '': [5, 5],
+      '스매시 대미지': [5, 5],
+      '윈드밀 대미지': [3, 3],
+    });
+    expect(byLabel['에르그'].numbers['']).toEqual([35, 35]);
     expect(byLabel['최대 공격']).toMatchObject({ kind: 'number', optionType: '공격' });
     expect(byLabel['세트 효과']).toMatchObject({ kind: 'text' });
     expect(byLabel['에르그'].subTypes).toEqual(['S']);
@@ -157,5 +174,34 @@ describe('buildOptionCatalog', () => {
       optionType: '공격',
       min: null,
     });
+  });
+});
+
+describe('thresholdSuggestions', () => {
+  it('큰 값부터 "N 이상이면 몇 건" 을 만들고, 건수가 같으면 큰 N 만 남긴다', () => {
+    expect(thresholdSuggestions([7, 5, 5, 3, 1])).toEqual([
+      { value: 7, count: 1 },
+      { value: 5, count: 3 },
+      { value: 3, count: 4 },
+      { value: 1, count: 5 },
+    ]);
+    expect(thresholdSuggestions([20, 12, 10, 3], '1')).toEqual([
+      { value: 12, count: 2 },
+      { value: 10, count: 3 },
+    ]);
+    expect(thresholdSuggestions(undefined)).toEqual([]);
+  });
+});
+
+describe('summarizeCondition', () => {
+  it('칩에 보일 한 줄을 만든다', () => {
+    const [reforge, enchant, erg] = only(
+      { kind: 'reforge', name: '스매시 대미지', minLevel: 7 },
+      { kind: 'enchant', prefix: '울프헌터', suffix: '' },
+      { kind: 'erg', grade: 'S', minLevel: 30 },
+    ).conditions;
+    expect(summarizeCondition(reforge)).toBe('세공 스매시 대미지 7레벨 이상');
+    expect(summarizeCondition(enchant)).toBe('인챈트 접두 울프헌터');
+    expect(summarizeCondition(erg)).toBe('에르그 S등급 30레벨 이상');
   });
 });
