@@ -594,11 +594,6 @@ export function AuctionPage() {
         }
       >
         <Flex vertical gap={12}>
-          {visibleItems.length !== itemsLoaded ? (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              불러온 {formatNumber(itemsLoaded)}건 가운데 조건에 맞는 {formatNumber(visibleItems.length)}건을 보고 있습니다.
-            </Text>
-          ) : null}
           <Table<AuctionItem>
             columns={itemColumns}
             dataSource={visibleItems}
