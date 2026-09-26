@@ -23,7 +23,7 @@ import { IssueReportButton } from '@/components/IssueReportButton';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
-import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, ImageIcon, KeyIcon, LightModeIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
+import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, ImageIcon, KeyIcon, LightModeIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -44,6 +44,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: <TollIcon />,
     label: <NavLink to="/dungeon-coins">던전 코인</NavLink>,
   },
+  { key: '/relics', icon: <MuseumIcon />, label: <NavLink to="/relics">유물 시세</NavLink> },
   {
     key: 'npc-shop',
     icon: <ShopIcon />,

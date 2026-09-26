@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatGold, formatNumber, formatRemaining } from './format';
+import { formatGold, formatGoldShort, formatNumber, formatRemaining } from './format';
 
 describe('formatNumber', () => {
   it('천 단위로 구분한다', () => {
@@ -31,5 +31,16 @@ describe('formatRemaining', () => {
 
   it('이미 지난 시각은 만료로 표시한다', () => {
     expect(formatRemaining('2025-12-31T23:00:00Z', now)).toBe('만료');
+  });
+});
+
+describe('formatGoldShort', () => {
+  it('억과 만으로 줄인다', () => {
+    expect(formatGoldShort(178_400_000)).toBe('1억 7,840만 G');
+    expect(formatGoldShort(80_000_000)).toBe('8,000만 G');
+    expect(formatGoldShort(200_000_000)).toBe('2억 G');
+    expect(formatGoldShort(215_000)).toBe('22만 G');
+    expect(formatGoldShort(9_500)).toBe('9,500 G');
+    expect(formatGoldShort(null)).toBe('-');
   });
 });
