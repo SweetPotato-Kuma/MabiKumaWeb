@@ -18,12 +18,19 @@ import {
   theme,
   type TableColumnsType,
 } from 'antd';
+import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { RefreshIcon, SearchIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
+import {
+  groupByArcana,
+  useArcanaQuery,
+  type ArcanaGroup,
+  type ArcanaOption,
+} from '@/features/relics/arcana';
 import { useRelicListings } from '@/features/relics/hooks';
 import {
   formatRelicValue,
@@ -33,12 +40,12 @@ import {
   RELIC_LEVELS,
   RELIC_MAX_LEVEL,
   relicAuctionPath,
+  relicValueAt,
 } from '@/features/relics/murias';
 import {
   RELIC_GRADES,
   summarizeMurias,
   summarizeOtherRelics,
-  type MuriasRow,
   type OtherRelicRow,
   type PriceCell,
 } from '@/features/relics/prices';
@@ -60,10 +67,7 @@ const tabOf = (value: string | null): TabKey => (value === 'others' ? 'others' :
 /** 유물 그림 한 변. 던전 코인 표의 교환품 그림과 같다. */
 const ITEM_ICON = 28;
 
-/**
- * 가격 칸 폭. "14억 5,000만 G" 가 한 줄에 든다. 이름 칸과 레벨 열 칸이 1440px 화면에 가로 밀기
- * 없이 다 들어가는 폭이다. 가장 많이 보는 10레벨이 오른쪽 끝이라 잘리면 안 된다.
- */
+/** 그 밖의 유물 표의 가격 칸 폭. "14억 5,000만 G" 가 한 줄에 든다. */
 const PRICE_COLUMN_WIDTH = 106;
 
 /**
@@ -80,7 +84,18 @@ const priceOf = (cell: PriceCell | null) => cell?.lowest ?? Number.POSITIVE_INFI
  * 칸이 좁아 억과 만으로 줄이고, 정확한 값은 마우스를 올리면 보인다. 표가 가격으로 가득해
  * 전부 링크 색이면 읽히지 않으므로 글자는 본문색으로 둔다. 누를 수 있다는 것은 표 아래에 적는다.
  */
-function PriceLink({ cell, to, label }: { cell: PriceCell | null; to: string; label: string }) {
+function PriceLink({
+  cell,
+  to,
+  label,
+  showCount = true,
+}: {
+  cell: PriceCell | null;
+  to: string;
+  label: string;
+  /** 매물 수를 가격 아래에 적는다. 매물 수 칸이 따로 있는 표에서는 끈다. */
+  showCount?: boolean;
+}) {
   const { token } = theme.useToken();
   if (!cell) return <Text type="secondary">-</Text>;
   return (
@@ -94,9 +109,11 @@ function PriceLink({ cell, to, label }: { cell: PriceCell | null; to: string; la
         <span className="tnum" style={{ whiteSpace: 'nowrap' }}>
           {formatGoldShort(cell.lowest)}
         </span>
-        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-          {formatNumber(cell.count)}건
-        </Text>
+        {showCount ? (
+          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+            {formatNumber(cell.count)}건
+          </Text>
+        ) : null}
       </Flex>
     </Link>
   );
@@ -152,66 +169,221 @@ function NameFilter({
   );
 }
 
-function MuriasView({ items }: { items: AuctionItem[] }) {
-  const screens = Grid.useBreakpoint();
-  const wide = screens.md ?? true;
-  const summary = useMemo(() => summarizeMurias(items), [items]);
-  const [query, setQuery] = useState('');
-  const needle = normalizeForSearch(query);
-  const rows = needle
-    ? summary.rows.filter((row) => normalizeForSearch(row.name).includes(needle))
-    : summary.rows;
+/** 아르카나 단추와 묶음 머리의 그림 크기. */
+const ARCANA_ICON = 36;
+const ARCANA_BUTTON_ICON = 20;
+/** 옵션 카드의 스킬 그림. */
+const SKILL_ICON = 32;
 
-  const columns: TableColumnsType<MuriasRow> = [
+/** 옵션 카드 안 한 줄. */
+interface LevelLine {
+  level: number;
+  cell: PriceCell | null;
+}
+
+/**
+ * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다 그 레벨의 수치와 최저가를
+ * 한 줄씩 적는다. 수치를 몰라도 레벨로 읽고, 레벨의 뜻이 궁금하면 옆의 수치를 본다.
+ * 높은 레벨부터 적는다. 가장 많이 찾는 것이 10레벨이다.
+ */
+function OptionCard({ option }: { option: ArcanaOption }) {
+  const { row, skill } = option;
+  const lines: LevelLine[] = [...RELIC_LEVELS]
+    .reverse()
+    .map((level) => ({ level, cell: row.levels[level - 1] }));
+  const columns: TableColumnsType<LevelLine> = [
     {
-      title: '스킬 옵션',
-      key: 'name',
-      fixed: 'left',
-      // 768px 미만에서는 이름 칸을 좁혀 레벨 칸이 한두 개라도 함께 보이게 한다.
-      width: wide ? 220 : 136,
-      sorter: (a, b) => a.name.localeCompare(b.name, 'ko'),
-      render: (_value, row) => (
-        <Flex vertical gap={2}>
+      title: '레벨',
+      dataIndex: 'level',
+      width: 64,
+      render: (level: number, line) => (
+        <Text className="tnum" type={line.cell ? undefined : 'secondary'}>
+          {level}레벨
+        </Text>
+      ),
+    },
+    {
+      title: '수치',
+      key: 'value',
+      align: 'right',
+      render: (_value, line) => (
+        <Text type="secondary" className="tnum" style={{ whiteSpace: 'nowrap' }}>
+          {formatRelicValue(row, relicValueAt(row, line.level))}
+        </Text>
+      ),
+    },
+    {
+      title: '매물',
+      key: 'count',
+      align: 'right',
+      width: 52,
+      render: (_value, line) =>
+        line.cell ? <span className="tnum">{formatNumber(line.cell.count)}</span> : null,
+    },
+    {
+      title: '최저가',
+      key: 'price',
+      align: 'right',
+      render: (_value, line) => (
+        <PriceLink
+          cell={line.cell}
+          to={muriasAuctionPath(row.name, line.level)}
+          label={`${row.name} ${line.level}레벨`}
+          showCount={false}
+        />
+      ),
+    },
+  ];
+  return (
+    <Card type="inner" size="small" variant="outlined" styles={{ body: { padding: 0 } }}>
+      <Flex gap={10} align="center" style={{ padding: '12px 12px 8px' }}>
+        {skill ? <SkillIcon skillId={skill.id} size={SKILL_ICON} /> : null}
+        <Flex vertical gap={2} style={SHRINK}>
           <Link to={muriasAuctionPath(row.name)} style={{ fontWeight: 600 }}>
             {row.name}
           </Link>
           <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
             {RELIC_MAX_LEVEL}레벨 {formatRelicValue(row, row.max)}
-            {row.verb ? ` ${row.verb}` : ''}
+            {row.verb ? ` ${row.verb}` : ''}, 매물 {formatNumber(row.count)}건
           </Text>
         </Flex>
-      ),
-    },
-    // 칸마다 매물 수가 있어 합계는 넓은 화면에서만 둔다. 좁은 화면에서는 레벨 칸 하나가 더 소중하다.
-    ...(wide
-      ? [
-          {
-            title: '매물',
-            dataIndex: 'count',
-            width: 64,
-            align: 'right' as const,
-            sorter: (a: MuriasRow, b: MuriasRow) => a.count - b.count,
-            render: (count: number) => <span className="tnum">{formatNumber(count)}</span>,
-          },
-        ]
-      : []),
-    ...RELIC_LEVELS.map(
-      (level): TableColumnsType<MuriasRow>[number] => ({
-        title: `${level}레벨`,
-        key: `level-${level}`,
-        width: PRICE_COLUMN_WIDTH,
-        align: 'right',
-        sorter: (a, b) => priceOf(a.levels[level - 1]) - priceOf(b.levels[level - 1]),
-        render: (_value, row) => (
-          <PriceLink
-            cell={row.levels[level - 1]}
-            to={muriasAuctionPath(row.name, level)}
-            label={`${row.name} ${level}레벨`}
-          />
-        ),
-      }),
-    ),
-  ];
+      </Flex>
+      <Table<LevelLine>
+        columns={columns}
+        dataSource={lines}
+        rowKey="level"
+        size="small"
+        pagination={false}
+      />
+    </Card>
+  );
+}
+
+/** 아르카나 하나의 묶음. 머리에 아르카나 그림과 이름, 그 아래 옵션 카드들. */
+function ArcanaSection({ group, wide }: { group: ArcanaGroup; wide: boolean }) {
+  return (
+    <Card
+      variant="outlined"
+      size={wide ? 'default' : 'small'}
+      title={
+        <Flex gap={12} align="center" style={{ paddingBlock: 8 }}>
+          {group.arcana ? <SkillIcon skillId={group.arcana.awakening} size={ARCANA_ICON} /> : null}
+          <Flex vertical gap={0}>
+            <Text strong style={{ fontSize: 16 }}>
+              {group.arcana?.name ?? '아르카나를 찾지 못한 옵션'}
+            </Text>
+            <Text type="secondary" className="tnum" style={{ fontSize: 12, fontWeight: 400 }}>
+              스킬 옵션 {formatNumber(group.options.length)}종, 매물 {formatNumber(group.count)}건
+            </Text>
+          </Flex>
+        </Flex>
+      }
+    >
+      {/*
+        넓은 화면에서는 옵션 카드를 한 줄에 셋까지 폭을 나눠 채운다. 아르카나마다 옵션이 셋 안팎이라
+        300px 로만 자르면 넓은 화면에서 오른쪽이 비었다. 768px 미만에서는 한 줄에 하나씩 둔다.
+      */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: wide
+            ? 'repeat(auto-fill, minmax(max(300px, calc((100% - 24px) / 3)), 1fr))'
+            : 'minmax(0, 1fr)',
+          gap: 12,
+        }}
+      >
+        {group.options.map((option) => (
+          <OptionCard key={option.row.key} option={option} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * 아르카나 고르기. 하나를 고르면 그 아르카나의 옵션만 본다. 고른 것은 주소에 남아 새로 고쳐도,
+ * 링크를 건네도 그대로다.
+ */
+function ArcanaPicker({
+  groups,
+  selected,
+  onSelect,
+}: {
+  groups: ArcanaGroup[];
+  selected: number | null;
+  onSelect: (id: number | null) => void;
+}) {
+  const arcanas = groups.flatMap((group) => (group.arcana ? [group.arcana] : []));
+  if (arcanas.length === 0) return null;
+  const buttonProps = (on: boolean) =>
+    ({
+      size: 'small',
+      color: on ? 'primary' : 'default',
+      variant: on ? 'solid' : 'outlined',
+      'aria-pressed': on,
+    }) as const;
+  return (
+    <Flex vertical gap={4}>
+      <Text strong style={{ fontSize: 13 }} id="relic-arcana-label">
+        아르카나
+      </Text>
+      <Flex gap={6} wrap role="group" aria-labelledby="relic-arcana-label">
+        <Button {...buttonProps(selected === null)} onClick={() => onSelect(null)}>
+          전체
+        </Button>
+        {arcanas.map((arcana) => (
+          <Button
+            key={arcana.id}
+            {...buttonProps(selected === arcana.id)}
+            icon={<SkillIcon skillId={arcana.awakening} size={ARCANA_BUTTON_ICON} />}
+            onClick={() => onSelect(arcana.id)}
+          >
+            {arcana.name}
+          </Button>
+        ))}
+      </Flex>
+    </Flex>
+  );
+}
+
+function MuriasView({ items }: { items: AuctionItem[] }) {
+  const screens = Grid.useBreakpoint();
+  const wide = screens.md ?? true;
+  const summary = useMemo(() => summarizeMurias(items), [items]);
+  const arcanaQuery = useArcanaQuery();
+  const groups = useMemo(
+    () => groupByArcana(summary.rows, arcanaQuery.data?.arcanas ?? []),
+    [summary.rows, arcanaQuery.data],
+  );
+  const [params, setParams] = useSearchParams();
+  const selectedParam = Number(params.get('arcana'));
+  const selected = groups.some((group) => group.arcana?.id === selectedParam)
+    ? selectedParam
+    : null;
+  const select = (id: number | null) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id === null) next.delete('arcana');
+        else next.set('arcana', String(id));
+        return next;
+      },
+      { replace: true },
+    );
+
+  const [query, setQuery] = useState('');
+  const needle = normalizeForSearch(query);
+  // 옵션 이름이나 아르카나 이름에 들어 있으면 남긴다. "블래스트" 로 치면 그 아르카나가 통째로 남는다.
+  const shown = groups
+    .filter((group) => selected === null || group.arcana?.id === selected)
+    .map((group) => ({
+      ...group,
+      options:
+        needle && !normalizeForSearch(group.arcana?.name ?? '').includes(needle)
+          ? group.options.filter((option) => normalizeForSearch(option.row.name).includes(needle))
+          : group.options,
+    }))
+    .filter((group) => group.options.length > 0);
 
   return (
     <Flex vertical gap={16} style={SHRINK}>
@@ -263,38 +435,37 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
         />
       ) : null}
 
-      <NameFilter
-        id="relic-option-filter"
-        label="스킬 이름으로 좁히기"
-        value={query}
-        onChange={setQuery}
-        placeholder="예: 오버 드라이브"
-      />
-
-      {summary.rows.length === 0 ? (
+      {arcanaQuery.isPending ? (
+        <Skeleton active title={false} paragraph={{ rows: 6 }} />
+      ) : summary.rows.length === 0 ? (
         <EmptyState description="지금 경매장에 옵션이 붙은 무리아스의 유물 매물이 없습니다. 잠시 뒤 다시 열어 보세요." />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          variant="search"
-          description={`이름에 "${query.trim()}" 이 들어간 옵션이 없습니다. 스킬 이름 일부만 넣어 보세요.`}
-        />
       ) : (
-        <Card variant="outlined" style={SHRINK} styles={{ body: { padding: 0 } }}>
-          <Table<MuriasRow>
-            columns={columns}
-            dataSource={rows}
-            rowKey="key"
-            size="small"
-            pagination={false}
-            scroll={{ x: 'max-content' }}
+        <>
+          <ArcanaPicker groups={groups} selected={selected} onSelect={select} />
+          <NameFilter
+            id="relic-option-filter"
+            label="스킬 이름으로 좁히기"
+            value={query}
+            onChange={setQuery}
+            placeholder="예: 오버 드라이브"
           />
-        </Card>
+          {shown.length === 0 ? (
+            <EmptyState
+              variant="search"
+              description={`이름에 "${query.trim()}" 이 들어간 옵션이 없습니다. 스킬 이름 일부만 넣거나 아르카나를 전체로 바꿔 보세요.`}
+            />
+          ) : (
+            shown.map((group) => (
+              <ArcanaSection key={group.arcana?.id ?? 'unknown'} group={group} wide={wide} />
+            ))
+          )}
+        </>
       )}
 
       <Text type="secondary" style={{ fontSize: 12 }}>
-        칸의 값은 그 레벨 매물 가운데 가장 싼 개당 가격이고, 누르면 경매장에서 그 매물을 봅니다.
-        레벨은 옵션 수치를 최대 수치의 10분의 1 단위로 나눈 것입니다. 최대 700%인 옵션은 70%마다
-        1레벨입니다.
+        최저가는 그 레벨 매물 가운데 가장 싼 개당 가격이고, 누르면 경매장에서 그 매물을 봅니다.
+        레벨은 옵션 수치를 최대 수치의 10분의 1 단위로 나눈 것입니다. 아르카나 그림은 그 아르카나의
+        각성 스킬 그림입니다.
       </Text>
     </Flex>
   );

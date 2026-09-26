@@ -8,7 +8,7 @@
 import { brotliDecompressSync } from 'node:zlib';
 
 const SITE = 'https://prilus.gitlab.io/';
-const RESOURCE_ORIGIN = 'https://mabires.pril.cc/';
+export const RESOURCE_ORIGIN = 'https://mabires.pril.cc/';
 
 async function fetchOk(url) {
   const response = await fetch(url);

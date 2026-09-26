@@ -49,6 +49,25 @@ const PAGES: AuctionItem[][] = [
   ],
 ];
 
+/** 게임 데이터에서 뽑아 둔 아르카나 파일(public/data/arcana.json)의 일부. */
+const ARCANA_DATA = {
+  updated: '2026-09-22',
+  arcanas: [
+    {
+      id: 4,
+      name: '알케믹 스팅어',
+      awakening: 59066,
+      skills: [{ id: 59060, name: '플레임 버스트' }],
+    },
+    {
+      id: 6,
+      name: '블래스트 랜서',
+      awakening: 59107,
+      skills: [{ id: 59105, name: '오버 드라이브' }],
+    },
+  ],
+};
+
 function renderPage(path = '/relics') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -64,10 +83,14 @@ function renderPage(path = '/relics') {
 
 describe('유물 시세', () => {
   beforeEach(() => {
-    // 그림 목록과 이름 사전은 없는 것으로 둔다.
+    // 아르카나 파일만 있고 그림 목록과 이름 사전은 없는 것으로 둔다.
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('', { status: 404 })),
+      vi.fn(async (url: string) =>
+        String(url).endsWith('data/arcana.json')
+          ? new Response(JSON.stringify(ARCANA_DATA))
+          : new Response('', { status: 404 }),
+      ),
     );
     vi.mocked(fetchAuctionList).mockImplementation(async ({ category, cursor }) => {
       const index = cursor ? Number(cursor) : 0;
@@ -91,7 +114,11 @@ describe('유물 시세', () => {
     });
     // 두 번째 쪽의 8,000만이 첫 쪽의 9,500만보다 싸다.
     expect(within(cell).getByText('8,000만 G')).toBeInTheDocument();
-    expect(within(cell).getByText('2건')).toBeInTheDocument();
+    // 같은 줄에 그 레벨의 수치(700% 의 10분의 7)와 매물 수가 있다.
+    const line = cell.closest('tr') as HTMLElement;
+    expect(within(line).getByText('7레벨')).toBeInTheDocument();
+    expect(within(line).getByText('490%')).toBeInTheDocument();
+    expect(within(line).getByText('2')).toBeInTheDocument();
     const url = new URL(cell.getAttribute('href') ?? '', 'https://example.com');
     expect(Object.fromEntries(url.searchParams)).toEqual({
       category: '유물',
@@ -117,6 +144,23 @@ describe('유물 시세', () => {
       '22만 G',
     );
     expect(screen.queryByRole('link', { name: '와드네 일반 매물 보기' })).toBeNull();
+  });
+
+  it('옵션을 아르카나로 묶고, 아르카나를 고르면 그 아르카나만 보인다', async () => {
+    renderPage();
+    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+
+    // 매물이 있는 아르카나만 묶음과 단추가 생긴다. 알케믹 스팅어는 매물이 없다.
+    expect(screen.getAllByText('블래스트 랜서').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole('button', { name: /알케믹 스팅어/ })).toBeNull();
+    const lancer = screen.getByRole('button', { name: /블래스트 랜서/ });
+    expect(screen.getByText(/스킬 옵션 1종, 매물 3건/)).toBeInTheDocument();
+
+    fireEvent.click(lancer);
+    expect(lancer).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      screen.getByRole('link', { name: '오버 드라이브 폭발 공격 대미지 10레벨 매물 보기' }),
+    ).toBeInTheDocument();
   });
 
   it('스킬 이름으로 줄을 좁힌다', async () => {
