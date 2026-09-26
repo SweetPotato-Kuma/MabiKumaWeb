@@ -1,5 +1,12 @@
 import type { ItemOption } from '@/features/auction/types';
-import { MURIAS_RELIC_NAME, RELIC_LEVELS, relicOptionOf, type RelicScale } from './murias';
+import {
+  MURIAS_RELIC_NAME,
+  parseRelicOption,
+  RELIC_LEVELS,
+  relicOptionOf,
+  type RelicOption,
+  type RelicScale,
+} from './murias';
 
 /**
  * 유물 시세 모아 보기. 유물 카테고리의 판매 중 매물을 무리아스의 유물은 옵션과 레벨로,
@@ -50,6 +57,10 @@ const addTo = (cell: PriceCell | null, price: number): PriceCell =>
 
 const isMurias = (name: string) => name.startsWith(MURIAS_RELIC_NAME);
 
+/** 옵션 줄의 키. 이름이 같고 최대치가 다른 옵션이 생겨도 줄이 섞이지 않게 둘을 잇는다. */
+const rowKeyOf = (relic: Pick<RelicOption, 'name' | 'max' | 'unit'>) =>
+  `${relic.name}\u0000${relic.max}${relic.unit}`;
+
 export function summarizeMurias(items: readonly PricedItem[]): MuriasSummary {
   const rows = new Map<string, MuriasRow>();
   let listed = 0;
@@ -69,7 +80,7 @@ export function summarizeMurias(items: readonly PricedItem[]): MuriasSummary {
       continue;
     }
     listed += 1;
-    const key = `${relic.name}\u0000${relic.max}${relic.unit}`;
+    const key = rowKeyOf(relic);
     let row = rows.get(key);
     if (!row) {
       row = {
@@ -95,6 +106,66 @@ export function summarizeMurias(items: readonly PricedItem[]): MuriasSummary {
     unread,
     idea,
   };
+}
+
+/** 한 레벨의 가장 최근 거래. 지금 매물이 없는 레벨에 적는다. */
+export interface LastTrade {
+  price: number;
+  /** 거래 시각(ISO). */
+  at: string;
+}
+
+/**
+ * 옵션 문장마다의 최종 거래를 옵션 줄의 레벨 칸으로 옮긴다. 키는 MuriasRow.key, 값은 1레벨부터
+ * 10레벨까지다. 같은 칸에 문장이 둘 걸리면(수치 표기만 다른 경우) 더 최근 것을 쓴다.
+ */
+export function lastTradesByRow(
+  trades: readonly (readonly [string, number, string])[],
+): Map<string, (LastTrade | null)[]> {
+  const byRow = new Map<string, (LastTrade | null)[]>();
+  for (const [text, price, at] of trades) {
+    const relic = parseRelicOption(text);
+    if (!relic) continue;
+    const key = rowKeyOf(relic);
+    const levels = byRow.get(key) ?? RELIC_LEVELS.map(() => null);
+    const previous = levels[relic.level - 1];
+    if (!previous || previous.at < at) levels[relic.level - 1] = { price, at };
+    byRow.set(key, levels);
+  }
+  return byRow;
+}
+
+/** 이데아를 열었을 때 이데아 값 이상이 나올 가능성. */
+export interface IdeaOdds {
+  /** 이데아 최저가 이상인 결과 수. */
+  above: number;
+  /** 값을 아는 결과 수(지금 최저가, 없으면 최종 거래가). */
+  known: number;
+  /** 모든 결과 수(옵션 수 x 10레벨). */
+  total: number;
+}
+
+/**
+ * 무리아스의 유물(이데아)를 열어 나온 유물이 이데아 최저가 이상일 가능성. 옵션과 레벨의 실제
+ * 확률은 공개되지 않아 모든 옵션, 모든 레벨이 똑같이 나온다고 본다. 결과 하나의 값은 그 레벨의
+ * 지금 최저가, 매물이 없으면 최종 거래가다. 둘 다 없는 결과는 값을 몰라 셈에서 뺀다.
+ */
+export function ideaOdds(
+  rows: readonly MuriasRow[],
+  lastTrades: ReadonlyMap<string, (LastTrade | null)[]>,
+  ideaPrice: number,
+): IdeaOdds {
+  let above = 0;
+  let known = 0;
+  for (const row of rows) {
+    for (const level of RELIC_LEVELS) {
+      const price = row.levels[level - 1]?.lowest ?? lastTrades.get(row.key)?.[level - 1]?.price;
+      if (price === undefined) continue;
+      known += 1;
+      if (price >= ideaPrice) above += 1;
+    }
+  }
+  return { above, known, total: rows.length * RELIC_LEVELS.length };
 }
 
 /** 그 밖의 유물의 종류. 이름 끝의 "(특급)", "(이데아)" 로 가른다. */

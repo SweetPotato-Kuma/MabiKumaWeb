@@ -9,6 +9,7 @@ import {
   dailySeries,
   hourlySeries,
   kstDay,
+  lastTradesByOption,
   recentStats,
   toTradeRow,
 } from './market.js';
@@ -324,6 +325,42 @@ function call(path, { method = 'GET', body, adminKey } = {}) {
     env,
   );
 }
+
+describe('옵션 문장마다 최종 거래', () => {
+  const relic = (value) => [
+    { option_type: '무리아스 유물', option_value: value },
+    { option_type: '전용 해제 거래 보증서 사용 불가', option_value: 'true' },
+  ];
+  const seven = '오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)';
+  const ten = '오버 드라이브 폭발 공격 대미지 700% 증가 (최대 700%)';
+
+  it('같은 옵션 문장은 가장 최근 거래 하나만 준다', async () => {
+    const name = '무리아스의 유물';
+    pages = [
+      [
+        trade(1, 60, { name, price: 80_000_000, options: relic(seven) }),
+        trade(2, 3600, { name, price: 95_000_000, options: relic(seven) }),
+        trade(3, 86400, { name, price: 300_000_000, options: relic(ten) }),
+        trade(4, 60, { name: '무리아스의 유물(이데아)', price: 134_000_000 }),
+      ],
+    ];
+    stubHistory();
+    await collectTrades(env, NOW);
+
+    const trades = await lastTradesByOption(env.MARKET, name, '무리아스 유물');
+    expect(trades).toEqual([
+      [seven, 80_000_000, new Date(NOW - 60_000).toISOString()],
+      [ten, 300_000_000, new Date(NOW - 86_400_000).toISOString()],
+    ]);
+
+    const response = await call(
+      `/market/option-trades?name=${encodeURIComponent(name)}&type=${encodeURIComponent('무리아스 유물')}`,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).trades).toHaveLength(2);
+    expect((await call('/market/option-trades?name=x')).status).toBe(400);
+  });
+});
 
 describe('시세 경로', () => {
   beforeEach(async () => {

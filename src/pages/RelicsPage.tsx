@@ -32,8 +32,10 @@ import {
   type ArcanaOption,
 } from '@/features/relics/arcana';
 import { useRelicListings } from '@/features/relics/hooks';
+import { useOptionTradesQuery } from '@/features/market/api';
 import {
   formatRelicValue,
+  MURIAS_OPTION_TYPE,
   MURIAS_RELIC_NAME,
   muriasAuctionPath,
   RELIC_CATEGORY,
@@ -43,9 +45,13 @@ import {
   relicValueAt,
 } from '@/features/relics/murias';
 import {
+  ideaOdds,
+  lastTradesByRow,
   RELIC_GRADES,
   summarizeMurias,
   summarizeOtherRelics,
+  type IdeaOdds,
+  type LastTrade,
   type OtherRelicRow,
   type PriceCell,
 } from '@/features/relics/prices';
@@ -82,7 +88,7 @@ const priceOf = (cell: PriceCell | null) => cell?.lowest ?? Number.POSITIVE_INFI
 /**
  * 가격 한 칸. 가장 싼 개당 가격과 매물 수를 적고, 누르면 경매장에서 그 매물을 본다.
  * 칸이 좁아 억과 만으로 줄이고, 정확한 값은 마우스를 올리면 보인다. 표가 가격으로 가득해
- * 전부 링크 색이면 읽히지 않으므로 글자는 본문색으로 둔다. 누를 수 있다는 것은 표 아래에 적는다.
+ * 전부 링크 색이면 읽히지 않으므로 글자는 본문색으로 둔다.
  */
 function PriceLink({
   cell,
@@ -90,6 +96,7 @@ function PriceLink({
   label,
   showCount = true,
   unit = true,
+  strong = false,
 }: {
   cell: PriceCell | null;
   to: string;
@@ -98,6 +105,8 @@ function PriceLink({
   showCount?: boolean;
   /** 가격 뒤의 " G". 가격만 촘촘히 늘어선 곳에서는 뗀다. */
   unit?: boolean;
+  /** 굵게. 무리아스의 유물에서 이데아 최저가 이상인 칸을 가른다. */
+  strong?: boolean;
 }) {
   const { token } = theme.useToken();
   if (!cell) return <Text type="secondary">-</Text>;
@@ -109,7 +118,7 @@ function PriceLink({
       style={{ color: token.colorText, display: 'block' }}
     >
       <Flex vertical gap={0} align="flex-end">
-        <span className="tnum" style={{ whiteSpace: 'nowrap' }}>
+        <span className="tnum" style={{ whiteSpace: 'nowrap', fontWeight: strong ? 700 : undefined }}>
           {formatGoldShort(cell.lowest, unit)}
         </span>
         {showCount ? (
@@ -192,8 +201,19 @@ const LEVEL_GRID = 'max-content minmax(0, 1fr) max-content';
  * 여러 아르카나를 견줄 수 없었다. 레벨마다의 수치는 머리의 10레벨 수치를 10으로 나누면 되고,
  * 레벨 글자에 마우스를 올려도 보인다.
  */
-function OptionCard({ option }: { option: ArcanaOption }) {
+function OptionCard({
+  option,
+  lastTrades,
+  ideaPrice,
+}: {
+  option: ArcanaOption;
+  /** 이 옵션의 레벨마다 최종 거래. 1레벨부터. 기록이 없으면 undefined. */
+  lastTrades: (LastTrade | null)[] | undefined;
+  /** 이데아 최저가. 이 값 이상인 가격을 굵게 적는다. 매물이 없으면 null. */
+  ideaPrice: number | null;
+}) {
   const { row, skill } = option;
+  const aboveIdea = (price: number) => ideaPrice !== null && price >= ideaPrice;
   return (
     <Card type="inner" size="small" variant="outlined">
       <Flex vertical gap={8}>
@@ -222,6 +242,8 @@ function OptionCard({ option }: { option: ArcanaOption }) {
         >
           {[...RELIC_LEVELS].reverse().map((level) => {
             const cell = row.levels[level - 1];
+            // 지금 매물이 없는 레벨은 최종 거래가를 흐리게 적고 언제 팔린 값인지 아래에 붙인다.
+            const trade = cell ? null : (lastTrades?.[level - 1] ?? null);
             return (
               <div
                 key={level}
@@ -242,13 +264,28 @@ function OptionCard({ option }: { option: ArcanaOption }) {
                   {level}레벨
                 </Text>
                 <Flex justify="flex-end">
-                  <PriceLink
-                    cell={cell}
-                    to={muriasAuctionPath(row.name, level)}
-                    label={`${row.name} ${level}레벨`}
-                    showCount={false}
-                    unit={false}
-                  />
+                  {trade ? (
+                    <Text
+                      type="secondary"
+                      className="tnum"
+                      title={`최종 거래가 ${formatGold(trade.price)}`}
+                      style={{
+                        whiteSpace: 'nowrap',
+                        fontWeight: aboveIdea(trade.price) ? 700 : undefined,
+                      }}
+                    >
+                      {formatGoldShort(trade.price, false)}
+                    </Text>
+                  ) : (
+                    <PriceLink
+                      cell={cell}
+                      to={muriasAuctionPath(row.name, level)}
+                      label={`${row.name} ${level}레벨`}
+                      showCount={false}
+                      unit={false}
+                      strong={cell !== null && aboveIdea(cell.lowest)}
+                    />
+                  )}
                 </Flex>
                 <Text
                   type="secondary"
@@ -257,6 +294,14 @@ function OptionCard({ option }: { option: ArcanaOption }) {
                 >
                   {cell ? `${formatNumber(cell.count)}건` : ''}
                 </Text>
+                {trade ? (
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 12, gridColumn: '2 / 4', textAlign: 'right' }}
+                  >
+                    최종 거래가, {tradeDay(trade.at)}
+                  </Text>
+                ) : null}
               </div>
             );
           })}
@@ -271,7 +316,17 @@ function OptionCard({ option }: { option: ArcanaOption }) {
  * 나란히 둔다. 이름을 위 머리 줄에 두면 묶음마다 한 줄씩 높아져 한 화면에 들어가는 아르카나가
  * 줄었다. 768px 미만에서는 이름이 위, 옵션 카드가 한 줄에 하나씩 아래로 온다.
  */
-function ArcanaSection({ group, wide }: { group: ArcanaGroup; wide: boolean }) {
+function ArcanaSection({
+  group,
+  wide,
+  lastTrades,
+  ideaPrice,
+}: {
+  group: ArcanaGroup;
+  wide: boolean;
+  lastTrades: ReadonlyMap<string, (LastTrade | null)[]>;
+  ideaPrice: number | null;
+}) {
   const title = (
     <Flex gap={10} align="center" vertical={wide} style={wide ? { textAlign: 'center' } : undefined}>
       {group.arcana ? <SkillIcon skillId={group.arcana.awakening} size={ARCANA_ICON} /> : null}
@@ -307,7 +362,12 @@ function ArcanaSection({ group, wide }: { group: ArcanaGroup; wide: boolean }) {
           }}
         >
           {group.options.map((option) => (
-            <OptionCard key={option.row.key} option={option} />
+            <OptionCard
+              key={option.row.key}
+              option={option}
+              lastTrades={lastTrades.get(option.row.key)}
+              ideaPrice={ideaPrice}
+            />
           ))}
         </div>
       </div>
@@ -361,6 +421,46 @@ function ArcanaPicker({
   );
 }
 
+/** "9월 25일". 최종 거래가가 언제 값인지 적는다. 한국 시각 기준이다. */
+const tradeDayFormat = new Intl.DateTimeFormat('ko-KR', {
+  month: 'long',
+  day: 'numeric',
+  timeZone: 'Asia/Seoul',
+});
+const tradeDay = (iso: string) => tradeDayFormat.format(new Date(iso));
+
+/**
+ * 이데아를 열었을 때 이데아 최저가 이상이 나올 확률. 옵션과 레벨의 실제 확률이 공개되지 않아
+ * 모두 똑같이 나온다고 본다(features/relics/prices.ts 의 ideaOdds). 가격을 모르는 결과가 있으면
+ * 몇 가지로 셈했는지 같이 적는다.
+ */
+function IdeaOddsStat({ odds, ideaListed }: { odds: IdeaOdds | null; ideaListed: boolean }) {
+  const title = '이데아 이상 확률';
+  if (!ideaListed)
+    return <Statistic title={title} value="이데아 매물 없음" styles={{ content: { fontSize: 16 } }} />;
+  if (!odds) return <Statistic title={title} value="-" loading />;
+  const percent = odds.known > 0 ? (odds.above / odds.known) * 100 : null;
+  return (
+    <Flex vertical gap={2}>
+      <Statistic
+        title={title}
+        value={percent === null ? '-' : `${percent.toFixed(1)}%`}
+        styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
+      />
+      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+        {formatNumber(odds.known)}가지 중 {formatNumber(odds.above)}가지, 모든 옵션과 레벨이
+        고르게 나온다고 가정
+        {odds.known < odds.total
+          ? `. 가격을 모르는 ${formatNumber(odds.total - odds.known)}가지는 뺐습니다.`
+          : '.'}
+      </Text>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        아래에서 굵은 가격이 이데아 최저가 이상인 결과입니다.
+      </Text>
+    </Flex>
+  );
+}
+
 function MuriasView({ items }: { items: AuctionItem[] }) {
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
@@ -370,6 +470,19 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
     () => groupByArcana(summary.rows, arcanaQuery.data?.arcanas ?? []),
     [summary.rows, arcanaQuery.data],
   );
+  // 지금 매물이 없는 레벨에 적을 최종 거래가. 기록을 받지 못해도 나머지 화면은 그대로 쓴다.
+  const tradesQuery = useOptionTradesQuery(MURIAS_RELIC_NAME, MURIAS_OPTION_TYPE);
+  const lastTrades = useMemo(
+    () => lastTradesByRow(tradesQuery.data?.trades ?? []),
+    [tradesQuery.data],
+  );
+  const ideaPrice = summary.idea?.lowest ?? null;
+  // 최종 거래가를 기다리는 동안 셈하면 값이 한 번 바뀌어 보인다. 받거나 실패한 뒤에 센다.
+  const odds =
+    ideaPrice !== null && !tradesQuery.isLoading
+      ? ideaOdds(summary.rows, lastTrades, ideaPrice)
+      : null;
+
   const [params, setParams] = useSearchParams();
   const selectedParam = Number(params.get('arcana'));
   const selected = groups.some((group) => group.arcana?.id === selectedParam)
@@ -403,9 +516,9 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
   return (
     <Flex vertical gap={16} style={SHRINK}>
       <Card variant="outlined">
-        {/* 세 칸. 768px 미만에서는 두 칸, 한 칸으로 떨어진다. */}
-        <Row gutter={[24, 16]} align="middle">
-          <Col xs={24} sm={12} md={8}>
+        {/* 네 칸. 768px 미만에서는 두 칸, 576px 미만에서는 한 칸으로 떨어진다. */}
+        <Row gutter={[24, 16]} align="top">
+          <Col xs={24} sm={12} md={6}>
             <Flex gap={12} align="center">
               <ItemIcon category={RELIC_CATEGORY} name={MURIAS_RELIC_NAME} size={40} />
               <Statistic
@@ -416,7 +529,7 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
               />
             </Flex>
           </Col>
-          <Col xs={24} sm={12} md={8}>
+          <Col xs={24} sm={12} md={6}>
             <Statistic
               title="스킬 옵션"
               value={formatNumber(summary.rows.length)}
@@ -424,7 +537,7 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
               styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
             />
           </Col>
-          <Col xs={24} md={8}>
+          <Col xs={24} sm={12} md={6}>
             <Statistic
               title={
                 <>
@@ -438,6 +551,9 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
               value={summary.idea ? formatGold(summary.idea.lowest) : '매물 없음'}
               styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
             />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <IdeaOddsStat odds={odds} ideaListed={ideaPrice !== null} />
           </Col>
         </Row>
       </Card>
@@ -471,17 +587,17 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
             />
           ) : (
             shown.map((group) => (
-              <ArcanaSection key={group.arcana?.id ?? 'unknown'} group={group} wide={wide} />
+              <ArcanaSection
+                key={group.arcana?.id ?? 'unknown'}
+                group={group}
+                wide={wide}
+                lastTrades={lastTrades}
+                ideaPrice={ideaPrice}
+              />
             ))
           )}
         </>
       )}
-
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        최저가는 그 레벨 매물 가운데 가장 싼 개당 가격이고, 누르면 경매장에서 그 매물을 봅니다.
-        레벨은 옵션 수치를 최대 수치의 10분의 1 단위로 나눈 것입니다. 아르카나 그림은 그 아르카나의
-        각성 스킬 그림입니다.
-      </Text>
     </Flex>
   );
 }

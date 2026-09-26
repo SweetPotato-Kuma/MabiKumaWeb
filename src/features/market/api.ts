@@ -153,3 +153,31 @@ function mergeRecent(results: { data?: MarketRecentResponse; isLoading: boolean 
     isLoading: results.some((result) => result.isLoading),
   };
 }
+
+export interface OptionTradesResponse {
+  name: string;
+  type: string;
+  /** 옵션 문장마다 가장 최근 거래. [문장, 개당 가격, 거래 시각(ISO)]. */
+  trades: [string, number, string][];
+  since: string | null;
+  updated: string | null;
+}
+
+/**
+ * 한 아이템의 옵션 문장마다 가장 최근 거래(worker/market.js 의 marketOptionTrades). 유물 시세가
+ * 지금 매물이 없는 레벨에 최종 거래가를 적을 때 쓴다. 기록이 없는 환경에서는 묻지 않는다.
+ */
+export function useOptionTradesQuery(name: string, type: string, enabled = true) {
+  return useQuery({
+    queryKey: ['market', 'optionTrades', name, type],
+    queryFn: async ({ signal }) => {
+      const url = new URL(`${getProxyUrl()}/market/option-trades`);
+      url.searchParams.set('name', name);
+      url.searchParams.set('type', type);
+      return readJson<OptionTradesResponse>(await fetch(url, { signal }));
+    },
+    enabled: enabled && canLookupMarket(),
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
+}

@@ -43,10 +43,12 @@ import {
   MARKET_COLLECT_PATH,
   MARKET_ITEM_PATH,
   MARKET_RECENT_PATH,
+  MARKET_OPTION_TRADES_PATH,
   collectTrades,
   marketCollect,
   marketItem,
   marketRecent,
+  marketOptionTrades,
 } from './market.js';
 import {
   SNAPSHOT_COLLECT_PATH,
@@ -1321,6 +1323,12 @@ export default {
         return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
       }
       return marketRecent(request, env, cors);
+    }
+    if (url.pathname === MARKET_OPTION_TRADES_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return marketOptionTrades(request, url, env, cors);
     }
 
     // 지금 한 번 받기는 운영자만. 크론을 기다리지 않고 수집이 도는지 볼 때 쓴다.

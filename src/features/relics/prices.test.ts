@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { relicGradeOf, summarizeMurias, summarizeOtherRelics } from './prices';
+import {
+  ideaOdds,
+  lastTradesByRow,
+  relicGradeOf,
+  summarizeMurias,
+  summarizeOtherRelics,
+} from './prices';
 
 const murias = (value: string, price: number) => ({
   item_name: '무리아스의 유물',
@@ -33,6 +39,32 @@ describe('summarizeMurias', () => {
     expect(overdrive.levels[6]).toEqual({ lowest: 80_000_000, count: 1 });
     expect(overdrive.levels[0]).toBeNull();
     expect(overdrive.cheapest).toEqual({ price: 80_000_000, level: 7 });
+  });
+});
+
+describe('최종 거래가와 이데아 이상 확률', () => {
+  const { rows } = summarizeMurias([
+    murias('오버 드라이브 폭발 공격 대미지 700% 증가 (최대 700%)', 300_000_000),
+    murias('오버 드라이브 폭발 공격 대미지 70% 증가 (최대 700%)', 1_000_000),
+  ]);
+  const trades = lastTradesByRow([
+    ['오버 드라이브 폭발 공격 대미지 560% 증가 (최대 700%)', 150_000_000, '2026-09-25T03:00:00.000Z'],
+    ['오버 드라이브 폭발 공격 대미지 560% 증가 (최대 700%)', 90_000_000, '2026-09-26T03:00:00.000Z'],
+    ['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 20_000_000, '2026-09-24T03:00:00.000Z'],
+    ['읽을 수 없는 문장', 1, '2026-09-26T03:00:00.000Z'],
+  ]);
+
+  it('옵션 문장의 최종 거래를 그 옵션 줄의 레벨 칸으로 옮기고, 같은 칸은 더 최근 것을 쓴다', () => {
+    const levels = trades.get(rows[0].key);
+    expect(levels?.[7]).toEqual({ price: 90_000_000, at: '2026-09-26T03:00:00.000Z' });
+    expect(levels?.[6]?.price).toBe(20_000_000);
+    expect(levels?.[0]).toBeNull();
+  });
+
+  it('매물이 없으면 최종 거래가로 값을 채우고, 둘 다 없는 결과는 셈에서 뺀다', () => {
+    // 10레벨 3억, 1레벨 100만은 매물, 8레벨 9,000만, 7레벨 2,000만은 최종 거래가.
+    expect(ideaOdds(rows, trades, 80_000_000)).toEqual({ above: 2, known: 4, total: 10 });
+    expect(ideaOdds(rows, new Map(), 80_000_000)).toEqual({ above: 1, known: 2, total: 10 });
   });
 });
 

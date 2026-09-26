@@ -19,6 +19,7 @@ const NEXON_HISTORY_URL = 'https://open.api.nexon.com/mabinogi/v1/auction/histor
 
 export const MARKET_ITEM_PATH = '/market/item';
 export const MARKET_RECENT_PATH = '/market/recent';
+export const MARKET_OPTION_TRADES_PATH = '/market/option-trades';
 export const MARKET_COLLECT_PATH = '/market/collect';
 
 const KST_OFFSET_SECONDS = 9 * 3600;
@@ -60,6 +61,25 @@ const NAME_MAX = 120;
 
 /** 같은 질문은 이 시간 동안 엣지 캐시에서 답한다. 수집이 10분마다라 더 자주 볼 이유가 없다. */
 const CACHE_SECONDS = 300;
+
+/**
+ * 한 아이템의 옵션 문장마다 가장 최근 거래. 옵션 종류(type) 한 가지만 본다.
+ *
+ * 무리아스의 유물은 스킬 옵션 한 줄의 문장이 수치까지 담고 있어("오버 드라이브 폭발 공격 대미지
+ * 490% 증가 (최대 700%)") 문장이 같으면 같은 옵션, 같은 레벨이다. 그래서 문장으로 묶어 가장 최근
+ * 거래 하나씩만 돌려준다. 지금 매물이 없는 레벨에도 마지막으로 얼마에 팔렸는지 보여 주려는 것이다.
+ * 거래 원본은 RAW_DAYS 만 있으므로 그보다 오래 거래가 없던 문장은 빠진다.
+ */
+const OPTION_TRADES_SQL = `WITH picked AS (
+  SELECT t.id, t.ts, t.price, json_extract(o.value, '$[2]') AS text
+  FROM trades t, json_each(t.options) o
+  WHERE t.name = ?1 AND json_extract(o.value, '$[0]') = ?2
+), ranked AS (
+  SELECT text, price, ts, ROW_NUMBER() OVER (PARTITION BY text ORDER BY ts DESC, id DESC) AS rn
+  FROM picked
+  WHERE text IS NOT NULL
+)
+SELECT text, price, ts FROM ranked WHERE rn = 1 ORDER BY text`;
 
 /** 한국 시각 기준 날짜 번호. 1970-01-01 이 0 이다. */
 export function kstDay(ts) {
@@ -480,6 +500,46 @@ export async function marketRecent(request, env, cors, now = Date.now()) {
       collectionInfo(env.MARKET),
     ]);
     return { items, ...info };
+  });
+  return new Response(body, {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': `public, max-age=${CACHE_SECONDS}`,
+      'x-market-cache': hit ? 'hit' : 'miss',
+    },
+  });
+}
+
+/** 옵션 문장마다 가장 최근 거래. [문장, 개당 가격, 거래 시각(ISO)] 목록이다. */
+export async function lastTradesByOption(db, name, type) {
+  const { results } = await db.prepare(OPTION_TRADES_SQL).bind(name, type).all();
+  return (results ?? []).map((row) => [row.text, row.price, new Date(row.ts * 1000).toISOString()]);
+}
+
+/**
+ * GET /market/option-trades?name=...&type=... → 옵션 문장마다 가장 최근 거래. 유물 시세 화면이
+ * 지금 매물이 없는 레벨에 최종 거래가를 적을 때 쓴다.
+ */
+export async function marketOptionTrades(request, url, env, cors) {
+  if (!env.MARKET)
+    return marketError('MARKET_NOT_CONFIGURED', '시세 기록이 아직 없습니다.', 503, cors);
+  const name = cleanName(url.searchParams.get('name'));
+  const type = cleanName(url.searchParams.get('type'));
+  if (!name || !type)
+    return marketError('MARKET_NAME_REQUIRED', '아이템 이름과 옵션 종류가 필요합니다.', 400, cors);
+
+  if (await rateLimited(request, env)) {
+    return marketError('MARKET_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
+  }
+
+  const cacheKey = `https://market.cache${MARKET_OPTION_TRADES_PATH}?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`;
+  const { body, hit } = await withEdgeCache(cacheKey, async () => {
+    const [trades, info] = await Promise.all([
+      lastTradesByOption(env.MARKET, name, type),
+      collectionInfo(env.MARKET),
+    ]);
+    return { name, type, trades, ...info };
   });
   return new Response(body, {
     headers: {

@@ -4,11 +4,24 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import type * as Settings from '@/lib/settings';
+import type * as MarketApi from '@/features/market/api';
 import { fetchAuctionList } from '@/features/auction/api';
 import type { AuctionItem, ItemOption } from '@/features/auction/types';
 import { RelicsPage } from '@/pages/RelicsPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
+// 워커의 거래 기록 대신 8레벨의 최종 거래 하나를 돌려준다. 8레벨은 지금 매물이 없다.
+vi.mock('@/features/market/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof MarketApi>()),
+  useOptionTradesQuery: () => ({
+    isLoading: false,
+    data: {
+      trades: [
+        ['오버 드라이브 폭발 공격 대미지 560% 증가 (최대 700%)', 200_000_000, '2026-09-25T03:00:00.000Z'],
+      ],
+    },
+  }),
+}));
 // 테스트 환경에는 키도 프록시도 없다. 조회할 수 있는 것으로 두고 넥슨 API 는 위에서 막는다.
 vi.mock('@/lib/settings', async (importOriginal) => ({
   ...(await importOriginal<typeof Settings>()),
@@ -130,6 +143,21 @@ describe('유물 시세', () => {
       screen.getByRole('link', { name: '오버 드라이브 폭발 공격 대미지 10레벨 매물 보기' }),
     ).toHaveTextContent('3억');
     expect(screen.getByText('134,000,000 G')).toBeInTheDocument();
+  });
+
+  it('매물이 없는 레벨은 최종 거래가를 적고, 이데아 이상 확률을 센다', async () => {
+    renderPage();
+    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+
+    const eight = screen.getByTitle('최종 거래가 200,000,000 G');
+    expect(eight).toHaveTextContent('2억');
+    const line = eight.closest('[role="listitem"]') as HTMLElement;
+    expect(within(line).getByText('최종 거래가, 9월 25일')).toBeInTheDocument();
+
+    // 값을 아는 결과는 10레벨 3억, 8레벨 2억(최종 거래가), 7레벨 8,000만 셋이다.
+    // 이데아 1억 3,400만 이상은 둘이라 66.7%.
+    expect(screen.getByText('66.7%')).toBeInTheDocument();
+    expect(screen.getByText(/3가지 중 2가지/)).toBeInTheDocument();
   });
 
   it('그 밖의 유물은 일반, 특급, 이데아로 나눠 보여 준다', async () => {
