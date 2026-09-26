@@ -145,19 +145,21 @@ describe('유물 시세', () => {
     expect(screen.getByText('134,000,000 G')).toBeInTheDocument();
   });
 
-  it('매물이 없는 레벨은 최종 거래가를 적고, 이데아 이상 확률을 센다', async () => {
+  it('매물이 없는 레벨은 최종 거래가를 한 줄로 적고, 본전 확률을 센다', async () => {
     renderPage();
     await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
 
-    const eight = screen.getByTitle('최종 거래가 200,000,000 G');
+    const [eight, mark] = screen.getAllByTitle('최종 거래가 200,000,000 G, 9월 25일');
     expect(eight).toHaveTextContent('2억');
-    const line = eight.closest('[role="listitem"]') as HTMLElement;
-    expect(within(line).getByText('최종 거래가, 9월 25일')).toBeInTheDocument();
+    expect(mark).toHaveTextContent('최종');
+    // 매물도 거래 기록도 없는 레벨은 기록이 없다고 적는다.
+    expect(screen.getAllByText('기록 없음')).toHaveLength(7);
 
     // 값을 아는 결과는 10레벨 3억, 8레벨 2억(최종 거래가), 7레벨 8,000만 셋이다.
     // 이데아 1억 3,400만 이상은 둘이라 66.7%.
+    expect(screen.getByText('본전 확률')).toBeInTheDocument();
     expect(screen.getByText('66.7%')).toBeInTheDocument();
-    expect(screen.getByText(/3가지 중 2가지/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/값을 아는 3가지 중 2가지/)).toBeInTheDocument();
   });
 
   it('그 밖의 유물은 일반, 특급, 이데아로 나눠 보여 준다', async () => {

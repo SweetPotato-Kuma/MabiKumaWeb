@@ -14,6 +14,7 @@ import {
   Statistic,
   Table,
   Tabs,
+  Tooltip,
   Typography,
   theme,
   type TableColumnsType,
@@ -22,7 +23,7 @@ import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
-import { RefreshIcon, SearchIcon } from '@/components/icons';
+import { InfoIcon, RefreshIcon, SearchIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import {
@@ -242,8 +243,12 @@ function OptionCard({
         >
           {[...RELIC_LEVELS].reverse().map((level) => {
             const cell = row.levels[level - 1];
-            // 지금 매물이 없는 레벨은 최종 거래가를 흐리게 적고 언제 팔린 값인지 아래에 붙인다.
+            // 지금 매물이 없는 레벨은 최종 거래가를 흐리게 적고 매물 수 자리에 "최종" 을 붙인다.
+            // 두 줄로 적으니 그 칸만 높아져 줄이 들쭉날쭉했다. 언제 팔린 값인지는 올리면 보인다.
             const trade = cell ? null : (lastTrades?.[level - 1] ?? null);
+            const tradeTitle = trade
+              ? `최종 거래가 ${formatGold(trade.price)}, ${tradeDay(trade.at)}`
+              : undefined;
             return (
               <div
                 key={level}
@@ -268,13 +273,18 @@ function OptionCard({
                     <Text
                       type="secondary"
                       className="tnum"
-                      title={`최종 거래가 ${formatGold(trade.price)}`}
+                      title={tradeTitle}
                       style={{
                         whiteSpace: 'nowrap',
                         fontWeight: aboveIdea(trade.price) ? 700 : undefined,
                       }}
                     >
                       {formatGoldShort(trade.price, false)}
+                    </Text>
+                  ) : !cell ? (
+                    // 거래 기록은 모으기 시작한 뒤의 것만 있다. 그 뒤로 팔린 적이 없으면 적을 값이 없다.
+                    <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                      기록 없음
                     </Text>
                   ) : (
                     <PriceLink
@@ -290,18 +300,11 @@ function OptionCard({
                 <Text
                   type="secondary"
                   className="tnum"
+                  title={tradeTitle}
                   style={{ fontSize: 12, whiteSpace: 'nowrap', textAlign: 'right' }}
                 >
-                  {cell ? `${formatNumber(cell.count)}건` : ''}
+                  {cell ? `${formatNumber(cell.count)}건` : trade ? '최종' : ''}
                 </Text>
-                {trade ? (
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: 12, gridColumn: '2 / 4', textAlign: 'right' }}
-                  >
-                    최종 거래가, {tradeDay(trade.at)}
-                  </Text>
-                ) : null}
               </div>
             );
           })}
@@ -430,34 +433,45 @@ const tradeDayFormat = new Intl.DateTimeFormat('ko-KR', {
 const tradeDay = (iso: string) => tradeDayFormat.format(new Date(iso));
 
 /**
- * 이데아를 열었을 때 이데아 최저가 이상이 나올 확률. 옵션과 레벨의 실제 확률이 공개되지 않아
- * 모두 똑같이 나온다고 본다(features/relics/prices.ts 의 ideaOdds). 가격을 모르는 결과가 있으면
- * 몇 가지로 셈했는지 같이 적는다.
+ * 본전 확률. 이데아를 열었을 때 이데아 최저가 이상이 나올 확률이다. 옵션과 레벨의 실제 확률이
+ * 공개되지 않아 모두 똑같이 나온다고 본다(features/relics/prices.ts 의 ideaOdds).
+ *
+ * 몇 가지로 셈했는지, 무엇을 가정했는지, 표의 굵은 글자와 "최종" 이 무슨 뜻인지는 제목 옆
+ * 그림에 올려 두었다. 요약 칸 아래에 늘어놓으니 표보다 설명이 먼저 읽혔다.
  */
 function IdeaOddsStat({ odds, ideaListed }: { odds: IdeaOdds | null; ideaListed: boolean }) {
-  const title = '이데아 이상 확률';
+  const detail = odds
+    ? [
+        `이데아 최저가 이상인 결과가 나올 확률입니다.`,
+        `모든 옵션과 레벨이 고르게 나온다고 가정해 값을 아는 ${formatNumber(odds.known)}가지 중 ${formatNumber(odds.above)}가지로 셈했습니다.`,
+        odds.known < odds.total
+          ? `매물도 거래 기록도 없는 ${formatNumber(odds.total - odds.known)}가지는 뺐습니다.`
+          : '',
+        `표의 굵은 가격이 이데아 최저가 이상, "최종" 이 붙은 흐린 가격은 매물이 없어 최종 거래가를 적은 것입니다.`,
+      ]
+        .filter(Boolean)
+        .join(' ')
+    : '';
+  const title = (
+    <Flex gap={4} align="center">
+      본전 확률
+      {detail ? (
+        <Tooltip title={detail}>
+          <InfoIcon aria-label={detail} tabIndex={0} style={{ cursor: 'help' }} />
+        </Tooltip>
+      ) : null}
+    </Flex>
+  );
   if (!ideaListed)
     return <Statistic title={title} value="이데아 매물 없음" styles={{ content: { fontSize: 16 } }} />;
   if (!odds) return <Statistic title={title} value="-" loading />;
   const percent = odds.known > 0 ? (odds.above / odds.known) * 100 : null;
   return (
-    <Flex vertical gap={2}>
-      <Statistic
-        title={title}
-        value={percent === null ? '-' : `${percent.toFixed(1)}%`}
-        styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
-      />
-      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-        {formatNumber(odds.known)}가지 중 {formatNumber(odds.above)}가지, 모든 옵션과 레벨이
-        고르게 나온다고 가정
-        {odds.known < odds.total
-          ? `. 가격을 모르는 ${formatNumber(odds.total - odds.known)}가지는 뺐습니다.`
-          : '.'}
-      </Text>
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        아래에서 굵은 가격이 이데아 최저가 이상인 결과입니다.
-      </Text>
-    </Flex>
+    <Statistic
+      title={title}
+      value={percent === null ? '-' : `${percent.toFixed(1)}%`}
+      styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
+    />
   );
 }
 
