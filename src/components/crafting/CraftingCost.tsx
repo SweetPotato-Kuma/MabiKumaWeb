@@ -1,4 +1,11 @@
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import {
   Card,
   Checkbox,
@@ -13,8 +20,10 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
   type TableColumnsType,
 } from 'antd';
+import type { ColumnType } from 'antd/es/table';
 import { CookingGuide } from '@/components/crafting/CookingGuide';
 import { RecipeInfo } from '@/components/crafting/RecipeInfo';
 import { ItemIcon } from '@/components/ItemIcon';
@@ -121,6 +130,7 @@ function RecipeCost({
   picker: ReactNode;
 }) {
   const screens = Grid.useBreakpoint();
+  const { token } = theme.useToken();
   const [quantity, setQuantity] = useState(1);
   /** 공정 수. 기준 공정 수로 시작하고 사용자가 고친다. */
   const workRecipe = hasWorks(recipe);
@@ -307,8 +317,10 @@ function RecipeCost({
 
         <div ref={tableRef}>
           <Table<TreeRow>
-            columns={treeColumns(book, setMethod, categoryOf)}
-            dataSource={toTreeRows(plan.nodes)}
+            columns={treeColumns(book, setMethod, categoryOf, {
+              background: token.colorFillQuaternary,
+            })}
+            dataSource={treeRowsOf(plan.nodes, plan.sections, workRecipe ? works : 1)}
             rowKey="key"
             size="small"
             pagination={false}
@@ -328,7 +340,7 @@ function RecipeCost({
                    * 합계는 줄마다의 금액을 더한 것이 아니다. 같은 재료가 트리 여러 곳에 나오면
                    * 개수를 합쳐 싼 매물부터 한 번에 채운다. 따로 사면 같은 싼 매물을 두 번 세게 된다.
                    */}
-                  <Text strong>합계</Text>
+                  <Text strong>{plan.sections ? '총합계' : '합계'}</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
                   <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
@@ -463,17 +475,51 @@ function useSlidingRows(containerRef: RefObject<HTMLDivElement | null>) {
   });
 }
 
-interface TreeRow {
+interface ItemRow {
   key: string;
   node: PlanNode;
-  children?: TreeRow[];
+  children?: ItemRow[];
+}
+
+/** 공정 재료와 마감 재료를 가르는 머리 줄. 그 구역의 소계를 금액 칸에 적는다. */
+interface SectionRow {
+  key: string;
+  section: { title: string; note: string; cost: CostSum };
+}
+
+type TreeRow = ItemRow | SectionRow;
+
+const isSection = (row: TreeRow): row is SectionRow => 'section' in row;
+
+/**
+ * 표의 줄. 마감 재료가 있는 제작법은 공정 재료와 마감 재료를 구역으로 나누고, 구역마다 머리 줄을
+ * 둔다. 같은 표 안에 두어야 칸이 어긋나지 않는다.
+ */
+function treeRowsOf(
+  nodes: PlanNode[],
+  sections: { work: CostSum; finish: CostSum } | undefined,
+  works: number,
+): TreeRow[] {
+  if (!sections) return toTreeRows(nodes);
+  return [
+    {
+      key: 'section:work',
+      section: { title: '공정 재료', note: `${formatNumber(works)}공정`, cost: sections.work },
+    },
+    ...toTreeRows(nodes.filter((node) => !node.finish)),
+    {
+      key: 'section:finish',
+      section: { title: '마감 재료', note: '마감할 때 한 번', cost: sections.finish },
+    },
+    ...toTreeRows(nodes.filter((node) => node.finish)),
+  ];
 }
 
 /**
  * antd 트리 표의 줄. 만들 수 있는 재료는 하위 재료를 아직 계산하지 않았어도 빈 children 을 달아
  * 펼침 단추가 나오게 한다. 펼치면 계산이 하위 재료를 채운다.
  */
-function toTreeRows(nodes: PlanNode[]): TreeRow[] {
+function toTreeRows(nodes: PlanNode[]): ItemRow[] {
   return nodes.map((node) => ({
     key: node.key,
     node,
@@ -500,8 +546,9 @@ function treeColumns(
   book: RecipeBook,
   setMethod: (key: string, method: Method) => void,
   categoryOf: (name: string) => string | undefined,
+  sectionStyle: CSSProperties,
 ): TableColumnsType<TreeRow> {
-  return [
+  const itemColumns: ColumnType<ItemRow>[] = [
     {
       title: '재료',
       key: 'name',
@@ -518,7 +565,7 @@ function treeColumns(
             )}
             <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
               <ItemInfoLink name={name} category={category} />
-              {node.finish ? <Tag>마무리</Tag> : null}
+              {node.finish && node.depth > 0 ? <Tag>마감</Tag> : null}
               {node.alternatives.length > 0 ? (
                 <Tooltip
                   title={`대신 쓸 수 있는 것: ${node.alternatives.map(book.itemName).join(', ')}`}
@@ -638,6 +685,30 @@ function treeColumns(
       },
     },
   ];
+
+  // 구역 머리 줄은 재료 칸을 금액 앞까지 넓혀 제목을 적고, 금액 칸에 소계를 적는다.
+  const last = itemColumns.length - 1;
+  return itemColumns.map((column, index): ColumnType<TreeRow> => ({
+    ...(column as ColumnType<TreeRow>),
+    onCell: (row) =>
+      isSection(row)
+        ? { colSpan: index === 0 ? last : index === last ? 1 : 0, style: sectionStyle }
+        : {},
+    render: (value, row, rowIndex) => {
+      // 재료 줄의 칸은 모두 ReactNode 를 돌려준다(RenderedCell 을 쓰지 않는다).
+      if (!isSection(row)) return column.render?.(value, row, rowIndex) as ReactNode;
+      if (index === last) return <CostText cost={row.section.cost} strong />;
+      if (index > 0) return null;
+      return (
+        <Flex gap={8} align="baseline">
+          <Text strong>{row.section.title}</Text>
+          <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
+            {row.section.note}
+          </Text>
+        </Flex>
+      );
+    },
+  }));
 }
 
 function LowestPrice({ price, lowest }: { price: NodePrice; lowest?: number }): ReactNode {
@@ -652,13 +723,14 @@ function LowestPrice({ price, lowest }: { price: NodePrice; lowest?: number }): 
 }
 
 /** 합이 온전하지 않으면 무엇이 빠졌는지 짧게 붙인다. 자세한 목록은 총액 아래에 있다. */
-function CostText({ cost }: { cost: CostSum }) {
+function CostText({ cost, strong }: { cost: CostSum; strong?: boolean }) {
   if (cost.pending > 0 && cost.gold === 0) return <Spin size="small" />;
   const knownNothing = cost.gold === 0 && cost.unpriced.length > 0;
   return (
     <Flex vertical align="flex-end">
       <Text
         className="tnum"
+        strong={strong}
         style={{ whiteSpace: 'nowrap' }}
         type={knownNothing ? 'secondary' : undefined}
       >

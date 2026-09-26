@@ -97,6 +97,11 @@ export interface CraftPlan {
   shopping: ShoppingRow[];
   /** 살 것 전부의 값. 같은 재료는 모은 개수로 싼 매물부터 채워 매긴다. */
   total: CostSum;
+  /**
+   * 맨 위 재료 칸을 공정 재료와 마무리 재료로 나눠 매긴 값. 마무리 재료가 없는 제작법은 없다.
+   * 두 구역에 같은 재료가 있으면 따로 사는 값이라 둘을 더하면 total 보다 조금 클 수 있다.
+   */
+  sections?: { work: CostSum; finish: CostSum };
   /** 지금 시세가 필요한 아이템. 화면이 이것을 묻는다. */
   needed: number[];
 }
@@ -337,31 +342,45 @@ export function buildPlan(input: PlanInput): CraftPlan {
     return node;
   });
 
-  // 살 것을 아이템과 구매처별로 모은다. 합계에 들어가는 가지만 따라간다.
-  const requiredByKey = new Map<
-    string,
-    { itemId: number; source: 'buy' | 'npc'; required: number }
-  >();
-  const collect = (node: PlanNode) => {
-    if (!isBuying(node.method) && node.children) {
-      node.children.forEach(collect);
-      return;
-    }
-    const source = node.price.status === 'npc' ? 'npc' : 'buy';
-    const key = `${source}:${node.itemId}`;
-    const entry = requiredByKey.get(key);
-    if (entry) entry.required += node.required;
-    else requiredByKey.set(key, { itemId: node.itemId, source, required: node.required });
+  /** 살 것을 아이템과 구매처별로 모아 값을 매긴다. 합계에 들어가는 가지만 따라간다. */
+  const buyAll = (roots: PlanNode[]) => {
+    const requiredByKey = new Map<
+      string,
+      { itemId: number; source: 'buy' | 'npc'; required: number }
+    >();
+    const collect = (node: PlanNode) => {
+      if (!isBuying(node.method) && node.children) {
+        node.children.forEach(collect);
+        return;
+      }
+      const source = node.price.status === 'npc' ? 'npc' : 'buy';
+      const key = `${source}:${node.itemId}`;
+      const entry = requiredByKey.get(key);
+      if (entry) entry.required += node.required;
+      else requiredByKey.set(key, { itemId: node.itemId, source, required: node.required });
+    };
+    roots.forEach(collect);
+
+    const total = emptyCost();
+    const shopping = [...requiredByKey.values()].map(
+      ({ itemId, source, required }): ShoppingRow => {
+        const price = priceFor(itemId, source);
+        const quote = quoteFor(price, required);
+        addCost(total, buyCostOf(itemId, price, required, quote));
+        return { itemId, required, price, quote };
+      },
+    );
+    return { shopping, total };
   };
-  nodes.forEach(collect);
 
-  const total = emptyCost();
-  const shopping = [...requiredByKey.values()].map(({ itemId, source, required }): ShoppingRow => {
-    const price = priceFor(itemId, source);
-    const quote = quoteFor(price, required);
-    addCost(total, buyCostOf(itemId, price, required, quote));
-    return { itemId, required, price, quote };
-  });
+  const { shopping, total } = buyAll(nodes);
+  const sections =
+    recipe.finish.length > 0
+      ? {
+          work: buyAll(nodes.filter((node) => !node.finish)).total,
+          finish: buyAll(nodes.filter((node) => node.finish)).total,
+        }
+      : undefined;
 
-  return { crafts, nodes, shopping, total, needed: [...needed] };
+  return { crafts, nodes, shopping, total, ...(sections ? { sections } : {}), needed: [...needed] };
 }

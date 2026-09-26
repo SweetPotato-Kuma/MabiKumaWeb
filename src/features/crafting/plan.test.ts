@@ -294,6 +294,17 @@ describe('공정', () => {
     expect(result.total.gold).toBe(28 * 10 + 2 * 100);
   });
 
+  it('공정 재료와 마감 재료의 값을 따로 매긴다', () => {
+    const result = workPlan({});
+    expect(result.sections?.work.gold).toBe(14 * 10);
+    expect(result.sections?.finish.gold).toBe(100);
+    expect(result.total.gold).toBe(14 * 10 + 100);
+  });
+
+  it('마감 재료가 없는 제작법은 구역을 나누지 않는다', () => {
+    expect(workPlan({ recipe: workBook.recipesOf(4)[0] }).sections).toBeUndefined();
+  });
+
   it('고른 공정 수가 기준보다 먼저다', () => {
     expect(workPlan({ works: 3 }).nodes[0].required).toBe(6);
   });
