@@ -143,7 +143,8 @@ export function RootLayout() {
   } as const;
 
   return (
-    <Layout style={{ minHeight: '100dvh', background: token.colorBgLayout }}>
+    // 100dvh 를 쓰지 않고 부모에서 늘어난다. 까닭은 styles/index.css 의 body 주석에 있다.
+    <Layout style={{ flex: '1 0 auto', background: token.colorBgLayout }}>
       <Header
         style={{
           position: 'sticky',

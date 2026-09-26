@@ -21,7 +21,7 @@ export function RouteErrorPage() {
   }
 
   return (
-    <Flex align="center" justify="center" style={{ minHeight: '100dvh', padding: 16 }}>
+    <Flex align="center" justify="center" style={{ flex: '1 0 auto', padding: 16 }}>
       <Result
         icon={<img src={isDark ? errorBearDark : errorBear} alt="" width={230} height={150} />}
         title={title}

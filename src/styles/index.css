@@ -16,8 +16,20 @@ body {
   padding: 0;
 }
 
+/*
+ * 화면 높이는 100dvh 가 아니라 html 의 100% 에서 이어 받는다. 브라우저 확대와 윈도우 배율이
+ * 섞인 환경에서 100dvh 가 보이는 영역보다 1px 가까이 크게 잡혀, 내용이 짧아도 페이지 스크롤바가
+ * 떠서 화면이 흔들렸다. html 의 100% 는 스크롤을 가르는 기준과 같은 값이라 어긋나지 않는다.
+ * body, #root, antd App(AppProviders), Layout(RootLayout) 이 flex 로 차례로 늘어나 높이를 채운다.
+ */
+html {
+  height: 100%;
+}
+
 body {
-  min-height: 100dvh;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
   /*
    * 스타일시트는 JS 보다 먼저 파싱되므로 --app-* 가 아직 비어 있는 순간이 있다.
    * 그 한 프레임은 시스템 색에 맡긴다. Canvas 는 color-scheme 을 따라가므로
@@ -32,7 +44,9 @@ body {
 }
 
 #root {
-  min-height: 100dvh;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /** 숫자 열은 자릿수가 흔들리면 못 읽는다. 가격·수량·시각에 붙인다. */

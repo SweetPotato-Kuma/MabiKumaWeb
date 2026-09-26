@@ -34,7 +34,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <ConfigProvider theme={themeConfig} locale={koKR} renderEmpty={renderEmpty}>
-      <AntdApp>{children}</AntdApp>
+      {/* 화면 높이를 #root 에서 Layout 으로 넘겨 준다. 까닭은 styles/index.css 의 body 주석에 있다. */}
+      <AntdApp style={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column' }}>{children}</AntdApp>
     </ConfigProvider>
   );
 }
