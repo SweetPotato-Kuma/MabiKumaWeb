@@ -39,8 +39,6 @@
  *   이름 사전에 없어 이름으로는 그림을 찾을 수 없기 때문이다. 기록이 없는 PC 에서 돌리면 지금
  *   파일에 적힌 이름을 그대로 둔다
  *
- * 공정 진행도는 build-work-progress.mjs 가 따로 붙이고, 여기서는 지금 파일의 값을 옮겨 둔다.
- *
  * 실행: node scripts/build-recipes.mjs
  *       node scripts/build-recipes.mjs --icons-only   다시 모으지 않고 그림 파일 이름만 새로 적는다
  * 산출: public/data/recipes.json, public/data/skills/*.png
@@ -506,26 +504,8 @@ async function main() {
       a.skill - b.skill || a.rank - b.rank || nameOf(a.item).localeCompare(nameOf(b.item), 'ko'),
   );
 
-  await keepProgress(recipes);
   const updated = new Date(version.CreatedAt * 1000).toISOString().slice(0, 10);
   await writeOutput({ updated, skills, items, recipes });
-}
-
-/**
- * 공정 진행도(build-work-progress.mjs 가 붙인 progress)는 게임 데이터에 없어 여기서 다시 만들 수
- * 없다. 지금 파일에 적힌 값을 같은 스킬, 같은 아이템의 제작법에 옮겨 붙인다.
- */
-async function keepProgress(recipes) {
-  const previous = (await readJson(OUT))?.recipes ?? [];
-  const progressOf = new Map(
-    previous
-      .filter((recipe) => recipe.progress !== undefined)
-      .map((recipe) => [`${recipe.skill}:${recipe.item}`, recipe.progress]),
-  );
-  for (const recipe of recipes) {
-    const progress = progressOf.get(`${recipe.skill}:${recipe.item}`);
-    if (progress !== undefined) recipe.progress = progress;
-  }
 }
 
 /** 다시 모으지 않고 지금 파일에 그림 파일 이름만 새로 적는다. */

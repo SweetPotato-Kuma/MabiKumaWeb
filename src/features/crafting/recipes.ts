@@ -43,11 +43,6 @@ export interface Recipe {
   extras: RecipeSlot[];
   /** 요리 한 번에 얻는 요리 경험치. 요리만 있다. */
   exp?: number;
-  /**
-   * 공정 한 번에 오르는 진행도의 평균(%). 천옷만들기와 블랙스미스에만 있고, 사람들이 모아 둔
-   * 값이라 없는 제작법도 있다(scripts/build-work-progress.mjs). averageWorks 로 읽는다.
-   */
-  progress?: number;
 }
 
 export interface CraftSkill {
@@ -74,7 +69,6 @@ interface RawRecipe {
   finish?: RawSlot[];
   extras?: RawSlot[];
   exp?: number;
-  progress?: number;
 }
 
 export interface RawRecipeData {
@@ -127,7 +121,6 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     finish: (recipe.finish ?? []).map(toSlot),
     extras: (recipe.extras ?? []).map(toSlot),
     exp: recipe.exp,
-    progress: recipe.progress,
   }));
 
   const byItem = new Map<number, Recipe[]>();
@@ -220,22 +213,15 @@ export function materialSummary(book: RecipeBook, recipe: Recipe): string {
  */
 const WORK_SKILLS = new Set([10001, 10016]);
 
-/** 마무리할 수 있는 진행도(%). */
-const FINISH_PERCENT = 99.9;
+/**
+ * 기준 공정 수. 몇 번 만에 99.9% 가 차는지는 운이라 아이템마다 다르지만, 7공정을 기준으로 계산한다.
+ * 화면에서 고칠 수 있다.
+ */
+export const DEFAULT_WORKS = 7;
 
 /** 공정을 여러 번 하는 제작법인지. */
 export function hasWorks(recipe: Recipe): boolean {
   return WORK_SKILLS.has(recipe.skill);
-}
-
-/**
- * 평균 공정 수. 마무리 진행도를 공정당 평균 진행도로 나눠 올린다(13% 면 8공정).
- * 몇 번 만에 끝날지는 운이라 평균일 뿐이다. 평균 진행도를 모르면 undefined.
- */
-export function averageWorks(recipe: Recipe): number | undefined {
-  if (!recipe.progress || recipe.progress <= 0) return undefined;
-  // 99.9 / 33.3 이 부동소수점으로 3 을 살짝 넘어 4 로 올라가지 않게 한다.
-  return Math.max(1, Math.ceil(FINISH_PERCENT / recipe.progress - 1e-9));
 }
 
 /** 비율을 맞춰 넣는 제작법인지(요리). */

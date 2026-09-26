@@ -1,5 +1,5 @@
 import { quoteBuy, type BuyQuote, type PriceState } from './market';
-import { averageWorks, hasWorks, type Recipe, type RecipeBook, type RecipeSlot } from './recipes';
+import { DEFAULT_WORKS, hasWorks, type Recipe, type RecipeBook, type RecipeSlot } from './recipes';
 
 /**
  * 제작 비용 계획.
@@ -26,8 +26,8 @@ export const isBuying = (method: Method): method is 'buy' | 'npc' => typeof meth
 /** 재료가 이 깊이를 넘으면 더 풀지 않는다. 게임 제작법은 다섯 단계를 넘지 않는다. */
 export const MAX_DEPTH = 8;
 
-/** 한 번 만들 때 작업 재료를 넣는 횟수. 공정을 여러 번 하는 제작법은 평균 공정 수, 모르면 1. */
-const worksOf = (recipe: Recipe) => (hasWorks(recipe) ? (averageWorks(recipe) ?? 1) : 1);
+/** 한 번 만들 때 작업 재료를 넣는 횟수. 공정을 여러 번 하는 제작법은 기준 공정 수. */
+const worksOf = (recipe: Recipe) => (hasWorks(recipe) ? DEFAULT_WORKS : 1);
 
 /**
  * 재료 값을 어디서 매기는지. 경매장 시세(PriceState), NPC 판매가('npc'), 거래 불가.
@@ -107,7 +107,7 @@ export interface PlanInput {
   quantity: number;
   /**
    * 만들 제작법의 공정 수. 작업 재료는 공정마다 다시 넣으므로 이만큼 곱한다(마무리 재료는 한 번).
-   * 없으면 평균 공정 수, 그것도 모르면 1. 하위 재료의 제작법은 늘 평균을 쓴다.
+   * 없으면 기준 공정 수(DEFAULT_WORKS). 하위 재료의 제작법은 늘 기준 공정 수를 쓴다.
    */
   works?: number;
   /** 아이템 번호로 시세를 찾는다. 모르는 아이템은 undefined(아직 묻지 않음). */

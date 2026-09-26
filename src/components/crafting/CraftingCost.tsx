@@ -39,7 +39,7 @@ import {
   type ShoppingRow,
 } from '@/features/crafting/plan';
 import {
-  averageWorks,
+  DEFAULT_WORKS,
   hasWorks,
   isCooking,
   materialSummary,
@@ -122,9 +122,9 @@ function RecipeCost({
 }) {
   const screens = Grid.useBreakpoint();
   const [quantity, setQuantity] = useState(1);
-  /** 공정 수. 평균을 기본으로 두고 사용자가 고친다. 평균을 모르면 1. */
+  /** 공정 수. 기준 공정 수로 시작하고 사용자가 고친다. */
   const workRecipe = hasWorks(recipe);
-  const [works, setWorks] = useState(() => averageWorks(recipe) ?? 1);
+  const [works, setWorks] = useState(DEFAULT_WORKS);
   const [methods, setMethods] = useState<Record<string, Method>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
 

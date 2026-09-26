@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { quoteBuy, summarizeListings, type MarketPrice, type PriceState } from './market';
 import { buildPlan, isComplete, type Method } from './plan';
-import { averageWorks, buildRecipeBook, rankLabel, type RawRecipeData } from './recipes';
+import { buildRecipeBook, rankLabel, type RawRecipeData } from './recipes';
 
 /**
  * 작은 제작법 책.
@@ -59,6 +59,8 @@ function plan(
   return buildPlan({
     book,
     recipe: sword,
+    // 공정 수와 상관없는 계산을 보므로 한 번으로 둔다.
+    works: 1,
     quantity: options.quantity ?? 1,
     priceOf: (id) => prices[id],
     methods: options.methods ?? {},
@@ -185,6 +187,7 @@ describe('buildPlan 의 NPC 판매가', () => {
     const result = buildPlan({
       book,
       recipe: sword,
+      works: 1,
       quantity: 2,
       priceOf: () => undefined,
       methods: {},
@@ -204,6 +207,7 @@ describe('buildPlan 의 NPC 판매가', () => {
     const result = buildPlan({
       book,
       recipe: sword,
+      works: 1,
       quantity: 1,
       priceOf: (id) => (id === 2 ? market([50, 10]) : market()),
       methods: {},
@@ -221,6 +225,7 @@ describe('buildPlan 의 NPC 판매가', () => {
     const base = {
       book,
       recipe: sword,
+      works: 1,
       quantity: 1,
       priceOf: (id: number) => (id === 2 ? market([50, 10]) : market([300, 5])),
       expanded: new Set<string>(),
@@ -243,8 +248,8 @@ describe('buildPlan 의 NPC 판매가', () => {
 
 describe('공정', () => {
   /**
-   * 장갑(1)은 천옷만들기. 공정마다 옷감(2) 2개, 마무리에 실(3) 1개. 공정당 평균 13% 라 8공정.
-   * 장갑을 재료로 쓰는 상자(4)는 블랙스미스가 아니라 평균 공정이 없다.
+   * 장갑(1)은 천옷만들기. 공정마다 옷감(2) 2개, 마무리에 실(3) 1개. 기준 7공정.
+   * 장갑을 재료로 쓰는 상자(4)는 핸디크래프트라 공정이 한 번이다.
    */
   const workBook = buildRecipeBook({
     updated: '2026-09-26',
@@ -261,7 +266,6 @@ describe('공정', () => {
         yield: 1,
         materials: [[[2], 2]],
         finish: [[[3], 1]],
-        progress: 13,
       },
       { item: 4, skill: 10013, rank: 1, yield: 1, materials: [[[1], 1]] },
     ],
@@ -279,29 +283,22 @@ describe('공정', () => {
       expanded: new Set(),
     });
 
-  it('평균 공정 수는 마무리 진행도를 공정당 평균으로 나눠 올린다', () => {
-    expect(averageWorks(gloves)).toBe(8);
-    expect(averageWorks({ ...gloves, progress: 33.3 })).toBe(3);
-    expect(averageWorks({ ...gloves, progress: 180 })).toBe(1);
-    expect(averageWorks({ ...gloves, progress: undefined })).toBeUndefined();
-  });
-
   it('작업 재료는 공정 수만큼, 마무리 재료는 한 번만 넣는다', () => {
     const result = workPlan({ quantity: 2 });
     const [cloth, thread] = result.nodes;
-    // 옷감 2개 x 2벌 x 평균 8공정, 실 1개 x 2벌
-    expect(cloth.required).toBe(32);
+    // 옷감 2개 x 2벌 x 7공정, 실 1개 x 2벌
+    expect(cloth.required).toBe(28);
     expect(cloth.perWork).toBe(4);
     expect(thread.required).toBe(2);
     expect(thread.perWork).toBeUndefined();
-    expect(result.total.gold).toBe(32 * 10 + 2 * 100);
+    expect(result.total.gold).toBe(28 * 10 + 2 * 100);
   });
 
-  it('고른 공정 수가 평균보다 먼저다', () => {
+  it('고른 공정 수가 기준보다 먼저다', () => {
     expect(workPlan({ works: 3 }).nodes[0].required).toBe(6);
   });
 
-  it('하위 재료로 만들 때는 평균 공정 수를 쓴다', () => {
+  it('하위 재료로 만들 때는 기준 공정 수를 쓴다', () => {
     const box = workBook.recipesOf(4)[0];
     const result = buildPlan({
       book: workBook,
@@ -312,6 +309,6 @@ describe('공정', () => {
       expanded: new Set(),
     });
     const glovesNode = result.nodes[0];
-    expect(glovesNode.children?.map((child) => child.required)).toEqual([16, 1]);
+    expect(glovesNode.children?.map((child) => child.required)).toEqual([14, 1]);
   });
 });
