@@ -2,6 +2,7 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { App as AntdApp, ConfigProvider, type ConfigProviderProps } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { applyThemeVariables, buildThemeConfig } from '@/app/theme';
+import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import { useResolvedThemeMode } from '@/lib/themePreference';
 import { EmptyState } from '@/components/EmptyState';
 
@@ -20,13 +21,17 @@ const renderEmpty: ConfigProviderProps['renderEmpty'] = (componentName) =>
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const mode = useResolvedThemeMode();
+  const reducedMotion = usePrefersReducedMotion();
 
   /**
    * 테마 객체를 렌더마다 새로 만들면 ConfigProvider 가 같은 값을 받고도 바뀐 것으로 보고
    * 토큰을 다시 계산해 스타일을 새로 주입한다. 열려 있던 드롭다운이 그 순간 자리를 잃고
-   * 화면이 흔들린다. 모드가 바뀔 때만 새로 만든다.
+   * 화면이 흔들린다. 모드나 움직임 줄이기 설정이 바뀔 때만 새로 만든다.
    */
-  const themeConfig = useMemo(() => buildThemeConfig(mode), [mode]);
+  const themeConfig = useMemo(
+    () => buildThemeConfig(mode, reducedMotion),
+    [mode, reducedMotion],
+  );
 
   useEffect(() => {
     applyThemeVariables(mode);

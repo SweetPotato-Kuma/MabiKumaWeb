@@ -60,13 +60,18 @@ body {
  * color-scheme 은 theme.ts 가 html 에 직접 세팅한다.
  */
 
+/*
+ * 움직임 줄이기. antd 의 움직임은 theme.ts 가 motion 토큰으로 끄고, 이 파일은 나머지만 맡는다.
+ * transition-duration 은 여기서 줄이지 않는다. 기본 transition-property 가 all 이라 전환이 없던
+ * top, left 에도 짧은 전환이 생기고, 팝업이 제자리를 재는 순간 옛 자리(화면 밖)가 읽혀
+ * 옵션 창이 보이지 않은 채 페이지만 길어지며 흔들렸다.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 }

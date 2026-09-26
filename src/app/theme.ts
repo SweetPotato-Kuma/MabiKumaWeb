@@ -118,7 +118,12 @@ export function applyThemeVariables(mode: ThemeMode): void {
   root.dataset.theme = mode;
 }
 
-export function buildThemeConfig(mode: ThemeMode): ThemeConfig {
+/**
+ * reducedMotion 은 OS 의 움직임 줄이기 설정이다. 켜져 있으면 antd 의 움직임을 antd 방식으로 끈다.
+ * CSS 로 모든 요소의 전환 시간을 줄이면 전환이 없던 top, left 에도 전환이 생겨, 팝업이 제자리를
+ * 재는 순간 옛 자리가 읽히고 화면 밖으로 튀었다. 그래서 styles/index.css 는 전환을 건드리지 않는다.
+ */
+export function buildThemeConfig(mode: ThemeMode, reducedMotion = false): ThemeConfig {
   const isDark = mode === 'dark';
   const surface = SURFACE[mode];
   const accent = isDark ? ACCENT_DARK : ACCENT_LIGHT;
@@ -147,6 +152,7 @@ export function buildThemeConfig(mode: ThemeMode): ThemeConfig {
       sizeUnit: 4,
       sizeStep: 4,
       wireframe: false,
+      motion: !reducedMotion,
     },
     components: {
       Button: {

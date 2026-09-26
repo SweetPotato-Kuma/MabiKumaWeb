@@ -187,7 +187,8 @@ LLM은 "성공한 정적 상태"만 만든다. 이 프로젝트에서는 **네 �
 
 ## 7. 접근성과 성능
 
-- `prefers-reduced-motion: reduce`에서 전이와 반복 애니메이션을 끈다.
+- `prefers-reduced-motion: reduce`에서 전이와 반복 애니메이션을 끈다. antd 는 `theme.ts`의 `motion` 토큰으로 끈다.
+  CSS 로 모든 요소의 `transition-duration`을 줄이지 않는다. 전환이 없던 `top`/`left`에도 전환이 생겨 팝업이 자리를 잘못 재고 화면 밖으로 튄다.
 - 애니메이션은 `transform`과 `opacity`만. `width`, `height`, `top`, `left`를 애니메이트하지 않는다.
 - `window.addEventListener('scroll')` 금지. 필요하면 `IntersectionObserver`나 CSS scroll-driven animation.
 - `useEffect` 안의 타이머, 리스너, 애니메이션은 cleanup을 반드시 반환한다.
