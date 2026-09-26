@@ -82,9 +82,12 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
       render: (_value, step) => {
         const name = nameOf(step);
         const category = categoryOf(name);
+        const file = book.iconOf(step.slot.ids[0]);
         return (
           <Flex gap={8} align="center">
-            {category ? <ItemIcon category={category} name={name} size={MATERIAL_ICON} /> : null}
+            {category || file ? (
+              <ItemIcon category={category} name={name} file={file} size={MATERIAL_ICON} />
+            ) : null}
             <Text>{name}</Text>
             {step.extra ? <Tag>추가</Tag> : null}
           </Flex>

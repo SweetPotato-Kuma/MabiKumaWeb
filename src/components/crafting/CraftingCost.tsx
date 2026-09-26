@@ -532,10 +532,11 @@ function treeColumns(
       render: (_value, { node }) => {
         const name = book.itemName(node.itemId);
         const category = categoryOf(name);
+        const file = book.iconOf(node.itemId);
         return (
           <Flex gap={8} align="center">
-            {category ? (
-              <ItemIcon category={category} name={name} size={MATERIAL_ICON} />
+            {category || file ? (
+              <ItemIcon category={category} name={name} file={file} size={MATERIAL_ICON} />
             ) : (
               <MaterialIconSlot />
             )}

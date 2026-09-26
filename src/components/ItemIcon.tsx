@@ -69,6 +69,11 @@ interface ItemIconProps {
   card?: ItemCard | null;
   /** 주면 카테고리별 그림 목록에서 바로 찾는다. 카드 조회를 기다리지 않는다. */
   category?: string;
+  /**
+   * 그림 파일 이름을 이미 알면(제작법 데이터가 아이템 번호로 적어 둔 것) 목록을 거치지 않고 바로
+   * 그린다. 경매장에 올라온 적 없는 아이템은 이름 사전에 카테고리가 없어 이 길로만 그림이 나온다.
+   */
+  file?: string;
   name?: string;
   size: number;
 }
@@ -83,8 +88,9 @@ interface ItemIconProps {
  * 그림이 아직 없어도 **자리는 비워 둔다.** 칸이 늦게 생기면 이름이 옆으로 밀리며 표가 들썩인다.
  * 카드 저장소도 그림 목록도 없는 환경에서는 자리도 만들지 않는다. 영영 채워지지 않을 빈칸을 두지 않는다.
  */
-export function ItemIcon({ card, category, name, size }: ItemIconProps) {
+export function ItemIcon({ card, category, name, file, size }: ItemIconProps) {
   if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
+  if (file && isIconMapConfigured()) return <ItemImage src={iconFileUrl(file)} size={size} />;
   // 카테고리와 이름을 받은 칸만 목록을 본다. 카드만 넘기는 상세 창은 목록을 받을 이유가 없다.
   if (category && name)
     return <MappedItemIcon card={card} category={category} name={name} size={size} />;

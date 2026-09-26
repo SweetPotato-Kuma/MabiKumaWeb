@@ -23,7 +23,7 @@ const RAW: RawRecipeData = {
     { id: 10016, name: '블랙스미스', count: 1 },
   ],
   items: {
-    1: ['마요네즈', 1],
+    1: ['마요네즈', 1, 'e7832c92811f1b93.png'],
     2: ['달걀', 1],
     3: ['올리브유', 1],
     4: ['소금', 1],
@@ -118,6 +118,11 @@ describe('요리 제작법', () => {
   it('조리 방법이 도구 자리에, 불이 설비 자리에 온다', () => {
     expect(recipeTitle(book, grill)).toBe('요리(굽기) F');
     expect(stationNote(grill)).toBe('설비: 불');
+  });
+
+  it('그림 파일 이름이 적힌 아이템만 그림을 안다', () => {
+    expect(book.iconOf(1)).toBe('e7832c92811f1b93.png');
+    expect(book.iconOf(2)).toBeUndefined();
   });
 
   it('다른 스킬은 기준 값도 추가 재료도 없다', () => {

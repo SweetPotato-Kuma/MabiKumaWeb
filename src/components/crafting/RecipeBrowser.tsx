@@ -103,7 +103,7 @@ function RecipeList({
   viewSwitch,
 }: RecipeBrowserProps & { book: RecipeBook }) {
   const screens = Grid.useBreakpoint();
-  // 그림 목록이 카테고리별이라 이름 사전으로 카테고리를 찾는다. 사전에 없는 이름은 그림 없이 둔다.
+  // 그림은 제작법 데이터에 적힌 파일 이름으로 먼저 찾고, 없으면 이름 사전의 카테고리로 찾는다.
   const nameIndex = useItemNameIndexQuery().data;
   const [keyword, setKeyword] = useState('');
   const deferredKeyword = useDeferredValue(keyword);
@@ -146,10 +146,11 @@ function RecipeList({
           .join(', ');
         const name = book.itemName(recipe.item);
         const category = nameIndex?.categoriesByName.get(name)?.[0];
+        const file = book.iconOf(recipe.item);
         return (
           <Flex gap={10} align="center">
-            {category ? (
-              <ItemIcon category={category} name={name} size={ITEM_ICON} />
+            {category || file ? (
+              <ItemIcon category={category} name={name} file={file} size={ITEM_ICON} />
             ) : (
               <IconSlot />
             )}

@@ -74,8 +74,8 @@ interface RawRecipe {
 export interface RawRecipeData {
   updated: string;
   skills: CraftSkill[];
-  /** 아이템 번호 -> [이름, 거래 가능이면 1]. */
-  items: Record<string, [string, number]>;
+  /** 아이템 번호 -> [이름, 거래 가능이면 1, 그림 파일 이름(있으면)]. */
+  items: Record<string, [string, number] | [string, number, string]>;
   recipes: RawRecipe[];
 }
 
@@ -88,6 +88,8 @@ export interface RecipeBook {
   skillOf: (id: number) => CraftSkill | undefined;
   itemName: (id: number) => string;
   isTradable: (id: number) => boolean;
+  /** 아이템 그림 파일 이름(그림 저장소 기준). 올리지 못한 아이템은 없다. */
+  iconOf: (id: number) => string | undefined;
   /** 이 아이템을 만드는 제작법 전부. 없으면 빈 배열. */
   recipesOf: (itemId: number) => Recipe[];
   /** 트리에서 재료를 더 풀어 볼 제작법. 금속 변환은 뺀다(CONVERSION_SKILL 참고). */
@@ -146,6 +148,7 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     skillOf: (id) => skillById.get(id),
     itemName: (id) => raw.items[id]?.[0] ?? `#${id}`,
     isTradable: (id) => raw.items[id]?.[1] === 1,
+    iconOf: (id) => raw.items[id]?.[2] || undefined,
     recipesOf: (itemId) => byItem.get(itemId) ?? none,
     subRecipesOf: (itemId) =>
       (byItem.get(itemId) ?? none).filter((recipe) => recipe.skill !== CONVERSION_SKILL),

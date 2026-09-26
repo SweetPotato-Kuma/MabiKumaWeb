@@ -31,10 +31,19 @@
  * - 스킬 그림(42px)은 같은 곳에서 받아 public/data/skills/<번호>.png 로 둔다. 스무 장이 안 되고
  *   한 장이 몇 KB 라 우리 쪽에 두고, 남의 서버를 화면에서 직접 부르지 않는다
  *
+ * 아이템 그림:
+ * - 그림은 아이템 번호로 받아 우리 그림 저장소(R2)에 올린다. 운영자 키가 있는 PC 에서만 하는 일이라
+ *   scripts/local/collect-item-cards.mjs --recipe-icons 가 맡고, 올린 기록
+ *   (.cache/item-cards/uploaded.json, 아이템 번호 -> 그림 파일 이름)을 남긴다
+ * - 여기서는 그 기록을 읽어 아이템마다 그림 파일 이름을 적는다. 경매장에 올라온 적 없는 아이템은
+ *   이름 사전에 없어 이름으로는 그림을 찾을 수 없기 때문이다. 기록이 없는 PC 에서 돌리면 지금
+ *   파일에 적힌 이름을 그대로 둔다
+ *
  * 실행: node scripts/build-recipes.mjs
+ *       node scripts/build-recipes.mjs --icons-only   다시 모으지 않고 그림 파일 이름만 새로 적는다
  * 산출: public/data/recipes.json, public/data/skills/*.png
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
 
@@ -43,6 +52,50 @@ const RESOURCE_ORIGIN = 'https://mabires.pril.cc/';
 const REGION = 'kr';
 const OUT = resolve('public/data/recipes.json');
 const SKILL_ICON_DIR = resolve('public/data/skills');
+const UPLOADED_ICONS = resolve('.cache/item-cards/uploaded.json');
+
+const readJson = (path) =>
+  readFile(path, 'utf8')
+    .then((text) => JSON.parse(text))
+    .catch(() => null);
+
+/**
+ * 아이템마다 그림 파일 이름을 셋째 칸에 붙인다. 올린 기록을 먼저 보고, 없으면 지금 파일에 적힌
+ * 이름을 쓴다. 둘 다 없으면 칸을 비운다(화면은 이름 사전으로 그림을 찾아본다).
+ */
+async function attachIcons(items) {
+  const uploaded = (await readJson(UPLOADED_ICONS)) ?? {};
+  const previous = (await readJson(OUT))?.items ?? {};
+  let attached = 0;
+  for (const [id, entry] of Object.entries(items)) {
+    const icon = uploaded[id] ?? previous[id]?.[2];
+    entry.length = 2;
+    if (icon) {
+      entry.push(icon);
+      attached += 1;
+    }
+  }
+  console.log(`그림 파일 이름을 붙인 아이템 ${attached}/${Object.keys(items).length}`);
+}
+
+/** 한 줄에 제작법 하나씩 적어 다음 수집 때 무엇이 바뀌었는지 diff 로 보이게 한다. */
+async function writeOutput({ updated, skills, items, recipes }) {
+  const body = [
+    '{',
+    `"updated":${JSON.stringify(updated)},`,
+    `"skills":${JSON.stringify(skills)},`,
+    `"items":${JSON.stringify(items)},`,
+    '"recipes":[',
+    recipes.map((recipe) => JSON.stringify(recipe)).join(',\n'),
+    ']}',
+    '',
+  ].join('\n');
+  await mkdir(dirname(OUT), { recursive: true });
+  await writeFile(OUT, body);
+  console.log(
+    `제작법 ${recipes.length}개, 스킬 ${skills.length}개, 아이템 ${Object.keys(items).length}개 -> ${OUT} (${Math.round(body.length / 1024)} KB)`,
+  );
+}
 
 /** 제작 종류 번호에서 스킬로. 그 도구의 consts 와 같다. 1, 2 는 같은 방직이지만 도구가 다르다. */
 const TYPE_SKILL = {
@@ -400,7 +453,7 @@ async function main() {
   if (skippedCooking) console.log(`이벤트 요리 ${skippedCooking}개를 뺐습니다.`);
   if (unreleased) console.log(`게임에 없는 아이템(* 로 시작)의 제작법 ${unreleased}개를 뺐습니다.`);
 
-  /** 아이템 번호 -> [이름, 거래 가능이면 1]. */
+  /** 아이템 번호 -> [이름, 거래 가능이면 1, 그림 파일 이름]. */
   const items = {};
   const unnamed = [];
   for (const id of [...usedItems].sort((a, b) => a - b)) {
@@ -411,6 +464,7 @@ async function main() {
   }
   if (unnamed.length)
     console.warn(`이름이 없는 아이템 ${unnamed.length}개: ${unnamed.slice(0, 10).join(', ')}`);
+  await attachIcons(items);
 
   const skillIds = [...new Set(recipes.map((recipe) => recipe.skill))];
   const skills = skillIds
@@ -451,22 +505,15 @@ async function main() {
   );
 
   const updated = new Date(version.CreatedAt * 1000).toISOString().slice(0, 10);
-  // 한 줄에 제작법 하나씩 적어 다음 수집 때 무엇이 바뀌었는지 diff 로 보이게 한다.
-  const body = [
-    '{',
-    `"updated":${JSON.stringify(updated)},`,
-    `"skills":${JSON.stringify(skills)},`,
-    `"items":${JSON.stringify(items)},`,
-    '"recipes":[',
-    recipes.map((recipe) => JSON.stringify(recipe)).join(',\n'),
-    ']}',
-    '',
-  ].join('\n');
-  await mkdir(dirname(OUT), { recursive: true });
-  await writeFile(OUT, body);
-  console.log(
-    `제작법 ${recipes.length}개, 스킬 ${skills.length}개, 아이템 ${Object.keys(items).length}개 -> ${OUT} (${Math.round(body.length / 1024)} KB)`,
-  );
+  await writeOutput({ updated, skills, items, recipes });
 }
 
-await main();
+/** 다시 모으지 않고 지금 파일에 그림 파일 이름만 새로 적는다. */
+async function iconsOnly() {
+  const data = await readJson(OUT);
+  if (!data) throw new Error(`${OUT} 이 없습니다. 먼저 제작법을 모으세요.`);
+  await attachIcons(data.items);
+  await writeOutput(data);
+}
+
+await (process.argv.includes('--icons-only') ? iconsOnly() : main());
