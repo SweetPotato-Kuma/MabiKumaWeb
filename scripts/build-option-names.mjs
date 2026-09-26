@@ -9,6 +9,9 @@
  * - 세공 능력 이름(MetalWareAbilityList). 경매장 세공 옵션의 "(N레벨:...)" 앞부분과 같은 글이다
  * - 인챈트 이름(OptionSetList). 접두와 접미를 나눈다. Usage 가 1 이면 접미, 없으면 접두다
  *   (경매장 매물에 붙은 "울프헌터"(접두), "블러드"(접미) 로 확인)
+ * - 세공 능력마다 레벨 상한 기준값(기본, 한손 무기, 장신구)과 한계 돌파 여부, 그리고 기준값별
+ *   1랭크 최대 레벨과 한계 돌파 레벨(MetalWareLevelList). 레벨 자동완성이 그 세공에서 나올 수
+ *   없는 레벨을 권하지 않게 한다. 장비 시뮬레이터(features/equipment/reforge.ts)와 같은 규칙이다
  *
  * 실행: node scripts/build-option-names.mjs
  * 산출: public/data/option-names.json
@@ -38,7 +41,40 @@ const suffixes = sortKo(
   data.OptionSetList.filter((set) => set.Usage === SUFFIX_USAGE).map((set) => text(set.Name)),
 );
 
-const body = `${JSON.stringify({ updated, reforges, enchants: { prefix: prefixes, suffix: suffixes } })}\n`;
+/**
+ * 세공 이름 -> [기본, 한손 무기, 장신구 상한 기준값, 한계 돌파면 1]. 이름이 같은 능력이 여럿이면
+ * 칸마다 큰 값을 쓴다. 한손 무기와 장신구 값이 없으면 기본값과 같다.
+ */
+const reforgeCaps = {};
+for (const ability of data.MetalWareAbilityList) {
+  const name = text(ability.Desc);
+  if (!isRealName(name)) continue;
+  const base = ability.BaseMaxLevel ?? 0;
+  const next = [
+    base,
+    ability.BaseMaxLevelOH || base,
+    ability.BaseMaxLevelAcc || base,
+    ability.LimitBreak ? 1 : 0,
+  ];
+  const prev = reforgeCaps[name];
+  reforgeCaps[name] = prev ? prev.map((value, index) => Math.max(value, next[index])) : next;
+}
+
+/** 상한 기준값 -> [1랭크 최대 레벨, 한계 돌파 최소, 한계 돌파 최대]. */
+const reforgeLevels = Object.fromEntries(
+  data.MetalWareLevelList.map((row) => [
+    row.Level,
+    [row.Rank1MaxLevel ?? 0, row.LimitBreakMinLevel ?? 0, row.LimitBreakMaxLevel ?? 0],
+  ]),
+);
+
+const body = `${JSON.stringify({
+  updated,
+  reforges,
+  reforgeCaps,
+  reforgeLevels,
+  enchants: { prefix: prefixes, suffix: suffixes },
+})}\n`;
 await mkdir(dirname(OUT), { recursive: true });
 await writeFile(OUT, body);
 console.log(

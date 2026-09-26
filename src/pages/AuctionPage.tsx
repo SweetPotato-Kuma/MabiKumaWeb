@@ -750,6 +750,7 @@ export function AuctionPage() {
                   onChange={setOptionFilter}
                   catalog={optionCatalog}
                   names={optionNames}
+                  category={form.category}
                 />
               </Flex>
             </Card>

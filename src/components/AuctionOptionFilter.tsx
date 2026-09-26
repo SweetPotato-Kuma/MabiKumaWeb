@@ -18,7 +18,12 @@ import {
   type ConditionKind,
   type OptionFilter,
 } from '@/features/auction/optionFilter';
-import type { OptionNames } from '@/features/auction/optionNames';
+import {
+  reforgeCap,
+  reforgeLevelSuggestions,
+  type LevelSuggestion,
+  type OptionNames,
+} from '@/features/auction/optionNames';
 import { formatNumber } from '@/lib/format';
 
 const { Text } = Typography;
@@ -101,11 +106,14 @@ export function DetailSearchBar({
   onChange,
   catalog,
   names,
+  category,
 }: {
   value: OptionFilter;
   onChange: (next: OptionFilter) => void;
   catalog: CatalogEntry[];
   names: OptionNames | null | undefined;
+  /** 고른 카테고리. 한손 장비, 액세서리는 세공 최대 레벨이 달라 레벨 자동완성에 쓴다. */
+  category: string;
 }) {
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
 
@@ -152,6 +160,7 @@ export function DetailSearchBar({
       condition={condition}
       entry={entryFor(catalog, condition)}
       names={names}
+      category={category}
       onChange={(next) => update(condition.id, next)}
     />
   );
@@ -423,6 +432,7 @@ function NumberInput({
   onChange,
   values,
   defaults,
+  levels,
   unit,
   label,
 }: {
@@ -430,6 +440,8 @@ function NumberInput({
   onChange: (value: number | null) => void;
   values: number[] | undefined;
   defaults: number[] | undefined;
+  /** 이 조건이 가질 수 있는 레벨을 알 때 그 목록. 주면 values, defaults 대신 쓴다. */
+  levels?: LevelSuggestion[];
   unit: string;
   label: string;
 }) {
@@ -437,14 +449,16 @@ function NumberInput({
   // 이름 칸과 같이, 칸을 누르면 전체를 보이고 칠 때만 좁힌다.
   const [query, setQuery] = useState('');
   const shown = value === null ? '' : String(value);
-  const counted = thresholdSuggestions(values, query);
-  // 불러온 값이 있으면 그것만 쓴다(치는 글자에 맞는 것이 없으면 빈 목록). 없을 때만 기준값을 보인다.
-  const suggestions =
-    (values?.length ?? 0) > 0
-      ? counted
-      : (defaults ?? [])
-          .filter((each) => !query || String(each).startsWith(query))
-          .map((each) => ({ value: each, count: undefined as number | undefined }));
+  const matchesQuery = (each: { value: number }) => !query || String(each.value).startsWith(query);
+  /**
+   * 목록을 고르는 순서: 이 조건이 가질 수 있는 레벨을 알면(세공 이름을 고른 경우) 그것,
+   * 불러온 값이 있으면 그 값들, 둘 다 없으면 자주 찾는 기준값.
+   */
+  const suggestions: LevelSuggestion[] = levels
+    ? levels.filter(matchesQuery)
+    : (values?.length ?? 0) > 0
+      ? thresholdSuggestions(values, query)
+      : (defaults ?? []).map((each) => ({ value: each })).filter(matchesQuery);
 
   const options = suggestions.map((each) => ({
     value: String(each.value),
@@ -453,6 +467,12 @@ function NumberInput({
         <span className="tnum">
           {formatNumber(each.value)}
           {unit} 이상
+          {each.note ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {' '}
+              ({each.note})
+            </Text>
+          ) : null}
         </span>
         {each.count !== undefined ? (
           <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
@@ -497,17 +517,21 @@ function ConditionEditor({
   condition,
   entry,
   names,
+  category,
   onChange,
 }: {
   condition: Condition;
   entry: CatalogEntry | undefined;
   names: OptionNames | null | undefined;
+  category: string;
   onChange: (next: Partial<Condition>) => void;
 }) {
   switch (condition.kind) {
     case 'reforge': {
       // 이름을 정확히 골랐으면 그 세공의 레벨만, 아니면 모든 세공의 레벨로 자동완성한다.
       const levels = entry?.numbers[condition.name.trim()] ?? entry?.numbers[''];
+      // 세공마다 최대 레벨이 다르다(랜스 차지 쿨타임 감소는 5, 한계 돌파 7). 이름을 알면 그만큼만 권한다.
+      const cap = reforgeCap(names, condition.name, category);
       return (
         <Flex gap={6}>
           <NameInput
@@ -522,6 +546,9 @@ function ConditionEditor({
             onChange={(minLevel) => onChange({ minLevel })}
             values={levels}
             defaults={DEFAULT_THRESHOLDS.reforge}
+            levels={
+              cap ? reforgeLevelSuggestions(cap, entry?.numbers[condition.name.trim()]) : undefined
+            }
             unit="레벨"
             label="세공 최소 레벨"
           />
