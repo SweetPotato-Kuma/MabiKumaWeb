@@ -29,7 +29,7 @@ interface UsedInSectionProps {
 }
 
 /**
- * 아이템 정보 상세의 "이 아이템으로 만들 수 있는 것".
+ * 아이템 정보 상세의 "제작 가능 아이템".
  *
  * 제작 비용(CraftingSection)이 "이걸 만들려면 무엇이 드나" 라면, 여기는 반대 방향이다. 이 아이템을
  * 재료로 쓰는 제작법을 모두 모아, 만들어지는 아이템으로 바로 넘어가게 한다. 그 아이템에서 다시
@@ -89,7 +89,8 @@ function UsedInCard({
 
   const columns: TableColumnsType<Recipe> = [
     {
-      title: '만들 수 있는 아이템',
+      // 카드 제목이 "제작 가능 아이템" 이라 표 머리에서 같은 말을 되풀이하지 않는다.
+      title: '이름',
       key: 'item',
       render: (_value, recipe) => {
         const product = book.itemName(recipe.item);
@@ -120,7 +121,8 @@ function UsedInCard({
       render: (_value, recipe) => <Text style={{ whiteSpace: 'nowrap' }}>{rankLabel(recipe.rank)}</Text>,
     },
     {
-      title: `${name} 넣는 양`,
+      // 어느 아이템을 넣는지는 페이지 제목에 있다.
+      title: '넣는 양',
       key: 'use',
       width: 180,
       render: (_value, recipe) => (
@@ -139,7 +141,7 @@ function UsedInCard({
   return (
     <Card
       size="small"
-      title="이 아이템으로 만들 수 있는 것"
+      title="제작 가능 아이템"
       extra={
         <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
           제작법 {formatNumber(recipes.length)}개

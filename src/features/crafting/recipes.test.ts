@@ -136,7 +136,7 @@ describe('요리 제작법', () => {
   });
 });
 
-describe('이 아이템으로 만들 수 있는 것', () => {
+describe('제작 가능 아이템', () => {
   const book = buildRecipeBook(RAW);
 
   it('재료로 쓰는 제작법을 거꾸로 찾는다', () => {

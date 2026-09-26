@@ -52,11 +52,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('이 아이템으로 만들 수 있는 것', () => {
+describe('제작 가능 아이템', () => {
   it('재료로 쓰는 제작법을 모두 보여 주고 넣는 양을 적는다', () => {
     renderSection('투어마린');
 
-    expect(screen.getByText('이 아이템으로 만들 수 있는 것')).toBeInTheDocument();
+    expect(screen.getByText('제작 가능 아이템')).toBeInTheDocument();
+    // 표 머리는 카드 제목을 되풀이하지 않는다.
+    expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['이름', '랭크', '넣는 양']);
     const staff = screen.getByText('페러시우스 미스틱 스태프').closest('tr') as HTMLElement;
     expect(within(staff).getByText('3개')).toBeInTheDocument();
     const necklace = screen.getByText('투어마린 목걸이').closest('tr') as HTMLElement;
@@ -83,6 +85,6 @@ describe('이 아이템으로 만들 수 있는 것', () => {
   it('재료로 쓰이지 않는 아이템이면 아무것도 그리지 않는다', () => {
     renderSection('젬스톤 파우더');
 
-    expect(screen.queryByText('이 아이템으로 만들 수 있는 것')).not.toBeInTheDocument();
+    expect(screen.queryByText('제작 가능 아이템')).not.toBeInTheDocument();
   });
 });
