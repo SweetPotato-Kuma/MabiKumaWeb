@@ -269,14 +269,9 @@ export function DungeonCoinsPage() {
 
   return (
     <Flex vertical gap={20}>
-      <Flex vertical gap={4}>
-        <Title level={3} style={{ margin: 0 }}>
-          던전 코인 가치
-        </Title>
-        <Text type="secondary">
-          던전에서 받는 코인을 NPC 교환품으로 바꿀 때, 코인 1개가 경매장에서 몇 골드인지 봅니다.
-        </Text>
-      </Flex>
+      <Title level={3} style={{ margin: 0 }}>
+        던전 코인 가치
+      </Title>
 
       {!canQuery ? (
         <Alert

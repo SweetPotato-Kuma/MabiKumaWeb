@@ -57,37 +57,48 @@ describe('던전 코인 가치', () => {
     vi.mocked(fetchAuctionList).mockReset();
   });
 
-  it('교환품 최저가를 필요한 코인 수로 나눠 가장 이득인 교환품을 위에 둔다', async () => {
+  it('첫 탭은 탈라 가흐이고, 최저가를 필요한 코인 수로 나눠 가장 이득인 교환품을 위에 둔다', async () => {
     renderPage();
 
-    // 깃털 460,000 / 200 = 2,300. 심장 430,000 / 200 = 2,150. 아다만티움은 매물이 없다.
-    expect(await screen.findAllByText('2,300 G')).not.toHaveLength(0);
+    // 회로 46,790,000 / 35 = 1,336,857. 동력원 257,000,000 / 200 = 1,285,000.
+    expect(await screen.findAllByText('1,336,857 G')).not.toHaveLength(0);
     const rows = screen.getAllByRole('row').slice(1);
-    expect(within(rows[0]).getByRole('link').textContent).toBe('손상된 글라스 기브넨의 깃털');
+    expect(within(rows[0]).getByRole('link').textContent).toBe('빛바랜 에너지 회로');
     expect(within(rows[0]).getByText('가장 이득')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('2,150 G')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('1,285,000 G')).toBeInTheDocument();
     expect(within(rows[2]).getAllByText('매물 없음')).not.toHaveLength(0);
+  });
+
+  it('탭은 탈라 가흐, 브리 레흐, 글렌 베르나, 크롬 바스, 크롬 바스 심연 순이다', () => {
+    renderPage();
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      '탈라 가흐',
+      '브리 레흐',
+      '글렌 베르나',
+      '크롬 바스',
+      '크롬 바스 심연',
+    ]);
   });
 
   it('던전 탭을 바꾸면 그 던전의 교환품 시세를 받는다', async () => {
     renderPage();
-    await screen.findAllByText('2,300 G');
+    await screen.findAllByText('1,336,857 G');
 
-    fireEvent.click(screen.getByRole('tab', { name: '탈라 가흐' }));
+    fireEvent.click(screen.getByRole('tab', { name: '크롬 바스' }));
 
-    // 회로 46,790,000 / 35 = 1,336,857. 동력원 257,000,000 / 200 = 1,285,000.
-    expect(await screen.findAllByText('1,336,857 G')).not.toHaveLength(0);
-    expect(screen.getByText('1,285,000 G')).toBeInTheDocument();
+    // 깃털 460,000 / 200 = 2,300. 심장 430,000 / 200 = 2,150. 아다만티움은 매물이 없다.
+    expect(await screen.findAllByText('2,300 G')).not.toHaveLength(0);
+    expect(screen.getByText('2,150 G')).toBeInTheDocument();
     const asked = vi.mocked(fetchAuctionList).mock.calls.map(([params]) => params.itemName);
-    expect(asked).toContain('달아오른 광두정');
+    expect(asked).toContain('아다만티움');
   });
 
   it('주소의 던전으로 바로 열고, 교환품 이름은 아이템 정보로 가는 링크다', async () => {
-    renderPage('/dungeon-coins?dungeon=tala-gah');
+    renderPage('/dungeon-coins?dungeon=crom-bas');
 
-    const link = await screen.findByRole('link', { name: '고리아스 동력원' });
+    const link = await screen.findByRole('link', { name: '글라스 기브넨의 심장' });
     expect(link.getAttribute('href')).toBe(
-      `/items?category=&name=${encodeURIComponent('고리아스 동력원')}`,
+      `/items?category=&name=${encodeURIComponent('글라스 기브넨의 심장')}`,
     );
   });
 });
