@@ -72,6 +72,12 @@ const TYPE_SKILL = {
  */
 const HIDDEN_TYPES = new Set([12]);
 
+/**
+ * 게임에 나오지 않는 아이템. 게임 데이터에서 이름 앞에 "*" 가 붙은 아이템은 실제 게임에 없다
+ * ("* 두근두근 스테이크" 같은 것). 이것을 만드는 제작법은 뺀다.
+ */
+const isUnreleasedName = (name) => name.startsWith('*');
+
 /** 스킬 분류 번호에서 스킬 창의 탭 이름으로. 제작 스킬이 쓰는 것만 둔다. */
 const SKILL_CATEGORY = { 1: '생활', 2: '전투', 3: '마법', 4: '연금술', 11: '점성술' };
 
@@ -322,11 +328,16 @@ async function main() {
 
   const recipes = [];
   const unknownTypes = new Set();
+  let unreleased = 0;
   for (const production of data.ProductionList) {
     if (HIDDEN_TYPES.has(production.Type)) continue;
     const kind = TYPE_SKILL[production.Type];
     if (!kind) {
       unknownTypes.add(production.Type);
+      continue;
+    }
+    if (isUnreleasedName(nameOfId(production.ItemId))) {
+      unreleased += 1;
       continue;
     }
     usedItems.add(production.ItemId);
@@ -358,6 +369,10 @@ async function main() {
       skippedCooking += 1;
       continue;
     }
+    if (isUnreleasedName(nameOfId(cooking.ItemId))) {
+      unreleased += 1;
+      continue;
+    }
     const essentials = cooking.Essentials ?? [];
     usedItems.add(cooking.ItemId);
     const recipe = {
@@ -383,6 +398,7 @@ async function main() {
     recipes.push(recipe);
   }
   if (skippedCooking) console.log(`이벤트 요리 ${skippedCooking}개를 뺐습니다.`);
+  if (unreleased) console.log(`게임에 없는 아이템(* 로 시작)의 제작법 ${unreleased}개를 뺐습니다.`);
 
   /** 아이템 번호 -> [이름, 거래 가능이면 1]. */
   const items = {};
