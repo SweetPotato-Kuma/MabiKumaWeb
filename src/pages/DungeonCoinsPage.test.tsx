@@ -149,9 +149,14 @@ describe('던전 코인 가치', () => {
     expect(screen.getAllByText(/1,480,000 G/)).not.toHaveLength(0);
     expect(screen.queryByRole('link', { name: '소울 리버레이트 보우' })).toBeNull();
 
+    // 입력하기 전에는 결과 대신 무엇을 넣으면 되는지 알려 준다.
+    expect(screen.getByText(/가진 구슬 수를 입력하면/)).toBeInTheDocument();
+    expect(screen.getByLabelText('가진 구슬')).toHaveValue('');
+
     fireEvent.change(screen.getByLabelText('가진 구슬'), { target: { value: '15' } });
     expect(await screen.findAllByText('2,960,000 G')).not.toHaveLength(0);
     expect(screen.getByText('14 / 15개')).toBeInTheDocument();
+    expect(screen.queryByText(/가진 구슬 수를 입력하면/)).toBeNull();
   });
 
   it('가공 계산기는 주소로 바로 열고, 계산기가 없는 던전에는 전환 단추가 없다', async () => {

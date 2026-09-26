@@ -405,7 +405,8 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
               precision={0}
               value={beads}
               onChange={(value) => setBeads(value)}
-              placeholder="120"
+              // 예시 숫자를 placeholder 로 두면 이미 들어간 값처럼 보인다. 비워 두고 아래에서 안내한다.
+              suffix="개"
               className="tnum"
               style={{ width: 140 }}
             />
@@ -426,7 +427,15 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
         </Flex>
       ) : null}
 
-      {plan && beads ? <PlanSummary plan={plan} beads={beads} pending={pending} /> : null}
+      {plan && beads ? (
+        <PlanSummary plan={plan} beads={beads} pending={pending} />
+      ) : (
+        <Alert
+          type="info"
+          showIcon
+          message="가진 구슬 수를 입력하면 무엇을 몇 번 만들어 팔지와 예상 차익을 계산합니다."
+        />
+      )}
 
       {failed.length > 0 ? (
         <Alert
