@@ -54,7 +54,10 @@ describe('경매장 화면', () => {
   it('조회 전에는 무엇을 하면 되는지 알려 준다', () => {
     renderPage();
 
-    expect(screen.getByText(/카테고리를 고르거나 아이템명을 입력한 뒤/)).toBeInTheDocument();
+    // 카테고리, 아이템명, 상세 검색 조건 가운데 무엇이든 넣으면 찾을 수 있다고 알린다.
+    expect(
+      screen.getByText(/카테고리를 고르거나, 아이템명이나 상세 검색 조건을 넣은 뒤/),
+    ).toBeInTheDocument();
   });
 
   it('검색 조건이 비어 있으면 찾기를 누를 수 없다', () => {

@@ -30,7 +30,12 @@ import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
 import { RecentTradeStats } from '@/components/market/RecentTradeStats';
 import { itemInfoPath } from '@/features/auction/dictionary';
-import { isAuctionSearchReady, useAuctionHistoryQuery, useAuctionItemsQuery } from '@/features/auction/hooks';
+import {
+  isAuctionSearchReady,
+  useAuctionHistoryQuery,
+  useAuctionItemsQuery,
+  useAuctionScanQuery,
+} from '@/features/auction/hooks';
 import {
   itemNameIndexQueryOptions,
   resolveSearch,
@@ -45,7 +50,7 @@ import {
   matchesOptionFilter,
   type OptionFilter,
 } from '@/features/auction/optionFilter';
-import { useOptionNamesQuery } from '@/features/auction/optionNames';
+import { scanCategoriesFor, useOptionNamesQuery } from '@/features/auction/optionNames';
 import { useMarketRecentQuery } from '@/features/market/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { useIconMaps } from '@/features/itemcard/iconMap';
@@ -185,9 +190,14 @@ export function AuctionPage() {
   const [detail, setDetail] = useState<AuctionItemDetail | null>(null);
 
   const query = submitted ?? EMPTY_INPUT;
-  const enabled = canQuery && submitted !== null && isAuctionSearchReady(query);
+  /** 카테고리와 검색어 없이 상세 검색 조건만으로 찾는 중. 조건에 맞을 수 있는 카테고리를 차례로 훑는다. */
+  const scanning = (query.scan?.length ?? 0) > 0;
+  const enabled = canQuery && submitted !== null && (isAuctionSearchReady(query) || scanning);
 
-  const itemsQuery = useAuctionItemsQuery(query, enabled && tab === 'items');
+  const keywordItemsQuery = useAuctionItemsQuery(query, enabled && !scanning && tab === 'items');
+  const scanQuery = useAuctionScanQuery(query.scan, enabled && scanning && tab === 'items');
+  const itemsQuery = scanning ? scanQuery : keywordItemsQuery;
+  const scanProgress = scanning ? scanQuery.data : undefined;
   const historyQuery = useAuctionHistoryQuery(query, enabled && tab === 'history');
 
   // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
@@ -316,7 +326,8 @@ export function AuctionPage() {
     [suggestions, form.category],
   );
 
-  const canSubmit = isAuctionSearchReady(form);
+  // 상세 검색 조건만 있어도 찾을 수 있다. 그때는 카테고리를 차례로 훑는다(runSearch).
+  const canSubmit = isAuctionSearchReady(form) || activeConditionCount(optionFilter) > 0;
 
   /**
    * 줄 전체를 눌러 상세를 연다.
@@ -350,6 +361,15 @@ export function AuctionPage() {
   async function runSearch(next: AuctionSearchInput) {
     if (!isAuctionSearchReady(next)) {
       setResolving(false);
+      // 카테고리도 검색어도 없지만 상세 검색 조건이 있으면, 조건에 맞을 수 있는 카테고리를 훑는다.
+      if (activeConditionCount(optionFilter) > 0) {
+        const scan = scanCategoriesFor(optionFilter, optionNames);
+        if (scan.length === 0) {
+          message.warning('넣은 세공들이 함께 붙을 수 있는 장비가 없습니다. 세공 조건을 다시 확인해 주세요.');
+          return;
+        }
+        setSubmitted({ category: ALL_CATEGORIES, keyword: '', scan });
+      }
       return;
     }
 
@@ -741,7 +761,13 @@ export function AuctionPage() {
                         ? `${form.category} 매물에서 이름 일부로 찾습니다.`
                         : submitted?.keywordsTruncated && !submitted.category
                           ? '걸리는 이름이 많아 일부만 찾았습니다. 조금 더 길게 입력하거나 카테고리를 골라 주세요.'
-                          : '이름 일부로 찾습니다. 띄어쓰기는 달라도 됩니다.'}
+                          : submitted?.scan && !form.category && !form.keyword.trim()
+                            ? `상세 검색 조건이 붙을 수 있는 장비 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${
+                                scanProgress
+                                  ? ` 불러오기 마친 카테고리 ${formatNumber(scanProgress.scanned)}/${formatNumber(scanProgress.total)}곳.`
+                                  : ''
+                              }`
+                            : '이름 일부로 찾습니다. 띄어쓰기는 달라도 됩니다. 상세 검색 조건만 넣고 찾아도 됩니다.'}
                   </Text>
                 </Flex>
 
@@ -763,7 +789,7 @@ export function AuctionPage() {
               <Card variant="outlined">
                 <EmptyState
                   variant="search"
-                  description="왼쪽에서 카테고리를 고르거나 아이템명을 입력한 뒤 찾기를 누르세요."
+                  description="왼쪽에서 카테고리를 고르거나, 아이템명이나 상세 검색 조건을 넣은 뒤 찾기를 누르세요."
                 />
               </Card>
             ) : (

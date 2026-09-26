@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import { EQUIPMENT_CATEGORIES } from '@/features/equipment/api';
 import { findGroupOf } from './categoryTree';
+import { isConditionActive, type OptionFilter } from './optionFilter';
 
 /**
  * 상세 검색 자동완성의 기본 이름. 게임 데이터의 세공 능력 이름과 인챈트 이름이다.
@@ -14,6 +16,8 @@ export interface OptionNames {
   reforgeCaps?: Record<string, [number, number, number, number]>;
   /** 상한 기준값 -> [1랭크 최대 레벨, 한계 돌파 최소, 한계 돌파 최대]. */
   reforgeLevels?: Record<string, [number, number, number]>;
+  /** 세공 이름 -> 그 세공이 붙을 수 있는 경매장 카테고리. */
+  reforgeCategories?: Record<string, string[]>;
   enchants: { prefix: string[]; suffix: string[] };
 }
 
@@ -87,4 +91,26 @@ export function reforgeLevelSuggestions(
     });
   }
   return result;
+}
+
+/**
+ * 카테고리와 검색어 없이 상세 검색 조건만으로 찾을 때 훑을 경매장 카테고리.
+ *
+ * 넥슨 경매장 API 는 카테고리나 이름 없이는 매물을 주지 않는다. 그래서 조건에 맞을 수 있는
+ * 카테고리를 차례로 불러와 거른다. 세공 이름을 정확히 넣었으면 그 세공이 붙는 카테고리만,
+ * 세공이 여럿이면 모두 붙을 수 있는 카테고리만 훑는다. 그 밖에는 장비 카테고리 전체다.
+ * 빈 배열이면 조건을 모두 채울 수 있는 카테고리가 없다는 뜻이다.
+ */
+export function scanCategoriesFor(
+  filter: OptionFilter,
+  names: OptionNames | null | undefined,
+): string[] {
+  let categories: string[] = [...EQUIPMENT_CATEGORIES];
+  for (const condition of filter.conditions) {
+    if (condition.kind !== 'reforge' || !isConditionActive(condition)) continue;
+    const allowed = names?.reforgeCategories?.[condition.name.trim()];
+    if (!allowed) continue;
+    categories = categories.filter((category) => allowed.includes(category));
+  }
+  return categories;
 }

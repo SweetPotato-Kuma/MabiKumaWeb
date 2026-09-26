@@ -59,4 +59,9 @@ export interface AuctionSearchInput {
   keywords?: string[];
   /** 걸린 이름이 너무 많아 keywords 를 다 보내지 못했다. */
   keywordsTruncated?: boolean;
+  /**
+   * 카테고리와 검색어 없이 상세 검색 조건만으로 찾을 때 차례로 불러올 카테고리.
+   * 있으면 keyword-search 대신 이 카테고리들을 훑는다(useAuctionScanQuery).
+   */
+  scan?: string[];
 }

@@ -135,3 +135,76 @@ export function useAuctionHistoryQuery(input: AuctionSearchInput, enabled: boole
     retry: false,
   });
 }
+
+/** 카테고리를 훑을 때 한 번에 부르는 카테고리 수. 넥슨 API 호출량 제한을 넘지 않게 나눈다. */
+const SCAN_BATCH = 4;
+
+interface ScanStream {
+  category: string;
+  cursor: string;
+}
+
+interface ScanPageParam {
+  active: ScanStream[];
+  pending: string[];
+}
+
+interface ScanPage {
+  items: AuctionItem[];
+  /** 이 묶음에서 끝까지 다 받은 카테고리 수. */
+  finished: number;
+  next: ScanPageParam | undefined;
+}
+
+/**
+ * 카테고리를 차례로 불러오는 매물 검색. 카테고리와 검색어 없이 상세 검색 조건만으로 찾을 때 쓴다.
+ *
+ * 넥슨 경매장 API 는 카테고리나 이름 없이는 매물을 주지 않아서, 조건에 맞을 수 있는 카테고리를
+ * (scanCategoriesFor) 몇 곳씩 불러온다. 한 묶음이 쪽 하나다. 카테고리에 500건이 넘게 있으면 다음
+ * 묶음에서 이어 받고, 빈자리는 아직 부르지 않은 카테고리로 채운다. 끝쪽에 닿을 때만 다음 묶음을
+ * 받으므로(useAutoLoadMore) 맞는 매물이 쪽을 채우면 더 부르지 않는다.
+ */
+export function useAuctionScanQuery(categories: readonly string[] | undefined, enabled: boolean) {
+  const list = categories ?? [];
+  return useInfiniteQuery({
+    queryKey: ['auction', 'scan', list],
+    initialPageParam: {
+      active: list.slice(0, SCAN_BATCH).map((category): ScanStream => ({ category, cursor: '' })),
+      pending: list.slice(SCAN_BATCH),
+    } as ScanPageParam,
+    queryFn: async ({ pageParam, signal }): Promise<ScanPage> => {
+      const pages = await Promise.all(
+        pageParam.active.map(async (stream) => ({
+          stream,
+          page: await fetchAuctionList({ category: stream.category, cursor: stream.cursor }, signal),
+        })),
+      );
+      const continuing = pages.flatMap(({ stream, page }) =>
+        page.next_cursor ? [{ category: stream.category, cursor: page.next_cursor }] : [],
+      );
+      const room = Math.max(0, SCAN_BATCH - continuing.length);
+      const active = [
+        ...continuing,
+        ...pageParam.pending.slice(0, room).map((category) => ({ category, cursor: '' })),
+      ];
+      return {
+        items: pages.flatMap(({ page }) => page.auction_item ?? []),
+        finished: pages.length - continuing.length,
+        next: active.length > 0 ? { active, pending: pageParam.pending.slice(room) } : undefined,
+      };
+    },
+    getNextPageParam: (lastPage) => lastPage.next,
+    select: (data) => {
+      const items = data.pages.flatMap((page) => page.items);
+      return {
+        items,
+        loadedCount: items.length,
+        scanned: data.pages.reduce((sum, page) => sum + page.finished, 0),
+        total: list.length,
+      };
+    },
+    enabled: enabled && list.length > 0,
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
+}

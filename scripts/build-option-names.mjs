@@ -60,6 +60,101 @@ for (const ability of data.MetalWareAbilityList) {
   reforgeCaps[name] = prev ? prev.map((value, index) => Math.max(value, next[index])) : next;
 }
 
+/**
+ * 세공이 붙는 장비 종류(EquipFilterMap 의 키)를 경매장 카테고리로 옮기는 표.
+ *
+ * 카테고리 없이 세공으로만 찾을 때 훑을 카테고리를 줄이는 데 쓴다. "랜스 차지 쿨타임 감소" 는
+ * 이름과 달리 투구, 모자에만 붙어서, 이 표가 있으면 모자/가발 한 곳만 훑으면 된다.
+ * 한손, 양손 무기는 종류별 카테고리와 함께 "한손 장비", "양손 장비" 에도 섞여 있어 둘 다 넣는다.
+ * RoughTouch, HidePalm, MeleeWand 처럼 이름만으로 확실하지 않은 종류는 가까운 카테고리를 넓게
+ * 잡았다. 표에 없는 종류가 나오면 경고를 찍고, 그 세공은 장비 카테고리 전체를 훑는다.
+ */
+const EQUIP_TYPE_CATEGORIES = {
+  OHSword: ['검', '한손 장비'],
+  THSword: ['검', '양손 장비'],
+  Rapier: ['검', '한손 장비'],
+  OHAxe: ['도끼', '한손 장비'],
+  THAxe: ['도끼', '양손 장비'],
+  OHBlunt: ['둔기', '한손 장비'],
+  THBlunt: ['둔기', '양손 장비'],
+  RoughTouch: ['한손 장비', '너클'],
+  HidePalm: ['한손 장비', '너클'],
+  Knuckle: ['너클'],
+  MagicalKnuckle: ['너클'],
+  Lance: ['랜스'],
+  Scythe: ['대형 낫'],
+  Chainblade: ['체인 블레이드'],
+  Handle: ['핸들'],
+  Dualgun: ['듀얼건'],
+  Shuriken: ['수리검'],
+  Atlatl: ['아틀라틀'],
+  Bow: ['활'],
+  Crossbow: ['석궁'],
+  Cylinder: ['실린더'],
+  CylinderTurret: ['실린더'],
+  MeleeWand: ['원드'],
+  FireWand: ['원드'],
+  IceWand: ['원드'],
+  LightningWand: ['원드'],
+  TriboltWand: ['원드'],
+  HealingWand: ['힐링 원드'],
+  Staff: ['스태프'],
+  Orb: ['오브'],
+  MagicAssistanceBook: ['마도서'],
+  Instrument: ['악기'],
+  InstrumentLure: ['악기'],
+  Shield: ['방패'],
+  HeavyArmor: ['중갑옷'],
+  Lightarmor: ['경갑옷'],
+  ClothArmor: ['천옷'],
+  ClothArmorComm: ['천옷'],
+  Gauntlet: ['장갑'],
+  Glove: ['장갑'],
+  Helm: ['모자/가발'],
+  Headgear: ['모자/가발'],
+  Armorboots: ['신발'],
+  Shoes: ['신발'],
+  Accessary: ['액세서리'],
+  Lumber: ['생활 도구', '기타 장비'],
+  Fishing: ['생활 도구', '기타 장비'],
+  CollectingTool: ['생활 도구', '기타 장비'],
+  CarpentryKit: ['생활 도구', '기타 장비'],
+  Sieve: ['생활 도구', '기타 장비'],
+  TailorKit: ['생활 도구', '기타 장비'],
+  SilkProductionTool: ['생활 도구', '기타 장비'],
+  BlacksmithHammer: ['생활 도구', '기타 장비'],
+  HandcraftKit: ['생활 도구', '기타 장비'],
+  Cooking: ['생활 도구', '기타 장비'],
+  LRod: ['생활 도구', '기타 장비'],
+  SunRodColt: ['생활 도구', '기타 장비'],
+  DNDreamcatcher: ['생활 도구', '기타 장비'],
+  Trainingbarton: ['생활 도구', '기타 장비'],
+  Fynnbell: ['생활 도구', '기타 장비'],
+};
+
+/** 세공 이름 -> 붙을 수 있는 경매장 카테고리. 모르는 장비 종류가 섞이면 넣지 않는다(전체를 훑는다). */
+const reforgeCategories = {};
+const unknownTypes = new Set();
+for (const ability of data.MetalWareAbilityList) {
+  const name = text(ability.Desc);
+  if (!isRealName(name)) continue;
+  const types = Object.keys(ability.EquipFilterMap ?? {});
+  const unknown = types.filter((type) => !EQUIP_TYPE_CATEGORIES[type]);
+  unknown.forEach((type) => unknownTypes.add(type));
+  if (types.length === 0 || unknown.length > 0) {
+    reforgeCategories[name] = null;
+    continue;
+  }
+  if (reforgeCategories[name] === null) continue;
+  const categories = new Set(reforgeCategories[name] ?? []);
+  for (const type of types)
+    EQUIP_TYPE_CATEGORIES[type].forEach((category) => categories.add(category));
+  reforgeCategories[name] = [...categories].sort((a, b) => a.localeCompare(b, 'ko'));
+}
+for (const [name, categories] of Object.entries(reforgeCategories))
+  if (categories === null) delete reforgeCategories[name];
+if (unknownTypes.size) console.warn(`카테고리를 모르는 장비 종류: ${[...unknownTypes].join(', ')}`);
+
 /** 상한 기준값 -> [1랭크 최대 레벨, 한계 돌파 최소, 한계 돌파 최대]. */
 const reforgeLevels = Object.fromEntries(
   data.MetalWareLevelList.map((row) => [
@@ -73,6 +168,7 @@ const body = `${JSON.stringify({
   reforges,
   reforgeCaps,
   reforgeLevels,
+  reforgeCategories,
   enchants: { prefix: prefixes, suffix: suffixes },
 })}\n`;
 await mkdir(dirname(OUT), { recursive: true });
