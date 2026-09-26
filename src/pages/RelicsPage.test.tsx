@@ -113,12 +113,12 @@ describe('유물 시세', () => {
       name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기',
     });
     // 두 번째 쪽의 8,000만이 첫 쪽의 9,500만보다 싸다.
-    expect(within(cell).getByText('8,000만 G')).toBeInTheDocument();
-    // 같은 줄에 그 레벨의 수치(700% 의 10분의 7)와 매물 수가 있다.
-    const line = cell.closest('tr') as HTMLElement;
-    expect(within(line).getByText('7레벨')).toBeInTheDocument();
-    expect(within(line).getByText('490%')).toBeInTheDocument();
-    expect(within(line).getByText('2')).toBeInTheDocument();
+    expect(within(cell).getByText('8,000만')).toBeInTheDocument();
+    expect(cell).toHaveAttribute('title', '80,000,000 G');
+    // 같은 칸에 레벨과 매물 수가 있고, 레벨 글자는 그 레벨의 수치(700% 의 10분의 7)를 품는다.
+    const line = cell.closest('[role="listitem"]') as HTMLElement;
+    expect(within(line).getByTitle('490%')).toHaveTextContent('7레벨');
+    expect(within(line).getByText('2건')).toBeInTheDocument();
     const url = new URL(cell.getAttribute('href') ?? '', 'https://example.com');
     expect(Object.fromEntries(url.searchParams)).toEqual({
       category: '유물',
@@ -128,7 +128,7 @@ describe('유물 시세', () => {
     });
     expect(
       screen.getByRole('link', { name: '오버 드라이브 폭발 공격 대미지 10레벨 매물 보기' }),
-    ).toHaveTextContent('3억 G');
+    ).toHaveTextContent('3억');
     expect(screen.getByText('134,000,000 G')).toBeInTheDocument();
   });
 
@@ -154,7 +154,7 @@ describe('유물 시세', () => {
     expect(screen.getAllByText('블래스트 랜서').length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole('button', { name: /알케믹 스팅어/ })).toBeNull();
     const lancer = screen.getByRole('button', { name: /블래스트 랜서/ });
-    expect(screen.getByText(/스킬 옵션 1종, 매물 3건/)).toBeInTheDocument();
+    expect(screen.getByText(/옵션 1종, 매물 3건/)).toBeInTheDocument();
 
     fireEvent.click(lancer);
     expect(lancer).toHaveAttribute('aria-pressed', 'true');

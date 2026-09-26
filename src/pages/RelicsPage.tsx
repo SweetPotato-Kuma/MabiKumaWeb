@@ -89,12 +89,15 @@ function PriceLink({
   to,
   label,
   showCount = true,
+  unit = true,
 }: {
   cell: PriceCell | null;
   to: string;
   label: string;
   /** 매물 수를 가격 아래에 적는다. 매물 수 칸이 따로 있는 표에서는 끈다. */
   showCount?: boolean;
+  /** 가격 뒤의 " G". 가격만 촘촘히 늘어선 곳에서는 뗀다. */
+  unit?: boolean;
 }) {
   const { token } = theme.useToken();
   if (!cell) return <Text type="secondary">-</Text>;
@@ -107,7 +110,7 @@ function PriceLink({
     >
       <Flex vertical gap={0} align="flex-end">
         <span className="tnum" style={{ whiteSpace: 'nowrap' }}>
-          {formatGoldShort(cell.lowest)}
+          {formatGoldShort(cell.lowest, unit)}
         </span>
         {showCount ? (
           <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
@@ -173,128 +176,140 @@ function NameFilter({
 const ARCANA_ICON = 36;
 const ARCANA_BUTTON_ICON = 20;
 /** 옵션 카드의 스킬 그림. */
-const SKILL_ICON = 32;
-
-/** 옵션 카드 안 한 줄. */
-interface LevelLine {
-  level: number;
-  cell: PriceCell | null;
-}
+const SKILL_ICON = 28;
+/** 넓은 화면에서 아르카나 이름을 두는 왼쪽 칸 폭. "포비든 알케미스트" 가 한 줄에 든다. */
+const ARCANA_COLUMN = 136;
 
 /**
- * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다 그 레벨의 수치와 최저가를
- * 한 줄씩 적는다. 수치를 몰라도 레벨로 읽고, 레벨의 뜻이 궁금하면 옆의 수치를 본다.
- * 높은 레벨부터 적는다. 가장 많이 찾는 것이 10레벨이다.
+ * 레벨 칸 한 개의 세 칸. 레벨과 매물 수는 글자만큼, 가격이 남는 폭을 오른쪽 정렬로 쓴다.
+ * 줄마다 같은 틀이라 가격 길이가 달라도 칸끼리 세로로 맞는다.
+ */
+const LEVEL_GRID = 'max-content minmax(0, 1fr) max-content';
+
+/**
+ * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다의 최저가를 두 칸씩 다섯 줄로
+ * 적는다(10과 9, 8과 7, ...). 한 줄에 한 레벨씩 열 줄이면 아르카나 하나가 화면을 다 채워
+ * 여러 아르카나를 견줄 수 없었다. 레벨마다의 수치는 머리의 10레벨 수치를 10으로 나누면 되고,
+ * 레벨 글자에 마우스를 올려도 보인다.
  */
 function OptionCard({ option }: { option: ArcanaOption }) {
   const { row, skill } = option;
-  const lines: LevelLine[] = [...RELIC_LEVELS]
-    .reverse()
-    .map((level) => ({ level, cell: row.levels[level - 1] }));
-  const columns: TableColumnsType<LevelLine> = [
-    {
-      title: '레벨',
-      dataIndex: 'level',
-      width: 64,
-      render: (level: number, line) => (
-        <Text className="tnum" type={line.cell ? undefined : 'secondary'}>
-          {level}레벨
-        </Text>
-      ),
-    },
-    {
-      title: '수치',
-      key: 'value',
-      align: 'right',
-      render: (_value, line) => (
-        <Text type="secondary" className="tnum" style={{ whiteSpace: 'nowrap' }}>
-          {formatRelicValue(row, relicValueAt(row, line.level))}
-        </Text>
-      ),
-    },
-    {
-      title: '매물',
-      key: 'count',
-      align: 'right',
-      width: 52,
-      render: (_value, line) =>
-        line.cell ? <span className="tnum">{formatNumber(line.cell.count)}</span> : null,
-    },
-    {
-      title: '최저가',
-      key: 'price',
-      align: 'right',
-      render: (_value, line) => (
-        <PriceLink
-          cell={line.cell}
-          to={muriasAuctionPath(row.name, line.level)}
-          label={`${row.name} ${line.level}레벨`}
-          showCount={false}
-        />
-      ),
-    },
-  ];
   return (
-    <Card type="inner" size="small" variant="outlined" styles={{ body: { padding: 0 } }}>
-      <Flex gap={10} align="center" style={{ padding: '12px 12px 8px' }}>
-        {skill ? <SkillIcon skillId={skill.id} size={SKILL_ICON} /> : null}
-        <Flex vertical gap={2} style={SHRINK}>
-          <Link to={muriasAuctionPath(row.name)} style={{ fontWeight: 600 }}>
-            {row.name}
-          </Link>
-          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-            {RELIC_MAX_LEVEL}레벨 {formatRelicValue(row, row.max)}
-            {row.verb ? ` ${row.verb}` : ''}, 매물 {formatNumber(row.count)}건
-          </Text>
+    <Card type="inner" size="small" variant="outlined">
+      <Flex vertical gap={8}>
+        <Flex gap={8} align="center">
+          {skill ? <SkillIcon skillId={skill.id} size={SKILL_ICON} /> : null}
+          <Flex vertical gap={0} style={SHRINK}>
+            <Link to={muriasAuctionPath(row.name)} style={{ fontWeight: 600, lineHeight: 1.35 }}>
+              {row.name}
+            </Link>
+            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              {RELIC_MAX_LEVEL}레벨 {formatRelicValue(row, row.max)}
+              {row.verb ? ` ${row.verb}` : ''}, 매물 {formatNumber(row.count)}건
+            </Text>
+          </Flex>
         </Flex>
+        {/* 두 레벨씩 한 줄. 왼쪽이 높은 레벨이라 왼쪽에서 오른쪽, 위에서 아래로 10부터 1까지 읽힌다. */}
+        <div
+          role="list"
+          aria-label={`${row.name} 레벨별 최저가(골드)`}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            columnGap: 14,
+            rowGap: 2,
+          }}
+        >
+          {[...RELIC_LEVELS].reverse().map((level) => {
+            const cell = row.levels[level - 1];
+            return (
+              <div
+                key={level}
+                role="listitem"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: LEVEL_GRID,
+                  alignItems: 'baseline',
+                  columnGap: 6,
+                }}
+              >
+                <Text
+                  type="secondary"
+                  className="tnum"
+                  title={formatRelicValue(row, relicValueAt(row, level))}
+                  style={{ fontSize: 13, whiteSpace: 'nowrap' }}
+                >
+                  {level}레벨
+                </Text>
+                <Flex justify="flex-end">
+                  <PriceLink
+                    cell={cell}
+                    to={muriasAuctionPath(row.name, level)}
+                    label={`${row.name} ${level}레벨`}
+                    showCount={false}
+                    unit={false}
+                  />
+                </Flex>
+                <Text
+                  type="secondary"
+                  className="tnum"
+                  style={{ fontSize: 12, whiteSpace: 'nowrap', textAlign: 'right' }}
+                >
+                  {cell ? `${formatNumber(cell.count)}건` : ''}
+                </Text>
+              </div>
+            );
+          })}
+        </div>
       </Flex>
-      <Table<LevelLine>
-        columns={columns}
-        dataSource={lines}
-        rowKey="level"
-        size="small"
-        pagination={false}
-      />
     </Card>
   );
 }
 
-/** 아르카나 하나의 묶음. 머리에 아르카나 그림과 이름, 그 아래 옵션 카드들. */
+/**
+ * 아르카나 하나의 묶음. 넓은 화면에서는 아르카나 그림과 이름을 왼쪽 칸에 두고 옵션 카드를 오른쪽에
+ * 나란히 둔다. 이름을 위 머리 줄에 두면 묶음마다 한 줄씩 높아져 한 화면에 들어가는 아르카나가
+ * 줄었다. 768px 미만에서는 이름이 위, 옵션 카드가 한 줄에 하나씩 아래로 온다.
+ */
 function ArcanaSection({ group, wide }: { group: ArcanaGroup; wide: boolean }) {
+  const title = (
+    <Flex gap={10} align="center" vertical={wide} style={wide ? { textAlign: 'center' } : undefined}>
+      {group.arcana ? <SkillIcon skillId={group.arcana.awakening} size={ARCANA_ICON} /> : null}
+      <Flex vertical gap={0} align={wide ? 'center' : 'flex-start'}>
+        <Text strong style={{ fontSize: 15 }}>
+          {group.arcana?.name ?? '아르카나를 찾지 못한 옵션'}
+        </Text>
+        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+          옵션 {formatNumber(group.options.length)}종, 매물 {formatNumber(group.count)}건
+        </Text>
+      </Flex>
+    </Flex>
+  );
   return (
-    <Card
-      variant="outlined"
-      size={wide ? 'default' : 'small'}
-      title={
-        <Flex gap={12} align="center" style={{ paddingBlock: 8 }}>
-          {group.arcana ? <SkillIcon skillId={group.arcana.awakening} size={ARCANA_ICON} /> : null}
-          <Flex vertical gap={0}>
-            <Text strong style={{ fontSize: 16 }}>
-              {group.arcana?.name ?? '아르카나를 찾지 못한 옵션'}
-            </Text>
-            <Text type="secondary" className="tnum" style={{ fontSize: 12, fontWeight: 400 }}>
-              스킬 옵션 {formatNumber(group.options.length)}종, 매물 {formatNumber(group.count)}건
-            </Text>
-          </Flex>
-        </Flex>
-      }
-    >
-      {/*
-        넓은 화면에서는 옵션 카드를 한 줄에 셋까지 폭을 나눠 채운다. 아르카나마다 옵션이 셋 안팎이라
-        300px 로만 자르면 넓은 화면에서 오른쪽이 비었다. 768px 미만에서는 한 줄에 하나씩 둔다.
-      */}
+    <Card variant="outlined" size="small">
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: wide
-            ? 'repeat(auto-fill, minmax(max(300px, calc((100% - 24px) / 3)), 1fr))'
-            : 'minmax(0, 1fr)',
+          gridTemplateColumns: wide ? `${ARCANA_COLUMN}px minmax(0, 1fr)` : 'minmax(0, 1fr)',
           gap: 12,
+          alignItems: 'center',
         }}
       >
-        {group.options.map((option) => (
-          <OptionCard key={option.row.key} option={option} />
-        ))}
+        {title}
+        {/* 옵션 카드는 한 줄에 셋까지 폭을 나눠 채운다. 768px 미만에서는 한 줄에 하나. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: wide
+              ? 'repeat(auto-fill, minmax(max(260px, calc((100% - 16px) / 3)), 1fr))'
+              : 'minmax(0, 1fr)',
+            gap: 8,
+          }}
+        >
+          {group.options.map((option) => (
+            <OptionCard key={option.row.key} option={option} />
+          ))}
+        </div>
       </div>
     </Card>
   );

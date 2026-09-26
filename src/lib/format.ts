@@ -19,16 +19,18 @@ export function formatGold(value: number | null | undefined): string {
 
 /**
  * 큰 가격을 억과 만으로 줄인다. 178,400,000 → "1억 7,840만 G". 칸이 좁은 표에서 쓴다.
- * 만 아래는 반올림해 버리고, 만이 안 되는 값은 그대로 적는다.
+ * 만 아래는 반올림해 버리고, 만이 안 되는 값은 그대로 적는다. unit 을 끄면 " G" 를 뗀다.
+ * 가격만 늘어선 좁은 칸에서 쓴다.
  */
-export function formatGoldShort(value: number | null | undefined): string {
+export function formatGoldShort(value: number | null | undefined, unit = true): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  if (Math.abs(value) < 10_000) return formatGold(value);
+  const suffix = unit ? ' G' : '';
+  if (Math.abs(value) < 10_000) return `${numberFormatter.format(value)}${suffix}`;
   const man = Math.round(value / 10_000);
   const eok = Math.trunc(man / 10_000);
   const rest = man % 10_000;
   const parts = [eok ? `${numberFormatter.format(eok)}억` : '', rest ? `${numberFormatter.format(rest)}만` : ''];
-  return `${parts.filter(Boolean).join(' ')} G`;
+  return `${parts.filter(Boolean).join(' ')}${suffix}`;
 }
 
 /** API 가 주는 UTC ISO 문자열을 로컬 시간 문자열로 바꾼다. */

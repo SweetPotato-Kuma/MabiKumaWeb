@@ -42,5 +42,6 @@ describe('formatGoldShort', () => {
     expect(formatGoldShort(215_000)).toBe('22만 G');
     expect(formatGoldShort(9_500)).toBe('9,500 G');
     expect(formatGoldShort(null)).toBe('-');
+    expect(formatGoldShort(1_079_000_000, false)).toBe('10억 7,900만');
   });
 });
