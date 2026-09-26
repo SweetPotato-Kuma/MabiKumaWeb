@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Descriptions, Flex, Typography, theme, type DescriptionsProps } from 'antd';
 import {
+  averageWorks,
   COOKING_SKILL,
+  hasWorks,
   rankText,
   skillIconUrl,
   type Recipe,
@@ -36,6 +38,9 @@ export function RecipeInfo({ book, recipe }: { book: RecipeBook; recipe: Recipe 
       label: '생산 개수',
       children: <span className="tnum">{formatNumber(recipe.yield)}개</span>,
     },
+    ...(hasWorks(recipe)
+      ? [{ key: 'works', label: '평균 공정', children: <WorksText recipe={recipe} /> }]
+      : []),
     ...(recipe.exp
       ? [
           {
@@ -62,6 +67,20 @@ export function RecipeInfo({ book, recipe }: { book: RecipeBook; recipe: Recipe 
       </Flex>
       <Descriptions size="small" column={1} items={items} />
     </Flex>
+  );
+}
+
+/** 평균 공정 수와 공정당 진행도. 모아 둔 값이 없는 제작법은 모른다고 적는다. */
+function WorksText({ recipe }: { recipe: Recipe }) {
+  const works = averageWorks(recipe);
+  if (works === undefined) return <Text type="secondary">자료 없음</Text>;
+  return (
+    <span className="tnum">
+      {formatNumber(works)}회{' '}
+      <Text type="secondary" className="tnum">
+        (공정당 {formatNumber(recipe.progress)}%)
+      </Text>
+    </span>
   );
 }
 

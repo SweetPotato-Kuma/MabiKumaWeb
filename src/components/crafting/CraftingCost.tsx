@@ -39,6 +39,8 @@ import {
   type ShoppingRow,
 } from '@/features/crafting/plan';
 import {
+  averageWorks,
+  hasWorks,
   isCooking,
   materialSummary,
   recipeTitle,
@@ -52,11 +54,8 @@ const { Text } = Typography;
 /** 한 번에 계산할 수 있는 최대 개수. 이보다 많으면 매물을 몇 쪽 받아도 모자라 값이 뜻을 잃는다. */
 const MAX_QUANTITY = 9999;
 
-/**
- * 작업을 여러 번 하는 스킬. 천옷만들기와 블랙스미스는 작업 한 번에 진행도가 조금씩 오르고,
- * 작업할 때마다 작업 재료를 다시 넣는다. 몇 번 만에 끝날지는 랭크와 운에 달려 있어 셀 수 없다.
- */
-const PROGRESS_SKILLS = new Set([10001, 10016]);
+/** 공정 수 칸의 상한. 공정당 진행도가 가장 낮은 제작법도 이만큼 걸리지 않는다. */
+const MAX_WORKS = 99;
 
 /** 재료 그림 칸. 표 한 줄 높이를 크게 늘리지 않으면서 알아볼 수 있는 크기. */
 const MATERIAL_ICON = 32;
@@ -123,6 +122,9 @@ function RecipeCost({
 }) {
   const screens = Grid.useBreakpoint();
   const [quantity, setQuantity] = useState(1);
+  /** 공정 수. 평균을 기본으로 두고 사용자가 고친다. 평균을 모르면 1. */
+  const workRecipe = hasWorks(recipe);
+  const [works, setWorks] = useState(() => averageWorks(recipe) ?? 1);
   const [methods, setMethods] = useState<Record<string, Method>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
 
@@ -148,6 +150,7 @@ function RecipeCost({
       book,
       recipe,
       quantity,
+      works: workRecipe ? works : undefined,
       priceOf: (id) => prices.get(book.itemName(id)),
       methods,
       expanded: new Set(expanded),
@@ -181,7 +184,6 @@ function RecipeCost({
   const tableRef = useRef<HTMLDivElement>(null);
   useSlidingRows(tableRef);
 
-  const progressNote = PROGRESS_SKILLS.has(recipe.skill);
   // 요리는 재료를 한 개씩 쓰고 비율을 맞춰 넣는다. 트리의 개수만으로는 만들 수 없어 비율 칸을 둔다.
   const cooking = isCooking(recipe);
 
@@ -221,22 +223,42 @@ function RecipeCost({
             style={cooking && screens.md && !screens.xl ? { gridColumn: '1 / -1' } : undefined}
           >
             <Form layout="vertical" style={{ marginBottom: 0 }}>
-              <Form.Item label="만들 개수" htmlFor="crafting-quantity" style={{ marginBottom: 0 }}>
-                <InputNumber
-                  id="crafting-quantity"
-                  min={1}
-                  max={MAX_QUANTITY}
-                  precision={0}
-                  value={quantity}
-                  onChange={(value) => setQuantity(value ?? 1)}
-                  className="tnum"
-                  style={{ width: 140 }}
-                />
-              </Form.Item>
+              <Flex gap={16} wrap>
+                <Form.Item
+                  label="만들 개수"
+                  htmlFor="crafting-quantity"
+                  style={{ marginBottom: 0 }}
+                >
+                  <InputNumber
+                    id="crafting-quantity"
+                    min={1}
+                    max={MAX_QUANTITY}
+                    precision={0}
+                    value={quantity}
+                    onChange={(value) => setQuantity(value ?? 1)}
+                    className="tnum"
+                    style={{ width: 120 }}
+                  />
+                </Form.Item>
+                {workRecipe ? (
+                  <Form.Item label="공정 수" htmlFor="crafting-works" style={{ marginBottom: 0 }}>
+                    <InputNumber
+                      id="crafting-works"
+                      min={1}
+                      max={MAX_WORKS}
+                      precision={0}
+                      value={works}
+                      onChange={(value) => setWorks(value ?? 1)}
+                      className="tnum"
+                      style={{ width: 120 }}
+                    />
+                  </Form.Item>
+                ) : null}
+              </Flex>
             </Form>
             <Flex gap={24} wrap align="flex-end">
               <Statistic
-                title={progressNote ? '재료 예상 총액 (작업 1회와 마무리 기준)' : '재료 예상 총액'}
+                title="재료 예상 총액"
                 value={formatGold(plan.total.gold)}
                 styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
               />
@@ -518,6 +540,11 @@ function treeColumns(
           <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
             {formatNumber(node.required)}
           </Text>
+          {node.perWork !== undefined ? (
+            <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+              공정마다 {formatNumber(node.perWork)}개
+            </Text>
+          ) : null}
           {!isBuying(node.method) && node.yieldCount > 1 ? (
             <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
               {formatNumber(node.yieldCount)}개씩 {formatNumber(node.crafts)}번

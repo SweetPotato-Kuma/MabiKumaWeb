@@ -1,5 +1,5 @@
 import { quoteBuy, type BuyQuote, type PriceState } from './market';
-import type { Recipe, RecipeBook, RecipeSlot } from './recipes';
+import { averageWorks, hasWorks, type Recipe, type RecipeBook, type RecipeSlot } from './recipes';
 
 /**
  * 제작 비용 계획.
@@ -25,6 +25,9 @@ export const isBuying = (method: Method): method is 'buy' | 'npc' => typeof meth
 
 /** 재료가 이 깊이를 넘으면 더 풀지 않는다. 게임 제작법은 다섯 단계를 넘지 않는다. */
 export const MAX_DEPTH = 8;
+
+/** 한 번 만들 때 작업 재료를 넣는 횟수. 공정을 여러 번 하는 제작법은 평균 공정 수, 모르면 1. */
+const worksOf = (recipe: Recipe) => (hasWorks(recipe) ? (averageWorks(recipe) ?? 1) : 1);
 
 /**
  * 재료 값을 어디서 매기는지. 경매장 시세(PriceState), NPC 판매가('npc'), 거래 불가.
@@ -64,6 +67,8 @@ export interface PlanNode {
   method: Method;
   /** 사용자가 고른 방법인지. 아니면 기본값이다. */
   chosen: boolean;
+  /** 공정마다 넣는 개수. 공정을 여러 번 하는 제작법의 작업 재료일 때만. */
+  perWork?: number;
   /** 만든다면 몇 번 만들어야 하는지, 한 번에 몇 개 나오는지. */
   crafts: number;
   yieldCount: number;
@@ -100,6 +105,11 @@ export interface PlanInput {
   book: RecipeBook;
   recipe: Recipe;
   quantity: number;
+  /**
+   * 만들 제작법의 공정 수. 작업 재료는 공정마다 다시 넣으므로 이만큼 곱한다(마무리 재료는 한 번).
+   * 없으면 평균 공정 수, 그것도 모르면 1. 하위 재료의 제작법은 늘 평균을 쓴다.
+   */
+  works?: number;
   /** 아이템 번호로 시세를 찾는다. 모르는 아이템은 undefined(아직 묻지 않음). */
   priceOf: (itemId: number) => PriceState | undefined;
   methods: Readonly<Record<string, Method>>;
@@ -132,6 +142,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
     book,
     recipe,
     quantity,
+    works,
     priceOf,
     methods,
     expanded,
@@ -211,21 +222,28 @@ export function buildPlan(input: PlanInput): CraftPlan {
     return best;
   };
 
-  const slotsOf = (target: Recipe) => [
-    ...target.materials.map((slot, index) => ({ slot, finish: false, id: `m${index}` })),
-    ...target.finish.map((slot, index) => ({ slot, finish: true, id: `f${index}` })),
+  /** 제작법의 재료 칸. times 는 한 번 만들 때 그 칸을 몇 번 넣는지(작업 재료는 공정 수만큼). */
+  const slotsOf = (target: Recipe, workCount = worksOf(target)) => [
+    ...target.materials.map((slot, index) => ({
+      slot,
+      finish: false,
+      id: `m${index}`,
+      times: workCount,
+    })),
+    ...target.finish.map((slot, index) => ({ slot, finish: true, id: `f${index}`, times: 1 })),
   ];
 
-  /** 재료 칸 하나를 노드로. 하위 재료는 expand 가 채운다. */
+  /** 재료 칸 하나를 노드로. 하위 재료는 expand 가 채운다. times 는 한 번 만들 때 넣는 횟수. */
   const buildNode = (
     slot: RecipeSlot,
     finish: boolean,
     key: string,
     multiplier: number,
+    times: number,
     depth: number,
     ancestors: ReadonlySet<number>,
   ): PlanNode => {
-    const required = slot.count * multiplier;
+    const required = slot.count * multiplier * times;
     const itemId = pickSlotItem(slot, required);
     const tradable = book.isTradable(itemId);
     const npcUnit = npcPriceOf?.(itemId);
@@ -265,6 +283,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
       npcUnit,
       method,
       chosen: chosenSource !== undefined || chosenRecipe !== undefined,
+      ...(times > 1 ? { perWork: slot.count * multiplier } : {}),
       crafts: 0,
       yieldCount: 1,
       buyCost,
@@ -290,12 +309,13 @@ export function buildPlan(input: PlanInput): CraftPlan {
     node.crafts = Math.ceil(node.required / target.yield);
     const nextAncestors = new Set(ancestors).add(node.itemId);
     const prefix = `${node.key}.${target.index}`;
-    node.children = slotsOf(target).map(({ slot, finish, id }) => {
+    node.children = slotsOf(target).map(({ slot, finish, id, times }) => {
       const child = buildNode(
         slot,
         finish,
         `${prefix}/${id}`,
         node.crafts,
+        times,
         node.depth + 1,
         nextAncestors,
       );
@@ -310,8 +330,9 @@ export function buildPlan(input: PlanInput): CraftPlan {
 
   const crafts = Math.ceil(Math.max(1, quantity) / recipe.yield);
   const rootAncestors = new Set([recipe.item]);
-  const nodes = slotsOf(recipe).map(({ slot, finish, id }) => {
-    const node = buildNode(slot, finish, id, crafts, 0, rootAncestors);
+  const rootWorks = hasWorks(recipe) && works !== undefined ? Math.max(1, works) : undefined;
+  const nodes = slotsOf(recipe, rootWorks).map(({ slot, finish, id, times }) => {
+    const node = buildNode(slot, finish, id, crafts, times, 0, rootAncestors);
     expand(node, rootAncestors);
     return node;
   });
