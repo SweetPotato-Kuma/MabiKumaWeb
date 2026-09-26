@@ -205,3 +205,50 @@ describe('summarizeCondition', () => {
     expect(summarizeCondition(erg)).toBe('에르그 S등급 30레벨 이상');
   });
 });
+
+describe('무리아스 유물 조건', () => {
+  const relic = (value: string) => ({
+    item_option: [
+      option('무리아스 유물', value),
+      option('전용 해제 거래 보증서 사용 불가', 'true'),
+    ],
+  });
+  const seven = relic('오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)');
+  const ten = relic('오버 드라이브 폭발 공격 대미지 700% 증가 (최대 700%)');
+  const other = relic('플레임 버스트 대미지 450% 증가 (최대 450%)');
+
+  it('수치를 몰라도 이름 일부와 레벨 구간으로 거른다', () => {
+    const atLeastEight = only({ kind: 'relic', name: '오버드라이브', minLevel: 8, maxLevel: null });
+    expect([seven, ten, other].map((item) => matchesOptionFilter(item, atLeastEight))).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    const exactlySeven = only({ kind: 'relic', name: '', minLevel: 7, maxLevel: 7 });
+    expect([seven, ten, other].map((item) => matchesOptionFilter(item, exactlySeven))).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it('칩과 걸린 옵션을 레벨로 적는다', () => {
+    const [condition] = only(
+      { kind: 'relic', name: '오버 드라이브', minLevel: 5, maxLevel: 8 },
+    ).conditions;
+    expect(summarizeCondition(condition)).toBe('무리아스 유물 오버 드라이브 5~8레벨');
+    expect(describeMatch(seven, { conditions: [condition] })).toEqual([
+      '오버 드라이브 폭발 공격 대미지 7레벨 (490%)',
+    ]);
+  });
+
+  it('불러온 매물에서 옵션 이름과 레벨, 최대치를 모은다', () => {
+    const entry = buildOptionCatalog([seven, ten, other]).find((each) => each.kind === 'relic');
+    expect(entry?.values.map((each) => each.value)).toEqual([
+      '오버 드라이브 폭발 공격 대미지',
+      '플레임 버스트 대미지',
+    ]);
+    expect(entry?.numbers['오버 드라이브 폭발 공격 대미지']).toEqual([7, 10]);
+    expect(entry?.scales['플레임 버스트 대미지']).toEqual({ max: 450, unit: '%' });
+  });
+});

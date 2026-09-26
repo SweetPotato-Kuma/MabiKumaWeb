@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { reforgeCap, reforgeLevelSuggestions, type OptionNames } from './optionNames';
+import {
+  reforgeCap,
+  reforgeLevelSuggestions,
+  scanCategoriesFor,
+  type OptionNames,
+} from './optionNames';
 
 /** 실제 게임 데이터에서 옮긴 두 세공과 레벨 표 일부. */
 const names: OptionNames = {
@@ -48,5 +53,14 @@ describe('reforgeLevelSuggestions', () => {
       [2, 3],
       [1, 4],
     ]);
+  });
+});
+
+describe('scanCategoriesFor', () => {
+  it('무리아스 유물 조건이 있으면 유물 카테고리만 훑는다', () => {
+    const filter = {
+      conditions: [{ id: 1, kind: 'relic' as const, name: '', minLevel: 7, maxLevel: null }],
+    };
+    expect(scanCategoriesFor(filter, names)).toEqual(['유물']);
   });
 });

@@ -30,7 +30,10 @@ export const SNAPSHOT_COLLECT_PATH = '/auction/snapshot/collect';
 const PREFIX = 'auction/';
 const MANIFEST_KEY = `${PREFIX}manifest.json`;
 
-/** 모을 카테고리. 화면의 EQUIPMENT_CATEGORIES(src/features/equipment/api.ts)와 같다. */
+/**
+ * 모을 카테고리. 화면의 isSnapshotCategory(src/features/auction/snapshot.ts)와 같다. 장비 카테고리에
+ * 유물을 더했다. 유물은 3쪽 남짓이고, 유물 시세 화면이 카테고리 전체를 한꺼번에 본다.
+ */
 export const SNAPSHOT_CATEGORIES = [
   '검',
   '경갑옷',
@@ -64,6 +67,7 @@ export const SNAPSHOT_CATEGORIES = [
   '핸들',
   '활',
   '힐링 원드',
+  '유물',
 ];
 
 /** 동시에 받는 카테고리 수. 넥슨이 줄을 세우므로 더 늘려도 빨라지지 않고 거래 내역 수집만 밀린다. */

@@ -1,4 +1,11 @@
 import { hexToRgb, similarity, type Rgb } from '@/features/bags/color';
+import {
+  formatRelicValue,
+  isRelicOption,
+  MURIAS_OPTION_TYPE,
+  parseRelicOption,
+  type RelicScale,
+} from '@/features/relics/murias';
 import { normalizeForSearch } from './dictionary';
 import { isCurrentMaxOption } from './itemOptions';
 import type { ItemOption } from './types';
@@ -27,6 +34,11 @@ export type Condition =
   | { id: number; kind: 'erg'; grade: string; minLevel: number | null }
   /** 색. part 가 비면 아무 파트. 파트가 없는 색(염색 앰플)은 파트를 골라도 본다. */
   | { id: number; kind: 'color'; hex: string; part: string; minSimilarity: number }
+  /**
+   * 무리아스의 유물 스킬 옵션. name 이 비면 아무 옵션. 수치 대신 레벨(1~10)로 찾는다.
+   * 두 레벨 사이(끝 포함)이고, 한쪽이 비면 그쪽은 끝이 없다.
+   */
+  | { id: number; kind: 'relic'; name: string; minLevel: number | null; maxLevel: number | null }
   /** 숫자 옵션(최대 공격, 크리티컬, 방어력 등)이 min 이상. */
   | { id: number; kind: 'number'; optionType: string; min: number | null }
   /** 그 밖의 옵션(세트 효과, 장인 개조 등)에 문구가 들어 있다. */
@@ -52,6 +64,7 @@ const KIND_BY_TYPE: Record<string, ConditionKind> = {
   에르그: 'erg',
   '아이템 색상': 'color',
   색상: 'color',
+  [MURIAS_OPTION_TYPE]: 'relic',
 };
 
 /** 두 색 옵션은 조건 하나로 다룬다. 장비 파트 색과 염색 앰플 색. */
@@ -72,6 +85,12 @@ export function isConditionActive(condition: Condition): boolean {
       return condition.grade !== '' || condition.minLevel !== null;
     case 'color':
       return hexToRgb(condition.hex) !== null;
+    case 'relic':
+      return (
+        normalizeForSearch(condition.name) !== '' ||
+        condition.minLevel !== null ||
+        condition.maxLevel !== null
+      );
     case 'number':
       return condition.min !== null;
     case 'text':
@@ -208,6 +227,19 @@ function matchesCondition(options: ItemOption[], condition: Condition): boolean 
         return rgb !== null && similarity(rgb, target) >= condition.minSimilarity;
       });
     }
+    case 'relic': {
+      const needle = normalizeForSearch(condition.name);
+      return options.some((option) => {
+        if (!isRelicOption(option)) return false;
+        const relic = parseRelicOption(option.option_value);
+        return (
+          relic !== null &&
+          normalizeForSearch(relic.name).includes(needle) &&
+          (condition.minLevel === null || relic.level >= condition.minLevel) &&
+          (condition.maxLevel === null || relic.level <= condition.maxLevel)
+        );
+      });
+    }
     case 'number':
       return options.some((option) => {
         if (option.option_type !== condition.optionType) return false;
@@ -263,6 +295,8 @@ export function conditionLabel(condition: Condition): string {
       return '에르그';
     case 'color':
       return '색상';
+    case 'relic':
+      return MURIAS_OPTION_TYPE;
     case 'number':
       return numberLabel(condition.optionType);
     case 'text':
@@ -317,11 +351,30 @@ export function summarizeCondition(condition: Condition): string {
         ? `${label} ${part}R:${rgb.r} G:${rgb.g} B:${rgb.b} (${condition.minSimilarity}% 이상)`
         : label;
     }
+    case 'relic':
+      return [label, condition.name.trim() || '아무 옵션', relicLevelRange(condition)]
+        .filter(Boolean)
+        .join(' ');
     case 'number':
       return `${label} ${condition.min} 이상`;
     case 'text':
       return `${label} "${condition.text.trim()}"`;
   }
+}
+
+/** "7레벨", "7레벨 이상", "9레벨 이하", "5~8레벨". 둘 다 비면 빈 문자열. */
+export function relicLevelRange({
+  minLevel,
+  maxLevel,
+}: {
+  minLevel: number | null;
+  maxLevel: number | null;
+}): string {
+  if (minLevel !== null && maxLevel !== null)
+    return minLevel === maxLevel ? `${minLevel}레벨` : `${minLevel}~${maxLevel}레벨`;
+  if (minLevel !== null) return `${minLevel}레벨 이상`;
+  if (maxLevel !== null) return `${maxLevel}레벨 이하`;
+  return '';
 }
 
 /**
@@ -372,6 +425,10 @@ export function describeMatch(
           `${part}R:${best.rgb.r} G:${best.rgb.g} B:${best.rgb.b} (비슷함 ${best.score}%)`,
         );
       }
+    } else if (condition.kind === 'relic') {
+      const relic = parseRelicOption(options.find(isRelicOption)?.option_value);
+      if (relic)
+        notes.push(`${relic.name} ${relic.level}레벨 (${formatRelicValue(relic, relic.value)})`);
     } else if (condition.kind === 'number') {
       const option = options.find((each) => each.option_type === condition.optionType);
       const value = option ? optionNumber(option) : null;
@@ -417,6 +474,8 @@ export interface CatalogEntry {
    * 숫자 옵션 값). 키 '' 는 전체, 세공은 이름별로도 둔다. "7 이상이면 몇 건" 을 셀 때 쓴다.
    */
   numbers: Record<string, number[]>;
+  /** 무리아스 유물 옵션 이름별 최대치와 단위. 레벨 고르기에 그 레벨의 수치를 붙인다. */
+  scales: Record<string, RelicScale>;
 }
 
 /** 이 조건 종류가 숫자 자동완성에 쓸 값. */
@@ -424,6 +483,8 @@ function numberOf(kind: ConditionKind | null, option: ItemOption): number | null
   switch (kind) {
     case 'reforge':
       return parseReforge(option.option_value)?.level ?? null;
+    case 'relic':
+      return parseRelicOption(option.option_value)?.level ?? null;
     case 'special':
     case 'erg':
       return toNumber(option.option_value);
@@ -450,6 +511,7 @@ export function buildOptionCatalog(
     valuesBySub: Map<string, Map<string, number>>;
     subTypes: Set<string>;
     numbers: Map<string, number[]>;
+    scales: Map<string, RelicScale>;
   }
   const tallies = new Map<string, Tally>();
   const bump = (map: Map<string, number>, key: string) => map.set(key, (map.get(key) ?? 0) + 1);
@@ -474,6 +536,7 @@ export function buildOptionCatalog(
           valuesBySub: new Map(),
           subTypes: new Set(),
           numbers: new Map(),
+          scales: new Map(),
         };
         tallies.set(label, tally);
       }
@@ -486,14 +549,18 @@ export function buildOptionCatalog(
       // 세트 효과처럼 이름 옆에 숫자(레벨)가 붙은 것은 숫자 옵션이 아니다. 첫 값으로 가른다.
       if (fixed === null && toNumber(option.option_value) === null) tally.numeric = false;
 
+      const relic = fixed === 'relic' ? parseRelicOption(option.option_value) : null;
+      if (relic) tally.scales.set(relic.name, { max: relic.max, unit: relic.unit });
       const name =
         fixed === 'reforge'
           ? parseReforge(option.option_value)?.name
-          : fixed === 'enchant'
-            ? enchantName(option.option_value)
-            : fixed === null
-              ? option.option_value
-              : undefined;
+          : fixed === 'relic'
+            ? relic?.name
+            : fixed === 'enchant'
+              ? enchantName(option.option_value)
+              : fixed === null
+                ? option.option_value
+                : undefined;
       // 같은 매물에 같은 이름이 두 번 나와도 한 건으로 센다.
       const nameKey = `${label}\u0000${option.option_sub_type ?? ''}\u0000${name ?? ''}`;
       if (name && !namesHere.has(nameKey)) {
@@ -509,7 +576,7 @@ export function buildOptionCatalog(
       if (number !== null) {
         const perLabel = maxHere.get(label) ?? new Map<string, number>();
         maxHere.set(label, perLabel);
-        const keys = fixed === 'reforge' && name ? ['', name] : [''];
+        const keys = (fixed === 'reforge' || fixed === 'relic') && name ? ['', name] : [''];
         for (const key of keys) perLabel.set(key, Math.max(perLabel.get(key) ?? -Infinity, number));
       }
     }
@@ -544,6 +611,7 @@ export function buildOptionCatalog(
         ),
         subTypes: [...tally.subTypes].sort(),
         numbers: Object.fromEntries(tally.numbers),
+        scales: Object.fromEntries(tally.scales),
       };
     })
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ko'));
@@ -587,6 +655,8 @@ export function newCondition(entry: Pick<CatalogEntry, 'kind' | 'optionType'>): 
       return { id, kind: 'erg', grade: '', minLevel: null };
     case 'color':
       return { id, kind: 'color', hex: '#ffffff', part: '', minSimilarity: 95 };
+    case 'relic':
+      return { id, kind: 'relic', name: '', minLevel: null, maxLevel: null };
     case 'number':
       return { id, kind: 'number', optionType: entry.optionType, min: null };
     case 'text':
@@ -605,3 +675,22 @@ export const QUICK_CONDITIONS: { label: string; kind: ConditionKind; optionType:
   { label: '에르그', kind: 'erg', optionType: '에르그' },
   { label: '색상', kind: 'color', optionType: '색상' },
 ];
+
+/**
+ * 무리아스의 유물 조건 단추. 늘 두면 장비를 찾을 때 쓸모없는 단추가 늘어나므로, 유물 카테고리를
+ * 골랐거나 불러온 매물에 이 옵션이 있을 때만 보인다(DetailSearchBar).
+ */
+export const RELIC_QUICK_CONDITION = {
+  label: MURIAS_OPTION_TYPE,
+  kind: 'relic',
+  optionType: MURIAS_OPTION_TYPE,
+} as const satisfies (typeof QUICK_CONDITIONS)[number];
+
+/** 무리아스 유물 조건 하나. 주소로 넘어온 조건(시세 화면의 칸 누르기)을 만들 때 쓴다. */
+export function relicCondition(
+  name: string,
+  minLevel: number | null,
+  maxLevel: number | null,
+): Condition {
+  return { ...newCondition(RELIC_QUICK_CONDITION), name, minLevel, maxLevel } as Condition;
+}

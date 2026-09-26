@@ -15,6 +15,7 @@ import { bundlePrice } from '@/features/auction/price';
 import { itemInfoPath } from '@/features/auction/dictionary';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
+import { isRelicOption, parseRelicOption, RELIC_MAX_LEVEL } from '@/features/relics/murias';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { BookIcon } from '@/components/icons';
@@ -62,10 +63,17 @@ function optionLabel(option: ItemOption): string {
  */
 function OptionValue({ option }: { option: ItemOption }) {
   const effects = splitEffects(option.option_desc);
+  // 무리아스 유물 옵션은 수치만으로는 몇 레벨인지 셈해야 알 수 있어 레벨을 붙인다.
+  const relic = isRelicOption(option) ? parseRelicOption(option.option_value) : null;
 
   return (
-    <Flex vertical gap={effects.length > 0 ? 4 : 0}>
+    <Flex vertical gap={effects.length > 0 || relic ? 4 : 0}>
       <span className="tnum">{formatOptionValue(option)}</span>
+      {relic ? (
+        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+          {relic.level}레벨 / {RELIC_MAX_LEVEL}레벨
+        </Text>
+      ) : null}
       {effects.length > 0 ? (
         <Flex vertical gap={2} component="ul" style={{ margin: 0, paddingInlineStart: 16 }}>
           {effects.map((effect, index) => (

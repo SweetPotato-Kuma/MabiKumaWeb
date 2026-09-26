@@ -11,6 +11,7 @@ import {
   newCondition,
   numberLabel,
   QUICK_CONDITIONS,
+  RELIC_QUICK_CONDITION,
   summarizeCondition,
   thresholdSuggestions,
   type CatalogEntry,
@@ -24,6 +25,12 @@ import {
   type LevelSuggestion,
   type OptionNames,
 } from '@/features/auction/optionNames';
+import {
+  formatRelicValue,
+  RELIC_CATEGORY,
+  RELIC_LEVELS,
+  relicValueAt,
+} from '@/features/relics/murias';
 import { formatNumber } from '@/lib/format';
 
 const { Text } = Typography;
@@ -117,6 +124,15 @@ export function DetailSearchBar({
 }) {
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
 
+  // 무리아스 유물 단추는 유물을 찾을 때만 둔다. 그때는 그 단추가 가장 쓸모 있어 맨 앞에 온다.
+  const showRelic =
+    category === RELIC_CATEGORY ||
+    catalog.some((entry) => entry.kind === 'relic') ||
+    value.conditions.some((condition) => condition.kind === 'relic');
+  const quickConditions = showRelic
+    ? [RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS]
+    : QUICK_CONDITIONS;
+
   const setConditions = (conditions: Condition[]) => onChange({ conditions });
   const update = (id: number, next: Partial<Condition>) =>
     setConditions(
@@ -132,7 +148,7 @@ export function DetailSearchBar({
   /** 단추를 열면 빈 조건을 하나 만들어 바로 고르게 하고, 닫을 때 빈 조건은 치운다. */
   const toggleGroup = (group: GroupKey, open: boolean) => {
     if (open) {
-      const quick = QUICK_CONDITIONS.find((each) => each.kind === group);
+      const quick = quickConditions.find((each) => each.kind === group);
       if (quick && inGroup(group).length === 0)
         setConditions([...value.conditions, newCondition(quick)]);
       setOpenGroup(group);
@@ -146,7 +162,7 @@ export function DetailSearchBar({
     setOpenGroup(null);
   };
 
-  const quickKinds = new Set<ConditionKind>(QUICK_CONDITIONS.map((quick) => quick.kind));
+  const quickKinds = new Set<ConditionKind>(quickConditions.map((quick) => quick.kind));
   const moreOptions = catalog
     .filter((entry) => !quickKinds.has(entry.kind))
     .map((entry) => ({ value: entry.label, label: entry.label, count: entry.count }));
@@ -171,7 +187,7 @@ export function DetailSearchBar({
         상세 검색
       </Text>
 
-      {QUICK_CONDITIONS.map((quick) => {
+      {quickConditions.map((quick) => {
         const group = quick.kind;
         const conditions = inGroup(group);
         const active = conditions.filter(isConditionActive);
@@ -346,6 +362,7 @@ function entryFor(catalog: CatalogEntry[], condition: Condition): CatalogEntry |
     case 'enchant':
     case 'special':
     case 'erg':
+    case 'relic':
       return catalog.find((entry) => entry.kind === condition.kind);
     case 'color':
       return catalog.find((entry) => entry.label === COLOR_OPTION_LABEL);
@@ -666,6 +683,67 @@ function ConditionEditor({
           </Flex>
         </Flex>
       );
+    case 'relic': {
+      // 이름을 정확히 골랐으면 레벨마다 그 옵션의 수치를 붙인다. 수치를 몰라도 레벨로 고르게 하려는 것이다.
+      const scale = entry?.scales[condition.name.trim()];
+      const levelOptions = (empty: string) => [
+        { value: 0, label: empty },
+        ...RELIC_LEVELS.map((level) => ({
+          value: level,
+          label: scale
+            ? `${level}레벨 (${formatRelicValue(scale, relicValueAt(scale, level))})`
+            : `${level}레벨`,
+        })),
+      ];
+      // 0 은 끝이 없다는 뜻이다. 한쪽을 바꿔 두 끝이 엇갈리면 다른 쪽을 따라 옮긴다.
+      const setMin = (level: number) => {
+        const minLevel = level || null;
+        const crossed = minLevel !== null && condition.maxLevel !== null && minLevel > condition.maxLevel;
+        onChange(crossed ? { minLevel, maxLevel: minLevel } : { minLevel });
+      };
+      const setMax = (level: number) => {
+        const maxLevel = level || null;
+        const crossed = maxLevel !== null && condition.minLevel !== null && maxLevel < condition.minLevel;
+        onChange(crossed ? { maxLevel, minLevel: maxLevel } : { maxLevel });
+      };
+      return (
+        <Flex vertical gap={8}>
+          <NameInput
+            value={condition.name}
+            onChange={(name) => onChange({ name })}
+            suggestions={mergeNames(entry?.values, undefined)}
+            placeholder="스킬 이름, 비우면 아무 옵션"
+            label="무리아스 유물 스킬 옵션"
+          />
+          <Flex gap={6} align="center">
+            <Select
+              value={condition.minLevel ?? 0}
+              onChange={setMin}
+              options={levelOptions('하한 없음')}
+              aria-label="무리아스 유물 최소 레벨"
+              getPopupContainer={inPopover}
+              popupMatchSelectWidth={false}
+              className="tnum"
+              style={{ flex: '1 1 0', minWidth: 0 }}
+            />
+            <Text type="secondary">~</Text>
+            <Select
+              value={condition.maxLevel ?? 0}
+              onChange={setMax}
+              options={levelOptions('상한 없음')}
+              aria-label="무리아스 유물 최대 레벨"
+              getPopupContainer={inPopover}
+              popupMatchSelectWidth={false}
+              className="tnum"
+              style={{ flex: '1 1 0', minWidth: 0 }}
+            />
+          </Flex>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            레벨은 1에서 10까지이고, 한 레벨마다 최대 수치의 10분의 1씩 오릅니다.
+          </Text>
+        </Flex>
+      );
+    }
     case 'number':
       return (
         <NumberInput

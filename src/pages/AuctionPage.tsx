@@ -38,8 +38,7 @@ import {
   useAuctionSnapshotQuery,
   prefetchAuctionSnapshot,
 } from '@/features/auction/hooks';
-import { canUseSnapshot, snapshotAgeLabel } from '@/features/auction/snapshot';
-import { isEquipmentCategory } from '@/features/equipment/api';
+import { canUseSnapshot, isSnapshotCategory, snapshotAgeLabel } from '@/features/auction/snapshot';
 import {
   itemNameIndexQueryOptions,
   resolveSearch,
@@ -52,8 +51,10 @@ import {
   describeMatch,
   EMPTY_OPTION_FILTER,
   matchesOptionFilter,
+  relicCondition,
   type OptionFilter,
 } from '@/features/auction/optionFilter';
+import { RELIC_MAX_LEVEL } from '@/features/relics/murias';
 import { scanCategoriesFor, useOptionNamesQuery } from '@/features/auction/optionNames';
 import { useMarketRecentQuery } from '@/features/market/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
@@ -89,6 +90,20 @@ function readSearchInput(params: URLSearchParams): AuctionSearchInput {
     category: params.get('category') ?? ALL_CATEGORIES,
     keyword: params.get('keyword') ?? '',
   };
+}
+
+/**
+ * 주소에 실려 온 무리아스 유물 조건. 유물 시세 화면에서 칸을 누르면 그 옵션과 레벨로 온다.
+ * 레벨이 1~10 이 아니면 그쪽 끝은 비워 둔다.
+ */
+function readOptionFilter(params: URLSearchParams): OptionFilter {
+  const name = params.get('relic');
+  if (name === null) return EMPTY_OPTION_FILTER;
+  const level = (key: string) => {
+    const value = Number(params.get(key));
+    return Number.isInteger(value) && value >= 1 && value <= RELIC_MAX_LEVEL ? value : null;
+  };
+  return { conditions: [relicCondition(name, level('relicMin'), level('relicMax'))] };
 }
 
 /**
@@ -219,7 +234,7 @@ export function AuctionPage() {
    * 찾기를 다시 누르지 않아도 바로 걸리고, 계산은 입력 뒤로 미뤄 타이핑이 밀리지 않게 한다.
    * 맞는 것이 모자라면 아래 자동 불러오기가 다음 묶음을 더 받는다.
    */
-  const [optionFilter, setOptionFilter] = useState<OptionFilter>(EMPTY_OPTION_FILTER);
+  const [optionFilter, setOptionFilter] = useState<OptionFilter>(() => readOptionFilter(searchParams));
   /** 매물을 불러오기 전에도 상세 검색 자동완성이 비지 않게 하는 게임 데이터의 세공, 인챈트 이름. */
   const optionNames = useOptionNamesQuery().data;
   const deferredFilter = useDeferredValue(optionFilter);
@@ -340,7 +355,7 @@ export function AuctionPage() {
         !optionNames?.reforgeCaps?.[condition.name.trim()],
     );
     if (typing) return null;
-    if (form.category) return isEquipmentCategory(form.category) ? [form.category] : null;
+    if (form.category) return isSnapshotCategory(form.category) ? [form.category] : null;
     return scanCategoriesFor(deferredFilter, optionNames);
   }, [deferredFilter, form.category, form.keyword, optionNames]);
   useEffect(() => {
@@ -403,11 +418,11 @@ export function AuctionPage() {
    * "꿀우유" 가 그대로 넘어가 0건이 된다. 사전은 700KB 남짓이라 첫 검색에서 흔히 겹친다.
    */
   async function runSearch(next: AuctionSearchInput) {
-    // 장비 카테고리에 상세 검색 조건을 넣고 찾으면 모아 둔 매물에서 찾는다. 이름을 넣었으면 이름으로 찾는다.
+    // 장비나 유물 카테고리에 상세 검색 조건을 넣고 찾으면 모아 둔 매물에서 찾는다. 이름을 넣었으면 이름으로 찾는다.
     if (
       activeConditionCount(optionFilter) > 0 &&
       !next.keyword.trim() &&
-      isEquipmentCategory(next.category) &&
+      isSnapshotCategory(next.category) &&
       canUseSnapshot()
     ) {
       setResolving(false);
@@ -420,7 +435,7 @@ export function AuctionPage() {
       if (activeConditionCount(optionFilter) > 0) {
         const scan = scanCategoriesFor(optionFilter, optionNames);
         if (scan.length === 0) {
-          message.warning('넣은 세공들이 함께 붙을 수 있는 장비가 없습니다. 세공 조건을 다시 확인해 주세요.');
+          message.warning('넣은 조건을 모두 채울 수 있는 아이템이 없습니다. 세공과 유물 조건을 다시 확인해 주세요.');
           return;
         }
         setSubmitted({ category: ALL_CATEGORIES, keyword: '', scan });

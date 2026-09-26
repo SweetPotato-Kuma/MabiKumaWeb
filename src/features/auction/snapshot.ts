@@ -1,3 +1,5 @@
+import { EQUIPMENT_CATEGORIES } from '@/features/equipment/api';
+import { RELIC_CATEGORY } from '@/features/relics/murias';
 import { getProxyUrl } from '@/lib/settings';
 import type { AuctionItem, ItemOption } from './types';
 
@@ -42,6 +44,15 @@ export interface SnapshotFile {
  * 두세 번 연달아 실패했다는 뜻이다. 그만큼 묵은 매물을 보여 주느니 느려도 새것이 낫다.
  */
 export const SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
+
+/**
+ * 워커가 모아 두는 카테고리. 워커의 SNAPSHOT_CATEGORIES(worker/auctionSnapshot.js)와 같다.
+ * 장비 카테고리에 유물을 더했다. 유물은 옵션(무리아스 유물의 스킬과 레벨)으로 찾고, 유물 시세
+ * 화면이 카테고리 전체를 한꺼번에 본다.
+ */
+export function isSnapshotCategory(category: string): boolean {
+  return EQUIPMENT_CATEGORIES.has(category) || category === RELIC_CATEGORY;
+}
 
 export function canUseSnapshot(): boolean {
   return getProxyUrl().length > 0;
