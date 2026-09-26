@@ -35,7 +35,11 @@ import {
   useAuctionHistoryQuery,
   useAuctionItemsQuery,
   useAuctionScanQuery,
+  useAuctionSnapshotQuery,
+  prefetchAuctionSnapshot,
 } from '@/features/auction/hooks';
+import { canUseSnapshot, snapshotAgeLabel } from '@/features/auction/snapshot';
+import { isEquipmentCategory } from '@/features/equipment/api';
 import {
   itemNameIndexQueryOptions,
   resolveSearch,
@@ -195,9 +199,15 @@ export function AuctionPage() {
   const enabled = canQuery && submitted !== null && (isAuctionSearchReady(query) || scanning);
 
   const keywordItemsQuery = useAuctionItemsQuery(query, enabled && !scanning && tab === 'items');
-  const scanQuery = useAuctionScanQuery(query.scan, enabled && scanning && tab === 'items');
-  const itemsQuery = scanning ? scanQuery : keywordItemsQuery;
-  const scanProgress = scanning ? scanQuery.data : undefined;
+  /**
+   * 상세 검색은 워커가 10분마다 모아 둔 장비 매물에서 찾는다. 실시간으로는 카테고리 하나에 몇 초씩
+   * 걸린다. 모아 둔 것이 없거나 너무 묵었으면 예전처럼 카테고리를 차례로 불러온다.
+   */
+  const snapshot = useAuctionSnapshotQuery(query.scan, enabled && scanning && tab === 'items');
+  const liveScan = snapshot.status === 'unavailable' || snapshot.status === 'off';
+  const scanQuery = useAuctionScanQuery(query.scan, enabled && scanning && liveScan && tab === 'items');
+  const itemsQuery = !scanning ? keywordItemsQuery : liveScan ? scanQuery : snapshot;
+  const scanProgress = scanning && liveScan ? scanQuery.data : undefined;
   const historyQuery = useAuctionHistoryQuery(query, enabled && tab === 'history');
 
   // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
@@ -239,9 +249,15 @@ export function AuctionPage() {
    *
    * 판매 중 매물로 셈하지 않는다. 호가는 팔린 값이 아니고, 한 번에 받는 500건이 전부도 아니다.
    * 이름은 경매장 이름 그대로(@ 포함) 묻는다. 기록도 그 이름으로 쌓인다.
+   *
+   * 상세 검색 조건에 맞는 줄만 묻는다. 모아 둔 장비 매물은 수만 건이라, 불러온 것을 다 물으면
+   * 이름 수천 개가 묶음 수십 번으로 나간다.
    */
-  const itemNames = useMemo(() => [...new Set(items.map((item) => item.item_name))], [items]);
-  const singleItem = itemNames.length === 1 ? items[0] : undefined;
+  const itemNames = useMemo(
+    () => [...new Set(visibleItems.map((item) => item.item_name))],
+    [visibleItems],
+  );
+  const singleItem = itemNames.length === 1 ? visibleItems[0] : undefined;
   const recent = useMarketRecentQuery(itemNames, enabled && tab === 'items' && itemNames.length > 0);
   const recentByName = itemNames.length > 1 ? recent.items : null;
 
@@ -255,11 +271,13 @@ export function AuctionPage() {
    * 결과가 오자마자 그림을 한꺼번에 받는다. 카테고리를 고르면 결과를 기다리지 않고 그 목록부터 받는다.
    * 목록을 받지 못한 카테고리만 워커에 카드를 묻는다. 그때도 이름을 모아 한 번에 넘기므로
    * 같은 이름은 한 번만, 이미 아는 것은 아예 묻지 않는다. 보이지 않는 탭은 건드리지 않는다.
+   * 시세처럼 상세 검색 조건에 맞는 줄만 본다.
    */
   const cardKeys = useMemo(() => {
-    const rows: { item_name: string; auction_item_category: string }[] = tab === 'items' ? items : history;
+    const rows: { item_name: string; auction_item_category: string }[] =
+      tab === 'items' ? visibleItems : visibleHistory;
     return rows.map((row) => ({ category: row.auction_item_category, name: canonicalItemName(row.item_name) }));
-  }, [tab, items, history]);
+  }, [tab, visibleItems, visibleHistory]);
   const mapCategories = useMemo(
     () => [form.category, ...cardKeys.map((key) => key.category)],
     [form.category, cardKeys],
@@ -307,6 +325,32 @@ export function AuctionPage() {
    */
   const nameIndexQuery = useItemNameIndexQuery();
   const queryClient = useQueryClient();
+
+  /**
+   * 상세 검색 조건을 넣는 동안 찾을 카테고리의 모아 둔 매물을 미리 받는다. 찾기를 누르면 받아 둔
+   * 것으로 바로 거른다. 세공 이름을 치는 중에는 어느 장비인지 몰라 32곳을 다 받게 되므로, 이름이
+   * 게임 데이터의 세공과 맞을 때만 받는다. 조건을 다 넣을 때까지 잠깐 기다린다.
+   */
+  const prefetchCategories = useMemo(() => {
+    if (activeConditionCount(deferredFilter) === 0 || form.keyword.trim()) return null;
+    const typing = deferredFilter.conditions.some(
+      (condition) =>
+        condition.kind === 'reforge' &&
+        condition.name.trim() !== '' &&
+        !optionNames?.reforgeCaps?.[condition.name.trim()],
+    );
+    if (typing) return null;
+    if (form.category) return isEquipmentCategory(form.category) ? [form.category] : null;
+    return scanCategoriesFor(deferredFilter, optionNames);
+  }, [deferredFilter, form.category, form.keyword, optionNames]);
+  useEffect(() => {
+    if (!canQuery) return;
+    // 조건이 없어도 목록은 받아 둔다. 5KB 남짓이다.
+    const categories = prefetchCategories ?? [];
+    const timer = setTimeout(() => void prefetchAuctionSnapshot(queryClient, categories), categories.length ? 400 : 0);
+    return () => clearTimeout(timer);
+  }, [canQuery, prefetchCategories, queryClient]);
+
   /** 찾기를 눌렀는데 사전을 기다리는 중. 두 번 누르지 않게 버튼을 돌린다. */
   const [resolving, setResolving] = useState(() => isAuctionSearchReady(initialInput));
   const deferredKeyword = useDeferredValue(form.keyword);
@@ -359,6 +403,17 @@ export function AuctionPage() {
    * "꿀우유" 가 그대로 넘어가 0건이 된다. 사전은 700KB 남짓이라 첫 검색에서 흔히 겹친다.
    */
   async function runSearch(next: AuctionSearchInput) {
+    // 장비 카테고리에 상세 검색 조건을 넣고 찾으면 모아 둔 매물에서 찾는다. 이름을 넣었으면 이름으로 찾는다.
+    if (
+      activeConditionCount(optionFilter) > 0 &&
+      !next.keyword.trim() &&
+      isEquipmentCategory(next.category) &&
+      canUseSnapshot()
+    ) {
+      setResolving(false);
+      setSubmitted({ category: next.category, keyword: '', scan: [next.category] });
+      return;
+    }
     if (!isAuctionSearchReady(next)) {
       setResolving(false);
       // 카테고리도 검색어도 없지만 상세 검색 조건이 있으면, 조건에 맞을 수 있는 카테고리를 훑는다.
@@ -750,7 +805,14 @@ export function AuctionPage() {
                       keyword-search 를 나눠 부르고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
                       걸리는 이름이 너무 많으면 다 부르지 못하니 그때만 알린다.
                     */}
-                    {nameIndexQuery.isPending
+                    {/* 모아 둔 매물은 그 사이 팔린 것이 섞일 수 있어 모은 시각을 함께 알린다. */}
+                    {scanning && snapshot.status === 'checking'
+                      ? '모아 둔 장비 매물을 받는 중입니다.'
+                      : scanning && snapshot.status === 'ready' && snapshot.at !== null
+                        ? !snapshot.data
+                          ? '모아 둔 장비 매물을 받는 중입니다.'
+                          : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물 ${formatNumber(itemsLoaded)}건에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
+                        : nameIndexQuery.isPending
                       ? '아이템 이름을 불러오는 중입니다.'
                       : form.category
                         ? `${form.category} 매물에서 이름 일부로 찾습니다.`

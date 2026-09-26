@@ -327,6 +327,36 @@ npx wrangler d1 migrations apply mabikuma-market --remote
 npx wrangler d1 execute mabikuma-market --remote --command "SELECT COUNT(*) FROM trades"
 ```
 
+## 경매장 장비 매물 모아 두기 (/auction/snapshot)
+
+넥슨 경매장 API 는 옵션으로 찾지 못하고, 한 쪽 500건을 앞 쪽의 커서로만 넘깁니다. 세공이나 인챈트로
+찾으려면 매물을 전부 받아 걸러야 하는데 모자/가발 하나가 14쪽이라 6초가 넘게 걸렸습니다. 쪽을
+한꺼번에 불러도 넥슨이 줄을 세워 초당 2쪽 남짓입니다.
+
+그래서 시세 기록과 같은 크론이 10분마다 장비 카테고리 32곳을 전부 받아 `ICONS` 버킷의 `auction/`
+아래에 카테고리별 파일로 올립니다. 화면은 상세 검색 조건으로 찾을 때 이 파일을 `ICON_BASE_URL`
+(`icons.spkuma.com`)에서 받아 거릅니다. 코드는 `auctionSnapshot.js` 입니다.
+
+| 경로 | 누가 | 하는 일 |
+| --- | --- | --- |
+| `GET /auction/snapshot` | 공개 | 최신 파일 목록(카테고리별 파일, 모은 시각, 건수)과 파일 주소 앞부분 |
+| `POST /auction/snapshot/collect` | 운영자 | 크론을 기다리지 않고 지금 한 번 모으기 |
+
+- 2026-09-26 실측으로 32곳 99쪽, 약 41,000건을 워커에서 17초에 모읍니다. 넥슨 호출은 한 번에 100번
+  남짓, 하루 1만 4천 번쯤입니다.
+- 파일은 매물을 배열로 줄인 JSON 이고(원래의 3분의 1) CDN 이 br 로 압축해 큰 것도 300KB 안팎입니다.
+- 파일 이름에 모은 시각이 들어 있어(`auction/<시각>/<카테고리 해시>.js`) 1일 `immutable` 캐시를
+  겁니다. 새 목록과 바로 앞 목록이 가리키지 않는 파일은 모을 때마다 지웁니다.
+- 받다가 실패한 카테고리는 지난번 파일을 그대로 가리킵니다. 화면은 30분보다 묵은 카테고리가 있거나
+  목록을 받지 못하면 예전처럼 실시간으로 받습니다.
+- 목록은 R2 의 `auction/manifest.json` 입니다. 워커가 30초 캐시를 붙여 내보냅니다.
+
+```bash
+# 지금 한 번 모으기
+curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY" \
+  https://mabikuma-api.inbox7.workers.dev/auction/snapshot/collect
+```
+
 ## 앱에 연결
 
 워커 주소를 `VITE_PROXY_URL` 로 넘깁니다.

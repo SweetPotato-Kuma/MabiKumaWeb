@@ -34,6 +34,9 @@
  * 거래 내역을 받아 D1 에 쌓는다.
  *   MARKET             (D1 바인딩, 시세 기록에 필수)
  *   MARKET_RATE_LIMIT  (Rate limiting 바인딩, 선택)
+ *
+ * 경매장 장비 매물 모아 두기(GET /auction/snapshot)는 auctionSnapshot.js 에 있다. 같은 크론이
+ * 장비 카테고리를 전부 받아 ICONS 버킷에 올리고, 화면은 ICON_BASE_URL 에서 받아 상세 검색으로 거른다.
  */
 
 import {
@@ -45,6 +48,13 @@ import {
   marketItem,
   marketRecent,
 } from './market.js';
+import {
+  SNAPSHOT_COLLECT_PATH,
+  SNAPSHOT_PATH,
+  collectSnapshot,
+  serveSnapshot,
+  snapshotCollect,
+} from './auctionSnapshot.js';
 
 const NEXON_ORIGIN = 'https://open.api.nexon.com';
 const ISSUE_PATH = '/report/issue';
@@ -1333,6 +1343,24 @@ export default {
       return putEquipShard(request, env, cors);
     }
 
+    // 모아 둔 장비 매물의 목록. 파일은 ICON_BASE_URL 에서 바로 받는다.
+    if (url.pathname === SNAPSHOT_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('SNAPSHOT_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return serveSnapshot(env, cors);
+    }
+
+    // 지금 한 번 모으기는 운영자만. 크론을 기다리지 않고 모으기가 도는지 볼 때 쓴다.
+    if (url.pathname === SNAPSHOT_COLLECT_PATH) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      if (request.method !== 'POST') {
+        return errorResponse('SNAPSHOT_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+      }
+      return snapshotCollect(env, cors);
+    }
+
     // 여기부터는 운영자만. 키가 맞지 않으면 아래로 내려가지 않는다.
     if (
       url.pathname === CARD_VERIFY_PATH ||
@@ -1437,9 +1465,13 @@ export default {
     });
   },
 
-  /** 크론(wrangler.toml 의 [triggers]). 경매장 거래 내역을 받아 시세 기록에 쌓는다. */
+  /**
+   * 크론(wrangler.toml 의 [triggers]). 경매장 거래 내역을 받아 시세 기록에 쌓고, 장비 매물을 모아
+   * 둔다. 둘은 서로 기다리지 않는다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
+   */
   async scheduled(_controller, env) {
-    const result = await collectTrades(env);
-    console.log(JSON.stringify({ market: result }));
+    const [market, snapshot] = await Promise.allSettled([collectTrades(env), collectSnapshot(env)]);
+    const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
+    console.log(JSON.stringify({ market: outcome(market), snapshot: outcome(snapshot) }));
   },
 };

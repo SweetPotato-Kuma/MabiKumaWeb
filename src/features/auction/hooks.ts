@@ -1,7 +1,15 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import {
+  useInfiniteQuery,
+  useQueries,
+  useQuery,
+  type QueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import { fetchAuctionHistory, fetchAuctionKeywordSearch, fetchAuctionList } from './api';
 import { normalizeForSearch } from './dictionary';
 import { isInitialsOnly, searchKeyOf, splitTerms, toInitials } from './nameIndex';
+import { canUseSnapshot, fetchSnapshotFile, fetchSnapshotManifest, snapshotFilesFor } from './snapshot';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from './types';
 
 const FIVE_MINUTES = 5 * 60 * 1000;
@@ -207,4 +215,109 @@ export function useAuctionScanQuery(categories: readonly string[] | undefined, e
     staleTime: FIVE_MINUTES,
     retry: false,
   });
+}
+
+/**
+ * 모아 둔 장비 매물로 찾는 중인지.
+ * - off: 쓰지 않는다
+ * - checking: 목록을 받는 중
+ * - ready: 모아 둔 것으로 찾는다
+ * - unavailable: 목록이나 파일이 없거나 너무 묵었다. 화면은 실시간으로 받는다(useAuctionScanQuery)
+ */
+export type SnapshotStatus = 'off' | 'checking' | 'ready' | 'unavailable';
+
+const NO_MORE = () => Promise.resolve();
+
+const snapshotManifestQuery = {
+  queryKey: ['auction', 'snapshot', 'manifest'],
+  queryFn: ({ signal }: { signal?: AbortSignal }) => fetchSnapshotManifest(signal),
+  staleTime: 60 * 1000,
+  retry: false,
+} as const;
+
+function snapshotFileQuery(url: string) {
+  return {
+    queryKey: ['auction', 'snapshot', 'file', url],
+    queryFn: ({ signal }: { signal?: AbortSignal }) => fetchSnapshotFile(url, signal),
+    // 파일 이름에 모은 시각이 들어 있어 내용이 바뀌지 않는다.
+    staleTime: Infinity,
+    retry: 1,
+  } as const;
+}
+
+/**
+ * 파일을 다 받았을 때만 하나로 합친다. 받는 대로 보태면 파일이 올 때마다 수만 건을 처음부터 다시
+ * 걸러서, 32곳을 찾을 때 거르는 일이 32번 되풀이된다. 모듈 수준 함수라 react-query 가 결과가
+ * 바뀔 때만 다시 부른다.
+ */
+function mergeSnapshotFiles(results: UseQueryResult<AuctionItem[]>[]) {
+  const done = results.every((result) => result.data !== undefined);
+  return {
+    items: done ? results.flatMap((result) => result.data ?? []) : null,
+    failed: results.some((result) => result.isError),
+  };
+}
+
+/**
+ * 상세 검색 조건을 넣는 동안 찾을 카테고리 파일을 미리 받아 둔다. 찾기를 누르면 받아 둔 것으로
+ * 바로 거른다. 목록도 같이 받는다. 실패는 조용히 넘긴다. 찾기를 누르면 그때 다시 받는다.
+ */
+export async function prefetchAuctionSnapshot(queryClient: QueryClient, categories: readonly string[]) {
+  if (!canUseSnapshot()) return;
+  try {
+    const manifest = await queryClient.fetchQuery(snapshotManifestQuery);
+    const files = snapshotFilesFor(manifest, categories) ?? [];
+    await Promise.all(files.map((file) => queryClient.prefetchQuery(snapshotFileQuery(file.url))));
+  } catch {
+    // 찾기를 누를 때 다시 받는다.
+  }
+}
+
+/**
+ * 워커가 모아 둔 장비 매물(features/auction/snapshot.ts)로 찾는다. 카테고리와 검색어 없이 상세
+ * 검색 조건만 넣었거나, 장비 카테고리에 상세 검색 조건을 넣고 찾을 때 쓴다.
+ *
+ * 카테고리 파일을 한꺼번에 받아 다 오면 한 번에 내놓는다. 더 불러올 것은 없다. 돌려주는 값은
+ * useAuctionItemsQuery 와 같은 모양이라 화면은 어느 쪽에서 왔는지 몰라도 된다.
+ */
+export function useAuctionSnapshotQuery(categories: readonly string[] | undefined, enabled: boolean) {
+  const wanted = enabled && canUseSnapshot() && (categories?.length ?? 0) > 0;
+  const manifest = useQuery({ ...snapshotManifestQuery, enabled: wanted });
+  const files = useMemo(
+    () => (manifest.data ? snapshotFilesFor(manifest.data, categories ?? []) : null),
+    [manifest.data, categories],
+  );
+  const merged = useQueries({
+    queries: (wanted ? (files ?? []) : []).map((file) => snapshotFileQuery(file.url)),
+    combine: mergeSnapshotFiles,
+  });
+
+  const status: SnapshotStatus = !wanted
+    ? 'off'
+    : manifest.isPending
+      ? 'checking'
+      : manifest.isError || !files || merged.failed
+        ? 'unavailable'
+        : 'ready';
+  /** 가장 묵은 카테고리를 모은 시각. 화면은 이것으로 "N분 전" 을 알린다. */
+  const at = files && files.length > 0 ? Math.min(...files.map((file) => file.at)) : null;
+  const data = useMemo(
+    () =>
+      status === 'ready' && merged.items
+        ? { items: merged.items, loadedCount: merged.items.length }
+        : undefined,
+    [status, merged],
+  );
+
+  return {
+    status,
+    at,
+    data,
+    isPending: status === 'checking' || (status === 'ready' && !data),
+    error: null,
+    hasNextPage: false,
+    isFetching: false,
+    isFetchingNextPage: false,
+    fetchNextPage: NO_MORE,
+  };
 }
