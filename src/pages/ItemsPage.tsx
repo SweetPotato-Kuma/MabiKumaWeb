@@ -424,17 +424,9 @@ function ItemList({
 
   return (
     <Flex vertical gap={20}>
-      <Flex vertical gap={6}>
-        <Title level={3} style={{ margin: 0 }}>
-          아이템 정보
-        </Title>
-        <Text type="secondary">
-          경매장에서 관측한 아이템 <span className="tnum">{formatNumber(index.names.length)}</span>
-          개입니다. {index.updated} 기준이며, 경매장에 한 번도 올라오지 않은 아이템은 빠져 있습니다.
-          장비는 개조, 세공, 인챈트를 골라 능력치를 미리 볼 수 있고, 만들 수 있는 아이템은 제작
-          비용도 봅니다.
-        </Text>
-      </Flex>
+      <Title level={3} style={{ margin: 0 }}>
+        아이템 정보
+      </Title>
       {viewSwitch}
 
       {/* 2단 레이아웃. 768px 미만에서는 카테고리 선택이 Select 로 바뀌며 한 단으로 떨어진다. */}

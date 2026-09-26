@@ -211,16 +211,9 @@ function RecipeList({
 
   return (
     <Flex vertical gap={20}>
-      <Flex vertical gap={6}>
-        <Title level={3} style={{ margin: 0 }}>
-          아이템 정보
-        </Title>
-        <Text type="secondary">
-          게임 데이터에서 모은 제작법{' '}
-          <span className="tnum">{formatNumber(book.recipes.length)}</span>개를 스킬별로 나눴습니다(
-          {book.updated} 기준). 줄을 누르면 재료 트리와 경매장 시세로 매긴 제작 비용을 보여 줍니다.
-        </Text>
-      </Flex>
+      <Title level={3} style={{ margin: 0 }}>
+        아이템 정보
+      </Title>
       {viewSwitch}
 
       {/* 2단 레이아웃. 768px 미만에서는 스킬 목록이 Select 로 바뀌며 한 단으로 떨어진다. */}
