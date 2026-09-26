@@ -467,14 +467,13 @@ export function AuctionPage() {
    *
    * 여기에 같은 트리를 따로 들고 있던 탓에 아이템 정보 화면에서 고친 것(묶음을 눌러 펼치기)이
    * 경매장에는 반영되지 않았다. 화면마다 복사본을 두면 이런 차이가 조용히 생긴다.
+   *
+   * 카드 높이는 트리에 맡기고 스크롤은 페이지 하나로 둔다. 창 높이에서 고정값을 빼 카드 안에
+   * 스크롤을 두었더니, 그 값이 카드 바깥 높이와 어긋나 트리를 펼치면 카드와 페이지가 함께
+   * 스크롤됐다. 1px 만 넘쳐도 페이지 스크롤바가 떠서 화면이 흔들려 보였다.
    */
   const categoryPanel = isWide ? (
-    <Card
-      variant="outlined"
-      size="small"
-      title="카테고리"
-      styles={{ body: { maxHeight: 'calc(100dvh - 240px)', overflowY: 'auto' } }}
-    >
+    <Card variant="outlined" size="small" title="카테고리">
       <CategoryPicker value={form.category} onChange={selectCategory} />
     </Card>
   ) : (

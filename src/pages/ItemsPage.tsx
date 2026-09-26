@@ -440,12 +440,8 @@ function ItemList({
       {/* 2단 레이아웃. 768px 미만에서는 카테고리 선택이 Select 로 바뀌며 한 단으로 떨어진다. */}
       <Row gutter={[20, 16]}>
         <Col xs={24} md={9} lg={8}>
-          <Card
-            variant="outlined"
-            size="small"
-            title="카테고리"
-            styles={{ body: { maxHeight: 'calc(100dvh - 280px)', overflowY: 'auto' } }}
-          >
+          {/* 카드 안에 스크롤을 두지 않는다. 까닭은 경매장 화면의 categoryPanel 주석에 있다. */}
+          <Card variant="outlined" size="small" title="카테고리">
             {/* 전체에서 찾는 일은 검색칸이 맡는다. 트리에는 고를 카테고리만 둔다. */}
             <CategoryPicker
               value={category}
