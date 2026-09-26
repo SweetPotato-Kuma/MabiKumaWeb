@@ -11,6 +11,7 @@ import gridViewSvg from '@material-symbols/svg-400/rounded/grid_view.svg?raw';
 import homeSvg from '@material-symbols/svg-400/rounded/home.svg?raw';
 import imageSvg from '@material-symbols/svg-400/rounded/image.svg?raw';
 import infoSvg from '@material-symbols/svg-400/rounded/info.svg?raw';
+import keyboardArrowDownSvg from '@material-symbols/svg-400/rounded/keyboard_arrow_down.svg?raw';
 import keySvg from '@material-symbols/svg-400/rounded/key.svg?raw';
 import lightModeSvg from '@material-symbols/svg-400/rounded/light_mode.svg?raw';
 import linkSvg from '@material-symbols/svg-400/rounded/link.svg?raw';
@@ -25,7 +26,6 @@ import shoppingBagSvg from '@material-symbols/svg-400/rounded/shopping_bag.svg?r
 import starFillSvg from '@material-symbols/svg-400/rounded/star-fill.svg?raw';
 import starSvg from '@material-symbols/svg-400/rounded/star.svg?raw';
 import storefrontSvg from '@material-symbols/svg-400/rounded/storefront.svg?raw';
-import tuneSvg from '@material-symbols/svg-400/rounded/tune.svg?raw';
 import uploadSvg from '@material-symbols/svg-400/rounded/upload.svg?raw';
 
 /**
@@ -83,6 +83,7 @@ function createIcon(svg: string, name: string) {
 }
 
 export const AddIcon = createIcon(addSvg, 'AddIcon');
+export const ArrowDownIcon = createIcon(keyboardArrowDownSvg, 'ArrowDownIcon');
 export const AuctionIcon = createIcon(gavelSvg, 'AuctionIcon');
 export const BagIcon = createIcon(shoppingBagSvg, 'BagIcon');
 export const BookIcon = createIcon(menuBookSvg, 'BookIcon');
@@ -108,5 +109,4 @@ export const ShopIcon = createIcon(storefrontSvg, 'ShopIcon');
 export const StarFillIcon = createIcon(starFillSvg, 'StarFillIcon');
 export const StarIcon = createIcon(starSvg, 'StarIcon');
 export const TicketIcon = createIcon(confirmationNumberSvg, 'TicketIcon');
-export const TuneIcon = createIcon(tuneSvg, 'TuneIcon');
 export const UploadIcon = createIcon(uploadSvg, 'UploadIcon');
