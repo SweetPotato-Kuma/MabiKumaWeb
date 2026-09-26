@@ -9,6 +9,7 @@ import {
   Flex,
   Grid,
   Row,
+  Segmented,
   Skeleton,
   Spin,
   Statistic,
@@ -259,16 +260,23 @@ function DungeonCoinView({ entry }: { entry: DungeonCoin }) {
         경매장 최저가는 매물 한 개의 개당 가격이며 평균 10분 지연됩니다. 교환 목록은 게임 안 NPC
         교환 창 기준입니다.
       </Text>
-
-      {entry.craftable ? <BeadCraftCalculator entry={entry} /> : null}
     </Flex>
   );
 }
+
+/** 가공 계산기가 있는 던전의 두 화면. 주소의 view 로 고른다. */
+type View = 'exchange' | 'craft';
+
+const VIEW_OPTIONS: { value: View; label: string }[] = [
+  { value: 'exchange', label: '교환 가치' },
+  { value: 'craft', label: '가공해 팔기' },
+];
 
 export function DungeonCoinsPage() {
   const canQuery = useCanQuery();
   const [params, setParams] = useSearchParams();
   const entry = dungeonCoinOf(params.get('dungeon'));
+  const view: View = entry.craftable && params.get('view') === 'craft' ? 'craft' : 'exchange';
 
   return (
     <Flex vertical gap={20}>
@@ -291,8 +299,30 @@ export function DungeonCoinsPage() {
         tabBarStyle={{ marginBottom: 0 }}
       />
 
+      {/*
+        가공 계산기는 탭 바로 아래에서 고른다. 교환 표 밑에 두면 스크롤을 내려야 보여 있는 줄 모른다.
+        모달은 19줄짜리 표를 담기에 좁다. 한 번에 한 화면만 그려 시세도 그 화면 것만 받는다.
+      */}
+      {entry.craftable ? (
+        <Segmented<View>
+          options={VIEW_OPTIONS}
+          value={view}
+          onChange={(next) =>
+            setParams(
+              next === 'craft' ? { dungeon: entry.key, view: next } : { dungeon: entry.key },
+              { replace: true },
+            )
+          }
+          style={{ alignSelf: 'flex-start' }}
+        />
+      ) : null}
+
       {/* 던전을 바꾸면 새로 그린다. 받은 시세는 5분 동안 캐시에 남아 다시 돌아와도 바로 나온다. */}
-      <DungeonCoinView key={entry.key} entry={entry} />
+      {view === 'craft' ? (
+        <BeadCraftCalculator key={entry.key} entry={entry} />
+      ) : (
+        <DungeonCoinView key={entry.key} entry={entry} />
+      )}
     </Flex>
   );
 }

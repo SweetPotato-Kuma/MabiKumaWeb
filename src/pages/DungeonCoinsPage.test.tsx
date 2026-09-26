@@ -140,6 +140,10 @@ describe('던전 코인 가치', () => {
     );
     renderPage('/dungeon-coins?dungeon=brie-lech');
 
+    // 교환 가치가 먼저 보이고, 탭 바로 아래 전환 단추로 계산기를 연다.
+    expect(screen.queryByLabelText('가진 구슬')).toBeNull();
+    fireEvent.click(screen.getByText('가공해 팔기'));
+
     // 1,500,000 - 마력석 20 x 1,000 = 1,480,000. 구슬 7개로 나누면 211,428.
     expect(await screen.findAllByText('211,428 G')).not.toHaveLength(0);
     expect(screen.getAllByText(/1,480,000 G/)).not.toHaveLength(0);
@@ -148,5 +152,14 @@ describe('던전 코인 가치', () => {
     fireEvent.change(screen.getByLabelText('가진 구슬'), { target: { value: '15' } });
     expect(await screen.findAllByText('2,960,000 G')).not.toHaveLength(0);
     expect(screen.getByText('14 / 15개')).toBeInTheDocument();
+  });
+
+  it('가공 계산기는 주소로 바로 열고, 계산기가 없는 던전에는 전환 단추가 없다', async () => {
+    renderPage('/dungeon-coins?dungeon=brie-lech&view=craft');
+    expect(await screen.findByText('브리 레흐 구슬로 가공해 팔기')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: '탈라 가흐' }));
+    expect(await screen.findAllByText('1,336,857 G')).not.toHaveLength(0);
+    expect(screen.queryByText('가공해 팔기')).toBeNull();
   });
 });
