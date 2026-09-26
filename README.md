@@ -17,6 +17,7 @@ React + TypeScript + Vite 로 만들고, UI 는 antd 하나로 통일했습니�
 | 최근 1시간 거래 내역 | `GET /mabinogi/v1/auction/history` |
 | 튼튼한 주머니 찾기 | 워커 `/npcshop/bags` (워커가 `GET /mabinogi/v1/npcshop/list` 를 모아 부름) |
 | 마그 멜 통행증 찾기 | 워커 `/npcshop/magmell-pass` (워커가 한 서버의 모든 채널에서 피오나트를 모아 부름) |
+| 던전 코인 가치 | `GET /mabinogi/v1/auction/list` (교환품마다 이름으로 최저가를 받음) |
 | 아이템 정보(`/items`)의 장비 시뮬레이터 | 워커 `/item-equip` (운영자가 올려 둔 장비 정보를 아이템 하나씩 돌려줌) |
 
 매물 목록에서는 개당 가격의 최저 / 중위 / 평균 / 최고값을 함께 계산해 보여줍니다.

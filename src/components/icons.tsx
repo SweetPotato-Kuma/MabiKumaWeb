@@ -26,6 +26,7 @@ import shoppingBagSvg from '@material-symbols/svg-400/rounded/shopping_bag.svg?r
 import starFillSvg from '@material-symbols/svg-400/rounded/star-fill.svg?raw';
 import starSvg from '@material-symbols/svg-400/rounded/star.svg?raw';
 import storefrontSvg from '@material-symbols/svg-400/rounded/storefront.svg?raw';
+import tollSvg from '@material-symbols/svg-400/rounded/toll.svg?raw';
 import uploadSvg from '@material-symbols/svg-400/rounded/upload.svg?raw';
 
 /**
@@ -109,4 +110,5 @@ export const ShopIcon = createIcon(storefrontSvg, 'ShopIcon');
 export const StarFillIcon = createIcon(starFillSvg, 'StarFillIcon');
 export const StarIcon = createIcon(starSvg, 'StarIcon');
 export const TicketIcon = createIcon(confirmationNumberSvg, 'TicketIcon');
+export const TollIcon = createIcon(tollSvg, 'TollIcon');
 export const UploadIcon = createIcon(uploadSvg, 'UploadIcon');
