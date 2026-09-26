@@ -20,6 +20,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { EmptyState } from '@/components/EmptyState';
+import { BeadCraftCalculator } from '@/components/dungeonCoins/BeadCraftCalculator';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { RefreshIcon } from '@/components/icons';
@@ -258,6 +259,8 @@ function DungeonCoinView({ entry }: { entry: DungeonCoin }) {
         경매장 최저가는 매물 한 개의 개당 가격이며 평균 10분 지연됩니다. 교환 목록은 게임 안 NPC
         교환 창 기준입니다.
       </Text>
+
+      {entry.craftable ? <BeadCraftCalculator entry={entry} /> : null}
     </Flex>
   );
 }

@@ -31,6 +31,11 @@ export interface DungeonCoin {
   npc: string;
   /** 교환품에 대해 따로 알려야 할 것. */
   note?: string;
+  /**
+   * 교환품이 거래 불가라 가공해 팔아야 하는 던전. 화면이 가공 계산기를 붙인다.
+   * 지금은 중간 재료 제작법을 확인한 브리 레흐만 켠다.
+   */
+  craftable?: boolean;
   exchanges: CoinExchange[];
 }
 
@@ -56,6 +61,7 @@ export const DUNGEON_COINS: DungeonCoin[] = [
     dungeon: '브리 레흐',
     coin: { id: 5300217, name: '브리 레흐 구슬' },
     npc: '브리 레흐 근처의 레넨',
+    craftable: true,
     exchanges: [
       { id: 5100303, name: '브리 레흐의 코어', cost: 100, icon: 'ecf32e783357e586.png' },
       { id: 5100304, name: '브리 레흐의 정수', cost: 100, icon: 'b7323a5a4d0889cf.png' },

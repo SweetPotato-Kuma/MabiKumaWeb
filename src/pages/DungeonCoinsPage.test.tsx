@@ -17,6 +17,8 @@ const LISTINGS: Record<string, number[]> = {
   '글라스 기브넨의 심장': [430_000],
   '빛바랜 에너지 회로': [46_790_000],
   '고리아스 동력원': [257_000_000],
+  '마력이 깃든 늑대의 이빨': [1_500_000],
+  마력석: [1_000],
 };
 
 function renderPage(path = '/dungeon-coins') {
@@ -43,7 +45,7 @@ describe('던전 코인 가치', () => {
       auction_item: (LISTINGS[itemName ?? ''] ?? []).map((price) => ({
         item_name: itemName ?? '',
         item_display_name: itemName ?? '',
-        item_count: 1,
+        item_count: itemName === '마력석' ? 100 : 1,
         auction_item_category: '기타 재료',
         auction_price_per_unit: price,
         date_auction_expire: '',
@@ -100,5 +102,51 @@ describe('던전 코인 가치', () => {
     expect(link.getAttribute('href')).toBe(
       `/items?category=&name=${encodeURIComponent('글라스 기브넨의 심장')}`,
     );
+  });
+
+  it('브리 레흐 탭은 가진 구슬로 가공해 팔 때의 차익을 계산한다', async () => {
+    // 가공한 이빨(100) = 단단한 늑대의 이빨(구슬 1개) 7 + 마력석 20. 가공한 이빨은 장비(200) 의 재료다.
+    const recipes = {
+      updated: '2026-09-26',
+      skills: [{ id: 10013, name: '핸디크래프트', count: 2 }],
+      items: {
+        5100329: ['단단한 늑대의 이빨', 1],
+        5100360: ['단단한 늑대의 이빨(거래 불가)', 0],
+        5100330: ['마력석', 1],
+        100: ['마력이 깃든 늑대의 이빨', 1],
+        200: ['소울 리버레이트 보우', 1],
+      },
+      recipes: [
+        {
+          item: 100,
+          skill: 10013,
+          rank: 13,
+          yield: 1,
+          materials: [
+            [[5100329, 5100360], 7],
+            [[5100330], 20],
+          ],
+        },
+        { item: 200, skill: 10013, rank: 16, yield: 1, materials: [[[100], 24]] },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).includes('recipes.json')
+          ? new Response(JSON.stringify(recipes), { status: 200 })
+          : new Response('', { status: 404 }),
+      ),
+    );
+    renderPage('/dungeon-coins?dungeon=brie-lech');
+
+    // 1,500,000 - 마력석 20 x 1,000 = 1,480,000. 구슬 7개로 나누면 211,428.
+    expect(await screen.findAllByText('211,428 G')).not.toHaveLength(0);
+    expect(screen.getAllByText(/1,480,000 G/)).not.toHaveLength(0);
+    expect(screen.queryByRole('link', { name: '소울 리버레이트 보우' })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('가진 구슬'), { target: { value: '15' } });
+    expect(await screen.findAllByText('2,960,000 G')).not.toHaveLength(0);
+    expect(screen.getByText('14 / 15개')).toBeInTheDocument();
   });
 });
