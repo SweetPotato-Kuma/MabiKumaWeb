@@ -17,9 +17,12 @@ import {
 } from 'antd';
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
+import { ItemIcon } from '@/components/ItemIcon';
 import { QueryState } from '@/components/QueryState';
 import { normalizeForSearch } from '@/features/auction/dictionary';
-import { isInitialsOnly, toInitials } from '@/features/auction/nameIndex';
+import { isInitialsOnly, toInitials, useItemNameIndexQuery } from '@/features/auction/nameIndex';
+import { isCardStoreConfigured } from '@/features/itemcard/cards';
+import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import {
   materialSummary,
   rankLabel,
@@ -32,6 +35,9 @@ import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 
 const { Title, Text } = Typography;
+
+/** 제작법 줄의 아이템 그림. 제작 비용 트리의 재료 그림과 같은 크기. */
+const ITEM_ICON = 32;
 
 /** 스킬 목록의 스킬 그림. 한 줄 높이를 크게 늘리지 않는 크기. */
 const SKILL_MENU_ICON = 24;
@@ -97,6 +103,8 @@ function RecipeList({
   viewSwitch,
 }: RecipeBrowserProps & { book: RecipeBook }) {
   const screens = Grid.useBreakpoint();
+  // 그림 목록이 카테고리별이라 이름 사전으로 카테고리를 찾는다. 사전에 없는 이름은 그림 없이 둔다.
+  const nameIndex = useItemNameIndexQuery().data;
   const [keyword, setKeyword] = useState('');
   const deferredKeyword = useDeferredValue(keyword);
   const hasKeyword = normalizeForSearch(deferredKeyword) !== '';
@@ -136,14 +144,23 @@ function RecipeList({
         ]
           .filter(Boolean)
           .join(', ');
+        const name = book.itemName(recipe.item);
+        const category = nameIndex?.categoriesByName.get(name)?.[0];
         return (
-          <Flex vertical gap={2}>
-            <Text strong>{book.itemName(recipe.item)}</Text>
-            {secondary ? (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {secondary}
-              </Text>
-            ) : null}
+          <Flex gap={10} align="center">
+            {category ? (
+              <ItemIcon category={category} name={name} size={ITEM_ICON} />
+            ) : (
+              <IconSlot />
+            )}
+            <Flex vertical gap={2} style={{ minWidth: 0 }}>
+              <Text strong>{name}</Text>
+              {secondary ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {secondary}
+                </Text>
+              ) : null}
+            </Flex>
           </Flex>
         );
       },
@@ -303,4 +320,13 @@ function RecipeList({
       </Row>
     </Flex>
   );
+}
+
+/**
+ * 그림을 찾을 수 없는 아이템의 자리. 이름이 줄마다 다른 자리에서 시작하지 않게 칸은 비워 둔다.
+ * 그림 저장소가 없는 환경에서는 ItemIcon 처럼 자리도 두지 않는다.
+ */
+function IconSlot() {
+  if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
+  return <div style={{ width: ITEM_ICON, height: ITEM_ICON, flex: `0 0 ${ITEM_ICON}px` }} />;
 }

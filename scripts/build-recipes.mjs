@@ -57,7 +57,6 @@ const TYPE_SKILL = {
   9: { skill: 35012 },
   10: { skill: 10033 },
   11: { skill: 10036 },
-  12: { skill: 10038 },
   13: { skill: 10040 },
   14: { skill: 10041 },
   15: { skill: 27103 },
@@ -68,10 +67,10 @@ const TYPE_SKILL = {
 };
 
 /**
- * 게임 데이터에 이름 문자열이 빠진 스킬. 향수를 만드는 스킬인데 이름 키가 비어 있다.
- * 재료 설명에 쓰인 "향수 조제" 를 이름으로 쓴다.
+ * 게임 데이터에는 있지만 게임에 나오지 않은 제작 종류. 뺀다.
+ * 12 는 향수를 만드는 스킬(10038)인데 이름 문자열조차 비어 있고 실제 게임에는 없다.
  */
-const SKILL_NAME_FALLBACK = { 10038: '향수 조제' };
+const HIDDEN_TYPES = new Set([12]);
 
 /** 스킬 분류 번호에서 스킬 창의 탭 이름으로. 제작 스킬이 쓰는 것만 둔다. */
 const SKILL_CATEGORY = { 1: '생활', 2: '전투', 3: '마법', 4: '연금술', 11: '점성술' };
@@ -324,6 +323,7 @@ async function main() {
   const recipes = [];
   const unknownTypes = new Set();
   for (const production of data.ProductionList) {
+    if (HIDDEN_TYPES.has(production.Type)) continue;
     const kind = TYPE_SKILL[production.Type];
     if (!kind) {
       unknownTypes.add(production.Type);
@@ -404,7 +404,7 @@ async function main() {
       const desc = plainText(text(skill?.Desc));
       return {
         id,
-        name: text(skill?.Name) || SKILL_NAME_FALLBACK[id] || `스킬 ${id}`,
+        name: text(skill?.Name) || `스킬 ${id}`,
         count: recipes.filter((recipe) => recipe.skill === id).length,
         ...(category ? { category } : {}),
         ...(desc ? { desc } : {}),
