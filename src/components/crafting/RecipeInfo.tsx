@@ -9,7 +9,7 @@ import {
 } from '@/features/crafting/recipes';
 import { formatNumber } from '@/lib/format';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 /** 게임의 스킬 그림 크기. 그대로 그려야 번지지 않는다. */
 const SKILL_ICON = 42;
@@ -17,7 +17,7 @@ const SKILL_ICON = 42;
 /**
  * 제작법의 스킬과 조건.
  *
- * 스킬 그림과 이름, 스킬 창의 분류, 게임의 스킬 설명을 위에 두고, 도구(요리는 조리 방법), 필요한
+ * 스킬 그림과 이름, 스킬 창의 분류를 위에 두고, 도구(요리는 조리 방법), 필요한
  * 랭크와 설비, 한 번에 나오는 개수, 요리 경험치를 한 칸씩 적는다. 값이 없는 칸은 뺀다.
  */
 export function RecipeInfo({ book, recipe }: { book: RecipeBook; recipe: Recipe }) {
@@ -60,15 +60,6 @@ export function RecipeInfo({ book, recipe }: { book: RecipeBook; recipe: Recipe 
           ) : null}
         </Flex>
       </Flex>
-      {skill?.desc ? (
-        <Paragraph
-          type="secondary"
-          ellipsis={{ rows: 2, expandable: true, symbol: '더 보기' }}
-          style={{ fontSize: 13, marginBottom: 0, whiteSpace: 'pre-line' }}
-        >
-          {skill.desc}
-        </Paragraph>
-      ) : null}
       <Descriptions size="small" column={1} items={items} />
     </Flex>
   );

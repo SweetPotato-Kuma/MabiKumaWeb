@@ -36,7 +36,7 @@ const MIN_NAMED_PERCENT = 25;
 const NO_EXTRA = -1;
 
 /**
- * 요리 재료를 넣는 순서와 비율.
+ * 요리 정확도가 가장 높은 재료 비율.
  *
  * 게임의 요리 창은 재료 칸 아래 게이지 하나를 차례로 채운다. 첫 재료를 제 비율만큼, 다음 재료를
  * 그다음 자리까지 채우는 식이라 "몇 %까지" 가 실제로 맞춰야 하는 값이다. 게이지를 그대로 그리고
@@ -116,7 +116,7 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
 
   return (
     <Flex vertical gap={10}>
-      <Text strong>재료 넣는 순서</Text>
+      <Text strong>정확도가 가장 높은 재료 비율</Text>
 
       {recipe.extras.length > 0 ? (
         <Segmented<number>
@@ -192,11 +192,6 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
         rowKey={(step) => `${step.extra ? 'e' : 'm'}${step.slot.ids[0]}`}
         pagination={false}
       />
-
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        재료는 위 순서대로 넣고, 게이지가 재료마다 적힌 자리에 닿으면 다음 재료로 넘어갑니다. 요리는
-        재료를 한 개씩 씁니다.
-      </Text>
     </Flex>
   );
 }

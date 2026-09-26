@@ -54,7 +54,7 @@ function rows() {
 }
 
 describe('제작법의 스킬과 조건', () => {
-  it('요리는 스킬, 분류, 설명과 조리 방법, 랭크, 설비, 경험치를 적는다', () => {
+  it('요리는 스킬, 분류와 조리 방법, 랭크, 설비, 경험치를 적는다', () => {
     render(
       <AppProviders>
         <RecipeInfo book={book} recipe={book.recipesOf(1)[0]} />
@@ -63,7 +63,7 @@ describe('제작법의 스킬과 조건', () => {
 
     expect(screen.getByText('요리')).toBeTruthy();
     expect(screen.getByText('생활 스킬')).toBeTruthy();
-    expect(screen.getByText('여러 가지 음식 재료로 요리를 만든다.')).toBeTruthy();
+    expect(screen.queryByText('여러 가지 음식 재료로 요리를 만든다.')).toBeNull();
     expect(rows()).toEqual([
       ['조리 방법', '튀기기'],
       ['필요 랭크', 'A랭크'],

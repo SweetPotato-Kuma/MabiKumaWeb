@@ -24,7 +24,6 @@ import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { useMarketPrices } from '@/features/crafting/market';
 import {
   isWednesdayInKorea,
-  NPC_MATERIALS,
   npcUnitPrice,
   WEDNESDAY_DISCOUNT_PERCENT,
 } from '@/features/crafting/npcPrices';
@@ -58,10 +57,6 @@ const MAX_QUANTITY = 9999;
  */
 const PROGRESS_SKILLS = new Set([10001, 10016]);
 
-/** 제작 비용 머리의 두 칸 폭. 스킬과 조건, 요리 재료 넣는 순서. */
-const INFO_COLUMN = 320;
-const GUIDE_COLUMN = 600;
-
 /** 재료 그림 칸. 표 한 줄 높이를 크게 늘리지 않으면서 알아볼 수 있는 크기. */
 const MATERIAL_ICON = 32;
 
@@ -87,66 +82,45 @@ export function CraftingCost({ book, recipes, initialRecipe }: CraftingCostProps
   const [recipeIndex, setRecipeIndex] = useState(
     () => recipes.find((recipe) => recipe.index === initialRecipe)?.index ?? recipes[0]?.index,
   );
-  const isWide = Boolean(Grid.useBreakpoint().md);
   const recipe = recipes.find((each) => each.index === recipeIndex) ?? recipes[0];
   if (!recipe) return null;
 
-  const header = (
-    <Flex vertical gap={12}>
-      {recipes.length > 1 ? (
-        <Form layout="vertical" style={{ marginBottom: 0 }}>
-          <Form.Item
-            label={`제작법 ${recipes.length}가지`}
-            htmlFor="crafting-recipe"
-            style={{ marginBottom: 0 }}
-          >
-            <Select
-              id="crafting-recipe"
-              value={recipe.index}
-              onChange={setRecipeIndex}
-              options={recipes.map((each, order) => ({
-                value: each.index,
-                label: `${order + 1}. ${recipeTitle(book, each)} - ${materialSummary(book, each)}`,
-              }))}
-              style={{ width: '100%' }}
-            />
-          </Form.Item>
-        </Form>
-      ) : null}
-      {/*
-        넓은 화면은 두 칸(스킬과 조건 | 요리 재료 넣는 순서)으로, 768px 아래는 한 칸으로 쌓는다.
-        재료 넣는 순서는 칸이 끝없이 넓어지면 비율과 재료가 멀어져 읽기 어려워 폭을 묶는다.
-      */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: isWide
-            ? `minmax(0, ${INFO_COLUMN}px) minmax(0, ${GUIDE_COLUMN}px)`
-            : 'minmax(0, 1fr)',
-          gap: isWide ? 32 : 20,
-          alignItems: 'start',
-        }}
-      >
-        <RecipeInfo book={book} recipe={recipe} />
-        {/* 요리는 재료를 한 개씩 쓰고 비율을 맞춰 넣는다. 트리의 개수만으로는 만들 수 없다. */}
-        {isCooking(recipe) ? <CookingGuide key={recipe.index} book={book} recipe={recipe} /> : null}
-      </div>
-    </Flex>
-  );
+  const picker =
+    recipes.length > 1 ? (
+      <Form layout="vertical" style={{ marginBottom: 0 }}>
+        <Form.Item
+          label={`제작법 ${recipes.length}가지`}
+          htmlFor="crafting-recipe"
+          style={{ marginBottom: 0 }}
+        >
+          <Select
+            id="crafting-recipe"
+            value={recipe.index}
+            onChange={setRecipeIndex}
+            options={recipes.map((each, order) => ({
+              value: each.index,
+              label: `${order + 1}. ${recipeTitle(book, each)} - ${materialSummary(book, each)}`,
+            }))}
+            style={{ width: '100%' }}
+          />
+        </Form.Item>
+      </Form>
+    ) : null;
 
   // 제작법을 바꾸면 트리의 자리가 모두 달라진다. 고른 방법과 펼침을 새로 시작한다.
-  return <RecipeCost key={recipe.index} book={book} recipe={recipe} header={header} />;
+  return <RecipeCost key={recipe.index} book={book} recipe={recipe} picker={picker} />;
 }
 
 function RecipeCost({
   book,
   recipe,
-  header,
+  picker,
 }: {
   book: RecipeBook;
   recipe: Recipe;
-  header: ReactNode;
+  picker: ReactNode;
 }) {
+  const screens = Grid.useBreakpoint();
   const [quantity, setQuantity] = useState(1);
   const [methods, setMethods] = useState<Record<string, Method>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -183,14 +157,6 @@ function RecipeCost({
   // 비교용. NPC 에서 하나도 사지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
   const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
   const auctionPlan = usesNpc ? planWith(false) : undefined;
-  const npcNames = [
-    ...new Set(
-      plan.shopping
-        .filter((row) => row.price.status === 'npc')
-        .map((row) => book.itemName(row.itemId)),
-    ),
-  ];
-
   const missing = [
     ...new Set([...plan.needed, ...(auctionPlan?.needed ?? [])].map(book.itemName)),
   ].filter((name) => !requested.includes(name));
@@ -215,6 +181,8 @@ function RecipeCost({
   useSlidingRows(tableRef);
 
   const progressNote = PROGRESS_SKILLS.has(recipe.skill);
+  // 요리는 재료를 한 개씩 쓰고 비율을 맞춰 넣는다. 트리의 개수만으로는 만들 수 없어 비율 칸을 둔다.
+  const cooking = isCooking(recipe);
 
   /**
    * 재료 그림은 아이템 정보의 그림 목록에서 찾는다. 목록은 카테고리별이라 이름 사전으로 카테고리를
@@ -224,11 +192,33 @@ function RecipeCost({
   const categoryOf = (name: string) => nameIndex?.categoriesByName.get(name)?.[0];
 
   return (
-    <>
-      <Card title="제작 비용" size="small">
-        <Flex vertical gap={16}>
-          {header}
-          <Flex gap={24} wrap align="flex-end">
+    <Card title="제작 비용" size="small">
+      <Flex vertical gap={16}>
+        {picker}
+        {/*
+            머리는 카드 폭을 다 쓴다. 넓은 화면은 스킬과 조건 | 요리 비율 | 개수와 총액 세 칸,
+            중간 폭은 두 칸에 개수와 총액을 아랫줄로, 768px 아래는 한 칸으로 쌓는다.
+            요리가 아니면 비율 칸이 없어 스킬과 조건 | 개수와 총액 두 칸이다.
+          */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: !screens.md
+              ? 'minmax(0, 1fr)'
+              : cooking && screens.xl
+                ? 'minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr)'
+                : 'minmax(0, 1fr) minmax(0, 1fr)',
+            gap: screens.md ? 32 : 20,
+            alignItems: 'start',
+          }}
+        >
+          <RecipeInfo book={book} recipe={recipe} />
+          {cooking ? <CookingGuide book={book} recipe={recipe} /> : null}
+          <Flex
+            vertical
+            gap={16}
+            style={cooking && screens.md && !screens.xl ? { gridColumn: '1 / -1' } : undefined}
+          >
             <Form layout="vertical" style={{ marginBottom: 0 }}>
               <Form.Item label="만들 개수" htmlFor="crafting-quantity" style={{ marginBottom: 0 }}>
                 <InputNumber
@@ -243,129 +233,92 @@ function RecipeCost({
                 />
               </Form.Item>
             </Form>
-            <Statistic
-              title={progressNote ? '재료 예상 총액 (작업 1회와 마무리 기준)' : '재료 예상 총액'}
-              value={formatGold(plan.total.gold)}
-              styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
-            />
-            {auctionPlan ? (
+            <Flex gap={24} wrap align="flex-end">
               <Statistic
-                title="경매장에서만 산다면"
-                value={formatGold(auctionPlan.total.gold)}
-                styles={{
-                  content: {
-                    fontVariantNumeric: 'tabular-nums',
-                    whiteSpace: 'nowrap',
-                    fontSize: 20,
-                  },
-                }}
+                title={progressNote ? '재료 예상 총액 (작업 1회와 마무리 기준)' : '재료 예상 총액'}
+                value={formatGold(plan.total.gold)}
+                styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
               />
-            ) : null}
-            {plan.total.pending > 0 ? (
-              <Flex gap={8} align="center">
-                <Spin size="small" />
-                <Text type="secondary" style={{ fontSize: 13 }}>
-                  시세 {formatNumber(plan.total.pending)}종을 받는 중입니다
-                </Text>
-              </Flex>
-            ) : null}
-          </Flex>
-          <Flex gap={16} wrap>
-            <Checkbox checked={useNpc} onChange={(event) => changeUseNpc(event.target.checked)}>
-              NPC 판매 재료는 NPC 에서 사는 것을 기본으로
-            </Checkbox>
-            <Checkbox checked={wednesday} onChange={(event) => setWednesday(event.target.checked)}>
-              수요일 상점 할인 {WEDNESDAY_DISCOUNT_PERCENT}% 적용
-              {todayIsWednesday ? ' (오늘 수요일)' : ''}
-            </Checkbox>
-          </Flex>
-          <Flex vertical gap={4}>
-            {npcNames.length > 0 ? (
-              <Text type="secondary" style={{ fontSize: 13 }}>
-                NPC 에서 사는 재료: {npcNames.join(', ')}
-              </Text>
-            ) : null}
+              {auctionPlan ? (
+                <Statistic
+                  title="경매장에서만 산다면"
+                  value={formatGold(auctionPlan.total.gold)}
+                  styles={{
+                    content: {
+                      fontVariantNumeric: 'tabular-nums',
+                      whiteSpace: 'nowrap',
+                      fontSize: 20,
+                    },
+                  }}
+                />
+              ) : null}
+              {plan.total.pending > 0 ? (
+                <Flex gap={8} align="center">
+                  <Spin size="small" />
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    시세 {formatNumber(plan.total.pending)}종을 받는 중입니다
+                  </Text>
+                </Flex>
+              ) : null}
+            </Flex>
+            <Flex vertical gap={8}>
+              <Checkbox checked={useNpc} onChange={(event) => changeUseNpc(event.target.checked)}>
+                NPC 판매 재료는 NPC 에서 사기
+              </Checkbox>
+              <Checkbox
+                checked={wednesday}
+                onChange={(event) => setWednesday(event.target.checked)}
+              >
+                수요일 상점 할인 {WEDNESDAY_DISCOUNT_PERCENT}% 적용
+                {todayIsWednesday ? ' (오늘 수요일)' : ''}
+              </Checkbox>
+            </Flex>
             {plan.crafts > 1 && recipe.yield > 1 ? (
               <Text type="secondary" style={{ fontSize: 13 }}>
                 한 번에 {formatNumber(recipe.yield)}개씩 {formatNumber(plan.crafts)}번 만듭니다.
               </Text>
             ) : null}
             <TotalNotes book={book} total={plan.total} shopping={plan.shopping} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              경매장 매물을 싼 것부터 필요한 개수만큼 채워 계산했습니다. 시세는 넥슨 오픈 API
-              기준이며 평균 10분 지연됩니다. 수수료와 제작 실패는 넣지 않았습니다. NPC 판매가는 직접
-              모은 {Object.keys(NPC_MATERIALS).length}종만 들어 있어, 목록에 없는 NPC 재료는 경매장
-              값으로 계산됩니다.
-            </Text>
-            {progressNote ? (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                천옷만들기와 블랙스미스는 작업할 때마다 작업 재료를 다시 넣습니다. 작업을 여러 번
-                하면 그만큼 더 듭니다. 옷본과 도면 값도 들어 있지 않습니다.
-              </Text>
-            ) : null}
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              만들 수 있는 재료는 펼쳐서 하위 재료를 보고, 구하는 방법을 제작으로 바꾸면 하위 재료
-              값이 총액에 들어갑니다. 경매장에서 필요한 만큼 살 수 없는 재료는 처음부터 제작으로
-              둡니다.
-            </Text>
           </Flex>
+        </div>
 
-          <div ref={tableRef}>
-            <Table<TreeRow>
-              columns={treeColumns(book, setMethod, categoryOf)}
-              dataSource={toTreeRows(plan.nodes)}
-              rowKey="key"
-              size="small"
-              pagination={false}
-              scroll={{ x: 'max-content' }}
-              expandable={{
-                expandedRowKeys: expanded,
-                onExpand: (open, row) =>
-                  setExpanded((prev) =>
-                    open ? [...prev, row.key] : prev.filter((key) => key !== row.key),
-                  ),
-                indentSize: 16,
-              }}
-              summary={() => (
-                <Table.Summary.Row>
-                  <Table.Summary.Cell index={0} colSpan={TREE_COLUMN_COUNT - 1}>
-                    <Flex vertical gap={2}>
-                      <Text strong>합계</Text>
-                      {/*
-                       * 합계는 줄마다의 금액을 더한 것이 아니다. 같은 재료가 트리 여러 곳에 나오면
-                       * 개수를 합쳐 싼 매물부터 한 번에 채운다. 따로 사면 같은 싼 매물을 두 번 세게 된다.
-                       */}
-                      {plan.shopping.length < countBuyRows(plan.nodes) ? (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          여러 곳에 나오는 재료는 개수를 합쳐 한 번에 산 값으로 계산했습니다.
-                        </Text>
-                      ) : null}
-                    </Flex>
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={1} align="right">
-                    <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
-                      {formatGold(plan.total.gold)}
-                    </Text>
-                  </Table.Summary.Cell>
-                </Table.Summary.Row>
-              )}
-            />
-          </div>
-        </Flex>
-      </Card>
-    </>
+        <div ref={tableRef}>
+          <Table<TreeRow>
+            columns={treeColumns(book, setMethod, categoryOf)}
+            dataSource={toTreeRows(plan.nodes)}
+            rowKey="key"
+            size="small"
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+            expandable={{
+              expandedRowKeys: expanded,
+              onExpand: (open, row) =>
+                setExpanded((prev) =>
+                  open ? [...prev, row.key] : prev.filter((key) => key !== row.key),
+                ),
+              indentSize: 16,
+            }}
+            summary={() => (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={TREE_COLUMN_COUNT - 1}>
+                  {/*
+                   * 합계는 줄마다의 금액을 더한 것이 아니다. 같은 재료가 트리 여러 곳에 나오면
+                   * 개수를 합쳐 싼 매물부터 한 번에 채운다. 따로 사면 같은 싼 매물을 두 번 세게 된다.
+                   */}
+                  <Text strong>합계</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
+                    {formatGold(plan.total.gold)}
+                  </Text>
+                </Table.Summary.Cell>
+              </Table.Summary.Row>
+            )}
+          />
+        </div>
+      </Flex>
+    </Card>
   );
-}
-
-/** 합계에 들어가는 "구매" 줄 수. 살 재료 종류보다 많으면 같은 재료가 여러 곳에 나온 것이다. */
-function countBuyRows(nodes: PlanNode[]): number {
-  let count = 0;
-  const walk = (node: PlanNode) => {
-    if (!isBuying(node.method) && node.children) node.children.forEach(walk);
-    else count += 1;
-  };
-  nodes.forEach(walk);
-  return count;
 }
 
 /** 총액에 빠진 것. 모르는 값이 섞인 합은 실제보다 싸 보이므로 무엇이 빠졌는지 적는다. */
