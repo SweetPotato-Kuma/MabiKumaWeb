@@ -26,8 +26,13 @@
  * - 기본 재료가 셋보다 적으면 추가 재료 하나를 더 넣을 수 있다(소금, 설탕, 후추 가운데 하나 등).
  *   넣지 않아도 만들어지므로 비용에는 넣지 않고 extras 로만 적는다
  *
+ * 스킬:
+ * - 제작법에 나오는 스킬마다 이름, 분류(생활, 연금술 같은 스킬 창의 탭), 설명을 적는다
+ * - 스킬 그림(42px)은 같은 곳에서 받아 public/data/skills/<번호>.png 로 둔다. 스무 장이 안 되고
+ *   한 장이 몇 KB 라 우리 쪽에 두고, 남의 서버를 화면에서 직접 부르지 않는다
+ *
  * 실행: node scripts/build-recipes.mjs
- * 산출: public/data/recipes.json
+ * 산출: public/data/recipes.json, public/data/skills/*.png
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -37,6 +42,7 @@ const SITE = 'https://prilus.gitlab.io/';
 const RESOURCE_ORIGIN = 'https://mabires.pril.cc/';
 const REGION = 'kr';
 const OUT = resolve('public/data/recipes.json');
+const SKILL_ICON_DIR = resolve('public/data/skills');
 
 /** 제작 종류 번호에서 스킬로. 그 도구의 consts 와 같다. 1, 2 는 같은 방직이지만 도구가 다르다. */
 const TYPE_SKILL = {
@@ -66,6 +72,16 @@ const TYPE_SKILL = {
  * 재료 설명에 쓰인 "향수 조제" 를 이름으로 쓴다.
  */
 const SKILL_NAME_FALLBACK = { 10038: '향수 조제' };
+
+/** 스킬 분류 번호에서 스킬 창의 탭 이름으로. 제작 스킬이 쓰는 것만 둔다. */
+const SKILL_CATEGORY = { 1: '생활', 2: '전투', 3: '마법', 4: '연금술', 11: '점성술' };
+
+/** 게임 문장의 줄바꿈 표시(글자 그대로의 역슬래시 n)와 꾸밈 태그를 걷어 낸다. */
+const plainText = (value) =>
+  value
+    .replace(/\\n/g, '\n')
+    .replace(/<[^>]*>/g, '')
+    .trim();
 
 /** 거래 불가 표시(RestrictionFlags). 그 도구의 ITEM_RESTRICTION_NO_TRADE 와 같다. */
 const NO_TRADE = 2;
@@ -382,12 +398,35 @@ async function main() {
 
   const skillIds = [...new Set(recipes.map((recipe) => recipe.skill))];
   const skills = skillIds
-    .map((id) => ({
-      id,
-      name: text(skillById.get(id)?.Name) || SKILL_NAME_FALLBACK[id] || `스킬 ${id}`,
-      count: recipes.filter((recipe) => recipe.skill === id).length,
-    }))
+    .map((id) => {
+      const skill = skillById.get(id);
+      const category = SKILL_CATEGORY[skill?.Category];
+      const desc = plainText(text(skill?.Desc));
+      return {
+        id,
+        name: text(skill?.Name) || SKILL_NAME_FALLBACK[id] || `스킬 ${id}`,
+        count: recipes.filter((recipe) => recipe.skill === id).length,
+        ...(category ? { category } : {}),
+        ...(desc ? { desc } : {}),
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+
+  // 스킬 그림. 받지 못한 스킬은 화면이 그림 없이 그린다.
+  await mkdir(SKILL_ICON_DIR, { recursive: true });
+  const missingIcons = [];
+  for (const { id } of skills) {
+    const response = await fetch(`${RESOURCE_ORIGIN}skillimage/${REGION}/${id}/${id}.png`);
+    if (!response.ok) {
+      missingIcons.push(id);
+      continue;
+    }
+    await writeFile(
+      resolve(SKILL_ICON_DIR, `${id}.png`),
+      Buffer.from(await response.arrayBuffer()),
+    );
+  }
+  if (missingIcons.length) console.warn(`그림을 받지 못한 스킬: ${missingIcons.join(', ')}`);
 
   const nameOf = (id) => items[id][0];
   recipes.sort(

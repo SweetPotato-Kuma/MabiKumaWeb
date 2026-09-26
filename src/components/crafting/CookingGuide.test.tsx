@@ -74,7 +74,6 @@ describe('요리 재료 넣는 순서', () => {
       ['올리브유', '21.1%', '100%까지'],
     ]);
     expect(screen.getByRole('img', { name: '재료 비율: 달걀 78.9%, 올리브유 21.1%' })).toBeTruthy();
-    expect(screen.getByText('100')).toBeTruthy();
   });
 
   it('추가 재료를 고르면 비율을 다시 나눈다', () => {

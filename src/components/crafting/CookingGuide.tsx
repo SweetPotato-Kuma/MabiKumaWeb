@@ -19,7 +19,6 @@ import {
   type Recipe,
   type RecipeBook,
 } from '@/features/crafting/recipes';
-import { formatNumber } from '@/lib/format';
 import { useResolvedThemeMode } from '@/lib/themePreference';
 
 const { Text } = Typography;
@@ -114,14 +113,7 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
 
   return (
     <Flex vertical gap={10}>
-      <Flex justify="space-between" align="center" gap={8} wrap>
-        <Text strong>재료 넣는 순서</Text>
-        {recipe.exp ? (
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            요리 경험치 <span className="tnum">{formatNumber(recipe.exp)}</span>
-          </Text>
-        ) : null}
-      </Flex>
+      <Text strong>재료 넣는 순서</Text>
 
       {recipe.extras.length > 0 ? (
         <Segmented<number>

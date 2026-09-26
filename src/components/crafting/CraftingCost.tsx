@@ -4,6 +4,7 @@ import {
   Checkbox,
   Flex,
   Form,
+  Grid,
   InputNumber,
   Select,
   Spin,
@@ -15,6 +16,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { CookingGuide } from '@/components/crafting/CookingGuide';
+import { RecipeInfo } from '@/components/crafting/RecipeInfo';
 import { ItemIcon } from '@/components/ItemIcon';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
@@ -40,7 +42,6 @@ import {
   isCooking,
   materialSummary,
   recipeTitle,
-  stationNote,
   type Recipe,
   type RecipeBook,
 } from '@/features/crafting/recipes';
@@ -56,6 +57,10 @@ const MAX_QUANTITY = 9999;
  * 작업할 때마다 작업 재료를 다시 넣는다. 몇 번 만에 끝날지는 랭크와 운에 달려 있어 셀 수 없다.
  */
 const PROGRESS_SKILLS = new Set([10001, 10016]);
+
+/** 제작 비용 머리의 두 칸 폭. 스킬과 조건, 요리 재료 넣는 순서. */
+const INFO_COLUMN = 320;
+const GUIDE_COLUMN = 600;
 
 /** 재료 그림 칸. 표 한 줄 높이를 크게 늘리지 않으면서 알아볼 수 있는 크기. */
 const MATERIAL_ICON = 32;
@@ -82,15 +87,12 @@ export function CraftingCost({ book, recipes, initialRecipe }: CraftingCostProps
   const [recipeIndex, setRecipeIndex] = useState(
     () => recipes.find((recipe) => recipe.index === initialRecipe)?.index ?? recipes[0]?.index,
   );
+  const isWide = Boolean(Grid.useBreakpoint().md);
   const recipe = recipes.find((each) => each.index === recipeIndex) ?? recipes[0];
   if (!recipe) return null;
 
   const header = (
     <Flex vertical gap={12}>
-      <Text type="secondary" style={{ fontSize: 13 }}>
-        {[recipeTitle(book, recipe), stationNote(recipe)].filter(Boolean).join(', ')}
-        {recipe.yield > 1 ? ` (한 번에 ${formatNumber(recipe.yield)}개)` : ''}
-      </Text>
       {recipes.length > 1 ? (
         <Form layout="vertical" style={{ marginBottom: 0 }}>
           <Form.Item
@@ -111,8 +113,24 @@ export function CraftingCost({ book, recipes, initialRecipe }: CraftingCostProps
           </Form.Item>
         </Form>
       ) : null}
-      {/* 요리는 재료를 한 개씩 쓰고 비율을 맞춰 넣는다. 트리의 개수만으로는 만들 수 없다. */}
-      {isCooking(recipe) ? <CookingGuide key={recipe.index} book={book} recipe={recipe} /> : null}
+      {/*
+        넓은 화면은 두 칸(스킬과 조건 | 요리 재료 넣는 순서)으로, 768px 아래는 한 칸으로 쌓는다.
+        재료 넣는 순서는 칸이 끝없이 넓어지면 비율과 재료가 멀어져 읽기 어려워 폭을 묶는다.
+      */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isWide
+            ? `minmax(0, ${INFO_COLUMN}px) minmax(0, ${GUIDE_COLUMN}px)`
+            : 'minmax(0, 1fr)',
+          gap: isWide ? 32 : 20,
+          alignItems: 'start',
+        }}
+      >
+        <RecipeInfo book={book} recipe={recipe} />
+        {/* 요리는 재료를 한 개씩 쓰고 비율을 맞춰 넣는다. 트리의 개수만으로는 만들 수 없다. */}
+        {isCooking(recipe) ? <CookingGuide key={recipe.index} book={book} recipe={recipe} /> : null}
+      </div>
     </Flex>
   );
 

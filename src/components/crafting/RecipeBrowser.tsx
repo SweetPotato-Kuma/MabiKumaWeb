@@ -15,6 +15,7 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
+import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { QueryState } from '@/components/QueryState';
 import { normalizeForSearch } from '@/features/auction/dictionary';
@@ -31,6 +32,9 @@ import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 
 const { Title, Text } = Typography;
+
+/** 스킬 목록의 스킬 그림. 한 줄 높이를 크게 늘리지 않는 크기. */
+const SKILL_MENU_ICON = 24;
 
 interface RecipeBrowserProps {
   /** 고른 스킬. null 이면 고르지 않았다. */
@@ -170,7 +174,10 @@ function RecipeList({
     key: String(each.id),
     label: (
       <Flex justify="space-between" align="center" gap={12}>
-        <span>{each.name}</span>
+        <Flex gap={8} align="center" style={{ minWidth: 0 }}>
+          <SkillIcon skillId={each.id} size={SKILL_MENU_ICON} />
+          <span>{each.name}</span>
+        </Flex>
         <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
           {formatNumber(each.count)}
         </Text>

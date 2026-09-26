@@ -49,6 +49,10 @@ export interface CraftSkill {
   id: number;
   name: string;
   count: number;
+  /** 스킬 창의 탭. "생활", "연금술". */
+  category?: string;
+  /** 게임의 스킬 설명. 비어 있는 스킬도 있다. */
+  desc?: string;
 }
 
 /** [아이템들, 개수, 요리 기준 값]. */
@@ -80,6 +84,8 @@ export interface RecipeBook {
   skills: CraftSkill[];
   recipes: Recipe[];
   skillName: (id: number) => string;
+  /** 스킬 하나. 제작법에 나오지 않는 번호면 없다. */
+  skillOf: (id: number) => CraftSkill | undefined;
   itemName: (id: number) => string;
   isTradable: (id: number) => boolean;
   /** 이 아이템을 만드는 제작법 전부. 없으면 빈 배열. */
@@ -129,14 +135,15 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     else byName.set(name, [Number(id)]);
   }
 
-  const skillNames = new Map(raw.skills.map((skill) => [skill.id, skill.name]));
+  const skillById = new Map(raw.skills.map((skill) => [skill.id, skill]));
   const none: Recipe[] = [];
 
   return {
     updated: raw.updated,
     skills: raw.skills,
     recipes,
-    skillName: (id) => skillNames.get(id) ?? `스킬 ${id}`,
+    skillName: (id) => skillById.get(id)?.name ?? `스킬 ${id}`,
+    skillOf: (id) => skillById.get(id),
     itemName: (id) => raw.items[id]?.[0] ?? `#${id}`,
     isTradable: (id) => raw.items[id]?.[1] === 1,
     recipesOf: (itemId) => byItem.get(itemId) ?? none,
@@ -152,6 +159,21 @@ export function rankLabel(rank: number): string {
   if (rank <= 6) return 'FEDCBA'[rank - 1];
   if (rank <= 15) return `${16 - rank}랭크`;
   return `${rank - 15}단`;
+}
+
+/** 랭크를 문장 안에 쓰는 꼴로. 글자 랭크는 "A랭크", 숫자 랭크와 단은 그대로, 연습은 "연습 랭크". */
+export function rankText(rank: number): string {
+  const label = rankLabel(rank);
+  if (rank <= 0) return `${label} 랭크`;
+  return rank <= 6 ? `${label}랭크` : label;
+}
+
+/** 요리 스킬. 도구 자리에 조리 방법이 들어 있다. */
+export const COOKING_SKILL = 10020;
+
+/** 스킬 그림. scripts/build-recipes.mjs 가 받아 둔 42px 그림이다. */
+export function skillIconUrl(skillId: number): string {
+  return `${import.meta.env.BASE_URL}data/skills/${skillId}.png`;
 }
 
 /** 스킬, 도구, 랭크를 한 줄로. "방직(베틀) 5랭크" */
