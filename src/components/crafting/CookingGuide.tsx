@@ -11,6 +11,7 @@ import {
 } from 'antd';
 import { SERIES_COLORS } from '@/app/theme';
 import { ItemIcon } from '@/components/ItemIcon';
+import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import {
   cookingRatios,
@@ -88,7 +89,7 @@ export function CookingGuide({ book, recipe }: { book: RecipeBook; recipe: Recip
             {category || file ? (
               <ItemIcon category={category} name={name} file={file} size={MATERIAL_ICON} />
             ) : null}
-            <Text>{name}</Text>
+            <ItemInfoLink name={name} category={category} />
             {step.extra ? <Tag>추가</Tag> : null}
           </Flex>
         );

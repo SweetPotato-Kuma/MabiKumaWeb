@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { CookingGuide } from '@/components/crafting/CookingGuide';
@@ -34,7 +35,9 @@ function renderGuide() {
   return render(
     <AppProviders>
       <QueryClientProvider client={queryClient}>
-        <CookingGuide book={book} recipe={book.recipesOf(1)[0]} />
+        <MemoryRouter>
+          <CookingGuide book={book} recipe={book.recipesOf(1)[0]} />
+        </MemoryRouter>
       </QueryClientProvider>
     </AppProviders>,
   );

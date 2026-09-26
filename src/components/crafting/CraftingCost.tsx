@@ -18,6 +18,7 @@ import {
 import { CookingGuide } from '@/components/crafting/CookingGuide';
 import { RecipeInfo } from '@/components/crafting/RecipeInfo';
 import { ItemIcon } from '@/components/ItemIcon';
+import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
@@ -494,7 +495,7 @@ function treeColumns(
               <MaterialIconSlot />
             )}
             <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
-              <Text>{name}</Text>
+              <ItemInfoLink name={name} category={category} />
               {node.finish ? <Tag>마무리</Tag> : null}
               {node.alternatives.length > 0 ? (
                 <Tooltip

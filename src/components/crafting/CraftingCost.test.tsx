@@ -104,4 +104,15 @@ describe('제작 비용', () => {
     expect(await within(tree).findByText('철광석')).toBeInTheDocument();
     expect(await within(tree).findByText('제작 시 2 G')).toBeInTheDocument();
   });
+
+  it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {
+    renderCost();
+    await screen.findAllByText('550 G');
+
+    const tree = screen.getByText('제작 비용').closest('.ant-card') as HTMLElement;
+    fireEvent.click(within(tree).getAllByRole('button', { name: /펼치기|Expand row/i })[0]);
+
+    const link = await within(tree).findByRole('link', { name: '철광석' });
+    expect(link.getAttribute('href')).toBe(`/items?category=&name=${encodeURIComponent('철광석')}`);
+  });
 });
