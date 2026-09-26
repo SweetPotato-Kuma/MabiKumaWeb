@@ -27,6 +27,7 @@ import {
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { CraftingSection } from '@/components/crafting/CraftingSection';
 import { RecipeBrowser } from '@/components/crafting/RecipeBrowser';
+import { UsedInSection } from '@/components/crafting/UsedInSection';
 import { SlidingStack } from '@/components/SlidingStack';
 import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
@@ -175,6 +176,8 @@ export function ItemsPage() {
             name={detailName}
             initialRecipe={recipeParam ?? undefined}
           />
+          {/* 반대 방향. 이 아이템을 재료로 무엇을 만들 수 있는지. 누르면 그 아이템으로 넘어간다. */}
+          <UsedInSection key={detailName} name={detailName} onOpen={openRecipe} />
           {/* 시세 기록은 장비든 아니든 같다. 경매장에서 거래된 이름으로 찾는다. */}
           <MarketHistoryCard name={detailName} />
         </SlidingStack>

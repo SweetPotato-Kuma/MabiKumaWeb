@@ -5,6 +5,9 @@ import {
   formatPercent,
   isCooking,
   materialSummary,
+  materialUseText,
+  materialUses,
+  usesOfName,
   recipeTitle,
   stationNote,
   type RawRecipeData,
@@ -130,5 +133,30 @@ describe('요리 제작법', () => {
     expect(sword.materials).toEqual([{ ids: [8], count: 3 }]);
     expect(sword.extras).toEqual([]);
     expect(materialSummary(book, sword)).toBe('철괴 3');
+  });
+});
+
+describe('이 아이템으로 만들 수 있는 것', () => {
+  const book = buildRecipeBook(RAW);
+
+  it('재료로 쓰는 제작법을 거꾸로 찾는다', () => {
+    // 달걀(2)은 마요네즈와 버터구이에, 철괴(8)는 검에 들어간다.
+    expect(book.usedIn(2).map((recipe) => book.itemName(recipe.item))).toEqual(['마요네즈', '버터구이']);
+    expect(book.usedIn(8).map((recipe) => book.itemName(recipe.item))).toEqual(['검']);
+    expect(book.usedIn(7)).toEqual([]);
+  });
+
+  it('요리의 골라 넣는 재료도 쓰임새로 센다', () => {
+    expect(usesOfName(book, '소금').map((recipe) => book.itemName(recipe.item))).toEqual(['마요네즈']);
+  });
+
+  it('들어가는 자리를 한 줄로 적는다', () => {
+    const [mayo] = book.usedIn(2);
+    const [sword] = book.usedIn(8);
+    // 마요네즈의 달걀은 75 / (75 + 20) = 78.9%
+    expect(materialUseText(mayo, materialUses(mayo, [2]))).toBe('비율 78.9%');
+    expect(materialUseText(mayo, materialUses(mayo, [4]))).toBe('골라 넣는 재료');
+    // 블랙스미스는 공정마다 작업 재료를 다시 넣는다.
+    expect(materialUseText(sword, materialUses(sword, [8]))).toBe('공정마다 3개');
   });
 });

@@ -320,7 +320,7 @@ function RecipeList({
  * 그림을 찾을 수 없는 아이템의 자리. 이름이 줄마다 다른 자리에서 시작하지 않게 칸은 비워 둔다.
  * 그림 저장소가 없는 환경에서는 ItemIcon 처럼 자리도 두지 않는다.
  */
-function IconSlot() {
+export function IconSlot() {
   if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
   return <div style={{ width: ITEM_ICON, height: ITEM_ICON, flex: `0 0 ${ITEM_ICON}px` }} />;
 }

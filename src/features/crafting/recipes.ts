@@ -96,6 +96,11 @@ export interface RecipeBook {
   subRecipesOf: (itemId: number) => Recipe[];
   /** 이름이 같은 아이템 번호들. 아이템 정보 화면은 이름으로만 아이템을 안다. */
   idsByName: (name: string) => number[];
+  /**
+   * 이 아이템을 재료로 쓰는 제작법 전부(재료, 마무리, 요리 추가 재료). 없으면 빈 배열.
+   * recipesOf 의 반대 방향이다. "이걸로 무엇을 만들 수 있나" 를 답한다.
+   */
+  usedIn: (itemId: number) => Recipe[];
 }
 
 /**
@@ -137,6 +142,19 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     else byName.set(name, [Number(id)]);
   }
 
+  // 한 제작법이 같은 아이템을 여러 칸에 넣기도 한다(재료와 마무리). 제작법은 한 번만 센다.
+  const byMaterial = new Map<number, Recipe[]>();
+  for (const recipe of recipes) {
+    const ids = new Set(
+      [...recipe.materials, ...recipe.finish, ...recipe.extras].flatMap((slot) => slot.ids),
+    );
+    for (const id of ids) {
+      const list = byMaterial.get(id);
+      if (list) list.push(recipe);
+      else byMaterial.set(id, [recipe]);
+    }
+  }
+
   const skillById = new Map(raw.skills.map((skill) => [skill.id, skill]));
   const none: Recipe[] = [];
 
@@ -153,7 +171,68 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     subRecipesOf: (itemId) =>
       (byItem.get(itemId) ?? none).filter((recipe) => recipe.skill !== CONVERSION_SKILL),
     idsByName: (name) => byName.get(name) ?? [],
+    usedIn: (itemId) => byMaterial.get(itemId) ?? none,
   };
+}
+
+/**
+ * 이름 하나로 그 아이템을 재료로 쓰는 제작법. 아이템 정보는 이름으로만 아이템을 알고, 게임에는
+ * 이름이 같은 아이템이 따로 있기도 해서(거래 가능한 것과 불가한 것) 번호마다 모아 겹친 것을 뺀다.
+ */
+export function usesOfName(book: RecipeBook, name: string): Recipe[] {
+  const seen = new Set<number>();
+  const found: Recipe[] = [];
+  for (const id of book.idsByName(name)) {
+    for (const recipe of book.usedIn(id)) {
+      if (seen.has(recipe.index)) continue;
+      seen.add(recipe.index);
+      found.push(recipe);
+    }
+  }
+  return found;
+}
+
+/** 제작법 한 번에 이 아이템이 어떻게 들어가는지. */
+export interface MaterialUse {
+  /** 작업 재료, 마무리 재료, 요리의 골라 넣는 재료 */
+  role: 'material' | 'finish' | 'extra';
+  count: number;
+  /** 요리 재료의 비율(%). 요리가 아니면 없다. */
+  percent?: number;
+}
+
+/**
+ * 이 아이템(번호 여럿 중 아무거나)이 제작법에 들어가는 자리들. 한 제작법에 두 자리 이상 들어가면
+ * 모두 돌려준다. 요리는 기본 재료만으로 셈한 비율을 붙인다(추가 재료는 넣을 때마다 비율이 바뀐다).
+ */
+export function materialUses(recipe: Recipe, itemIds: readonly number[]): MaterialUse[] {
+  const wanted = new Set(itemIds);
+  const has = (slot: RecipeSlot) => slot.ids.some((id) => wanted.has(id));
+  const ratios = isCooking(recipe) ? cookingRatios(recipe) : [];
+  const uses: MaterialUse[] = [];
+  recipe.materials.forEach((slot, index) => {
+    if (!has(slot)) return;
+    const percent = ratios[index]?.percent;
+    uses.push(percent === undefined ? { role: 'material', count: slot.count } : { role: 'material', count: slot.count, percent });
+  });
+  for (const slot of recipe.finish) if (has(slot)) uses.push({ role: 'finish', count: slot.count });
+  for (const slot of recipe.extras) if (has(slot)) uses.push({ role: 'extra', count: slot.count });
+  return uses;
+}
+
+/**
+ * 들어가는 자리를 한 줄로. "3개", "공정마다 2개, 마무리 1개", "비율 25%", "골라 넣는 재료".
+ * 천옷만들기와 블랙스미스는 공정마다 작업 재료를 다시 넣어서 "공정마다" 를 붙인다.
+ */
+export function materialUseText(recipe: Recipe, uses: readonly MaterialUse[]): string {
+  return uses
+    .map((use) => {
+      if (use.role === 'extra') return '골라 넣는 재료';
+      if (use.role === 'finish') return `마무리 ${formatNumber(use.count)}개`;
+      if (use.percent !== undefined) return `비율 ${formatPercent(use.percent)}`;
+      return hasWorks(recipe) ? `공정마다 ${formatNumber(use.count)}개` : `${formatNumber(use.count)}개`;
+    })
+    .join(', ');
 }
 
 /** 게임의 스킬 랭크 표기. 0 은 연습, 1~6 은 F~A, 7~15 는 9랭크~1랭크, 16 부터는 단. */
