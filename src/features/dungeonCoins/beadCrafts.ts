@@ -276,6 +276,22 @@ export function rankCrafts(crafts: readonly Omit<ValuedCraft, 'best'>[]): Valued
     .map(({ craft }) => ({ ...craft, best: top > 0 && rankKey(craft) === top }));
 }
 
+/**
+ * 추천대로 만들 때 재료 하나를 얼마나 쓰는지. count 는 모든 횟수에 들어가는 개수, held 는 그중 가진
+ * 재료로 채운 개수다. 구슬 재료는 나머지를 교환하는 구슬(beads), 사는 재료는 나머지를 사는 값(gold).
+ */
+export interface MaterialUsage {
+  itemId: number;
+  name: string;
+  kind: 'bead' | 'buy';
+  count: number;
+  held: number;
+  beads: number;
+  gold: number;
+  /** 사는 재료를 어디서 사는지. 마지막으로 고른 곳이다. 모두 가진 것으로 채웠으면 held. */
+  from?: 'npc' | 'auction' | 'held';
+}
+
 export interface BeadPlanPick {
   craft: ValuedCraft;
   times: number;
@@ -283,6 +299,37 @@ export interface BeadPlanPick {
   profit: number;
   /** 그중 가진 재료를 써서 만든 횟수. */
   heldTimes: number;
+  /** 재료마다 추천대로 만들 때 쓰는 양. 한 번 만들 때의 재료 순서와 같다. */
+  usage: MaterialUsage[];
+}
+
+/** 한 번 만든 값(valued)을 times 번만큼 재료 사용 내역에 더한다. */
+function addUsage(usage: MaterialUsage[], valued: Omit<ValuedCraft, 'best'>, times: number): MaterialUsage[] {
+  const byId = new Map(usage.map((row) => [`${row.kind}-${row.itemId}`, { ...row }]));
+  const add = (kind: 'bead' | 'buy', itemId: number, name: string, change: Partial<MaterialUsage>) => {
+    const key = `${kind}-${itemId}`;
+    const row = byId.get(key) ?? { itemId, name, kind, count: 0, held: 0, beads: 0, gold: 0 };
+    row.count += (change.count ?? 0) * times;
+    row.held += (change.held ?? 0) * times;
+    row.beads += (change.beads ?? 0) * times;
+    row.gold += (change.gold ?? 0) * times;
+    if (change.from) row.from = change.from;
+    byId.set(key, row);
+  };
+  for (const row of valued.beadRows)
+    add('bead', row.input.itemId, row.input.name, {
+      count: row.input.count,
+      held: row.held,
+      beads: row.beads,
+    });
+  for (const row of valued.inputs)
+    add('buy', row.input.itemId, row.input.name, {
+      count: row.input.count,
+      held: row.held,
+      gold: row.cost.status === 'ok' ? row.cost.cost : 0,
+      from: row.cost.status === 'ok' ? row.cost.from : undefined,
+    });
+  return [...byId.values()];
 }
 
 export interface BeadPlan {
@@ -342,6 +389,7 @@ export function planBeads(crafts: readonly ValuedCraft[], budget: number): BeadP
       beads: options[index].needBeads * count,
       profit: profitOf(options[index]) * count,
       heldTimes: 0,
+      usage: addUsage([], options[index], count),
     }))
     .sort((a, b) => b.profit - a.profit);
   return {
@@ -404,6 +452,7 @@ export function planWithInventory(
       pick.heldTimes += 1;
       pick.beads += chosen.needBeads;
       pick.profit += profit;
+      pick.usage = addUsage(pick.usage, chosen, 1);
     } else {
       picked.set(chosen.itemId, {
         craft: { ...chosen, best: false },
@@ -411,6 +460,7 @@ export function planWithInventory(
         heldTimes: 1,
         beads: chosen.needBeads,
         profit,
+        usage: addUsage([], chosen, 1),
       });
     }
   }
@@ -425,6 +475,7 @@ export function planWithInventory(
       existing.times += pick.times;
       existing.beads += pick.beads;
       existing.profit += pick.profit;
+      existing.usage = addUsage(existing.usage, pick.craft, pick.times);
     } else picked.set(pick.craft.itemId, pick);
   }
 

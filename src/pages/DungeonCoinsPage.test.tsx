@@ -239,13 +239,21 @@ describe('던전 코인 가치', () => {
     expect(screen.getAllByText('추천')).not.toHaveLength(0);
     // 표의 1회 값은 가진 재료를 빼지 않은 그대로다.
     expect(screen.getAllByText('211,428 G')).not.toHaveLength(0);
+
+    // 추천된 줄을 펼치면 추천대로 만들 때 쓰는 재료가 나온다. 가진 이빨 7개로 채워 구슬은 들지 않는다.
+    const closeButtons = within(dialog).getAllByRole('button', { name: '닫기' });
+    fireEvent.click(closeButtons[closeButtons.length - 1]);
+    fireEvent.click(screen.getAllByRole('button', { name: /펼치기|Expand row/i })[0]);
+    expect(await screen.findByText('추천대로 1번 만들 때 드는 재료')).toBeInTheDocument();
+    expect(screen.getByText('가진 것 7개, 구슬 0개')).toBeInTheDocument();
     expect(screen.getByText('0 / 0개')).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')!)).toEqual({
       5100329: 7,
     });
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: /가진 재료/ }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '초기화' }));
     expect(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')).toBeNull();
     expect(await screen.findByText(/가진 구슬 수를 입력하면/)).toBeInTheDocument();
-  });
+  }, 60_000); // 창을 열고 닫고 표를 여러 번 다시 그린다. 느린 기계에서 20초를 넘길 수 있다.
 });

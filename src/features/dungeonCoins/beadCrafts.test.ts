@@ -227,6 +227,21 @@ describe('planWithInventory', () => {
     );
     const [pick] = plan.picks;
     expect(pick).toMatchObject({ times: 3, heldTimes: 2, beads: 11 });
+    // 세 번 만들 때 재료마다 쓰는 양. 이빨 21개 중 10개는 가진 것, 나머지 11개는 구슬로.
+    // 마력석 60개 중 20개는 가진 것, 나머지 40개는 산다.
+    expect(pick.usage).toEqual([
+      { itemId: 1, name: '이빨', kind: 'bead', count: 21, held: 10, beads: 11, gold: 0 },
+      {
+        itemId: 3,
+        name: '마력석',
+        kind: 'buy',
+        count: 60,
+        held: 20,
+        beads: 0,
+        gold: 40_000,
+        from: 'auction',
+      },
+    ]);
     expect(plan.beadsUsed).toBe(11);
     // 차익: 100,000(가진 마력석) + 80,000 + 80,000
     expect(plan.profit).toBe(260_000);
