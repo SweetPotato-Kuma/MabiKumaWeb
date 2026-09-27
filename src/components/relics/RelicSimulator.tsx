@@ -7,6 +7,7 @@ import {
   Flex,
   Grid,
   Row,
+  Spin,
   Statistic,
   Table,
   Tooltip,
@@ -29,7 +30,7 @@ import {
   RELIC_MAX_LEVEL,
   relicValueAt,
 } from '@/features/relics/murias';
-import type { LastTrade, MuriasRow } from '@/features/relics/prices';
+import type { RelicPriceState } from '@/features/relics/priceFile';
 import {
   drawPrice,
   MURIAS_RELIC_POOL,
@@ -39,6 +40,7 @@ import {
   type RelicPoolEntry,
   type RelicSimulator as Simulator,
 } from '@/features/relics/simulator';
+import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
 
 const { Text } = Typography;
@@ -51,19 +53,12 @@ const ROW_ICON = 24;
 const PAGE_SIZE = 20;
 
 /** 시세를 받는 중, 받았음, 받을 수 없음. */
-type PriceState = 'loading' | 'ready' | 'off';
+type PriceState = RelicPriceState['status'];
 
 /** 결과 하나를 그릴 때 필요한 것. 값은 시세를 받기 전이거나 모르면 null. */
 interface PricedDraw extends RelicDraw {
   price: DrawPrice | null;
   found: { arcana: Arcana; skill: ArcanaSkill } | null;
-}
-
-/** 시세 화면이 넘겨주는 것. */
-export interface SimulatorPrices {
-  rows: readonly MuriasRow[];
-  lastTrades: ReadonlyMap<string, (LastTrade | null)[]>;
-  ideaPrice: number | null;
 }
 
 /** "490% 증가". 레벨의 수치와 증감 말. */
@@ -196,20 +191,55 @@ function StatTitle({ label, detail }: { label: string; detail: string }) {
   );
 }
 
+/** 시세가 언제 것인지, 받는 중인지. 게임 데이터 지연 고지를 함께 적는다. */
+function PriceFreshness({ prices }: { prices: RelicPriceState }) {
+  const note = (text: string) => (
+    <Text type="secondary" style={{ fontSize: 12 }}>
+      {text}
+    </Text>
+  );
+  if (prices.status === 'loading')
+    return (
+      <Flex gap={6} align="center" role="status">
+        <Spin size="small" />
+        {note('시세를 받는 중입니다. 뽑기는 기다리지 않고 됩니다.')}
+      </Flex>
+    );
+  if (prices.status === 'off')
+    return note(
+      prices.error
+        ? '시세를 받지 못했습니다. 뽑기는 그대로 되고, 시세 칸만 비어 있습니다.'
+        : '지금은 시세를 받을 수 없습니다. 뽑기는 그대로 되고, 시세 칸만 비어 있습니다.',
+    );
+  return (
+    <Flex gap={6} align="center" wrap>
+      {note(
+        `${snapshotAgeLabel(prices.prices.at)} 모은 경매장 시세입니다. 게임 데이터는 평균 10분 지연됩니다.`,
+      )}
+      {prices.refreshing ? (
+        <Flex gap={4} align="center" role="status">
+          <Spin size="small" />
+          {note('새 시세를 받는 중입니다.')}
+        </Flex>
+      ) : null}
+    </Flex>
+  );
+}
+
 const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
 
 /**
  * 무리아스의 유물(이데아) 복원 시뮬레이터. 단추를 누르면 옵션과 레벨을 고르게 뽑아 쌓는다.
  * 골드도 아이템도 들지 않는다. 나온 유물에는 지금 시세를 붙여, 실제로 열었다면 무엇이 나왔을지와
- * 그 값이 어느 정도인지를 함께 본다. 시세는 매물을 받은 뒤에 붙고, 받지 못해도 뽑기는 된다.
+ * 그 값이 어느 정도인지를 함께 본다. 시세는 워커가 모아 둔 작은 파일에서 오고(priceFile.ts), 받지 못해도 뽑기는 된다.
  */
 export function RelicSimulatorView({
   simulator,
   prices,
 }: {
   simulator: Simulator;
-  /** 시세. 받는 중이면 'loading', 받지 못했거나 받을 수 없으면 null. 시세가 없어도 뽑기는 된다. */
-  prices: SimulatorPrices | 'loading' | null;
+  /** 시세. 받지 못해도 뽑기는 된다. */
+  prices: RelicPriceState;
 }) {
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
@@ -224,21 +254,18 @@ export function RelicSimulatorView({
       ),
     [arcanas],
   );
-  const ready = prices !== null && prices !== 'loading' ? prices : null;
-  const rows = ready?.rows;
-  const rowsByKey = useMemo(() => new Map((rows ?? []).map((row) => [row.key, row])), [rows]);
-  const lastTrades = ready?.lastTrades;
+  const ready = prices.status === 'ready' ? prices.prices : null;
   const priced = useMemo(
     () =>
       simulator.draws.map((draw): PricedDraw => ({
         ...draw,
-        price: lastTrades ? drawPrice(draw, rowsByKey, lastTrades) : null,
+        price: ready ? drawPrice(draw, ready) : null,
         found: foundByName.get(draw.option.name) ?? null,
       })),
-    [simulator.draws, rowsByKey, lastTrades, foundByName],
+    [simulator.draws, ready, foundByName],
   );
 
-  const state: PriceState = ready ? 'ready' : prices === 'loading' ? 'loading' : 'off';
+  const state = prices.status;
   const loading = state === 'loading';
   const ideaPrice = ready?.ideaPrice ?? null;
   const count = priced.length;
@@ -348,6 +375,7 @@ export function RelicSimulatorView({
           </Text>
         </Flex>
       </Card>
+      <PriceFreshness prices={prices} />
 
       {count === 0 ? (
         <EmptyState

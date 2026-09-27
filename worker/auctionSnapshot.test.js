@@ -149,9 +149,13 @@ describe('장비 매물 모으기', () => {
     // 5시 파일은 새 목록도 앞 목록도 가리키지 않으니 지워졌다.
     expect(env.ICONS.store.has(first.file)).toBe(false);
     const stamps = new Set(
-      [...env.ICONS.store.keys()].filter((key) => key !== 'auction/manifest.json').map((key) => key.split('/')[1]),
+      [...env.ICONS.store.keys()]
+        .filter((key) => key.startsWith('auction/') && key !== 'auction/manifest.json')
+        .map((key) => key.split('/')[1]),
     );
     expect([...stamps].sort()).toEqual(['20260926T051000Z', '20260926T052000Z']);
+    // 유물 카테고리를 받은 김에 쓴 시세 파일은 매물 파일을 지울 때 함께 지우지 않는다.
+    expect(env.ICONS.store.has('prices/murias-relics.js')).toBe(true);
   });
 
   it('저장소나 키가 없으면 건너뛴다', async () => {

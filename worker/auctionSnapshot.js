@@ -22,7 +22,12 @@
  * 앞 목록을 남기는 것은 막 목록을 받아 간 화면이 파일을 받을 수 있게 하려는 것이다.
  */
 
+import { writeRelicPrices } from './relicPrices.js';
+
 const NEXON_LIST_URL = 'https://open.api.nexon.com/mabinogi/v1/auction/list';
+
+/** 받은 김에 무리아스의 유물 시세 파일도 쓰는 카테고리(relicPrices.js). */
+const RELIC_CATEGORY = '유물';
 
 export const SNAPSHOT_PATH = '/auction/snapshot';
 export const SNAPSHOT_COLLECT_PATH = '/auction/snapshot/collect';
@@ -205,6 +210,7 @@ export async function collectSnapshot(env, now = Date.now()) {
   const categories = {};
   const failed = [];
   let total = 0;
+  let relics = null;
 
   const queue = [...SNAPSHOT_CATEGORIES];
   const work = async () => {
@@ -219,6 +225,7 @@ export async function collectSnapshot(env, now = Date.now()) {
         });
         categories[category] = { file, at: startedAt, count: items.length };
         total += items.length;
+        if (category === RELIC_CATEGORY) relics = { items, at: startedAt };
       } catch (caught) {
         failed.push(`${category}: ${caught instanceof Error ? caught.message : String(caught)}`);
         const kept = previous?.categories?.[category];
@@ -227,6 +234,13 @@ export async function collectSnapshot(env, now = Date.now()) {
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, work));
+
+  // 시세 파일은 덤이다. 쓰지 못해도 매물 목록은 그대로 바꾼다.
+  const relicPrices = relics
+    ? await writeRelicPrices(env, relics.items, relics.at).catch((caught) =>
+        caught instanceof Error ? caught.message : String(caught),
+      )
+    : null;
 
   const manifest = { at: now, categories };
   await env.ICONS.put(MANIFEST_KEY, JSON.stringify(manifest), {
@@ -247,6 +261,7 @@ export async function collectSnapshot(env, now = Date.now()) {
     items: total,
     failed,
     removed: stale.length,
+    relicPrices,
     seconds: Math.round((Date.now() - now) / 1000),
   };
 }

@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react';
 import addSvg from '@material-symbols/svg-400/rounded/add.svg?raw';
 import backpackSvg from '@material-symbols/svg-400/rounded/backpack.svg?raw';
+import casinoSvg from '@material-symbols/svg-400/rounded/casino.svg?raw';
 import bugReportSvg from '@material-symbols/svg-400/rounded/bug_report.svg?raw';
 import chatSvg from '@material-symbols/svg-400/rounded/chat.svg?raw';
 import confirmationNumberSvg from '@material-symbols/svg-400/rounded/confirmation_number.svg?raw';
@@ -92,6 +93,7 @@ export const BackpackIcon = createIcon(backpackSvg, 'BackpackIcon');
 export const BagIcon = createIcon(shoppingBagSvg, 'BagIcon');
 export const BookIcon = createIcon(menuBookSvg, 'BookIcon');
 export const BugIcon = createIcon(bugReportSvg, 'BugIcon');
+export const DiceIcon = createIcon(casinoSvg, 'DiceIcon');
 export const ChatIcon = createIcon(chatSvg, 'ChatIcon');
 export const DarkModeIcon = createIcon(darkModeSvg, 'DarkModeIcon');
 export const DeleteIcon = createIcon(deleteSvg, 'DeleteIcon');

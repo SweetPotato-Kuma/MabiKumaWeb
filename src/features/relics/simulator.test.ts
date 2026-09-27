@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RELIC_MAX_LEVEL } from './murias';
-import { lastTradesByRow, summarizeMurias } from './prices';
+import { relicPricesFromFile } from './priceFile';
 import { drawPrice, drawRelic, MURIAS_RELIC_POOL, RELIC_OUTCOMES } from './simulator';
 
 /** 정해 둔 값을 차례로 내놓는 난수. */
@@ -8,12 +8,6 @@ const sequence = (...values: number[]) => {
   let index = 0;
   return () => values[index++ % values.length];
 };
-
-const murias = (value: string, price: number) => ({
-  item_name: '무리아스의 유물',
-  auction_price_per_unit: price,
-  item_option: [{ option_type: '무리아스 유물', option_value: value }],
-});
 
 describe('drawRelic', () => {
   it('옵션과 레벨을 따로 고른다', () => {
@@ -50,27 +44,27 @@ describe('drawPrice', () => {
   const overDrive = MURIAS_RELIC_POOL.find(
     (option) => option.name === '오버 드라이브 폭발 공격 대미지',
   )!;
-  const summary = summarizeMurias([
-    murias('오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 95_000_000),
-    murias('오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 80_000_000),
-  ]);
-  const rowsByKey = new Map(summary.rows.map((row) => [row.key, row]));
-  const trades = lastTradesByRow([
-    ['오버 드라이브 폭발 공격 대미지 560% 증가 (최대 700%)', 200_000_000, '2026-09-25T03:00:00Z'],
-  ]);
+  const prices = relicPricesFromFile({
+    at: 0,
+    idea: [134_000_000, 2],
+    offers: [['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 80_000_000, 2]],
+    trades: [
+      ['오버 드라이브 폭발 공격 대미지 560% 증가 (최대 700%)', 200_000_000, '2026-09-25T03:00:00Z'],
+    ],
+  });
 
   it('그 레벨의 지금 최저가를 쓴다', () => {
-    expect(drawPrice({ option: overDrive, level: 7 }, rowsByKey, trades)).toEqual({
+    expect(drawPrice({ option: overDrive, level: 7 }, prices)).toEqual({
       price: 80_000_000,
       source: 'listing',
     });
   });
 
   it('매물이 없으면 최종 거래가를, 그것도 없으면 null 을 준다', () => {
-    expect(drawPrice({ option: overDrive, level: 8 }, rowsByKey, trades)).toEqual({
+    expect(drawPrice({ option: overDrive, level: 8 }, prices)).toEqual({
       price: 200_000_000,
       source: 'trade',
     });
-    expect(drawPrice({ option: overDrive, level: 1 }, rowsByKey, trades)).toBeNull();
+    expect(drawPrice({ option: overDrive, level: 1 }, prices)).toBeNull();
   });
 });

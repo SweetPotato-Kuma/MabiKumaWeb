@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Button,
@@ -20,10 +21,11 @@ import logoMark from '@/assets/logo-mark.png';
 import wordmarkDark from '@/assets/wordmark-dark.png';
 import wordmark from '@/assets/wordmark.png';
 import { IssueReportButton } from '@/components/IssueReportButton';
+import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
-import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, ImageIcon, KeyIcon, LightModeIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
+import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, ImageIcon, KeyIcon, LightModeIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -33,7 +35,7 @@ type NavItem = { key: string; icon: ReactNode; label: ReactNode; children?: NavI
 /**
  * 내비는 데스크톱에서 한 줄을 넘지 않는다. 좁아지면 antd 가 알아서 넘침 메뉴로 접는다.
  *
- * NPC 상점에서 찾는 것들은 한 칸 아래로 묶는다. 상점마다 화면이 하나씩 늘어나도 헤더가
+ * 시뮬레이터와 NPC 상점에서 찾는 것들은 한 칸 아래로 묶는다. 화면이 하나씩 늘어나도 헤더가
  * 한 줄을 넘지 않게 하려는 것이다. 묶음 칸 자체는 화면이 없어 누르면 펼쳐지기만 한다.
  */
 const NAV_ITEMS: NavItem[] = [
@@ -45,6 +47,18 @@ const NAV_ITEMS: NavItem[] = [
     label: <NavLink to="/dungeon-coins">던전 코인</NavLink>,
   },
   { key: '/relics', icon: <MuseumIcon />, label: <NavLink to="/relics">유물 시세</NavLink> },
+  {
+    key: 'simulator',
+    icon: <DiceIcon />,
+    label: '시뮬레이터',
+    children: [
+      {
+        key: '/relic-simulator',
+        icon: <MuseumIcon />,
+        label: <NavLink to="/relic-simulator">무리아스의 유물 복원</NavLink>,
+      },
+    ],
+  },
   {
     key: 'npc-shop',
     icon: <ShopIcon />,
@@ -128,6 +142,14 @@ export function RootLayout() {
   const hasAdminKey = useHasAdminKey();
   const isDark = useResolvedThemeMode() === 'dark';
   usePageMeta(location.pathname);
+
+  // 복원 시뮬레이터의 시세 파일은 작다. 첫 화면을 다 그린 뒤 미리 받아 두면 시뮬레이터를
+  // 처음 여는 사람도 나온 유물의 시세를 기다리지 않는다.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const timer = window.setTimeout(() => prefetchRelicPrices(queryClient), 1500);
+    return () => window.clearTimeout(timer);
+  }, [queryClient]);
 
   const navItems: MenuProps['items'] = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
 

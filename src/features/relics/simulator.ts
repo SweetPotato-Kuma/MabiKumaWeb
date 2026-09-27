@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { RELIC_LEVELS, type RelicScale } from './murias';
-import { rowKeyOf, type LastTrade, type MuriasRow } from './prices';
+import type { RelicPrices } from './priceFile';
+import { rowKeyOf } from './prices';
 
 /**
  * 무리아스의 유물(이데아) 복원 시뮬레이터.
@@ -115,13 +116,12 @@ export interface DrawPrice {
  */
 export function drawPrice(
   draw: Pick<RelicDraw, 'option' | 'level'>,
-  rowsByKey: ReadonlyMap<string, MuriasRow>,
-  lastTrades: ReadonlyMap<string, (LastTrade | null)[]>,
+  prices: Pick<RelicPrices, 'listed' | 'lastTrades'>,
 ): DrawPrice | null {
   const key = rowKeyOf(draw.option);
-  const listed = rowsByKey.get(key)?.levels[draw.level - 1];
-  if (listed) return { price: listed.lowest, source: 'listing' };
-  const trade = lastTrades.get(key)?.[draw.level - 1];
+  const listed = prices.listed.get(key)?.[draw.level - 1];
+  if (listed != null) return { price: listed, source: 'listing' };
+  const trade = prices.lastTrades.get(key)?.[draw.level - 1];
   return trade ? { price: trade.price, source: 'trade' } : null;
 }
 
@@ -135,8 +135,8 @@ export interface RelicSimulator {
 }
 
 /**
- * 복원 기록. 유물 시세 화면이 들고 있어 다른 탭을 보고 와도 남는다. 새로 고치면 처음부터다.
- * 저장할 까닭이 없는 놀이 기록이라 브라우저에 남기지 않는다.
+ * 복원 기록. 새로 고치거나 화면을 떠나면 처음부터다. 저장할 까닭이 없는 놀이 기록이라
+ * 브라우저에 남기지 않는다.
  */
 export function useRelicSimulator(random: RandomSource = Math.random): RelicSimulator {
   const [state, setState] = useState<{ draws: RelicDraw[]; lastBatch: number }>({

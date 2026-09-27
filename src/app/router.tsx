@@ -10,6 +10,7 @@ import { BagsPage } from '@/pages/BagsPage';
 import { MagmellPassPage } from '@/pages/MagmellPassPage';
 import { DungeonCoinsPage } from '@/pages/DungeonCoinsPage';
 import { RelicsPage } from '@/pages/RelicsPage';
+import { RelicSimulatorPage } from '@/pages/RelicSimulatorPage';
 import { ItemCardPage } from '@/pages/ItemCardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PrivacyPage } from '@/pages/PrivacyPage';
@@ -53,6 +54,7 @@ export const router = createBrowserRouter(
         { path: 'magmell-pass', element: <MagmellPassPage /> },
         { path: 'dungeon-coins', element: <DungeonCoinsPage /> },
         { path: 'relics', element: <RelicsPage /> },
+        { path: 'relic-simulator', element: <RelicSimulatorPage /> },
         { path: 'privacy', element: <PrivacyPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },
