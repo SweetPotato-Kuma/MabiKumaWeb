@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { fetchAuctionList } from '@/features/auction/api';
+import { resetInventoryCache } from '@/features/dungeonCoins/inventory';
 import { DungeonCoinsPage } from '@/pages/DungeonCoinsPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
@@ -21,6 +22,49 @@ const LISTINGS: Record<string, number[]> = {
   마력석: [1_000],
 };
 
+/** 가공한 이빨(100) = 단단한 늑대의 이빨(구슬 1개) 7 + 마력석 20. 가공한 이빨은 장비(200) 의 재료다. */
+const BRIE_RECIPES = {
+  updated: '2026-09-26',
+  skills: [{ id: 10013, name: '핸디크래프트', count: 2 }],
+  items: {
+    5100329: ['단단한 늑대의 이빨', 1],
+    5100360: ['단단한 늑대의 이빨(거래 불가)', 0],
+    5100330: ['마력석', 1],
+    100: ['마력이 깃든 늑대의 이빨', 1],
+    200: ['소울 리버레이트 보우', 1],
+  },
+  recipes: [
+    {
+      item: 100,
+      skill: 10013,
+      rank: 13,
+      yield: 1,
+      materials: [
+        [[5100329, 5100360], 7],
+        [[5100330], 20],
+      ],
+    },
+    { item: 200, skill: 10013, rank: 16, yield: 1, materials: [[[100], 24]] },
+  ],
+};
+
+/**
+ * 제작법을 읽고 표를 다시 그리는 기다림. 전체 테스트를 한꺼번에 돌리면 기본 1초를 넘길 때가 있다.
+ */
+const SLOW = { timeout: 5_000 };
+
+/** 제작법 파일만 돌려주고 나머지는 없는 것으로 둔다. */
+function stubRecipes() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      String(url).includes('recipes.json')
+        ? new Response(JSON.stringify(BRIE_RECIPES), { status: 200 })
+        : new Response('', { status: 404 }),
+    ),
+  );
+}
+
 function renderPage(path = '/dungeon-coins') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -36,6 +80,8 @@ function renderPage(path = '/dungeon-coins') {
 
 describe('던전 코인 가치', () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    resetInventoryCache();
     // 이름 인덱스 파일은 없는 것으로 둔다. 카테고리로 찾는 그림만 빠진다.
     vi.stubGlobal(
       'fetch',
@@ -105,39 +151,7 @@ describe('던전 코인 가치', () => {
   });
 
   it('브리 레흐 탭은 가진 구슬로 가공해 팔 때의 차익을 계산한다', async () => {
-    // 가공한 이빨(100) = 단단한 늑대의 이빨(구슬 1개) 7 + 마력석 20. 가공한 이빨은 장비(200) 의 재료다.
-    const recipes = {
-      updated: '2026-09-26',
-      skills: [{ id: 10013, name: '핸디크래프트', count: 2 }],
-      items: {
-        5100329: ['단단한 늑대의 이빨', 1],
-        5100360: ['단단한 늑대의 이빨(거래 불가)', 0],
-        5100330: ['마력석', 1],
-        100: ['마력이 깃든 늑대의 이빨', 1],
-        200: ['소울 리버레이트 보우', 1],
-      },
-      recipes: [
-        {
-          item: 100,
-          skill: 10013,
-          rank: 13,
-          yield: 1,
-          materials: [
-            [[5100329, 5100360], 7],
-            [[5100330], 20],
-          ],
-        },
-        { item: 200, skill: 10013, rank: 16, yield: 1, materials: [[[100], 24]] },
-      ],
-    };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) =>
-        String(url).includes('recipes.json')
-          ? new Response(JSON.stringify(recipes), { status: 200 })
-          : new Response('', { status: 404 }),
-      ),
-    );
+    stubRecipes();
     renderPage('/dungeon-coins?dungeon=brie-lech');
 
     // 교환 가치가 먼저 보이고, 탭 바로 아래 전환 단추로 계산기를 연다.
@@ -145,7 +159,7 @@ describe('던전 코인 가치', () => {
     fireEvent.click(screen.getByText('가공해 팔기'));
 
     // 1,500,000 - 마력석 20 x 1,000 = 1,480,000. 구슬 7개로 나누면 211,428.
-    expect(await screen.findAllByText('211,428 G')).not.toHaveLength(0);
+    expect(await screen.findAllByText('211,428 G', {}, SLOW)).not.toHaveLength(0);
     expect(screen.getAllByText(/1,480,000 G/)).not.toHaveLength(0);
     expect(screen.queryByRole('link', { name: '소울 리버레이트 보우' })).toBeNull();
 
@@ -154,7 +168,7 @@ describe('던전 코인 가치', () => {
     expect(screen.getByLabelText('가진 구슬')).toHaveValue('');
 
     fireEvent.change(screen.getByLabelText('가진 구슬'), { target: { value: '15' } });
-    expect(await screen.findAllByText('2,960,000 G')).not.toHaveLength(0);
+    expect(await screen.findAllByText('2,960,000 G', {}, SLOW)).not.toHaveLength(0);
     expect(screen.getByText('14 / 15개')).toBeInTheDocument();
     expect(screen.queryByText(/가진 구슬 수를 입력하면/)).toBeNull();
   });
@@ -198,5 +212,29 @@ describe('던전 코인 가치', () => {
     expect(asked).not.toContain('고리아스 동력원');
     expect(asked).toContain('달아오른 광두정');
     vi.unstubAllEnvs();
+  });
+
+  it('가진 재료를 넣으면 그만큼 구슬과 살 재료를 빼고, 이 브라우저에 남긴다', async () => {
+    stubRecipes();
+    renderPage('/dungeon-coins?dungeon=brie-lech&view=craft');
+    expect(await screen.findAllByText('211,428 G', {}, SLOW)).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /가진 재료/ }));
+    const dialog = await screen.findByRole('dialog', {}, SLOW);
+    // 구슬로 교환해 둔 이빨 7개: 구슬 없이 한 번 만들 수 있다.
+    fireEvent.change(within(dialog).getByLabelText('단단한 늑대의 이빨 가진 개수'), {
+      target: { value: '7' },
+    });
+    expect(await screen.findAllByText('구슬 불필요', {}, SLOW)).not.toHaveLength(0);
+    // 가진 구슬을 넣지 않아도 가진 재료로 만들 수 있는 만큼을 계산한다.
+    expect(screen.getByText(/가진 재료로 1번/)).toBeInTheDocument();
+    expect(screen.getByText('0 / 0개')).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')!)).toEqual({
+      5100329: 7,
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '초기화' }));
+    expect(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')).toBeNull();
+    expect(await screen.findByText(/가진 구슬 수를 입력하면/)).toBeInTheDocument();
   });
 });

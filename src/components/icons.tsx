@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 import addSvg from '@material-symbols/svg-400/rounded/add.svg?raw';
+import backpackSvg from '@material-symbols/svg-400/rounded/backpack.svg?raw';
 import bugReportSvg from '@material-symbols/svg-400/rounded/bug_report.svg?raw';
 import chatSvg from '@material-symbols/svg-400/rounded/chat.svg?raw';
 import confirmationNumberSvg from '@material-symbols/svg-400/rounded/confirmation_number.svg?raw';
@@ -87,6 +88,7 @@ function createIcon(svg: string, name: string) {
 export const AddIcon = createIcon(addSvg, 'AddIcon');
 export const ArrowDownIcon = createIcon(keyboardArrowDownSvg, 'ArrowDownIcon');
 export const AuctionIcon = createIcon(gavelSvg, 'AuctionIcon');
+export const BackpackIcon = createIcon(backpackSvg, 'BackpackIcon');
 export const BagIcon = createIcon(shoppingBagSvg, 'BagIcon');
 export const BookIcon = createIcon(menuBookSvg, 'BookIcon');
 export const BugIcon = createIcon(bugReportSvg, 'BugIcon');

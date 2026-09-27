@@ -102,7 +102,8 @@ export type InputCost =
   | { status: 'none' }
   /** 매물이 모자라 필요한 개수를 다 채우지 못한다. */
   | { status: 'short'; filled: number }
-  | { status: 'ok'; cost: number; from: 'npc' | 'auction' };
+  /** held 는 필요한 개수를 가진 재료로 다 채워 살 것이 없다는 뜻이다. */
+  | { status: 'ok'; cost: number; from: 'npc' | 'auction' | 'held' };
 
 export function inputCostOf(
   input: BuyInput,
@@ -128,24 +129,69 @@ export type CraftValue =
   | { status: 'loading' }
   /** 판매가나 재료 값 가운데 모르는 것이 있다. reason 이 무엇이 모자란지 말한다. */
   | { status: 'unknown'; reason: 'error' | 'no-sale' | 'no-material' }
-  | { status: 'ok'; sale: number; materialCost: number; profit: number; perBead: number };
+  | {
+      status: 'ok';
+      sale: number;
+      materialCost: number;
+      profit: number;
+      /** 가진 재료로 구슬 재료를 다 채워 구슬이 필요 없으면 null. */
+      perBead: number | null;
+    };
+
+/** 구슬 재료 한 칸. held 는 가진 재료로 채운 개수, beads 는 나머지를 교환하는 데 드는 구슬. */
+export interface BeadRow {
+  input: BeadInput;
+  held: number;
+  beads: number;
+}
+
+/** 사는 재료 한 칸. held 는 가진 재료로 채운 개수, cost 는 나머지를 사는 값. */
+export interface BuyRow {
+  input: BuyInput;
+  held: number;
+  cost: InputCost;
+}
 
 export interface ValuedCraft extends BeadCraft {
-  inputs: { input: BuyInput; cost: InputCost }[];
+  beadRows: BeadRow[];
+  inputs: BuyRow[];
+  /** 가진 재료를 빼고 한 번 만드는 데 드는 구슬. */
+  needBeads: number;
+  /** 가진 재료를 하나라도 썼는지. */
+  usesHeld: boolean;
   value: CraftValue;
   /** 구슬 1개당 차익이 가장 큰 줄. 차익이 날 때만 참이다. */
   best: boolean;
 }
 
+/** 가진 재료 개수. 아이템 번호로 찾는다. 없으면 0 이다. */
+export type HeldOf = (itemId: number) => number;
+
+const NOTHING_HELD: HeldOf = () => 0;
+
+/** 한 번 만들 때의 값. 가진 재료가 있으면 그만큼 구슬을 덜 쓰고 덜 산다. */
 export function valueCraft(
   craft: BeadCraft,
   priceOf: (name: string) => PriceState | undefined,
   npcUnitOf: (name: string) => number | undefined,
+  heldOf: HeldOf = NOTHING_HELD,
 ): Omit<ValuedCraft, 'best'> {
-  const inputs = craft.buyInputs.map((input) => ({
-    input,
-    cost: inputCostOf(input, priceOf(input.name), npcUnitOf(input.name)),
-  }));
+  const beadRows = craft.beadInputs.map((input): BeadRow => {
+    const held = Math.min(input.count, Math.max(0, heldOf(input.itemId)));
+    return { input, held, beads: (input.count - held) * (input.beads / input.count) };
+  });
+  const inputs = craft.buyInputs.map((input): BuyRow => {
+    const held = Math.min(input.count, Math.max(0, heldOf(input.itemId)));
+    const need = input.count - held;
+    const cost: InputCost =
+      need === 0
+        ? { status: 'ok', cost: 0, from: 'held' }
+        : inputCostOf({ ...input, count: need }, priceOf(input.name), npcUnitOf(input.name));
+    return { input, held, cost };
+  });
+  const needBeads = beadRows.reduce((sum, row) => sum + row.beads, 0);
+  const usesHeld = [...beadRows, ...inputs].some((row) => row.held > 0);
+
   const sale = priceOf(craft.name);
   const statuses = [...inputs.map(({ cost }) => cost.status), sale?.status ?? 'loading'];
 
@@ -169,25 +215,30 @@ export function valueCraft(
         sale: saleTotal,
         materialCost,
         profit,
-        perBead: Math.floor(profit / craft.beads),
+        perBead: needBeads > 0 ? Math.floor(profit / needBeads) : null,
       };
     }
   }
-  return { ...craft, inputs, value };
+  return { ...craft, beadRows, inputs, needBeads, usesHeld, value };
+}
+
+/** 순위를 매기는 값. 구슬 없이 만들 수 있고 차익이 나면 맨 위, 값을 모르면 맨 아래다. */
+function rankKey(craft: Omit<ValuedCraft, 'best'>): number {
+  if (craft.value.status !== 'ok') return -Infinity;
+  if (craft.value.perBead === null) return craft.value.profit > 0 ? Infinity : -Infinity;
+  return craft.value.perBead;
 }
 
 /** 값을 아는 줄은 구슬 1개당 차익이 큰 순, 모르는 줄은 그 뒤에 원래 순서대로. */
 export function rankCrafts(crafts: readonly Omit<ValuedCraft, 'best'>[]): ValuedCraft[] {
-  const perBeadOf = (craft: Omit<ValuedCraft, 'best'>) =>
-    craft.value.status === 'ok' ? craft.value.perBead : -Infinity;
-  const top = Math.max(-Infinity, ...crafts.map(perBeadOf));
+  const top = Math.max(-Infinity, ...crafts.map(rankKey));
   return crafts
     .map((craft, index) => ({ craft, index }))
     .sort((a, b) => {
-      const diff = perBeadOf(b.craft) - perBeadOf(a.craft);
+      const diff = rankKey(b.craft) - rankKey(a.craft);
       return (Number.isNaN(diff) ? 0 : diff) || a.index - b.index;
     })
-    .map(({ craft }) => ({ ...craft, best: top > 0 && perBeadOf(craft) === top }));
+    .map(({ craft }) => ({ ...craft, best: top > 0 && rankKey(craft) === top }));
 }
 
 export interface BeadPlanPick {
@@ -195,6 +246,8 @@ export interface BeadPlanPick {
   times: number;
   beads: number;
   profit: number;
+  /** 그중 가진 재료를 써서 만든 횟수. */
+  heldTimes: number;
 }
 
 export interface BeadPlan {
@@ -216,7 +269,7 @@ export const MAX_BEADS = 10_000;
 export function planBeads(crafts: readonly ValuedCraft[], budget: number): BeadPlan {
   const beads = Math.max(0, Math.min(MAX_BEADS, Math.floor(budget)));
   const options = crafts.filter(
-    (craft) => craft.value.status === 'ok' && craft.value.profit > 0 && craft.beads > 0,
+    (craft) => craft.value.status === 'ok' && craft.value.profit > 0 && craft.needBeads > 0,
   );
   const profitOf = (craft: ValuedCraft) => (craft.value.status === 'ok' ? craft.value.profit : 0);
 
@@ -225,7 +278,7 @@ export function planBeads(crafts: readonly ValuedCraft[], budget: number): BeadP
   for (let used = 1; used <= beads; used += 1) {
     best[used] = best[used - 1];
     for (let index = 0; index < options.length; index += 1) {
-      const weight = options[index].beads;
+      const weight = options[index].needBeads;
       if (weight > used) continue;
       const candidate = best[used - weight] + profitOf(options[index]);
       if (candidate > best[used]) {
@@ -244,17 +297,103 @@ export function planBeads(crafts: readonly ValuedCraft[], budget: number): BeadP
       continue;
     }
     times.set(index, (times.get(index) ?? 0) + 1);
-    used -= options[index].beads;
+    used -= options[index].needBeads;
   }
 
   const picks = [...times.entries()]
     .map(([index, count]) => ({
       craft: options[index],
       times: count,
-      beads: options[index].beads * count,
+      beads: options[index].needBeads * count,
       profit: profitOf(options[index]) * count,
+      heldTimes: 0,
     }))
     .sort((a, b) => b.profit - a.profit);
+  return {
+    picks,
+    beadsUsed: picks.reduce((sum, pick) => sum + pick.beads, 0),
+    profit: picks.reduce((sum, pick) => sum + pick.profit, 0),
+  };
+}
+
+export interface Pricing {
+  priceOf: (name: string) => PriceState | undefined;
+  npcUnitOf: (name: string) => number | undefined;
+}
+
+/**
+ * 가진 재료까지 쓰는 조합.
+ *
+ * 가진 재료는 쓰면 줄어드므로, 먼저 가진 재료를 쓰는 제작을 한 번씩 고른다. 고를 때마다 남은 가진
+ * 재료로 값을 다시 매기고, 쓰는 구슬 1개당 차익이 가장 큰 것(구슬이 필요 없으면 맨 먼저)을 고른다.
+ * 가진 재료로 차익이 나는 제작이 더 없으면 남은 구슬로 planBeads 를 푼다. 가진 재료를 쓰는 순서는
+ * 이렇게 하나씩 고른 것이라, 모든 경우를 다 따진 최선과 조금 다를 수 있다.
+ */
+export function planWithInventory(
+  crafts: readonly BeadCraft[],
+  budget: number,
+  pricing: Pricing,
+  inventory: ReadonlyMap<number, number>,
+): BeadPlan {
+  const remaining = new Map(inventory);
+  const heldOf: HeldOf = (itemId) => remaining.get(itemId) ?? 0;
+  let beadsLeft = Math.max(0, Math.min(MAX_BEADS, Math.floor(budget)));
+  const picked = new Map<number, BeadPlanPick>();
+  const ratio = (craft: Omit<ValuedCraft, 'best'>) => {
+    if (craft.value.status !== 'ok') return -Infinity;
+    return craft.needBeads === 0 ? Infinity : craft.value.profit / craft.needBeads;
+  };
+
+  // 한 번 고를 때마다 가진 재료가 하나 이상 줄어드므로 가진 재료 개수만큼만 돈다.
+  const limit = [...inventory.values()].reduce((sum, count) => sum + count, 0);
+  for (let round = 0; round < limit; round += 1) {
+    const candidates = crafts
+      .map((craft) => valueCraft(craft, pricing.priceOf, pricing.npcUnitOf, heldOf))
+      .filter(
+        (craft) =>
+          craft.usesHeld &&
+          craft.value.status === 'ok' &&
+          craft.value.profit > 0 &&
+          craft.needBeads <= beadsLeft,
+      );
+    if (candidates.length === 0) break;
+    const chosen = candidates.reduce((a, b) => (ratio(b) > ratio(a) ? b : a));
+    for (const row of [...chosen.beadRows, ...chosen.inputs]) {
+      if (row.held > 0) remaining.set(row.input.itemId, heldOf(row.input.itemId) - row.held);
+    }
+    beadsLeft -= chosen.needBeads;
+    const profit = chosen.value.status === 'ok' ? chosen.value.profit : 0;
+    const pick = picked.get(chosen.itemId);
+    if (pick) {
+      pick.times += 1;
+      pick.heldTimes += 1;
+      pick.beads += chosen.needBeads;
+      pick.profit += profit;
+    } else {
+      picked.set(chosen.itemId, {
+        craft: { ...chosen, best: false },
+        times: 1,
+        heldTimes: 1,
+        beads: chosen.needBeads,
+        profit,
+      });
+    }
+  }
+
+  const rest = planBeads(
+    rankCrafts(crafts.map((craft) => valueCraft(craft, pricing.priceOf, pricing.npcUnitOf))),
+    beadsLeft,
+  );
+  for (const pick of rest.picks) {
+    const existing = picked.get(pick.craft.itemId);
+    if (existing) {
+      existing.times += pick.times;
+      existing.beads += pick.beads;
+      existing.profit += pick.profit;
+    } else picked.set(pick.craft.itemId, pick);
+  }
+
+  const picks = [...picked.values()].sort((a, b) => b.profit - a.profit);
   return {
     picks,
     beadsUsed: picks.reduce((sum, pick) => sum + pick.beads, 0),
