@@ -20,6 +20,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
+import { RelicSimulatorView, type SimulatorPrices } from '@/components/relics/RelicSimulator';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
@@ -56,20 +57,23 @@ import {
   type OtherRelicRow,
   type PriceCell,
 } from '@/features/relics/prices';
+import { useRelicSimulator, type RelicSimulator } from '@/features/relics/simulator';
 import type { AuctionItem } from '@/features/auction/types';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
 
 const { Title, Text } = Typography;
 
-type TabKey = 'murias' | 'others';
+type TabKey = 'murias' | 'others' | 'simulator';
 
 const TAB_ITEMS: { key: TabKey; label: string }[] = [
   { key: 'murias', label: '무리아스의 유물' },
   { key: 'others', label: '그 밖의 유물' },
+  { key: 'simulator', label: '복원 시뮬레이터' },
 ];
 
-const tabOf = (value: string | null): TabKey => (value === 'others' ? 'others' : 'murias');
+const tabOf = (value: string | null): TabKey =>
+  TAB_ITEMS.find((item) => item.key === value)?.key ?? 'murias';
 
 /** 유물 그림 한 변. 던전 코인 표의 교환품 그림과 같다. */
 const ITEM_ICON = 28;
@@ -707,6 +711,34 @@ function OthersView({ items }: { items: AuctionItem[] }) {
   );
 }
 
+/**
+ * 복원 시뮬레이터 탭. 뽑기는 매물과 상관없이 바로 되고, 매물을 받으면 나온 유물에 시세가 붙는다.
+ * 시세는 무리아스의 유물 탭과 같은 셈(지금 최저가, 없으면 최종 거래가)이다.
+ */
+function SimulatorTab({
+  simulator,
+  items,
+  unavailable,
+}: {
+  simulator: RelicSimulator;
+  items: AuctionItem[] | undefined;
+  /** 매물을 받을 수 없다(조회 서버가 없거나 받다가 실패했다). */
+  unavailable: boolean;
+}) {
+  const summary = useMemo(() => (items ? summarizeMurias(items) : null), [items]);
+  const tradesQuery = useOptionTradesQuery(MURIAS_RELIC_NAME, MURIAS_OPTION_TYPE, !unavailable);
+  const lastTrades = useMemo(
+    () => lastTradesByRow(tradesQuery.data?.trades ?? []),
+    [tradesQuery.data],
+  );
+  const prices: SimulatorPrices | 'loading' | null = useMemo(() => {
+    if (unavailable) return null;
+    if (!summary || tradesQuery.isLoading) return 'loading';
+    return { rows: summary.rows, lastTrades, ideaPrice: summary.idea?.lowest ?? null };
+  }, [unavailable, summary, tradesQuery.isLoading, lastTrades]);
+  return <RelicSimulatorView simulator={simulator} prices={prices} />;
+}
+
 export function RelicsPage() {
   const canQuery = useCanQuery();
   const [params, setParams] = useSearchParams();
@@ -717,9 +749,19 @@ export function RelicsPage() {
   // 같은 조회라 표 안에서 다시 불러도 한 번만 나간다.
   useArcanaQuery();
   useOptionTradesQuery(MURIAS_RELIC_NAME, MURIAS_OPTION_TYPE, canQuery);
+  // 복원 기록은 탭을 옮겨도 남게 화면이 들고 있는다.
+  const simulator = useRelicSimulator();
 
   let body: ReactNode;
-  if (!canQuery) body = null;
+  if (tab === 'simulator') {
+    body = (
+      <SimulatorTab
+        simulator={simulator}
+        items={listings.items}
+        unavailable={!canQuery || (listings.error !== null && !listings.items)}
+      />
+    );
+  } else if (!canQuery) body = null;
   else if (listings.error) {
     body = (
       <Alert
@@ -747,7 +789,7 @@ export function RelicsPage() {
         </Title>
         <Text type="secondary">
           경매장에 올라온 유물의 최저가를 모아 봅니다. 무리아스의 유물은 스킬 옵션과 레벨별로
-          나눕니다.
+          나누고, 이데아를 복원하면 무엇이 나올지 무료로 뽑아 볼 수 있습니다.
         </Text>
       </Flex>
 

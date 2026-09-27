@@ -58,7 +58,7 @@ const addTo = (cell: PriceCell | null, price: number): PriceCell =>
 const isMurias = (name: string) => name.startsWith(MURIAS_RELIC_NAME);
 
 /** 옵션 줄의 키. 이름이 같고 최대치가 다른 옵션이 생겨도 줄이 섞이지 않게 둘을 잇는다. */
-const rowKeyOf = (relic: Pick<RelicOption, 'name' | 'max' | 'unit'>) =>
+export const rowKeyOf = (relic: Pick<RelicOption, 'name' | 'max' | 'unit'>) =>
   `${relic.name}\u0000${relic.max}${relic.unit}`;
 
 export function summarizeMurias(items: readonly PricedItem[]): MuriasSummary {

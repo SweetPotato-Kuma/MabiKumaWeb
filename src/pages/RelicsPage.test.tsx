@@ -186,6 +186,31 @@ describe('유물 시세', () => {
     expect(screen.getByLabelText(/값을 아는 3가지 중 2가지/)).toBeInTheDocument();
   });
 
+  it('복원 시뮬레이터는 뽑은 유물에 지금 시세를 붙이고, 탭을 옮겨도 기록을 남긴다', async () => {
+    // 옵션 30종 중 17번째(오버 드라이브), 레벨 10단계 중 7번째가 나오게 한다.
+    const random = vi.spyOn(Math, 'random');
+    random.mockReturnValueOnce(16.5 / 30).mockReturnValueOnce(6.5 / 10);
+    renderPage('/relics?tab=simulator');
+
+    expect(screen.getByText(/복원 단추를 누르면/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
+
+    const card = await screen.findByRole('region', { name: '방금 나온 유물' });
+    expect(within(card).getByText('오버 드라이브 폭발 공격 대미지')).toBeInTheDocument();
+    // 아르카나는 파일을 받은 뒤에 붙는다.
+    expect(await within(card).findByText('블래스트 랜서')).toBeInTheDocument();
+    expect(within(card).getByText('490% 증가')).toBeInTheDocument();
+    // 두 쪽을 다 받으면 7레벨 최저가 8,000만이 붙는다.
+    expect(await within(card).findByText('8,000만 G')).toBeInTheDocument();
+    random.mockRestore();
+
+    fireEvent.click(screen.getByRole('tab', { name: '무리아스의 유물' }));
+    fireEvent.click(screen.getByRole('tab', { name: '복원 시뮬레이터' }));
+    expect(screen.getByRole('button', { name: /처음부터/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /처음부터/ }));
+    expect(screen.getByText(/복원 단추를 누르면/)).toBeInTheDocument();
+  });
+
   it('그 밖의 유물은 일반, 특급, 이데아로 나눠 보여 준다', async () => {
     renderPage();
     await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
