@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 import pageMeta from '@/app/pageMeta.json';
+import { ITEM_PATH_PREFIX } from '@/features/auction/dictionary';
 import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
@@ -32,7 +33,15 @@ export const router = createBrowserRouter(
         // 방문자가 하려는 일은 시세 조회다. 소개 화면을 거치게 할 이유가 없다.
         { index: true, element: <Navigate to="/auction" replace /> },
         { path: 'auction', element: <AuctionPage /> },
-        { path: 'items', element: <ItemsPage /> },
+        /**
+         * 목록(/items)과 아이템 한 장(/item/<slug>)이 한 화면을 나눠 쓴다. 두 경로를 한 부모 아래
+         * 두어야 목록과 상세를 오갈 때 화면이 새로 그려지지 않는다. 상세를 보는 동안 숨겨 둔 목록의
+         * 검색어와 보던 쪽이 그 안에 들어 있다.
+         */
+        {
+          element: <ItemsPage />,
+          children: [{ path: 'items' }, { path: `${ITEM_PATH_PREFIX.slice(1)}:slug` }],
+        },
         // 옮겨 간 화면의 예전 주소. 빌드가 같은 목록으로 검색엔진용 HTML 을 굽는다.
         ...pageMeta.redirects.map((redirect) => ({
           path: redirect.from.slice(1),

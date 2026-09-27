@@ -113,6 +113,6 @@ describe('제작 비용', () => {
     fireEvent.click(within(tree).getAllByRole('button', { name: /펼치기|Expand row/i })[0]);
 
     const link = await within(tree).findByRole('link', { name: '철광석' });
-    expect(link.getAttribute('href')).toBe(`/items?category=&name=${encodeURIComponent('철광석')}`);
+    expect(link.getAttribute('href')).toBe('/item/철광석');
   });
 });

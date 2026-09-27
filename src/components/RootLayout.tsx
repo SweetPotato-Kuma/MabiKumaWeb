@@ -217,7 +217,8 @@ export function RootLayout() {
         }}
       >
         <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.6 }}>
-          데이터 출처{' '}
+          {/* 로고는 그림뿐이라 사이트 이름이 글자로 적힌 곳이 여기다. 검색엔진이 이름을 읽는 자리다. */}
+          마비쿠마(MabiKuma) · 데이터 출처{' '}
           <Typography.Link
             href="https://openapi.nexon.com/ko/game/mabinogi/"
             target="_blank"

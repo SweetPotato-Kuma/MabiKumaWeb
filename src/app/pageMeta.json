@@ -1,7 +1,13 @@
 {
-  "siteName": "MabiKuma",
-  "defaultTitle": "MabiKuma · 마비노기 도구상자",
-  "defaultDescription": "마비노기 오픈 API 기반 경매장 시세 조회 도구",
+  "siteName": "마비쿠마",
+  "alternateName": "MabiKuma",
+  "defaultTitle": "마비쿠마 (MabiKuma) · 마비노기 경매장 시세와 아이템 정보",
+  "defaultDescription": "마비쿠마(MabiKuma)는 마비노기 경매장 시세, 아이템 정보와 장비 시뮬레이터, 던전 코인 가치, 유물 시세를 넥슨 오픈 API로 찾아 보는 도구입니다.",
+  "item": {
+    "pathPrefix": "/item/",
+    "title": "{name} - 마비노기 아이템 시세와 정보",
+    "description": "마비노기 {name}의 경매장 최저가와 시세 기록, 그림과 설명, 제작 재료와 쓰이는 곳을 마비쿠마에서 봅니다."
+  },
   "pages": [
     {
       "path": "/auction",

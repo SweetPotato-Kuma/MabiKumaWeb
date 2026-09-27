@@ -150,7 +150,7 @@ describe('던전 코인 가치', () => {
 
     const link = await screen.findByRole('link', { name: '글라스 기브넨의 심장' });
     expect(link.getAttribute('href')).toBe(
-      `/items?category=&name=${encodeURIComponent('글라스 기브넨의 심장')}`,
+      '/item/글라스_기브넨의_심장',
     );
   });
 

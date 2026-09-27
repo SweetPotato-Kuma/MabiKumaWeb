@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import pageMeta from '@/app/pageMeta.json';
+import { itemSlug } from './itemSlug.mjs';
 
 /**
  * 아이템 이름 사전.
@@ -57,10 +59,18 @@ export function useItemIndexQuery() {
 /** 아이템 정보 화면의 주소. 목록 화면이 이 경로 하나다. */
 export const ITEMS_PATH = '/items';
 
+/** 아이템 한 장의 주소 앞머리. 뒤에 itemSlug 로 바꾼 이름이 붙는다. 빌드와 같은 값을 쓴다. */
+export const ITEM_PATH_PREFIX = pageMeta.item.pathPrefix;
+
 /**
  * 아이템 하나의 상세 주소. 장비면 시뮬레이터가, 아니면 그림과 설명이 열린다.
  * 경매장 상세에서도 이 주소로 넘어온다.
+ *
+ * 이름을 경로에 둔다. 빌드가 사전의 아이템마다 이 경로로 HTML 을 구워 검색엔진이 아이템 하나를
+ * 한 쪽으로 색인한다. 쿼리에 이름을 두면 모두 /items 한 쪽의 중복으로 읽힌다.
+ * 카테고리는 같은 이름이 여러 카테고리에 있을 때를 위해 쿼리로 붙인다. 없으면 화면이 이름 사전에서 찾는다.
  */
 export function itemInfoPath(category: string, name: string): string {
-  return `${ITEMS_PATH}?category=${encodeURIComponent(category)}&name=${encodeURIComponent(name)}`;
+  const path = `${ITEM_PATH_PREFIX}${itemSlug(name)}`;
+  return category ? `${path}?category=${encodeURIComponent(category)}` : path;
 }

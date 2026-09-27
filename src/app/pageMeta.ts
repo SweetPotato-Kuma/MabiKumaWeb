@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { itemNameFromSlug } from '@/features/auction/itemSlug.mjs';
 import pageMeta from './pageMeta.json';
 
 /**
@@ -13,7 +14,29 @@ export interface PageMeta {
   description: string;
 }
 
+/** 아이템 한 장의 제목과 설명. 빌드가 아이템마다 굽는 HTML 과 같은 문구다. */
+export function itemPageMeta(name: string): PageMeta {
+  const fill = (template: string) => template.replaceAll('{name}', name);
+  return {
+    title: `${fill(pageMeta.item.title)} · ${pageMeta.siteName}`,
+    description: fill(pageMeta.item.description),
+  };
+}
+
+/** /item/<slug> 이면 이름을, 아니면 null. 브라우저가 주는 경로는 퍼센트 인코딩되어 있다. */
+function itemNameOf(pathname: string): string | null {
+  if (!pathname.startsWith(pageMeta.item.pathPrefix)) return null;
+  try {
+    const name = itemNameFromSlug(decodeURIComponent(pathname.slice(pageMeta.item.pathPrefix.length)));
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
 export function pageMetaFor(pathname: string): PageMeta {
+  const itemName = itemNameOf(pathname);
+  if (itemName) return itemPageMeta(itemName);
   const page = pageMeta.pages.find((entry) => entry.path === pathname);
   if (!page) return { title: pageMeta.defaultTitle, description: pageMeta.defaultDescription };
   return { title: `${page.title} · ${pageMeta.siteName}`, description: page.description };

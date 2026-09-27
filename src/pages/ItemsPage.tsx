@@ -6,7 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AutoComplete,
   Breadcrumb,
@@ -35,7 +35,13 @@ import { ItemInfoDetail } from '@/components/ItemInfoDetail';
 import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
-import { ITEMS_PATH, itemInfoPath, normalizeForSearch } from '@/features/auction/dictionary';
+import {
+  ITEM_PATH_PREFIX,
+  ITEMS_PATH,
+  itemInfoPath,
+  normalizeForSearch,
+} from '@/features/auction/dictionary';
+import { itemNameFromSlug } from '@/features/auction/itemSlug.mjs';
 import {
   searchNames,
   useItemNameIndexQuery,
@@ -81,10 +87,14 @@ const parseId = (value: string | null): number | null => {
 const listPath = (category: string) =>
   category ? `${ITEMS_PATH}?category=${encodeURIComponent(category)}` : ITEMS_PATH;
 
+/** 주소에 쿼리를 더 붙인다. 아이템 주소는 카테고리가 없으면 쿼리 없이 끝난다. */
+const withQuery = (path: string, query: URLSearchParams) =>
+  query.size ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
+
 /**
  * 아이템 정보.
  *
- * 카테고리와 이름을 주소에 둔다. 이름까지 있으면 그 아이템의 상세를 보여 준다. 장비면
+ * 목록은 /items 에서 카테고리를 쿼리에 두고, 아이템 한 장은 /item/<이름> 에서 보여 준다. 장비면
  * 시뮬레이터, 아니면 그림과 설명이다. 목록에서 상세로 갈 때는 방문 기록을 남기므로 뒤로 가기로
  * 보던 목록에 돌아온다. 경매장 매물 상세에서도 같은 주소로 넘어온다.
  *
@@ -93,9 +103,21 @@ const listPath = (category: string) =>
  */
 export function ItemsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const category = searchParams.get('category') ?? '';
-  const detailName = searchParams.get('name') ?? '';
+  const slug = useMatch(`${ITEM_PATH_PREFIX}:slug`)?.params.slug ?? '';
+  const detailName = slug ? itemNameFromSlug(slug) : '';
   const recipeParam = parseId(searchParams.get('recipe'));
+
+  /**
+   * 카테고리는 같은 이름이 여러 카테고리에 있을 때만 주소가 알려 주면 된다. 검색에서 바로 들어온
+   * 아이템 주소에는 없으므로 이름 사전에서 찾는다. 찾기 전에는 장비인지 모르니 상세를 미룬다.
+   */
+  const nameIndexQuery = useItemNameIndexQuery();
+  const nameIndex = nameIndexQuery.data;
+  const categoryParam = searchParams.get('category') ?? '';
+  const category =
+    categoryParam ||
+    (detailName ? (nameIndex?.categoriesByName.get(detailName)?.[0] ?? '') : '');
+  const resolvingCategory = detailName !== '' && !categoryParam && nameIndexQuery.isPending;
 
   /**
    * 목록이 보던 조건(카테고리, 보기, 스킬). 전체에서 찾다가 상세를 열면 주소의 카테고리가 그 아이템
@@ -103,6 +125,20 @@ export function ItemsPage() {
    * 그래서 목록이 보일 때의 주소만 따라간다.
    */
   const [listSearch, setListSearch] = useState(searchParams.toString());
+  const navigate = useNavigate();
+
+  /**
+   * 예전 상세 주소(/items?category=..&name=..). 남에게 보낸 링크와 즐겨찾기가 살아 있게
+   * 아이템 주소로 옮긴다. 장비 조합 같은 나머지 쿼리는 그대로 들고 간다.
+   */
+  const legacyName = slug ? '' : (searchParams.get('name') ?? '');
+  if (legacyName) {
+    const rest = new URLSearchParams(searchParams);
+    rest.delete('category');
+    rest.delete('name');
+    return <Navigate replace to={withQuery(itemInfoPath(categoryParam, legacyName), rest)} />;
+  }
+
   if (!detailName && listSearch !== searchParams.toString()) setListSearch(searchParams.toString());
   const listParams = new URLSearchParams(listSearch);
   const listCategory = listParams.get('category') ?? '';
@@ -129,14 +165,13 @@ export function ItemsPage() {
    * 제작법 목록에서 고르면 그 아이템의 상세로 간다. 사전에 있는 이름이면 그 카테고리로 열어
    * 그림과 장비 시뮬레이터도 함께 보이게 한다. 같은 아이템의 제작법이 여럿이면 누른 것을 먼저 보인다.
    */
-  const navigate = useNavigate();
-  const nameIndex = useItemNameIndexQuery().data;
   const openRecipe = (recipe: Recipe, book: RecipeBook) => {
     const name = book.itemName(recipe.item);
     const itemCategory = nameIndex?.categoriesByName.get(name)?.[0] ?? '';
     const several = book.idsByName(name).flatMap((id) => book.recipesOf(id)).length > 1;
     window.scrollTo({ top: 0 });
-    navigate(`${itemInfoPath(itemCategory, name)}${several ? `&recipe=${recipe.index}` : ''}`);
+    const query = new URLSearchParams(several ? { recipe: String(recipe.index) } : {});
+    navigate(withQuery(itemInfoPath(itemCategory, name), query));
   };
 
   return (
@@ -157,7 +192,11 @@ export function ItemsPage() {
             />
           </Flex>
           {/* 다른 아이템으로 넘어가면 받아 둔 것과 고른 것을 새로 시작한다. */}
-          {isEquipmentCategory(category) ? (
+          {resolvingCategory ? (
+            <Card aria-busy="true">
+              <Skeleton active paragraph={{ rows: 6 }} />
+            </Card>
+          ) : isEquipmentCategory(category) ? (
             <EquipmentDetail
               key={`${category}\u0000${detailName}`}
               category={category}

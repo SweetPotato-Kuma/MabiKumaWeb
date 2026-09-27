@@ -109,7 +109,10 @@ function renderPage(path: string) {
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route path="/items" element={<ItemsPage />} />
+            <Route element={<ItemsPage />}>
+              <Route path="/items" />
+              <Route path="/item/:slug" />
+            </Route>
             <Route path="/dictionary" element={<LegacyRedirect to="/items" />} />
             <Route path="/equipment" element={<LegacyRedirect to="/items" />} />
           </Routes>
@@ -136,7 +139,7 @@ async function findListRow(name: string): Promise<HTMLElement> {
   return row as HTMLElement;
 }
 
-const SWORD_PATH = `/items?category=${encodeURIComponent('검')}&name=${encodeURIComponent('소울 리버레이트 소드')}`;
+const SWORD_PATH = `/item/${encodeURIComponent('소울_리버레이트_소드')}?category=${encodeURIComponent('검')}`;
 
 describe('아이템 정보 목록', () => {
   it('카테고리를 고르지 않아도 전체에서 이름으로 찾는다', async () => {
@@ -177,7 +180,7 @@ describe('아이템 정보 목록', () => {
     const option = matches.map((element) => element.closest('.ant-select-item-option')).find(Boolean);
     fireEvent.click(option as HTMLElement);
 
-    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=검&name=소울 리버레이트 소드');
+    expect(screen.getByTestId('url')).toHaveTextContent('/item/소울_리버레이트_소드?category=검');
     expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
   });
 
@@ -193,7 +196,7 @@ describe('아이템 정보 목록', () => {
 
     fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: '포션' } });
     fireEvent.click(await findListRow('생명력 50 포션'));
-    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=포션&name=생명력 50 포션');
+    expect(screen.getByTestId('url')).toHaveTextContent('/item/생명력_50_포션?category=포션');
 
     fireEvent.click(await screen.findByRole('link', { name: '목록' }));
     expect(screen.getByTestId('url')).toHaveTextContent(/^\/items$/);
@@ -207,7 +210,7 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
 
     fireEvent.click(await screen.findByText('소울 리버레이트 소드'));
 
-    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=검&name=소울 리버레이트 소드');
+    expect(screen.getByTestId('url')).toHaveTextContent('/item/소울_리버레이트_소드?category=검');
     expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '검' })).toHaveAttribute(
       'href',
@@ -231,7 +234,7 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
 
     fireEvent.click(await screen.findByText('생명력 50 포션'));
 
-    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=포션&name=생명력 50 포션');
+    expect(screen.getByTestId('url')).toHaveTextContent('/item/생명력_50_포션?category=포션');
     expect(await screen.findByRole('heading', { name: '생명력 50 포션' })).toBeInTheDocument();
     expect(screen.queryByText('장비 미리보기')).not.toBeInTheDocument();
   });
@@ -244,7 +247,26 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
     expect(
       await screen.findAllByText('최소 공격력 +60, 최대 공격력 +120, 보너스 대미지 +5%'),
     ).not.toHaveLength(0);
-    expect(screen.getByTestId('url')).toHaveTextContent('/items?category=검');
+    expect(screen.getByTestId('url')).toHaveTextContent('/item/소울_리버레이트_소드?category=검&sp=s7');
+  });
+
+  it('예전 상세 주소는 아이템 주소로 옮기고 조합을 들고 간다', async () => {
+    renderPage(
+      `/items?category=${encodeURIComponent('검')}&name=${encodeURIComponent('소울 리버레이트 소드')}&rv=10`,
+    );
+
+    expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
+    expect(screen.getByTestId('url')).toHaveTextContent('/item/소울_리버레이트_소드?category=검&rv=10');
+  });
+
+  it('검색에서 카테고리 없이 들어와도 이름 사전에서 카테고리를 찾아 시뮬레이터를 연다', async () => {
+    renderPage(`/item/${encodeURIComponent('소울_리버레이트_소드')}`);
+
+    expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '검' })).toHaveAttribute(
+      'href',
+      `/items?category=${encodeURIComponent('검')}`,
+    );
   });
 
   it('예전 사전 주소도 아이템 정보로 넘어간다', async () => {

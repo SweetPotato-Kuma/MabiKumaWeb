@@ -133,7 +133,7 @@ describe('매물 상세 모달', () => {
 
     const link = screen.getByRole('link', { name: /아이템 정보 보기/ });
     // 경매장 이름 앞의 @ 는 떼고 아이템 정보의 이름으로 보낸다.
-    expect(link).toHaveAttribute('href', '/items?category=%EA%B2%80&name=%EA%B8%80%EB%9D%BC%EB%94%94%EC%9A%B0%EC%8A%A4');
+    expect(link).toHaveAttribute('href', '/item/글라디우스?category=%EA%B2%80');
     expect(screen.getByText(/장비 시뮬레이터에서/)).toBeInTheDocument();
   });
 
@@ -142,7 +142,7 @@ describe('매물 상세 모달', () => {
 
     expect(screen.getByRole('link', { name: /아이템 정보 보기/ })).toHaveAttribute(
       'href',
-      '/items?category=%ED%8F%AC%EC%85%98&name=%EA%B8%80%EB%9D%BC%EB%94%94%EC%9A%B0%EC%8A%A4',
+      '/item/글라디우스?category=%ED%8F%AC%EC%85%98',
     );
     expect(screen.queryByText(/장비 시뮬레이터에서/)).not.toBeInTheDocument();
   });
