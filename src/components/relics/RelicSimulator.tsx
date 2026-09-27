@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useDeferredValue, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Button,
@@ -10,6 +10,7 @@ import {
   Spin,
   Statistic,
   Table,
+  Tag,
   Tooltip,
   Typography,
   theme,
@@ -87,9 +88,13 @@ function LevelLabel({ level, size = 13 }: { level: number; size?: number }) {
   );
 }
 
+/** 이데아 최저가 이상인 결과인지. 복원한 값보다 비싼 것이 나온 것이다. */
+const isAboveIdea = (price: DrawPrice | null, ideaPrice: number | null) =>
+  ideaPrice !== null && price !== null && price.price >= ideaPrice;
+
 /**
  * 값 한 칸. 지금 최저가는 본문색, 매물이 없어 최종 거래가를 쓴 것은 흐리게 "최종" 을 붙인다.
- * 이데아 최저가 이상이면 굵게 적는다. 유물 시세 표와 같은 규칙이다.
+ * 이데아 최저가 이상이면 굵은 빨강으로 적는다. 색만으로 가르지 않게 카드와 표에 글자 표시가 함께 붙는다.
  */
 function PriceText({
   price,
@@ -100,6 +105,7 @@ function PriceText({
   ideaPrice: number | null;
   state: PriceState;
 }) {
+  const { token } = theme.useToken();
   if (state !== 'ready')
     return (
       <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
@@ -112,18 +118,31 @@ function PriceText({
         기록 없음
       </Text>
     );
-  const strong = ideaPrice !== null && price.price >= ideaPrice;
+  const above = isAboveIdea(price, ideaPrice);
   const trade = price.source === 'trade';
   return (
     <Text
-      type={trade ? 'secondary' : undefined}
+      type={trade && !above ? 'secondary' : undefined}
       className="tnum"
       title={trade ? `최종 거래가 ${formatGold(price.price)}` : formatGold(price.price)}
-      style={{ whiteSpace: 'nowrap', fontWeight: strong ? 700 : undefined }}
+      style={{
+        whiteSpace: 'nowrap',
+        fontWeight: above ? 700 : undefined,
+        color: above ? token.colorError : undefined,
+      }}
     >
       {formatGoldShort(price.price)}
       {trade ? ' 최종' : ''}
     </Text>
+  );
+}
+
+/** 이데아 최저가 이상 표시. 빨간 색에 더해 글자로도 알린다. */
+function IdeaTag() {
+  return (
+    <Tag color="error" variant="solid" style={{ marginInlineEnd: 0, whiteSpace: 'nowrap' }}>
+      이데아 이상
+    </Tag>
   );
 }
 
@@ -149,8 +168,24 @@ function DrawCard({
   ideaPrice: number | null;
   state: PriceState;
 }) {
+  const { token } = theme.useToken();
+  const above = state === 'ready' && isAboveIdea(draw.price, ideaPrice);
   return (
-    <Card type="inner" size="small" variant="outlined">
+    <Card
+      type="inner"
+      size="small"
+      variant="outlined"
+      style={
+        above
+          ? {
+              borderColor: token.colorError,
+              // 테두리를 두껍게 보이되 칸 크기는 그대로 둔다.
+              boxShadow: `inset 0 0 0 1px ${token.colorError}`,
+              background: token.colorErrorBg,
+            }
+          : undefined
+      }
+    >
       <Flex gap={10} align="flex-start">
         {draw.found ? <SkillIcon skillId={draw.found.skill.id} size={CARD_ICON} /> : null}
         <Flex vertical gap={2} style={{ minWidth: 0, flex: 1 }}>
@@ -173,6 +208,7 @@ function DrawCard({
             시세
           </Text>
           <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
+          {above ? <IdeaTag /> : null}
         </Flex>
       </Flex>
     </Card>
@@ -226,67 +262,20 @@ function PriceFreshness({ prices }: { prices: RelicPriceState }) {
   );
 }
 
-const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
-
 /**
- * 무리아스의 유물(이데아) 복원 시뮬레이터. 단추를 누르면 옵션과 레벨을 고르게 뽑아 쌓는다.
- * 골드도 아이템도 들지 않는다. 나온 유물에는 지금 시세를 붙여, 실제로 열었다면 무엇이 나왔을지와
- * 그 값이 어느 정도인지를 함께 본다. 시세는 워커가 모아 둔 작은 파일에서 오고(priceFile.ts), 받지 못해도 뽑기는 된다.
+ * 복원 기록 표. 기록이 쌓일수록 그리는 데 오래 걸려, 방금 나온 유물 카드보다 한 박자 늦게 그린다
+ * (rows 는 useDeferredValue 로 늦춘 값이다). 같은 rows 면 다시 그리지 않는다.
  */
-export function RelicSimulatorView({
-  simulator,
-  prices,
+const HistoryTable = memo(function HistoryTable({
+  rows,
+  ideaPrice,
+  state,
 }: {
-  simulator: Simulator;
-  /** 시세. 받지 못해도 뽑기는 된다. */
-  prices: RelicPriceState;
+  rows: PricedDraw[];
+  ideaPrice: number | null;
+  state: PriceState;
 }) {
-  const screens = Grid.useBreakpoint();
-  const wide = screens.md ?? true;
-  const arcanaQuery = useArcanaQuery();
-  const arcanas = arcanaQuery.data?.arcanas;
-
-  // 옵션마다 스킬과 아르카나. 옵션은 30가지뿐이라 한 번에 찾아 둔다.
-  const foundByName = useMemo(
-    () =>
-      new Map(
-        MURIAS_RELIC_POOL.map((option) => [option.name, skillOfOption(option.name, arcanas ?? [])]),
-      ),
-    [arcanas],
-  );
-  const ready = prices.status === 'ready' ? prices.prices : null;
-  const priced = useMemo(
-    () =>
-      simulator.draws.map((draw): PricedDraw => ({
-        ...draw,
-        price: ready ? drawPrice(draw, ready) : null,
-        found: foundByName.get(draw.option.name) ?? null,
-      })),
-    [simulator.draws, ready, foundByName],
-  );
-
-  const state = prices.status;
-  const loading = state === 'loading';
-  const ideaPrice = ready?.ideaPrice ?? null;
-  const count = priced.length;
-  const latest = priced.slice(count - simulator.lastBatch).reverse();
-  const history = useMemo(() => [...priced].reverse(), [priced]);
-
-  const stats = useMemo(() => {
-    let top = 0;
-    let known = 0;
-    let total = 0;
-    let above = 0;
-    for (const draw of priced) {
-      if (draw.level === RELIC_MAX_LEVEL) top += 1;
-      if (!draw.price) continue;
-      known += 1;
-      total += draw.price.price;
-      if (ideaPrice !== null && draw.price.price >= ideaPrice) above += 1;
-    }
-    return { top, known, total, above };
-  }, [priced, ideaPrice]);
-
+  const { token } = theme.useToken();
   const columns: TableColumnsType<PricedDraw> = [
     {
       title: '번째',
@@ -345,10 +334,101 @@ export function RelicSimulatorView({
       align: 'right',
       sorter: (a, b) => (a.price?.price ?? -1) - (b.price?.price ?? -1),
       render: (_value, draw) => (
-        <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
+        <Flex vertical gap={2} align="flex-end">
+          <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
+          {state === 'ready' && isAboveIdea(draw.price, ideaPrice) ? <IdeaTag /> : null}
+        </Flex>
       ),
     },
   ];
+
+  return (
+    <Card variant="outlined" style={{ minWidth: 0 }} styles={{ body: { padding: 0 } }}>
+      <Table<PricedDraw>
+        columns={columns}
+        dataSource={rows}
+        rowKey="no"
+        size="small"
+        // 이데아 최저가 이상인 줄은 빨갛게 깐다. 시세 칸에 글자 표시도 함께 붙는다.
+        onRow={(draw) =>
+          state === 'ready' && isAboveIdea(draw.price, ideaPrice)
+            ? { style: { background: token.colorErrorBg } }
+            : {}
+        }
+        pagination={
+          rows.length > PAGE_SIZE
+            ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
+            : false
+        }
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: '아직 복원하지 않았습니다.' }}
+      />
+    </Card>
+  );
+});
+
+const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
+
+/**
+ * 무리아스의 유물(이데아) 복원 시뮬레이터. 단추를 누르면 옵션과 레벨을 고르게 뽑아 쌓는다.
+ * 골드도 아이템도 들지 않는다. 나온 유물에는 지금 시세를 붙여, 실제로 열었다면 무엇이 나왔을지와
+ * 그 값이 어느 정도인지를 함께 본다. 시세는 워커가 모아 둔 작은 파일에서 오고(priceFile.ts), 받지 못해도 뽑기는 된다.
+ */
+export function RelicSimulatorView({
+  simulator,
+  prices,
+}: {
+  simulator: Simulator;
+  /** 시세. 받지 못해도 뽑기는 된다. */
+  prices: RelicPriceState;
+}) {
+  const screens = Grid.useBreakpoint();
+  const wide = screens.md ?? true;
+  const arcanaQuery = useArcanaQuery();
+  const arcanas = arcanaQuery.data?.arcanas;
+
+  // 옵션마다 스킬과 아르카나. 옵션은 30가지뿐이라 한 번에 찾아 둔다.
+  const foundByName = useMemo(
+    () =>
+      new Map(
+        MURIAS_RELIC_POOL.map((option) => [option.name, skillOfOption(option.name, arcanas ?? [])]),
+      ),
+    [arcanas],
+  );
+  const ready = prices.status === 'ready' ? prices.prices : null;
+  const priced = useMemo(
+    () =>
+      simulator.draws.map((draw): PricedDraw => ({
+        ...draw,
+        price: ready ? drawPrice(draw, ready) : null,
+        found: foundByName.get(draw.option.name) ?? null,
+      })),
+    [simulator.draws, ready, foundByName],
+  );
+
+  const state = prices.status;
+  const loading = state === 'loading';
+  const ideaPrice = ready?.ideaPrice ?? null;
+  const count = priced.length;
+  const latest = priced.slice(count - simulator.lastBatch).reverse();
+  const history = useMemo(() => [...priced].reverse(), [priced]);
+  // 표는 카드보다 늦게 그린다. 누르자마자 카드에 결과와 시세가 먼저 뜬다.
+  const settledHistory = useDeferredValue(history);
+
+  const stats = useMemo(() => {
+    let top = 0;
+    let known = 0;
+    let total = 0;
+    let above = 0;
+    for (const draw of priced) {
+      if (draw.level === RELIC_MAX_LEVEL) top += 1;
+      if (!draw.price) continue;
+      known += 1;
+      total += draw.price.price;
+      if (ideaPrice !== null && draw.price.price >= ideaPrice) above += 1;
+    }
+    return { top, known, total, above };
+  }, [priced, ideaPrice]);
 
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
@@ -377,116 +457,106 @@ export function RelicSimulatorView({
       </Card>
       <PriceFreshness prices={prices} />
 
-      {count === 0 ? (
-        <EmptyState
-          variant="search"
-          description="복원 단추를 누르면 나온 유물과 지금 시세가 여기에 쌓입니다."
-        />
-      ) : (
-        <>
-          <Card variant="outlined">
-            {/* 네 칸. 768px 미만에서는 두 칸, 576px 미만에서는 한 칸으로 떨어진다. */}
-            <Row gutter={[24, 16]} align="top">
-              <Col xs={24} sm={12} md={6}>
-                <Statistic title="복원" value={formatNumber(count)} suffix="번" styles={NUMERIC} />
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <Statistic
-                  title={`${RELIC_MAX_LEVEL}레벨`}
-                  value={formatNumber(stats.top)}
-                  suffix="번"
-                  styles={NUMERIC}
-                />
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <Statistic
-                  title={
-                    <StatTitle
-                      label="이데아 최저가 이상"
-                      detail={
-                        ideaPrice === null
-                          ? '이데아 매물이 없거나 시세를 아직 받지 못해 견줄 수 없습니다.'
-                          : `나온 유물의 시세가 이데아 최저가 ${formatGold(ideaPrice)} 이상인 횟수입니다. 시세를 아는 ${formatNumber(stats.known)}번 가운데서 셉니다.`
-                      }
-                    />
+      {/*
+        뽑기 전에도 틀을 모두 그려 둔다. 첫 복원에서 요약 칸과 표를 새로 만들면 그만큼 결과가
+        늦게 떴다. 첫 복원은 빈칸을 채우기만 한다.
+      */}
+      <Card variant="outlined">
+        {/* 네 칸. 768px 미만에서는 두 칸, 576px 미만에서는 한 칸으로 떨어진다. */}
+        <Row gutter={[24, 16]} align="top">
+          <Col xs={24} sm={12} md={6}>
+            <Statistic title="복원" value={formatNumber(count)} suffix="번" styles={NUMERIC} />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Statistic
+              title={`${RELIC_MAX_LEVEL}레벨`}
+              value={formatNumber(stats.top)}
+              suffix="번"
+              styles={NUMERIC}
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Statistic
+              title={
+                <StatTitle
+                  label="이데아 최저가 이상"
+                  detail={
+                    ideaPrice === null
+                      ? '이데아 매물이 없거나 시세를 아직 받지 못해 견줄 수 없습니다.'
+                      : `나온 유물의 시세가 이데아 최저가 ${formatGold(ideaPrice)} 이상인 횟수입니다. 시세를 아는 ${formatNumber(stats.known)}번 가운데서 셉니다.`
                   }
-                  value={ideaPrice === null ? '-' : formatNumber(stats.above)}
-                  suffix={ideaPrice === null ? undefined : '번'}
-                  loading={loading}
-                  styles={NUMERIC}
                 />
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <Statistic
-                  title={
-                    <StatTitle
-                      label="나온 유물 시세 합계"
-                      detail={`그 옵션 그 레벨의 지금 최저가, 매물이 없으면 최종 거래가로 더했습니다. 매물도 거래 기록도 없는 ${formatNumber(count - stats.known)}번은 뺐습니다.`}
-                    />
-                  }
-                  value={ready ? formatGoldShort(stats.total) : '-'}
-                  loading={loading}
-                  styles={NUMERIC}
+              }
+              value={ideaPrice === null ? '-' : formatNumber(stats.above)}
+              suffix={ideaPrice === null ? undefined : '번'}
+              loading={loading}
+              styles={NUMERIC}
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Statistic
+              title={
+                <StatTitle
+                  label="나온 유물 시세 합계"
+                  detail={`그 옵션 그 레벨의 지금 최저가, 매물이 없으면 최종 거래가로 더했습니다. 매물도 거래 기록도 없는 ${formatNumber(count - stats.known)}번은 뺐습니다.`}
                 />
-                {ideaPrice !== null ? (
-                  <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                    이데아 {formatNumber(count)}개 최저가로는 {formatGoldShort(ideaPrice * count)}
-                  </Text>
-                ) : null}
-              </Col>
-            </Row>
-          </Card>
+              }
+              value={ready ? formatGoldShort(stats.total) : '-'}
+              loading={loading}
+              styles={NUMERIC}
+            />
+            {ideaPrice !== null && count > 0 ? (
+              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                이데아 {formatNumber(count)}개 최저가로는 {formatGoldShort(ideaPrice * count)}
+              </Text>
+            ) : null}
+          </Col>
+        </Row>
+      </Card>
 
-          <Flex vertical gap={8} role="region" aria-labelledby="relic-sim-latest">
-            <Text strong style={{ fontSize: 16 }} id="relic-sim-latest">
-              방금 나온 유물
-            </Text>
-            {/* 넓은 화면에서는 두 칸, 768px 미만에서는 한 칸. */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  wide && latest.length > 1 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
-                gap: 8,
-              }}
-            >
-              {latest.map((draw) => (
-                <DrawCard key={draw.no} draw={draw} ideaPrice={ideaPrice} state={state} />
-              ))}
-            </div>
-          </Flex>
+      <Flex vertical gap={8} role="region" aria-labelledby="relic-sim-latest">
+        <Text strong style={{ fontSize: 16 }} id="relic-sim-latest">
+          방금 나온 유물
+        </Text>
+        {/* 넓은 화면에서는 두 칸, 768px 미만에서는 한 칸. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns:
+              wide && latest.length > 1 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
+            gap: 8,
+          }}
+        >
+          {latest.map((draw) => (
+            <DrawCard key={draw.no} draw={draw} ideaPrice={ideaPrice} state={state} />
+          ))}
+        </div>
+        {count === 0 ? (
+          <EmptyState
+            size="small"
+            variant="search"
+            description="복원 단추를 누르면 나온 유물과 지금 시세가 여기에 쌓입니다."
+          />
+        ) : null}
+      </Flex>
 
-          <Flex
-            vertical
-            gap={8}
-            role="region"
-            aria-labelledby="relic-sim-history"
-            style={{ minWidth: 0 }}
-          >
-            <Text strong style={{ fontSize: 16 }} id="relic-sim-history">
-              복원 기록
-            </Text>
-            <Card variant="outlined" style={{ minWidth: 0 }} styles={{ body: { padding: 0 } }}>
-              <Table<PricedDraw>
-                columns={columns}
-                dataSource={history}
-                rowKey="no"
-                size="small"
-                pagination={
-                  history.length > PAGE_SIZE
-                    ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
-                    : false
-                }
-                scroll={{ x: 'max-content' }}
-              />
-            </Card>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              굵은 시세는 이데아 최저가 이상, "최종" 이 붙은 흐린 시세는 매물이 없어 최종 거래가를
-              적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의 매물을 봅니다.
-            </Text>
-          </Flex>
-        </>
-      )}
+      <Flex
+        vertical
+        gap={8}
+        role="region"
+        aria-labelledby="relic-sim-history"
+        style={{ minWidth: 0 }}
+      >
+        <Text strong style={{ fontSize: 16 }} id="relic-sim-history">
+          복원 기록
+        </Text>
+        <HistoryTable rows={settledHistory} ideaPrice={ideaPrice} state={state} />
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          빨간 줄과 "이데아 이상" 표시는 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린
+          시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의
+          매물을 봅니다.
+        </Text>
+      </Flex>
     </Flex>
   );
 }

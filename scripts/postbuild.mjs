@@ -95,6 +95,21 @@ function renderHtml({ path, title, description, head = [], body = '' }) {
 }
 
 /**
+ * 화면이 뜨자마자 쓸 데이터를 HTML 이 먼저 받게 한다. 앱 코드를 받고 실행하는 동안 파일도 함께
+ * 받아 두어, 화면이 그 파일을 부를 때는 이미 와 있다. 복원 시뮬레이터는 누르자마자 시세를 붙여야
+ * 해서 시세 파일(src/features/relics/priceFile.ts)을 이렇게 받는다. fetch 와 같은 방식(CORS,
+ * 쿠키 없음)이어야 브라우저가 받아 둔 것을 쓴다. CDN 주소를 모르는 빌드에서는 넣지 않는다.
+ */
+const iconBase = String(process.env.VITE_ICON_BASE_URL ?? '').replace(/\/+$/, '');
+const PAGE_PRELOADS = { '/relic-simulator': ['prices/murias-relics.js'] };
+const preloadTags = (path) =>
+  iconBase
+    ? (PAGE_PRELOADS[path] ?? []).map(
+        (file) => `<link rel="preload" href="${iconBase}/${file}" as="fetch" crossorigin="anonymous" />`,
+      )
+    : [];
+
+/**
  * 경로마다 HTML 을 따로 굽는다.
  *
  * 404.html 로 떨어지는 경로는 화면은 떠도 응답 코드가 404 라서 검색엔진이 색인하지 않는다.
@@ -113,7 +128,7 @@ for (const page of pageMeta.pages) {
       path: page.path,
       title: `${page.title} · ${pageMeta.siteName}`,
       description: page.description,
-      head: websiteLd,
+      head: [...websiteLd, ...preloadTags(page.path)],
     }),
   );
 }

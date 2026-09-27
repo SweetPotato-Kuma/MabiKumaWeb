@@ -138,7 +138,7 @@ export interface RelicSimulator {
  * 복원 기록. 새로 고치거나 화면을 떠나면 처음부터다. 저장할 까닭이 없는 놀이 기록이라
  * 브라우저에 남기지 않는다.
  */
-export function useRelicSimulator(random: RandomSource = Math.random): RelicSimulator {
+export function useRelicSimulator(random?: RandomSource): RelicSimulator {
   const [state, setState] = useState<{ draws: RelicDraw[]; lastBatch: number }>({
     draws: [],
     lastBatch: 0,
@@ -147,7 +147,8 @@ export function useRelicSimulator(random: RandomSource = Math.random): RelicSimu
     (times: number) =>
       setState((prev) => {
         const added = Array.from({ length: times }, (_, index) =>
-          drawRelic(prev.draws.length + index + 1, random),
+          // 난수는 뽑을 때 찾는다. 처음 그릴 때의 Math.random 을 붙잡아 두지 않는다.
+          drawRelic(prev.draws.length + index + 1, random ?? Math.random),
         );
         return { draws: [...prev.draws, ...added], lastBatch: times };
       }),

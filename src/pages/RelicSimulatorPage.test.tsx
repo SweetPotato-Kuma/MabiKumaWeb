@@ -46,7 +46,10 @@ function renderPage() {
   );
 }
 
-/** 옵션 30종 중 17번째(오버 드라이브), 레벨 10단계 중 7번째가 나오게 한다. */
+/**
+ * 옵션 30종 중 17번째(오버 드라이브), 레벨 10단계 중 7번째가 나오게 한다. 표도 난수를 쓰므로
+ * 누르기 바로 앞에서 건다.
+ */
 function rigOverDriveSeven() {
   return vi
     .spyOn(Math, 'random')
@@ -77,11 +80,11 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
   });
 
   it('뽑은 유물에 모아 둔 시세를 붙이고, 받은 파일을 다음을 위해 남긴다', async () => {
-    rigOverDriveSeven();
     renderPage();
 
     expect(screen.getByText(/복원 단추를 누르면/)).toBeInTheDocument();
     expect(await screen.findByText(/3분 전에 모은 경매장 시세입니다/)).toBeInTheDocument();
+    rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
 
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
@@ -99,9 +102,9 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     window.localStorage.setItem('mabikuma:relics:prices', JSON.stringify(PRICE_FILE));
     // 새 파일은 끝나지 않는다.
     priceResponse = () => new Promise(() => {});
-    rigOverDriveSeven();
     renderPage();
 
+    rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
     expect(within(card).getByText('8,000만 G')).toBeInTheDocument();
@@ -110,10 +113,10 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
 
   it('시세를 받지 못해도 뽑기는 된다', async () => {
     priceResponse = async () => new Response('', { status: 500 });
-    rigOverDriveSeven();
     renderPage();
 
     expect(await screen.findByText(/시세를 받지 못했습니다/)).toBeInTheDocument();
+    rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
     expect(within(card).getByText('490% 증가')).toBeInTheDocument();
