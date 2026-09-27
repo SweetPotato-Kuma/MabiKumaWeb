@@ -294,7 +294,8 @@ function RecipeCost({
                 </Flex>
               ) : null}
             </Flex>
-            <Flex vertical gap={8}>
+            {/* 세로로 쌓으면 체크박스가 줄 폭만큼 늘어나 빈 곳을 눌러도 켜진다. 글자 폭만큼만 둔다. */}
+            <Flex vertical gap={8} align="flex-start">
               <Checkbox checked={useNpc} onChange={(event) => changeUseNpc(event.target.checked)}>
                 NPC 판매 재료는 NPC 에서 사기
               </Checkbox>
