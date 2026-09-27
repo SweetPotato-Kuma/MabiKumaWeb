@@ -116,6 +116,35 @@ export function linePath<S extends PriceSummary>(
 }
 
 /**
+ * 거래가 없던 칸을 건너 앞뒤 값을 잇는 선. linePath 가 끊은 자리만 잇는다.
+ *
+ * 끊긴 채로 두면 수집 초기나 거래가 드문 아이템은 조각만 남아 흐름이 읽히지 않는다. 그렇다고
+ * 진한 선으로 이으면 그 사이에도 거래가 있었던 것처럼 보인다. 그래서 이 선은 따로 옅게 그린다.
+ * 첫 거래 앞과 마지막 거래 뒤는 잇지 않는다. 이을 값이 없다.
+ */
+export function gapPath<S extends PriceSummary>(
+  slots: readonly { summary: S | null }[],
+  pick: (summary: S) => number,
+  range: { min: number; max: number },
+): string {
+  const parts: string[] = [];
+  let previous: { index: number; value: number } | null = null;
+  slots.forEach((slot, index) => {
+    if (!slot.summary) return;
+    const value = pick(slot.summary);
+    if (previous && index - previous.index > 1) {
+      const x1 = slotX(previous.index, slots.length).toFixed(2);
+      const y1 = valueY(previous.value, range).toFixed(2);
+      const x2 = slotX(index, slots.length).toFixed(2);
+      const y2 = valueY(value, range).toFixed(2);
+      parts.push(`M${x1} ${y1} L${x2} ${y2}`);
+    }
+    previous = { index, value };
+  });
+  return parts.join(' ');
+}
+
+/**
  * 앞뒤 칸이 모두 비어 선으로는 보이지 않는 점. 칸이 촘촘한 시간별 그래프는 이런 점만 찍는다.
  * 모든 칸에 점을 찍으면 점끼리 겹쳐 선이 묻힌다.
  */

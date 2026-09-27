@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties, type PointerEvent } from 'react'
 import { Flex, Typography, theme } from 'antd';
 import type { PriceSummary } from '@/features/market/api';
 import {
+  gapPath,
   isIsolated,
   linePath,
   slotX,
@@ -114,7 +115,7 @@ export function PriceHistoryChart({
   const hovered = hover === null ? null : slots[hover];
   const dayLines = ticks.filter((tick) => tick.at === 'start' && tick.index > 0);
 
-  const { range, midPath, avgPath, maxQty, bands } = useMemo(() => {
+  const { range, midPath, avgPath, midGapPath, avgGapPath, maxQty, bands } = useMemo(() => {
     const values = slots.flatMap((slot) =>
       slot.summary ? [slot.summary.mid, slot.summary.avg] : [],
     );
@@ -123,6 +124,8 @@ export function PriceHistoryChart({
       range: valueRangeOf,
       midPath: linePath(slots, (summary) => summary.mid, valueRangeOf),
       avgPath: linePath(slots, (summary) => summary.avg, valueRangeOf),
+      midGapPath: gapPath(slots, (summary) => summary.mid, valueRangeOf),
+      avgGapPath: gapPath(slots, (summary) => summary.avg, valueRangeOf),
       maxQty: Math.max(0, ...slots.map((slot) => slot.summary?.qty ?? 0)),
       bands: thursdayRuns(slots.map((slot) => slot.date)),
     };
@@ -207,6 +210,28 @@ export function PriceHistoryChart({
                 y2="50"
                 stroke={token.colorBorderSecondary}
                 strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+              />
+              {/*
+                거래가 없던 칸을 건너 잇는 선. 조각만 남으면 흐름이 읽히지 않아 잇되, 그 사이에 거래가
+                있었던 것처럼 보이지 않게 옅게 그린다. 칸에 올리면 "거래 없음" 이 뜬다.
+              */}
+              <path
+                d={avgGapPath}
+                fill="none"
+                stroke={token.colorTextTertiary}
+                strokeOpacity={0.45}
+                strokeWidth="1"
+                strokeDasharray="4 3"
+                vectorEffect="non-scaling-stroke"
+              />
+              <path
+                d={midGapPath}
+                fill="none"
+                stroke={token.colorPrimary}
+                strokeOpacity={0.35}
+                strokeWidth="1.5"
+                strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
               />
               <path
@@ -393,6 +418,16 @@ export function PriceHistoryChart({
         <LegendKey
           swatch={{ width: 16, height: 0, borderTop: `2px dashed ${token.colorTextTertiary}` }}
           label="평균 가격"
+        />
+        <LegendKey
+          swatch={{
+            width: 16,
+            height: 2,
+            borderRadius: 1,
+            background: token.colorPrimary,
+            opacity: 0.35,
+          }}
+          label="거래 없던 구간"
         />
         <LegendKey
           swatch={{

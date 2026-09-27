@@ -3,6 +3,7 @@ import type { DailySummary, HourlySummary } from './api';
 import {
   buildHourSlots,
   buildSlots,
+  gapPath,
   isIsolated,
   isThursday,
   kstDate,
@@ -52,6 +53,19 @@ describe('선', () => {
     );
     const path = linePath(slots, (summary) => summary.mid, { min: 100, max: 200 });
     expect(path).toBe('M12.50 100.00 L37.50 0.00 M87.50 50.00');
+  });
+
+  it('끊긴 자리만 따로 잇고, 처음 앞과 끝 뒤는 잇지 않는다', () => {
+    const slots = buildSlots(
+      [day('2026-09-22', 100), day('2026-09-23', 200), day('2026-09-25', 150)],
+      4,
+      NOW,
+    );
+    // 23일(37.5)과 25일(87.5) 사이의 24일만 비어 있다.
+    expect(gapPath(slots, (summary) => summary.mid, { min: 100, max: 200 })).toBe(
+      'M37.50 0.00 L87.50 50.00',
+    );
+    expect(gapPath(slots.slice(0, 2), (summary) => summary.mid, { min: 100, max: 200 })).toBe('');
   });
 
   it('값이 하나뿐이어도 가운데에 놓는다', () => {
