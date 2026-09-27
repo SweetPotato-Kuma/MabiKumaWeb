@@ -40,6 +40,7 @@ import {
   valueCraft,
   type BeadCraft,
   type BeadPlan,
+  type BeadPlanPick,
   type CraftValue,
   type InputCost,
   type ValuedCraft,
@@ -134,10 +135,13 @@ function CraftName({
   craft,
   book,
   categoryOf,
+  tag,
 }: {
   craft: ValuedCraft;
   book: RecipeBook;
   categoryOf: CategoryOf;
+  /** 이름 옆 표시. 추천 조합이 있으면 "추천", 없으면 구슬 1개당 1위에 "가장 이득". */
+  tag?: string;
 }) {
   const category = categoryOf(craft.name);
   return (
@@ -146,9 +150,9 @@ function CraftName({
       <Flex vertical gap={2} style={{ minWidth: 0 }}>
         <Flex gap={6} align="center" wrap>
           <ItemInfoLink name={craft.name} category={category} />
-          {craft.best ? (
+          {tag ? (
             <Tag color="processing" style={{ marginInlineEnd: 0 }}>
-              가장 이득
+              {tag}
             </Tag>
           ) : null}
         </Flex>
@@ -220,6 +224,7 @@ function CraftInputs({
   );
 }
 
+/** 추천 조합의 합계. 무엇을 몇 번 만들지는 표의 "추천 제작" 칸이 말한다. */
 function PlanSummary({ plan, beads, pending }: { plan: BeadPlan; beads: number; pending: number }) {
   const { token } = theme.useToken();
   if (plan.picks.length === 0) {
@@ -252,22 +257,29 @@ function PlanSummary({ plan, beads, pending }: { plan: BeadPlan; beads: number; 
           styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontSize: 20 } }}
         />
       </Flex>
-      <Flex vertical gap={4}>
-        {plan.picks.map((pick) => (
-          <Flex key={pick.craft.itemId} justify="space-between" gap={16} wrap>
-            <Text>
-              {pick.craft.name}{' '}
-              <Text className="tnum">{formatNumber(pick.times)}번</Text>
-              <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-                {' '}
-                (구슬 {formatNumber(pick.beads)}개
-                {pick.heldTimes > 0 ? `, 가진 재료로 ${formatNumber(pick.heldTimes)}번` : ''})
-              </Text>
-            </Text>
-            <Gold value={pick.profit} />
-          </Flex>
-        ))}
-      </Flex>
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        아래 표에서 <Text strong>추천</Text> 표시가 붙은 가공품을 적힌 횟수만큼 만들면 됩니다.
+      </Text>
+    </Flex>
+  );
+}
+
+/** 추천 칸. 몇 번 만들지와, 그만큼 만들 때 쓰는 구슬과 차익 합계. */
+function PickCell({ pick }: { pick?: BeadPlanPick }) {
+  const { token } = theme.useToken();
+  if (!pick) return <Text type="secondary">-</Text>;
+  return (
+    <Flex vertical align="flex-end" gap={2}>
+      <Text strong className="tnum" style={{ whiteSpace: 'nowrap', color: token.colorPrimary }}>
+        {formatNumber(pick.times)}번 제작
+      </Text>
+      <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+        차익 {formatGold(pick.profit)}
+      </Text>
+      <Text type="secondary" className="tnum" style={{ fontSize: 12, textAlign: 'right' }}>
+        구슬 {formatNumber(pick.beads)}개
+        {pick.heldTimes > 0 ? `, 가진 재료로 ${formatNumber(pick.heldTimes)}번` : ''}
+      </Text>
     </Flex>
   );
 }
@@ -415,12 +427,14 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
     priceOf: (name: string) => prices.get(name),
     npcUnitOf: (name: string) => npcUnitPrice(name, wednesday),
   };
-  const heldOf = (itemId: number) => inventory[itemId] ?? 0;
   const heldKinds = Object.keys(inventory).length;
 
-  // 표는 한 번 만들 때의 값이다. 가진 재료가 있으면 그만큼 빼고 매긴다.
+  /**
+   * 표의 1회 값은 가진 재료를 빼지 않은 값이다. 가진 재료는 쓰면 없어져 여러 가공품이 나눠 쓰므로,
+   * 줄마다 빼면 같은 재료를 여러 번 쓴 것처럼 보인다. 가진 재료는 추천 조합(추천 제작 칸)에만 들어간다.
+   */
   const ranked = rankCrafts(
-    crafts.map((craft) => valueCraft(craft, pricing.priceOf, pricing.npcUnitOf, heldOf)),
+    crafts.map((craft) => valueCraft(craft, pricing.priceOf, pricing.npcUnitOf)),
   );
   const pending = names.filter((name) => prices.get(name)?.status === 'loading').length;
   const failed = names.filter((name) => prices.get(name)?.status === 'error');
@@ -434,6 +448,20 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
       )
     : null;
 
+  // 추천 조합에 든 줄을 차익 합계가 큰 순으로 맨 위에 두고, 나머지는 구슬 1개당 가치 순서 그대로 둔다.
+  const pickOf = new Map((plan?.picks ?? []).map((pick) => [pick.craft.itemId, pick]));
+  const recommending = pickOf.size > 0;
+  const rows = recommending
+    ? [
+        ...ranked
+          .filter((craft) => pickOf.has(craft.itemId))
+          .sort((a, b) => pickOf.get(b.itemId)!.profit - pickOf.get(a.itemId)!.profit),
+        ...ranked.filter((craft) => !pickOf.has(craft.itemId)),
+      ]
+    : ranked;
+  const tagOf = (craft: ValuedCraft) =>
+    recommending ? (pickOf.has(craft.itemId) ? '추천' : undefined) : craft.best ? '가장 이득' : undefined;
+
   const nameIndex = useItemNameIndexQuery().data;
   const categoryOf = (name: string) => nameIndex?.categoriesByName.get(name)?.[0];
 
@@ -442,22 +470,16 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
       void queryClient.refetchQueries({ queryKey: ['crafting', 'price', name] });
   };
 
+  // 구슬 1개당 1위는 추천 조합이 없을 때만 보라로 강조한다. 추천이 있으면 강조는 추천 칸이 맡는다.
   const perBeadCell = (craft: ValuedCraft) => {
-    if (craft.value.status !== 'ok') return <UnknownCell value={craft.value} />;
-    if (craft.value.perBead === null)
-      return (
-        <Text
-          strong={craft.best}
-          style={{ whiteSpace: 'nowrap', color: craft.best ? token.colorPrimary : undefined }}
-        >
-          구슬 불필요
-        </Text>
-      );
+    if (craft.value.status !== 'ok' || craft.value.perBead === null)
+      return <UnknownCell value={craft.value} />;
+    const highlight = craft.best && !recommending;
     return (
       <Gold
         value={craft.value.perBead}
-        strong={craft.best}
-        color={craft.best ? token.colorPrimary : undefined}
+        strong={highlight}
+        color={highlight ? token.colorPrimary : undefined}
       />
     );
   };
@@ -465,31 +487,46 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
   const beadText = (craft: ValuedCraft) =>
     craft.beadInputs.map((input) => `${input.name} ${formatNumber(input.count)}개`).join(', ');
 
+  const pickColumn: TableColumnsType<ValuedCraft> = recommending
+    ? [
+        {
+          title: '추천 제작',
+          key: 'pick',
+          align: 'right',
+          width: 200,
+          render: (_value, craft) => <PickCell pick={pickOf.get(craft.itemId)} />,
+        },
+      ]
+    : [];
+
   const columns: TableColumnsType<ValuedCraft> = wide
     ? [
         {
           title: '가공품',
           key: 'name',
-          render: (_value, craft) => <CraftName craft={craft} book={book} categoryOf={categoryOf} />,
+          render: (_value, craft) => (
+            <CraftName craft={craft} book={book} categoryOf={categoryOf} tag={tagOf(craft)} />
+          ),
         },
+        ...pickColumn,
         {
-          title: '구슬',
+          title: '1회 구슬',
           key: 'beads',
           align: 'right',
-          width: 200,
+          width: 190,
           render: (_value, craft) => (
             <Flex vertical align="flex-end" gap={2}>
               <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-                {formatNumber(craft.needBeads)}개
+                {formatNumber(craft.beads)}개
               </Text>
               <Text type="secondary" style={{ fontSize: 12, textAlign: 'right' }}>
-                {craft.usesHeld ? '가진 재료 반영' : beadText(craft)}
+                {beadText(craft)}
               </Text>
             </Flex>
           ),
         },
         {
-          title: '살 재료 값',
+          title: '1회 살 재료 값',
           key: 'materialCost',
           align: 'right',
           width: 150,
@@ -509,7 +546,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
             craft.value.status === 'ok' ? <Gold value={craft.value.sale} /> : <UnknownCell value={craft.value} />,
         },
         {
-          title: '차익',
+          title: '1회 차익',
           key: 'profit',
           align: 'right',
           width: 150,
@@ -520,25 +557,35 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
           title: '구슬 1개당',
           key: 'perBead',
           align: 'right',
-          width: 140,
+          width: 130,
           render: (_value, craft) => perBeadCell(craft),
         },
       ]
     : [
         {
-          // 768px 미만에서는 칸을 합친다. 가로로 밀면 가장 중요한 구슬 1개당 칸이 화면 밖으로 나간다.
+          // 768px 미만에서는 칸을 합친다. 가로로 밀면 가장 중요한 칸이 화면 밖으로 나간다.
           // 살 재료 값과 최저가는 줄을 펼치면 보인다.
           title: '가공품',
           key: 'name',
-          render: (_value, craft) => (
-            <Flex vertical gap={4}>
-              <CraftName craft={craft} book={book} categoryOf={categoryOf} />
-              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                구슬 {formatNumber(craft.needBeads)}개
-                {craft.value.status === 'ok' ? `, 차익 ${formatGold(craft.value.profit)}` : ''}
-              </Text>
-            </Flex>
-          ),
+          render: (_value, craft) => {
+            const pick = pickOf.get(craft.itemId);
+            return (
+              <Flex vertical gap={4}>
+                <CraftName craft={craft} book={book} categoryOf={categoryOf} tag={tagOf(craft)} />
+                {pick ? (
+                  <Text strong className="tnum" style={{ fontSize: 13, color: token.colorPrimary }}>
+                    {formatNumber(pick.times)}번 제작
+                    {pick.heldTimes > 0 ? ` (가진 재료로 ${formatNumber(pick.heldTimes)}번)` : ''}, 차익{' '}
+                    {formatGold(pick.profit)}
+                  </Text>
+                ) : null}
+                <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                  1회 구슬 {formatNumber(craft.beads)}개
+                  {craft.value.status === 'ok' ? `, 1회 차익 ${formatGold(craft.value.profit)}` : ''}
+                </Text>
+              </Flex>
+            );
+          },
         },
         {
           title: '구슬 1개당',
@@ -627,7 +674,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
 
       <Table<ValuedCraft>
         columns={columns}
-        dataSource={ranked}
+        dataSource={rows}
         rowKey="itemId"
         size="small"
         pagination={false}

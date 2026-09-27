@@ -170,6 +170,8 @@ describe('던전 코인 가치', () => {
     fireEvent.change(screen.getByLabelText('가진 구슬'), { target: { value: '15' } });
     expect(await screen.findAllByText('2,960,000 G', {}, SLOW)).not.toHaveLength(0);
     expect(screen.getByText('14 / 15개')).toBeInTheDocument();
+    // 무엇을 몇 번 만들지는 표의 추천 줄이 말한다.
+    expect(screen.getAllByText(/2번 제작/)).not.toHaveLength(0);
     expect(screen.queryByText(/가진 구슬 수를 입력하면/)).toBeNull();
   });
 
@@ -225,9 +227,12 @@ describe('던전 코인 가치', () => {
     fireEvent.change(within(dialog).getByLabelText('단단한 늑대의 이빨 가진 개수'), {
       target: { value: '7' },
     });
-    expect(await screen.findAllByText('구슬 불필요', {}, SLOW)).not.toHaveLength(0);
-    // 가진 구슬을 넣지 않아도 가진 재료로 만들 수 있는 만큼을 계산한다.
-    expect(screen.getByText(/가진 재료로 1번/)).toBeInTheDocument();
+    // 가진 구슬을 넣지 않아도 가진 재료로 만들 수 있는 만큼을 추천한다.
+    expect(await screen.findAllByText(/1번 제작/, {}, SLOW)).not.toHaveLength(0);
+    expect(screen.getAllByText(/가진 재료로 1번/)).not.toHaveLength(0);
+    expect(screen.getAllByText('추천')).not.toHaveLength(0);
+    // 표의 1회 값은 가진 재료를 빼지 않은 그대로다.
+    expect(screen.getAllByText('211,428 G')).not.toHaveLength(0);
     expect(screen.getByText('0 / 0개')).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')!)).toEqual({
       5100329: 7,
