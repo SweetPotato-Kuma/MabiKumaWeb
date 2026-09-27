@@ -71,8 +71,10 @@ database_name = "mabikuma-market"
 database_id = "cba3a0e7-3c6d-4e3f-a0d3-c741d1d53ab0"
 migrations_dir = "migrations"
 
+# 정각 10분마다: 거래 내역과 장비 매물. 5분 어긋나게: 던전 코인 화면의 시세(priceSnapshot.js).
+# 두 번째 값은 priceSnapshot.js 의 PRICE_CRON 과 글자까지 같아야 한다. 워커가 이 글자로 가른다.
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/10 * * * *", "5,15,25,35,45,55 * * * *"]
 
 # 시세 조회 횟수 제한. 경매장 목록은 쪽을 넘길 때마다, 아이템 정보는 열 때마다 한 번 묻는다.
 [[unsafe.bindings]]

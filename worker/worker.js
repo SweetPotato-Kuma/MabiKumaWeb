@@ -50,6 +50,7 @@ import {
   marketRecent,
   marketOptionTrades,
 } from './market.js';
+import { PRICE_COLLECT_PATH, PRICE_CRON, collectPrices, pricesCollect } from './priceSnapshot.js';
 import {
   SNAPSHOT_COLLECT_PATH,
   SNAPSHOT_PATH,
@@ -1369,6 +1370,16 @@ export default {
       return snapshotCollect(env, cors);
     }
 
+    // 시세 모으기도 운영자만. 파일은 ICON_BASE_URL 에서 바로 받으므로 읽는 경로는 따로 없다.
+    if (url.pathname === PRICE_COLLECT_PATH) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      if (request.method !== 'POST') {
+        return errorResponse('PRICES_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+      }
+      return pricesCollect(env, cors);
+    }
+
     // 여기부터는 운영자만. 키가 맞지 않으면 아래로 내려가지 않는다.
     if (
       url.pathname === CARD_VERIFY_PATH ||
@@ -1474,10 +1485,15 @@ export default {
   },
 
   /**
-   * 크론(wrangler.toml 의 [triggers]). 경매장 거래 내역을 받아 시세 기록에 쌓고, 장비 매물을 모아
-   * 둔다. 둘은 서로 기다리지 않는다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
+   * 크론(wrangler.toml 의 [triggers]). 정각 10분마다 경매장 거래 내역을 받아 시세 기록에 쌓고, 장비
+   * 매물을 모아 둔다. 둘은 서로 기다리지 않는다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
+   * 5분 어긋난 크론은 이름으로 묻는 시세를 모은다. 넥슨 요청이 한 실행에 몰리지 않게 나눴다.
    */
-  async scheduled(_controller, env) {
+  async scheduled(controller, env) {
+    if (controller?.cron === PRICE_CRON) {
+      console.log(JSON.stringify({ prices: await collectPrices(env).catch(String) }));
+      return;
+    }
     const [market, snapshot] = await Promise.allSettled([collectTrades(env), collectSnapshot(env)]);
     const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
     console.log(JSON.stringify({ market: outcome(market), snapshot: outcome(snapshot) }));

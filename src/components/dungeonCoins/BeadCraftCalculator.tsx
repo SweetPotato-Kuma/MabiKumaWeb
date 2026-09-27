@@ -24,7 +24,7 @@ import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { QueryState } from '@/components/QueryState';
 import { RefreshIcon } from '@/components/icons';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
-import { useMarketPrices } from '@/features/crafting/market';
+import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import {
   WEDNESDAY_DISCOUNT_PERCENT,
   isWednesdayInKorea,
@@ -43,6 +43,7 @@ import {
   type ValuedCraft,
 } from '@/features/dungeonCoins/beadCrafts';
 import type { DungeonCoin } from '@/features/dungeonCoins/exchanges';
+import { useDungeonPrices } from '@/features/dungeonCoins/prices';
 import { formatGold, formatNumber } from '@/lib/format';
 
 const { Text } = Typography;
@@ -272,7 +273,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
     ],
     [crafts],
   );
-  const prices = useMarketPrices(names);
+  const { prices, collectedAt } = useDungeonPrices(names);
 
   const ranked = rankCrafts(
     crafts.map((craft) =>
@@ -468,6 +469,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
       <Text type="secondary" style={{ fontSize: 12 }}>
         차익은 가공품 경매장 최저가에서 구슬 말고 사야 하는 재료 값을 뺀 값입니다. 판매 수수료는
         빼지 않았고, 여러 번 만들면 재료 매물이 모자라거나 판매가가 내려갈 수 있습니다.
+        {collectedAt ? ` 시세는 ${snapshotAgeLabel(collectedAt)} 모은 값입니다.` : ''}
       </Text>
     </Flex>
   );

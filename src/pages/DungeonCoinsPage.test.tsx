@@ -167,4 +167,36 @@ describe('던전 코인 가치', () => {
     expect(await screen.findAllByText('1,336,857 G')).not.toHaveLength(0);
     expect(screen.queryByText('가공해 팔기')).toBeNull();
   });
+
+  it('워커가 모아 둔 시세 파일이 있으면 경매장에 이름마다 묻지 않는다', async () => {
+    vi.stubEnv('VITE_ICON_BASE_URL', 'https://icons.test');
+    const now = Date.now();
+    const file = {
+      at: now,
+      prices: Object.fromEntries(
+        ['빛바랜 에너지 회로', '고리아스 동력원'].map((name) => [
+          name,
+          { at: now, offers: [[name === '고리아스 동력원' ? 257_000_000 : 46_790_000, 1]], complete: true },
+        ]),
+      ),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url) === 'https://icons.test/prices/dungeon-coins.js'
+          ? new Response(JSON.stringify(file), { status: 200 })
+          : new Response('', { status: 404 }),
+      ),
+    );
+    renderPage();
+
+    expect(await screen.findAllByText('1,336,857 G')).not.toHaveLength(0);
+    expect(screen.getByText(/시세는 방금 모은 값입니다/)).toBeInTheDocument();
+    // 파일에 있는 두 이름은 묻지 않고, 없는 이름만 경매장에 묻는다.
+    const asked = vi.mocked(fetchAuctionList).mock.calls.map(([params]) => params.itemName);
+    expect(asked).not.toContain('빛바랜 에너지 회로');
+    expect(asked).not.toContain('고리아스 동력원');
+    expect(asked).toContain('달아오른 광두정');
+    vi.unstubAllEnvs();
+  });
 });

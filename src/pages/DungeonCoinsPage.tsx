@@ -26,8 +26,9 @@ import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { RefreshIcon } from '@/components/icons';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
-import { useMarketPrices } from '@/features/crafting/market';
+import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import { DUNGEON_COINS, dungeonCoinOf, type DungeonCoin } from '@/features/dungeonCoins/exchanges';
+import { useDungeonPrices } from '@/features/dungeonCoins/prices';
 import { rankExchanges, type ExchangeRow, type ExchangeValue } from '@/features/dungeonCoins/value';
 import { formatGold, formatNumber } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
@@ -73,7 +74,7 @@ function DungeonCoinView({ entry }: { entry: DungeonCoin }) {
   const queryClient = useQueryClient();
 
   const names = useMemo(() => entry.exchanges.map((exchange) => exchange.name), [entry]);
-  const prices = useMarketPrices(names);
+  const { prices, collectedAt } = useDungeonPrices(names);
   const rows = rankExchanges(entry.exchanges, prices);
 
   /**
@@ -257,8 +258,9 @@ function DungeonCoinView({ entry }: { entry: DungeonCoin }) {
       </Card>
 
       <Text type="secondary" style={{ fontSize: 12 }}>
-        경매장 최저가는 매물 한 개의 개당 가격이며 평균 10분 지연됩니다. 교환 목록은 게임 안 NPC
-        교환 창 기준입니다.
+        경매장 최저가는 매물 한 개의 개당 가격이며 평균 10분 지연됩니다.
+        {collectedAt ? ` 시세는 ${snapshotAgeLabel(collectedAt)} 모은 값입니다.` : ''} 교환 목록은
+        게임 안 NPC 교환 창 기준입니다.
       </Text>
     </Flex>
   );
