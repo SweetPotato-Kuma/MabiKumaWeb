@@ -142,6 +142,35 @@ describe('valueCraft', () => {
     expect(valueCraft(craft, () => undefined, noNpc).value).toEqual({ status: 'loading' });
   });
 
+  it('구슬 재료를 시세대로 샀다고 칠 때의 원재료 시세와 가공 이득을 매긴다', () => {
+    const prices: Record<string, PriceState> = {
+      '가공한 이빨': priced([100_000, 1]),
+      마력석: priced([1_000, 20]),
+      // 이빨 7개: 5개는 9,000, 2개는 12,000
+      이빨: priced([9_000, 5], [12_000, 10]),
+    };
+    const valued = valueCraft(craft, (name) => prices[name], noNpc);
+    expect(valued.raw).toEqual({ status: 'ok', cost: 5 * 9_000 + 2 * 12_000 });
+    // 차익 80,000 - 원재료 69,000
+    expect(valued.gain).toBe(11_000);
+
+    // 원재료 시세가 판매가보다 비싸면 가공 이득은 음수다.
+    prices['이빨'] = priced([20_000, 10]);
+    expect(valueCraft(craft, (name) => prices[name], noNpc).gain).toBe(80_000 - 140_000);
+  });
+
+  it('원재료 매물이 없으면 가공 이득을 매기지 않는다', () => {
+    const prices: Record<string, PriceState> = {
+      '가공한 이빨': priced([100_000, 1]),
+      마력석: priced([1_000, 20]),
+      이빨: priced(),
+    };
+    const valued = valueCraft(craft, (name) => prices[name], noNpc);
+    expect(valued.raw).toEqual({ status: 'unknown' });
+    expect(valued.gain).toBeUndefined();
+    expect(valued.value.status).toBe('ok');
+  });
+
   it('가진 재료만큼 구슬을 덜 쓰고 덜 산다', () => {
     const prices: Record<string, PriceState> = {
       '가공한 이빨': priced([100_000, 1]),
@@ -219,6 +248,7 @@ function fakeCraft(name: string, beads: number, profit: number | null) {
     inputs: [],
     needBeads: beads,
     usesHeld: false,
+    raw: { status: 'unknown' } as const,
     value:
       profit === null
         ? ({ status: 'unknown', reason: 'no-sale' } as const)

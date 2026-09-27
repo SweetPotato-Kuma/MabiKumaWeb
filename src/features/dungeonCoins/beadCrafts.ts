@@ -143,7 +143,18 @@ export interface BeadRow {
   input: BeadInput;
   held: number;
   beads: number;
+  /** 같은 재료의 거래 가능한 판을 경매장에서 필요한 개수만큼 샀을 때의 값. */
+  market: InputCost;
 }
+
+/**
+ * 원재료 시세. 구슬 재료를 모두 경매장에서 샀다고 칠 때의 값이다. 구슬로 받는 판은 거래할 수
+ * 없지만 같은 이름의 거래 가능한 판이 경매장에 있다. 하나라도 모르면 합을 매기지 않는다.
+ */
+export type RawCost =
+  | { status: 'loading' }
+  | { status: 'unknown' }
+  | { status: 'ok'; cost: number };
 
 /** 사는 재료 한 칸. held 는 가진 재료로 채운 개수, cost 는 나머지를 사는 값. */
 export interface BuyRow {
@@ -160,6 +171,13 @@ export interface ValuedCraft extends BeadCraft {
   /** 가진 재료를 하나라도 썼는지. */
   usesHeld: boolean;
   value: CraftValue;
+  /** 한 번 만들 때 구슬 재료의 원재료 시세. */
+  raw: RawCost;
+  /**
+   * 가공 이득. 판매가 - 원재료 시세 - 살 재료 값. 원재료를 시세대로 샀다고 칠 때 가공해서 남는
+   * 값이라, 음수면 가공이 원재료 값을 깎는다. 값을 모르면 undefined.
+   */
+  gain?: number;
   /** 구슬 1개당 차익이 가장 큰 줄. 차익이 날 때만 참이다. */
   best: boolean;
 }
@@ -178,7 +196,13 @@ export function valueCraft(
 ): Omit<ValuedCraft, 'best'> {
   const beadRows = craft.beadInputs.map((input): BeadRow => {
     const held = Math.min(input.count, Math.max(0, heldOf(input.itemId)));
-    return { input, held, beads: (input.count - held) * (input.beads / input.count) };
+    return {
+      input,
+      held,
+      beads: (input.count - held) * (input.beads / input.count),
+      // 원재료 시세는 가진 재료와 상관없이 필요한 개수 전부의 값이다. NPC 는 팔지 않는다.
+      market: inputCostOf(input, priceOf(input.name), undefined),
+    };
   });
   const inputs = craft.buyInputs.map((input): BuyRow => {
     const held = Math.min(input.count, Math.max(0, heldOf(input.itemId)));
@@ -219,7 +243,18 @@ export function valueCraft(
       };
     }
   }
-  return { ...craft, beadRows, inputs, needBeads, usesHeld, value };
+  const markets = beadRows.map((row) => row.market);
+  const raw: RawCost = markets.some((market) => market.status === 'loading')
+    ? { status: 'loading' }
+    : markets.every((market) => market.status === 'ok')
+      ? {
+          status: 'ok',
+          cost: markets.reduce((sum, market) => sum + (market.status === 'ok' ? market.cost : 0), 0),
+        }
+      : { status: 'unknown' };
+  const gain =
+    value.status === 'ok' && raw.status === 'ok' ? value.profit - raw.cost : undefined;
+  return { ...craft, beadRows, inputs, needBeads, usesHeld, value, raw, gain };
 }
 
 /** 순위를 매기는 값. 구슬 없이 만들 수 있고 차익이 나면 맨 위, 값을 모르면 맨 아래다. */

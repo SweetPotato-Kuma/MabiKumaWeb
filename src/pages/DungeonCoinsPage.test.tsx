@@ -20,7 +20,11 @@ const LISTINGS: Record<string, number[]> = {
   '고리아스 동력원': [257_000_000],
   '마력이 깃든 늑대의 이빨': [1_500_000],
   마력석: [1_000],
+  '단단한 늑대의 이빨': [150_000],
 };
+
+/** 한 매물에 여러 개씩 올라오는 재료. 나머지는 한 매물에 하나다. */
+const BULK = new Set(['마력석', '단단한 늑대의 이빨']);
 
 /** 가공한 이빨(100) = 단단한 늑대의 이빨(구슬 1개) 7 + 마력석 20. 가공한 이빨은 장비(200) 의 재료다. */
 const BRIE_RECIPES = {
@@ -91,7 +95,7 @@ describe('던전 코인 가치', () => {
       auction_item: (LISTINGS[itemName ?? ''] ?? []).map((price) => ({
         item_name: itemName ?? '',
         item_display_name: itemName ?? '',
-        item_count: itemName === '마력석' ? 100 : 1,
+        item_count: BULK.has(itemName ?? '') ? 100 : 1,
         auction_item_category: '기타 재료',
         auction_price_per_unit: price,
         date_auction_expire: '',
@@ -162,6 +166,8 @@ describe('던전 코인 가치', () => {
     expect(await screen.findAllByText('211,428 G', {}, SLOW)).not.toHaveLength(0);
     expect(screen.getAllByText(/1,480,000 G/)).not.toHaveLength(0);
     expect(screen.queryByRole('link', { name: '소울 리버레이트 보우' })).toBeNull();
+    // 가공 이득: 1,480,000 - 원재료(이빨 7개 x 150,000) = 430,000
+    expect(screen.getAllByText(/430,000 G/)).not.toHaveLength(0);
 
     // 입력하기 전에는 결과 대신 무엇을 넣으면 되는지 알려 준다.
     expect(screen.getByText(/가진 구슬 수를 입력하면/)).toBeInTheDocument();

@@ -195,9 +195,15 @@ function CraftInputs({
             <Text type="secondary">살 재료 값</Text>
             <Gold value={craft.value.materialCost} />
           </Flex>
+          {craft.raw.status === 'ok' ? (
+            <Flex justify="space-between" gap={16}>
+              <Text type="secondary">원재료 시세</Text>
+              <Gold value={craft.raw.cost} />
+            </Flex>
+          ) : null}
         </Flex>
       ) : null}
-      {craft.beadRows.map(({ input, held, beads }) => (
+      {craft.beadRows.map(({ input, held, beads, market }) => (
         <Flex key={`bead-${input.itemId}`} justify="space-between" align="center" gap={16} wrap>
           <Flex gap={6} align="center">
             <MaterialName itemId={input.itemId} name={input.name} book={book} categoryOf={categoryOf} />
@@ -205,6 +211,7 @@ function CraftInputs({
           </Flex>
           <Text type="secondary" className="tnum">
             {heldText(held, input.count)}구슬 {formatNumber(beads)}개
+            {market.status === 'ok' ? ` (시세 ${formatGold(market.cost)})` : ''}
           </Text>
         </Flex>
       ))}
@@ -259,6 +266,27 @@ function PlanSummary({ plan, beads, pending }: { plan: BeadPlan; beads: number; 
       </Flex>
       <Text type="secondary" style={{ fontSize: 13 }}>
         아래 표에서 <Text strong>추천</Text> 표시가 붙은 가공품을 적힌 횟수만큼 만들면 됩니다.
+      </Text>
+    </Flex>
+  );
+}
+
+/** 가공 이득 칸. 음수면 가공이 원재료 값을 깎는다는 뜻이라 빨갛게 둔다. */
+function GainCell({ craft }: { craft: ValuedCraft }) {
+  if (craft.value.status !== 'ok') return <UnknownCell value={craft.value} />;
+  if (craft.raw.status === 'loading')
+    return <Skeleton.Input active size="small" style={{ width: 88, minWidth: 88 }} />;
+  if (craft.gain === undefined || craft.raw.status !== 'ok')
+    return (
+      <Text type="secondary" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+        원재료 매물 없음
+      </Text>
+    );
+  return (
+    <Flex vertical align="flex-end" gap={2}>
+      <Gold value={craft.gain} />
+      <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+        원재료 {formatGold(craft.raw.cost)}
       </Text>
     </Flex>
   );
@@ -417,7 +445,14 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
   const crafts = useMemo(() => beadCraftsOf(book, entry.exchanges), [book, entry]);
   const names = useMemo(
     () => [
-      ...new Set(crafts.flatMap((craft) => [craft.name, ...craft.buyInputs.map((input) => input.name)])),
+      ...new Set(
+        crafts.flatMap((craft) => [
+          craft.name,
+          ...craft.buyInputs.map((input) => input.name),
+          // 원재료 시세. 구슬로 받는 판은 거래 불가라 같은 이름의 거래 가능한 판 시세를 본다.
+          ...craft.beadInputs.map((input) => input.name),
+        ]),
+      ),
     ],
     [crafts],
   );
@@ -554,6 +589,13 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
             craft.value.status === 'ok' ? <Gold value={craft.value.profit} /> : <UnknownCell value={craft.value} />,
         },
         {
+          title: '가공 이득',
+          key: 'gain',
+          align: 'right',
+          width: 150,
+          render: (_value, craft) => <GainCell craft={craft} />,
+        },
+        {
           title: '구슬 1개당',
           key: 'perBead',
           align: 'right',
@@ -583,6 +625,15 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
                   1회 구슬 {formatNumber(craft.beads)}개
                   {craft.value.status === 'ok' ? `, 1회 차익 ${formatGold(craft.value.profit)}` : ''}
                 </Text>
+                {craft.gain !== undefined ? (
+                  <Text
+                    type={craft.gain < 0 ? 'danger' : 'secondary'}
+                    className="tnum"
+                    style={{ fontSize: 12 }}
+                  >
+                    가공 이득 {formatGold(craft.gain)}
+                  </Text>
+                ) : null}
               </Flex>
             );
           },
@@ -686,8 +737,9 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
       />
 
       <Text type="secondary" style={{ fontSize: 12 }}>
-        차익은 가공품 경매장 최저가에서 구슬 말고 사야 하는 재료 값을 뺀 값입니다. 가진 재료는 값을
-        치르지 않은 것으로 봅니다. 판매 수수료는 빼지 않았고, 여러 번 만들면 재료 매물이 모자라거나
+        차익은 가공품 경매장 최저가에서 구슬 말고 사야 하는 재료 값을 뺀 값입니다. 가공 이득은 구슬
+        재료까지 경매장 시세로 샀다고 칠 때 남는 값으로, 음수면 가공하면 원재료 값보다 싸집니다. 가진
+        재료는 값을 치르지 않은 것으로 봅니다. 판매 수수료는 빼지 않았고, 여러 번 만들면 재료 매물이 모자라거나
         판매가가 내려갈 수 있습니다.
         {collectedAt ? ` 시세는 ${snapshotAgeLabel(collectedAt)} 모은 값입니다.` : ''}
       </Text>
