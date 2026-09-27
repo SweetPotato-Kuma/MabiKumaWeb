@@ -176,6 +176,20 @@ describe('모아 둔 목록 내보내기', () => {
     expect(Object.keys(body.categories)).toHaveLength(SNAPSHOT_CATEGORIES.length);
   });
 
+  it('목록은 잠깐 메모리에 들고 있어 R2 를 매번 읽지 않고, 새로 모으면 새 목록을 읽는다', async () => {
+    await collectSnapshot(env, Date.parse('2026-09-26T05:00:00Z'));
+    const get = vi.spyOn(env.ICONS, 'get');
+    await call('/auction/snapshot');
+    await call('/auction/snapshot');
+    expect(get.mock.calls.filter(([key]) => key === 'auction/manifest.json')).toHaveLength(1);
+
+    await collectSnapshot(env, Date.parse('2026-09-26T05:10:00Z'));
+    get.mockClear();
+    const body = await (await call('/auction/snapshot')).json();
+    expect(get).toHaveBeenCalledWith('auction/manifest.json');
+    expect(body.at).toBe(Date.parse('2026-09-26T05:10:00Z'));
+  });
+
   it('내보낼 주소가 없으면 404 라 화면은 실시간으로 받는다', async () => {
     await collectSnapshot(env, Date.parse('2026-09-26T05:00:00Z'));
     env.ICON_BASE_URL = '';

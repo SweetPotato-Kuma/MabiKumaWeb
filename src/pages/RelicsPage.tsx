@@ -712,6 +712,11 @@ export function RelicsPage() {
   const [params, setParams] = useSearchParams();
   const tab = tabOf(params.get('tab'));
   const listings = useRelicListings(canQuery);
+  // 아르카나 파일과 최종 거래가는 매물과 상관없이 받을 수 있다. 무리아스 표가 그려진 뒤에
+  // 부르면 매물, 아르카나, 거래가를 차례로 기다리게 되어 화면을 열자마자 함께 부른다.
+  // 같은 조회라 표 안에서 다시 불러도 한 번만 나간다.
+  useArcanaQuery();
+  useOptionTradesQuery(MURIAS_RELIC_NAME, MURIAS_OPTION_TYPE, canQuery);
 
   let body: ReactNode;
   if (!canQuery) body = null;
@@ -762,10 +767,21 @@ export function RelicsPage() {
           tabBarStyle={{ marginBottom: 0 }}
         />
         {listings.at !== null && listings.items ? (
-          <Text type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
-            {snapshotAgeLabel(listings.at)} 받은 판매 중 매물 {formatNumber(listings.items.length)}
-            건 기준입니다. 게임 데이터는 평균 10분 지연됩니다.
-          </Text>
+          <Flex gap={6} align="center" wrap style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {snapshotAgeLabel(listings.at)} 받은 판매 중 매물{' '}
+              {formatNumber(listings.items.length)}건 기준입니다. 게임 데이터는 평균 10분
+              지연됩니다.
+            </Text>
+            {listings.refreshing ? (
+              <Flex gap={4} align="center" role="status">
+                <Spin size="small" />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  새 매물을 받는 중입니다.
+                </Text>
+              </Flex>
+            ) : null}
+          </Flex>
         ) : null}
       </Flex>
 

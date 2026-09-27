@@ -7,6 +7,7 @@ import type * as Settings from '@/lib/settings';
 import type * as MarketApi from '@/features/market/api';
 import { fetchAuctionList } from '@/features/auction/api';
 import type { AuctionItem, ItemOption } from '@/features/auction/types';
+import { readRelicCache, writeRelicCache } from '@/features/relics/hooks';
 import { RelicsPage } from '@/pages/RelicsPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
@@ -117,6 +118,29 @@ describe('유물 시세', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.mocked(fetchAuctionList).mockReset();
+    // 받은 매물을 이 브라우저에 남긴다. 다음 테스트가 지난 매물로 시작하지 않게 비운다.
+    window.localStorage.clear();
+  });
+
+  it('지난번에 본 매물을 먼저 보여 주고, 새 매물을 받는 중이라고 알린다', async () => {
+    writeRelicCache(Date.now() - 5 * 60_000, PAGES.flat());
+    // 새 매물은 끝나지 않는다. 그동안 지난번 것이 보여야 한다.
+    vi.mocked(fetchAuctionList).mockImplementation(() => new Promise(() => {}));
+    renderPage();
+
+    const cell = await screen.findByRole('link', {
+      name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기',
+    });
+    expect(within(cell).getByText('8,000만')).toBeInTheDocument();
+    expect(screen.getByText(/5분 전에 받은 판매 중 매물/)).toBeInTheDocument();
+    expect(screen.getByText('새 매물을 받는 중입니다.')).toBeInTheDocument();
+  });
+
+  it('새 매물을 다 받으면 다음에 열 때 쓰도록 남긴다', async () => {
+    renderPage();
+    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+    expect(screen.queryByText('새 매물을 받는 중입니다.')).toBeNull();
+    expect(readRelicCache()?.items).toHaveLength(PAGES.flat().length);
   });
 
   it('무리아스의 유물을 옵션과 레벨별 최저가로 모으고, 칸을 누르면 그 레벨 매물로 간다', async () => {

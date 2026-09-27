@@ -165,6 +165,22 @@ async function readManifest(env) {
   }
 }
 
+/**
+ * 화면에 내주는 목록은 이 워커 인스턴스 메모리에 MANIFEST_CACHE_SECONDS 동안 들고 있는다.
+ * 화면을 열 때마다 R2 에서 읽으니 이것만으로 0.3~1초가 걸렸다. 목록은 10분마다 바뀌고 응답도
+ * 그만큼 캐시하라고 내보내므로 더 묵지는 않는다. workers.dev 에서는 Cache API 가 동작하지 않아
+ * 메모리를 쓴다. 인스턴스마다 따로라 새 인스턴스는 한 번 R2 를 읽는다.
+ */
+let manifestMemo = null;
+
+async function readManifestCached(env, now) {
+  if (manifestMemo && manifestMemo.env === env.ICONS && manifestMemo.until > now)
+    return manifestMemo.value;
+  const value = await readManifest(env);
+  if (value) manifestMemo = { env: env.ICONS, value, until: now + MANIFEST_CACHE_SECONDS * 1000 };
+  return value;
+}
+
 /** R2 목록을 끝까지 넘긴다. */
 async function listKeys(env, prefix) {
   const keys = [];
@@ -216,6 +232,8 @@ export async function collectSnapshot(env, now = Date.now()) {
   await env.ICONS.put(MANIFEST_KEY, JSON.stringify(manifest), {
     httpMetadata: { contentType: 'application/json; charset=utf-8', cacheControl: 'no-store' },
   });
+  // 이 인스턴스가 들고 있던 옛 목록은 버린다. 다음 요청이 새 목록을 읽는다.
+  manifestMemo = null;
 
   // 새 목록과 바로 앞 목록이 가리키는 파일만 남긴다.
   const keep = new Set([MANIFEST_KEY]);
@@ -237,9 +255,9 @@ export async function collectSnapshot(env, now = Date.now()) {
  * 화면이 받는 목록. 파일 주소를 붙여 준다. 아직 모은 적이 없거나 내보낼 주소가 없으면 404 라
  * 화면은 실시간으로 받는다.
  */
-export async function serveSnapshot(env, cors) {
+export async function serveSnapshot(env, cors, now = Date.now()) {
   const base = String(env.ICON_BASE_URL ?? '').replace(/\/+$/, '');
-  const manifest = env.ICONS && base ? await readManifest(env) : null;
+  const manifest = env.ICONS && base ? await readManifestCached(env, now) : null;
   if (!manifest) {
     return new Response(
       JSON.stringify({ error: { name: 'SNAPSHOT_NOT_READY', message: '모아 둔 매물이 없습니다.' } }),
