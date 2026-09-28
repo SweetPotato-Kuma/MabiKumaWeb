@@ -229,7 +229,7 @@
 /* 새 옵션은 연출이 끝난 뒤 한 줄씩 드러난다. */
 .rf-reveal .rf-line {
   animation: rf-reveal 360ms ease-out both;
-  animation-delay: calc(var(--fx-dur, 0ms) + var(--i) * 160ms);
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms) + var(--i) * 160ms);
 }
 
 @keyframes rf-spin {
@@ -407,5 +407,163 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ---------- 한계 돌파 이스터에그 ---------- */
+
+/*
+ * 한계 돌파 줄이 나온 세공에서만 .rf-lb 가 붙는다. 망치가 닿는 순간(연출 길이의 70%)부터 금빛
+ * (--fx-lb)으로 판 전체가 두 번 번쩍이고, 긴 빛살이 돌며 퍼지고, 망치가 닿은 자리에 별빛이 튄다.
+ * 옵션 칸의 한계 돌파 줄은 드러난 뒤 빛줄기가 한 번 훑고 지나간다.
+ */
+/* 번쩍이는 빛은 원판보다 조금 넓은 원 안에서만 보인다. 밖으로 뻗으면 위의 조작 칸을 덮었다. */
+.rf-lb-layer {
+  position: absolute;
+  inset: -6%;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.rf-lb-flash,
+.rf-lb-ray,
+.rf-lb-glint {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rf-lb-flash {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 280px);
+  height: calc(var(--rf, 1) * 280px);
+  margin: calc(var(--rf, 1) * -140px) 0 0 calc(var(--rf, 1) * -140px);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--fx-lb) 0%, transparent 62%);
+  filter: brightness(1.25) saturate(1.1);
+}
+
+.rf-lb-ray {
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: calc(var(--rf, 1) * 110px);
+  margin: calc(var(--rf, 1) * -110px) 0 0 -1.5px;
+  border-radius: 2px;
+  background: var(--fx-lb);
+  transform-origin: 50% 100%;
+}
+
+.rf-lb-glint {
+  left: 50%;
+  top: 50%;
+  margin: calc(var(--rf, 1) * -46px) 0 0 calc(var(--rf, 1) * 24px);
+  font-size: calc(var(--rf, 1) * 30px);
+  line-height: 1;
+  color: var(--fx-lb);
+}
+
+.rf-play.rf-lb .rf-lb-flash {
+  animation: rf-lb-flash 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.7);
+}
+
+.rf-play.rf-lb .rf-lb-ray {
+  animation: rf-lb-ray 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.7 + var(--i) * 15ms);
+}
+
+.rf-play.rf-lb .rf-lb-glint {
+  animation: rf-lb-glint 900ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.7);
+}
+
+/* 드러난 한계 돌파 줄 위로 빛줄기가 한 번 지나간다. */
+.rf-line--lb {
+  position: relative;
+  overflow: hidden;
+}
+
+.rf-reveal .rf-line--lb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, var(--fx-lb) 50%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  animation: rf-lb-shine 900ms ease-in-out both;
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms) + var(--i) * 160ms + 360ms);
+}
+
+@keyframes rf-lb-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  35% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes rf-lb-ray {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -20px)) scaleY(0);
+  }
+  25% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -46px)) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(calc(var(--a) + 30deg)) translateY(calc(var(--rf, 1) * -90px)) scaleY(1.3);
+  }
+}
+
+@keyframes rf-lb-glint {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.5) rotate(90deg);
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(0.9) rotate(150deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7) rotate(220deg);
+  }
+}
+
+@keyframes rf-lb-shine {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  20% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
   }
 }

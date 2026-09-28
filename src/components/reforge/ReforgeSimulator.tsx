@@ -112,6 +112,10 @@ const TOOL_FX: Record<
   brilliant: { duration: 1500, spin: 540, sparks: 10, rays: 12 },
 };
 
+/** 한계 돌파 이스터에그의 빛살 수와, 그 빛 때문에 옵션을 늦게 드러내는 시간. */
+const LB_RAYS = 16;
+const LB_EXTRA_MS = 600;
+
 /** "정교한 세공 도구" -> "정교한". 좁은 칸에서 쓴다. */
 const shortToolName = (name: string) => name.replace(/\s*세공 도구$/, '');
 
@@ -317,7 +321,10 @@ function WindowLine({
   const color = useTierColor(tier);
   const effect = optionEffect(option, line.level);
   return (
-    <div className="rf-line" style={{ '--i': index } as CSSProperties}>
+    <div
+      className={line.limitBreak ? 'rf-line rf-line--lb' : 'rf-line'}
+      style={{ '--i': index } as CSSProperties}
+    >
       <Flex gap={6} align="center" wrap>
         <Text strong style={{ color }}>
           {option.name}
@@ -417,6 +424,7 @@ function Workbench({
   gemUsable,
   onToggleGem,
   play,
+  limitBreak,
   fxStyle,
 }: {
   /** 장비 타입 이름. 그림을 찾는 데 쓴다. */
@@ -429,6 +437,8 @@ function Workbench({
   onToggleGem: () => void;
   /** 연출할 세공. 연출하지 않으면 null. */
   play: { no: number; tool: ReforgeToolId } | null;
+  /** 연출할 세공에 한계 돌파 줄이 있는지. 있으면 번쩍이는 빛을 더한다(이스터에그). */
+  limitBreak: boolean;
   fxStyle: CSSProperties;
 }) {
   const fx = play ? TOOL_FX[play.tool] : null;
@@ -437,7 +447,7 @@ function Workbench({
   return (
     <div
       key={play?.no ?? 'still'}
-      className={`rf-stage${play ? ` rf-play rf--${play.tool}` : ''}`}
+      className={`rf-stage${play ? ` rf-play rf--${play.tool}${limitBreak ? ' rf-lb' : ''}` : ''}`}
       style={fxStyle}
     >
       <div className="rf-stage-body">
@@ -471,7 +481,20 @@ function Workbench({
               />
             ))
           : null}
+        {play && limitBreak ? (
+          <div className="rf-lb-layer">
+            <div className="rf-lb-flash" />
+            {angles(LB_RAYS).map((angle, index) => (
+              <span
+                key={`lb-ray-${angle}`}
+                className="rf-lb-ray"
+                style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+              />
+            ))}
+          </div>
+        ) : null}
         <HammerIcon aria-hidden className="rf-hammer" />
+        {play && limitBreak ? <StarFillIcon aria-hidden className="rf-lb-glint" /> : null}
         <Tooltip
           title={
             gemUsable
@@ -841,6 +864,8 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const last = draws[count - 1] ?? null;
   const lastIsHere = last !== null && item !== null && simulator.lastBatch > 0;
   const play = armed && animate && lastIsHere && simulator.lastBatch === 1 ? last : null;
+  // 한계 돌파 줄이 나온 세공은 번쩍이는 빛이 더 붙고, 옵션은 그만큼 늦게 드러난다.
+  const playLimitBreak = play !== null && play.lines.some((line) => line.limitBreak);
   const fx = TOOL_FX[play?.tool ?? tool.id];
   const fxStyle = {
     '--fx-accent': token.colorPrimary,
@@ -851,6 +876,9 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
     '--fx-surface': token.colorFillQuaternary,
     '--fx-dur': `${play ? fx.duration : 0}ms`,
     '--fx-spin': `${fx.spin}deg`,
+    // 한계 돌파 이스터에그의 빛은 금빛이다. antd 기본 팔레트의 금색 토큰을 쓴다.
+    '--fx-lb': token.gold,
+    '--fx-extra': playLimitBreak ? `${LB_EXTRA_MS}ms` : '0ms',
     '--rf': stageScale,
   } as CSSProperties;
   // 방금 나온 옵션이 들어간 칸만 한 줄씩 드러낸다.
@@ -1045,6 +1073,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                 gemUsable={gemUsable}
                 onToggleGem={() => setGemChoice(!gemOn)}
                 play={play}
+                limitBreak={playLimitBreak}
                 fxStyle={fxStyle}
               />
               <Button

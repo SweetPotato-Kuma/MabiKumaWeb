@@ -75,6 +75,18 @@ const FINE_ONLY_DATA: ReforgeData = {
   tables: { 'fine|1|0': 0, 'radiant|1|0': 1, 'brilliant|1|0': 1 },
 };
 
+/** 한계 돌파가 되는 옵션만 있는 확률표. 난수를 0 으로 누르면 늘 한계 돌파 구간에 들어간다. */
+const LIMIT_BREAK_DATA: ReforgeData = {
+  ...DATA,
+  pools: [
+    [
+      [0, 4, 10, 11, 13],
+      [1, 4, 10, 11, 13],
+      [2, 4, 10, 11, 13],
+    ],
+  ],
+};
+
 let data: ReforgeData = DATA;
 
 describe('세공 시뮬레이터', () => {
@@ -219,5 +231,20 @@ describe('세공 시뮬레이터', () => {
     fireEvent.click(screen.getByText('찬란한'));
     expect(within(window()).getByText('(3/6 레벨 : 6 증가)')).toBeInTheDocument();
     expect(within(window()).getAllByText('최대')).toHaveLength(2);
+  });
+
+  it('한계 돌파 줄이 나온 세공에만 번쩍이는 빛이 붙는다', async () => {
+    data = LIMIT_BREAK_DATA;
+    renderPage();
+    const reforge = await screen.findByRole('button', { name: '세공하기' });
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    fireEvent.click(reforge);
+    expect(document.querySelector('.rf-play')).not.toBeNull();
+    expect(document.querySelector('.rf-lb')).toBeNull();
+
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
+    expect(document.querySelector('.rf-lb')).not.toBeNull();
+    expect(document.querySelectorAll('.rf-line--lb')).toHaveLength(3);
   });
 });
