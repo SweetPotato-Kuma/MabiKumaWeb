@@ -17,6 +17,7 @@ import {
   Flex,
   Grid,
   InputNumber,
+  Popover,
   Row,
   Segmented,
   Select,
@@ -35,9 +36,11 @@ import {
 import { SERIES_COLORS } from '@/app/theme';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
-import { TrialOdds } from '@/components/simulator/TrialOdds';
+import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import {
   AddIcon,
+  CalculateIcon,
+  CloseIcon,
   DeleteIcon,
   GemIcon,
   HammerIcon,
@@ -48,12 +51,14 @@ import {
 } from '@/components/icons';
 import { useMarketPrices, type PriceState } from '@/features/crafting/market';
 import {
+  levelCaps,
   racesFor,
   tableKey,
   typesFor,
   TYPE_ICONS,
   typeTree,
   useReforgeDataQuery,
+  type LevelCap,
   type PoolRow,
   type ReforgeData,
   type ReforgeToolId,
@@ -123,9 +128,17 @@ function rangeText(row: PoolRow): string {
   return `${min}~${max}레벨${lbMax ? `, 한계 돌파 ${lbMin}~${lbMax}` : ''}`;
 }
 
-/** 옵션의 일반 구간 끝 레벨. 묶음에 없으면(다른 장비의 기록) 그 레벨을 끝으로 본다. */
-const normalMaxOf = (pool: readonly PoolRow[] | undefined, line: ReforgeLine) =>
-  pool?.find((row) => row[0] === line.option)?.[2] ?? line.level;
+/**
+ * 옵션의 일반 구간 끝 레벨. 장비별 상한(levelCaps)에서 찾는다. 상한은 도구와 관계없이 같다.
+ * 모르는 옵션이면 null 이고 그때는 수치 강조를 하지 않는다. 지금 레벨을 끝으로 치면, 다른 도구로
+ * 붙인 옵션을 최대로 잘못 강조했다.
+ */
+const normalMaxOf = (caps: ReadonlyMap<number, LevelCap>, line: ReforgeLine) =>
+  caps.get(line.option)?.max ?? null;
+
+/** 끝 레벨을 모르면 한계 돌파만 가른다. */
+const tierOf = (line: ReforgeLine, normalMax: number | null) =>
+  normalMax === null ? (line.limitBreak ? 'limitBreak' : null) : levelTier(line, normalMax);
 
 function readFxSetting(): boolean {
   try {
@@ -263,9 +276,9 @@ function CompactLine({
 }: {
   line: ReforgeLine;
   option: ParsedOption;
-  normalMax: number;
+  normalMax: number | null;
 }) {
-  const tier = levelTier(line, normalMax);
+  const tier = tierOf(line, normalMax);
   const color = useTierColor(tier);
   const effect = optionEffect(option, line.level);
   return (
@@ -297,10 +310,10 @@ function WindowLine({
 }: {
   line: ReforgeLine;
   option: ParsedOption;
-  normalMax: number;
+  normalMax: number | null;
   index: number;
 }) {
-  const tier = levelTier(line, normalMax);
+  const tier = tierOf(line, normalMax);
   const color = useTierColor(tier);
   const effect = optionEffect(option, line.level);
   return (
@@ -312,7 +325,8 @@ function WindowLine({
         <TierMark tier={tier} />
       </Flex>
       <Text type={tier ? undefined : 'secondary'} className="tnum" style={{ fontSize: 13, color }}>
-        ({line.level}/{normalMax} 레벨{effect ? ` : ${effect}` : ''})
+        ({line.level}
+        {normalMax === null ? '' : `/${normalMax}`} 레벨{effect ? ` : ${effect}` : ''})
       </Text>
     </div>
   );
@@ -322,7 +336,7 @@ function WindowLine({
 function OptionBox({
   title,
   lines,
-  pool,
+  caps,
   options,
   hit,
   reveal,
@@ -332,7 +346,7 @@ function OptionBox({
 }: {
   title: string;
   lines: ReforgeLine[] | null;
-  pool: readonly PoolRow[];
+  caps: ReadonlyMap<number, LevelCap>;
   options: ParsedOption[];
   hit: boolean;
   /** 방금 나온 옵션이라 한 줄씩 드러낼지. 값이 바뀌면 칸을 새로 그려 다시 드러낸다. */
@@ -377,7 +391,7 @@ function OptionBox({
               key={line.option}
               line={line}
               option={options[line.option]}
-              normalMax={normalMaxOf(pool, line)}
+              normalMax={normalMaxOf(caps, line)}
               index={index}
             />
           ))}
@@ -507,11 +521,9 @@ const HistoryTable = memo(function HistoryTable({
     () => new Map(data.types.map((type) => [type.id, type.name])),
     [data.types],
   );
-  const poolOf = (draw: ReforgeDraw) =>
-    data.pools[data.tables[tableKey(draw.tool, draw.type, draw.race)]];
   const screens = Grid.useBreakpoint();
   const lines = (draw: ReforgeDraw) => {
-    const pool = poolOf(draw);
+    const caps = levelCaps(data, draw.type, draw.race);
     return (
       <Flex vertical gap={2}>
         {draw.lines.map((line) => (
@@ -519,7 +531,7 @@ const HistoryTable = memo(function HistoryTable({
             key={line.option}
             line={line}
             option={options[line.option]}
-            normalMax={normalMaxOf(pool, line)}
+            normalMax={normalMaxOf(caps, line)}
           />
         ))}
       </Flex>
@@ -669,7 +681,9 @@ function TargetEditor({
               />
             </Tooltip>
             <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-              {rangeText(row)}
+              {optionEffect(options[target.option], target.minLevel)
+                ? `${optionEffect(options[target.option], target.minLevel)} 이상`
+                : rangeText(row)}
             </Text>
             <Button
               type="text"
@@ -734,10 +748,13 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const race = races.includes(raceChoice) ? raceChoice : races[0];
 
   const pool = data.pools[data.tables[tableKey(tool.id, typeId, race)]];
+  const caps = levelCaps(data, typeId, race);
   const options = useMemo(() => data.options.map(parseOption), [data.options]);
   const typeName = new Map(data.types.map((type) => [type.id, type.name]));
 
   const [targetChoice, setTargets] = useState<ReforgeTarget[]>([]);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [trials, setTrials] = useState(10);
   // 장비를 바꾸면 거기 붙지 않는 목표는 빠진다.
   const targets = useMemo(
     () => targetChoice.filter((target) => pool.some((row) => row[0] === target.option)),
@@ -878,6 +895,33 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
       </Text>
     );
 
+  /**
+   * 특정 세공 기댓값 계산기. 떠 있는 창에 둔다. 창 밖을 눌러도 닫히지 않아, 열어 둔 채 세공을 이어
+   * 하며 목표가 몇 번 나왔는지 본다. 목표는 세공 기록의 목표 달성과 "목표 나올 때까지" 에도 쓴다.
+   */
+  const calculator = (
+    <Flex vertical gap={10} style={{ width: 'min(560px, calc(100vw - 88px))' }}>
+      <TrialCountInput value={trials} onChange={setTrials} />
+      <TargetEditor
+        pool={pool}
+        options={options}
+        targets={targets}
+        onChange={setTargets}
+        summary={targetSummary}
+      />
+      {targets.length > 0 && chance > 0 ? (
+        <TrialOdds
+          framed={false}
+          trials={trials}
+          chance={chance}
+          verb="세공"
+          costPerTrial={onePull}
+          note="고른 목표 옵션이 한 번의 세공에 모두 붙을 확률로 셉니다. 골드는 도구값이고, 기억의 보석을 올렸으면 보석값도 더합니다."
+        />
+      ) : null}
+    </Flex>
+  );
+
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
       <Card variant="outlined" role="region" aria-label="세공 창">
@@ -917,22 +961,33 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
             popupMatchSelectWidth={false}
             style={{ flex: '0 1 130px', minWidth: 0 }}
           />
+          <Popover
+            open={calcOpen}
+            trigger={[]}
+            placement="bottomLeft"
+            title={
+              <Flex justify="space-between" align="center" gap={8}>
+                <span>특정 세공 기댓값</span>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CloseIcon />}
+                  aria-label="특정 세공 기댓값 닫기"
+                  onClick={() => setCalcOpen(false)}
+                />
+              </Flex>
+            }
+            content={calculator}
+          >
+            <Button
+              icon={<CalculateIcon />}
+              aria-expanded={calcOpen}
+              onClick={() => setCalcOpen(!calcOpen)}
+            >
+              특정 세공 기댓값
+            </Button>
+          </Popover>
         </Flex>
-        <div style={{ marginTop: 10 }}>
-          <TargetEditor
-            pool={pool}
-            options={options}
-            targets={targets}
-            onChange={setTargets}
-            summary={targetSummary}
-          />
-          {/* 목표를 고르면 n 번 세공했을 때 나올 확률과 기댓값을 함께 본다. 세공은 매번 따로 뽑는다. */}
-          {targets.length > 0 && chance > 0 ? (
-            <div style={{ marginTop: 8 }}>
-              <TrialOdds chance={chance} verb="세공" costPerTrial={onePull} />
-            </div>
-          ) : null}
-        </div>
 
         <Divider style={{ marginBlock: 16 }} />
 
@@ -1024,7 +1079,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               <OptionBox
                 title={gemOn || pending ? '기억된 옵션' : '세공 옵션'}
                 lines={itemLines}
-                pool={pool}
+                caps={caps}
                 options={options}
                 hit={itemLines !== null && meetsTargets(itemLines, targets)}
                 reveal={revealsPending ? null : revealKey}
@@ -1037,7 +1092,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               <OptionBox
                 title="새 옵션"
                 lines={pending}
-                pool={pool}
+                caps={caps}
                 options={options}
                 hit={pending !== null && meetsTargets(pending, targets)}
                 reveal={revealsPending ? revealKey : null}

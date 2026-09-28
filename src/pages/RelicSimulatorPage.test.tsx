@@ -142,9 +142,12 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     expect(screen.getByText('본전 확률').closest('.ant-flex')).toHaveTextContent('본전 확률50%');
     expect(screen.queryByRole('region', { name: '본전' })).not.toBeInTheDocument();
 
-    // n 번은 떠 있는 계산기에서 센다. 10번이면 1 - 0.5^10.
+    // n 번은 떠 있는 계산기에서 센다. 8천만과 2억이 반반, 이데아 1억 3,400만. 10번 복원한 합이
+    // 13억 4천만 이상이려면 2억이 5번 이상 나와야 한다: 이론값 62.3%.
     fireEvent.click(screen.getByRole('button', { name: /특정 유물 기댓값/ }));
-    expect(await screen.findByRole('region', { name: '본전' })).toHaveTextContent('복원하면 99.9%');
+    expect(await screen.findByRole('region', { name: '본전' })).toHaveTextContent(
+      /본전 이상 얻을 확률 6[0-4]\.\d%/,
+    );
     expect(screen.queryByRole('region', { name: '복원 횟수별 확률' })).not.toBeInTheDocument();
     fireEvent.mouseDown(await screen.findByLabelText('특정 유물 옵션'));
     fireEvent.click(
@@ -156,7 +159,7 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     // 30종 x 10레벨 중 10레벨 하나: 1/300. 10번이면 1 - (299/300)^10 = 3.28%.
     expect(screen.getByText(/^한 번에/)).toHaveTextContent('한 번에 0.333%, 평균 300번에 한 번');
     expect(screen.getByRole('region', { name: '복원 횟수별 확률' })).toHaveTextContent(
-      '복원하면 3.28%',
+      '한 번 이상 나올 확률 3.28%',
     );
 
     // 창을 열어 둔 채 복원해도 닫히지 않고, 나온 횟수를 센다.

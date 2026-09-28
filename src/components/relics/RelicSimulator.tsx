@@ -23,7 +23,7 @@ import {
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { CalculateIcon, CloseIcon, InfoIcon, ResetIcon, StarFillIcon } from '@/components/icons';
-import { TrialOdds } from '@/components/simulator/TrialOdds';
+import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import {
   skillOfOption,
   useArcanaQuery,
@@ -51,6 +51,7 @@ import {
   type RelicTarget,
 } from '@/features/relics/simulator';
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
+import { formatEstimatedChance, sumAtLeastChance } from '@/features/simulator/breakEven';
 import { formatChance } from '@/features/simulator/trials';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
 
@@ -442,50 +443,69 @@ export function RelicSimulatorView({
 
   /**
    * 본전 확률. 한 번 복원해 이데아 최저가 이상이 나올 확률이다. 모든 옵션과 레벨이 똑같이 나온다는
-   * 이 화면의 가정 아래에서, 시세를 아는 결과 가운데 이데아 최저가 이상인 결과의 비율이다.
+   * 이 화면의 가정 아래에서, 시세를 아는 결과 가운데 이데아 최저가 이상인 결과의 비율이다. values 는
+   * 시세를 아는 결과 하나하나의 값으로, n 번 복원한 합을 셀 때 쓴다.
    */
   const ideaChance = useMemo(() => {
     if (!ready || ideaPrice === null) return null;
-    let known = 0;
+    const values: number[] = [];
     let above = 0;
     for (const option of MURIAS_RELIC_POOL) {
       for (const level of RELIC_LEVELS) {
         const price = drawPrice({ option, level }, ready);
         if (!price) continue;
-        known += 1;
+        values.push(price.price);
         if (price.price >= ideaPrice) above += 1;
       }
     }
-    return known > 0 ? { chance: above / known, above, known } : null;
+    if (values.length === 0) return null;
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    return { chance: above / values.length, above, known: values.length, values, mean };
   }, [ready, ideaPrice]);
 
   /**
    * 특정 유물 기댓값 계산기. 떠 있는 창에 둔다. 창 밖을 눌러도 닫히지 않아, 열어 둔 채 복원을
    * 이어 하며 그 유물이 몇 번 나왔는지 본다. 단추를 다시 누르거나 닫기를 누르면 닫힌다.
+   * 맨 위 시행 횟수 하나를 본전과 특정 유물이 같이 쓴다.
    */
   const [calcOpen, setCalcOpen] = useState(false);
+  const [trials, setTrials] = useState(10);
   const [target, setTarget] = useState<RelicTarget | null>(null);
   const targetChance = target ? relicTargetChance(target) : 0;
   const targetHits = useMemo(
     () => (target ? simulator.draws.filter((draw) => meetsRelicTarget(draw, target)).length : 0),
     [simulator.draws, target],
   );
+  // n 번 복원한 유물의 시세 합이 이데아 n 개 최저가 이상일 확률. 창을 열었을 때만 센다.
+  const breakEven = useMemo(
+    () =>
+      calcOpen && ideaChance && ideaPrice !== null
+        ? sumAtLeastChance(ideaChance.values, trials, ideaPrice)
+        : null,
+    [calcOpen, ideaChance, ideaPrice, trials],
+  );
 
   const calculator = (
     <Flex vertical gap={10} style={{ width: 'min(440px, calc(100vw - 88px))' }}>
-      {ideaChance && ideaChance.chance > 0 && ideaPrice !== null ? (
-        <>
-          <TrialOdds
-            framed={false}
-            label="본전"
-            chance={ideaChance.chance}
-            verb="복원"
-            costPerTrial={ideaPrice}
-            note={`본전은 이데아 최저가 이상이 나오는 것입니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개입니다.`}
-          />
-          <Divider style={{ margin: 0 }} />
-        </>
+      <TrialCountInput value={trials} onChange={setTrials} />
+      {breakEven !== null && ideaChance && ideaPrice !== null ? (
+        <section aria-label="본전">
+          <Flex gap={8} align="center" wrap>
+            <Text strong>본전</Text>
+            <Text className="tnum" style={{ fontSize: 13 }}>
+              본전 이상 얻을 확률 <Text strong>{formatEstimatedChance(breakEven)}</Text>, 평균 얻는
+              금액 <Text strong>{formatGoldShort(ideaChance.mean * trials)}</Text> (이데아{' '}
+              {formatGoldShort(ideaPrice * trials)})
+            </Text>
+            <Tooltip
+              title={`복원한 유물 ${formatNumber(trials)}개의 시세 합이 이데아 ${formatNumber(trials)}개 최저가 합 이상일 확률입니다. 옵션과 레벨이 모두 똑같이 나온다고 보고, 시세를 아는 결과 ${formatNumber(ideaChance.known)}개로 셉니다. 2,000번까지는 여러 번 뽑아 보고, 그보다 많으면 정규분포로 어림합니다.`}
+            >
+              <InfoIcon aria-label="본전 계산 방법" tabIndex={0} style={{ cursor: 'help' }} />
+            </Tooltip>
+          </Flex>
+        </section>
       ) : null}
+      <Divider style={{ margin: 0 }} />
       <Flex gap={8} align="center" wrap>
         <Select<number>
           aria-label="특정 유물 옵션"
@@ -532,6 +552,7 @@ export function RelicSimulatorView({
           </Text>
           <TrialOdds
             framed={false}
+            trials={trials}
             chance={targetChance}
             verb="복원"
             costPerTrial={ideaPrice}

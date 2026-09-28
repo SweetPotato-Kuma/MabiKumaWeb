@@ -55,13 +55,36 @@ function renderPage() {
   );
 }
 
+/**
+ * 정교한 표에만 있는 옵션(변신 옵션처럼)이 있는 확률표. 한 번 세공에 가장 낮은 레벨이 나오게 하면
+ * 대미지밸런스 5/5(최대), 최대 공격력 3/6(최대 아님), 체력 20/20(최대) 이 붙는다.
+ */
+const FINE_ONLY_DATA: ReforgeData = {
+  ...DATA,
+  pools: [
+    [
+      [0, 5, 5],
+      [1, 3, 6],
+      [2, 20, 20],
+    ],
+    [
+      [0, 5, 5],
+      [2, 20, 20],
+    ],
+  ],
+  tables: { 'fine|1|0': 0, 'radiant|1|0': 1, 'brilliant|1|0': 1 },
+};
+
+let data: ReforgeData = DATA;
+
 describe('세공 시뮬레이터', () => {
   beforeEach(() => {
+    data = DATA;
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string) => {
         const url = String(input);
-        if (url.endsWith('data/reforge.json')) return new Response(JSON.stringify(DATA));
+        if (url.endsWith('data/reforge.json')) return new Response(JSON.stringify(data));
         return new Response('', { status: 404 });
       }),
     );
@@ -148,12 +171,16 @@ describe('세공 시뮬레이터', () => {
 
   it('목표를 고르면 한 번에 붙을 확률을 보이고, 채운 세공에 목표 달성을 붙인다', async () => {
     renderPage();
+    // 목표는 떠 있는 특정 세공 기댓값 창에서 고른다.
+    fireEvent.click(await screen.findByRole('button', { name: /특정 세공 기댓값/ }));
     fireEvent.click(await screen.findByRole('button', { name: /목표 옵션 추가/ }));
+    // 레벨 옆에 그 레벨의 실제 수치를 적는다.
+    expect(screen.getByText('5% 증가 이상')).toBeInTheDocument();
     // 옵션이 셋뿐이라 목표 옵션은 늘 붙는다.
     expect(screen.getAllByText('100%').length).toBeGreaterThan(0);
     // 목표를 고르면 n 번 세공했을 때의 확률도 함께 나온다.
     expect(screen.getByRole('region', { name: '세공 횟수별 확률' })).toHaveTextContent(
-      '세공하면 100%',
+      '한 번 이상 나올 확률 100%',
     );
 
     fireEvent.click(screen.getByRole('button', { name: '목표 나올 때까지' }));
@@ -175,5 +202,20 @@ describe('세공 시뮬레이터', () => {
     expect(toggle).toBeChecked();
     expect(document.querySelector('.rf-play')).toBeNull();
     expect(document.querySelector('.rf-reveal')).toBeNull();
+  });
+
+  it('다른 도구의 표에 없는 옵션도 최대가 아니면 최대로 강조하지 않는다', async () => {
+    data = FINE_ONLY_DATA;
+    renderPage();
+    // 옵션은 늘 남은 것 중 첫째, 레벨은 늘 가장 낮은 것.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    fireEvent.click(await screen.findByRole('button', { name: '세공하기' }));
+    const window = () => screen.getByRole('region', { name: '세공 창' });
+    expect(within(window()).getAllByText('최대')).toHaveLength(2);
+
+    // 찬란한 표에는 최대 공격력이 없다. 그래도 3/6 은 최대가 아니다.
+    fireEvent.click(screen.getByText('찬란한'));
+    expect(within(window()).getByText('(3/6 레벨 : 6 증가)')).toBeInTheDocument();
+    expect(within(window()).getAllByText('최대')).toHaveLength(2);
   });
 });

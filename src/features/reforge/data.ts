@@ -67,6 +67,40 @@ export function typesFor(data: ReforgeData, tool: ReforgeToolId): ReforgeItemTyp
   return data.types.filter((type) => racesFor(data, tool, type.id).length > 0);
 }
 
+/** 옵션 하나의 레벨 상한. max 는 일반 구간의 끝 레벨, lbMax 는 한계 돌파 구간의 끝 레벨(없으면 0). */
+export interface LevelCap {
+  max: number;
+  lbMax: number;
+}
+
+const capsCache = new WeakMap<ReforgeData, Map<string, Map<number, LevelCap>>>();
+
+/**
+ * 그 장비(타입, 종족)에 붙는 옵션마다의 레벨 상한. 상한은 도구와 관계없이 같다(data.test.ts 가 지킨다).
+ * 도구마다 확률표에 오르는 옵션은 달라서(영롱한과 찬란한 표에는 변신 옵션이 없다) 모든 도구의 표를
+ * 합쳐 찾는다. 지금 고른 도구의 표만 보면, 다른 도구로 붙인 옵션의 상한을 몰라 잘못 강조했다.
+ */
+export function levelCaps(data: ReforgeData, type: number, race: number): Map<number, LevelCap> {
+  let byItem = capsCache.get(data);
+  if (!byItem) {
+    byItem = new Map();
+    capsCache.set(data, byItem);
+  }
+  const key = `${type}|${race}`;
+  const cached = byItem.get(key);
+  if (cached) return cached;
+  const caps = new Map<number, LevelCap>();
+  for (const tool of data.tools) {
+    const index = data.tables[tableKey(tool.id, type, race)];
+    if (index === undefined) continue;
+    for (const [option, , max, , lbMax = 0] of data.pools[index]) {
+      if (!caps.has(option)) caps.set(option, { max, lbMax });
+    }
+  }
+  byItem.set(key, caps);
+  return caps;
+}
+
 /**
  * 아이템 타입 트리. 확률표는 타입 60개 남짓을 한 줄로 늘어놓아 고르기 어렵다. 묶음 이름과 순서는
  * 경매장 카테고리 트리(features/auction/categoryTree.ts)를 따른다. 같은 자리에 같은 이름이 있어야
