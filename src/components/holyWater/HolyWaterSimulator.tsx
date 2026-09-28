@@ -38,7 +38,6 @@ import {
   HOLY_WATER_EFFECTS,
   HOLY_WATER_SCROLLS,
   HOLY_WATER_TIERS,
-  scrollLabel,
   tierChance,
   tierOf,
   type HolyWaterDraw,
@@ -107,9 +106,6 @@ const showDraw = (draw: HolyWaterDraw): ShownDraw => {
   const effect = HOLY_WATER_EFFECTS[source.effect];
   return { ...draw, source, effect, tier: tierOf(effect, draw.value) };
 };
-
-/** "25~30". 폭이 한 칸이면 그 수치만. */
-const rangeText = (min: number, max: number) => (min === max ? `${min}` : `${min}~${max}`);
 
 /**
  * 등급 표시. 99% 이상은 별과 굵은 액센트, 90%와 95% 이상은 액센트 테두리, 50% 이상은 기본 테두리다.
@@ -276,14 +272,13 @@ function HolyWaterBench({
 function ResultDetail({ draw }: { draw: ShownDraw }) {
   return (
     <Flex vertical gap={12}>
-      <Flex className="hw-line" vertical gap={2} style={{ '--i': 0 } as CSSProperties}>
-        <Text strong style={{ fontSize: 18 }}>
-          {draw.effect.name}
-        </Text>
-        <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-          {scrollLabel(draw.source)} ({rangeText(draw.source.min, draw.source.max)})
-        </Text>
-      </Flex>
+      <Text
+        className="hw-line"
+        strong
+        style={{ display: 'block', fontSize: 18, '--i': 0 } as CSSProperties}
+      >
+        {draw.effect.name}
+      </Text>
       <Flex
         className={draw.tier === 99 ? 'hw-line hw-line--max' : 'hw-line'}
         gap={10}
@@ -320,14 +315,9 @@ function ResultList({ draws }: { draws: ShownDraw[] }) {
             } as CSSProperties
           }
         >
-          <Flex vertical gap={0} style={{ flex: 1, minWidth: 0 }}>
-            <Text strong style={{ lineHeight: 1.35 }}>
-              {draw.effect.name}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {scrollLabel(draw.source)}
-            </Text>
-          </Flex>
+          <Text strong style={{ flex: 1, minWidth: 0, lineHeight: 1.35 }}>
+            {draw.effect.name}
+          </Text>
           <Flex vertical gap={2} align="flex-end" style={{ flex: 'none', minWidth: 72 }}>
             <ValueText draw={draw} />
             {draw.tier !== null ? <TierTag tier={draw.tier} /> : null}
@@ -366,14 +356,7 @@ const HistoryTable = memo(function HistoryTable({ rows }: { rows: ShownDraw[] })
     {
       title: '효과',
       key: 'effect',
-      render: (_value, draw) => (
-        <Flex vertical gap={0} style={{ minWidth: 0 }}>
-          <Text strong>{draw.effect.name}</Text>
-          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-            {scrollLabel(draw.source)} ({rangeText(draw.source.min, draw.source.max)})
-          </Text>
-        </Flex>
-      ),
+      render: (_value, draw) => <Text strong>{draw.effect.name}</Text>,
     },
     {
       title: '수치',

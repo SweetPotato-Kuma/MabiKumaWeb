@@ -98,7 +98,10 @@ export const HOLY_WATER_SCROLLS: readonly HolyWaterScroll[] = HOLY_WATER_EFFECTS
 /** 그 효과가 가질 수 있는 가장 큰 수치. */
 export const effectMax = (effect: HolyWaterEffect) => effect.ranges[effect.ranges.length - 1][1];
 
-/** "최대 대미지 E". */
+/**
+ * "최대 대미지 E". 스크롤을 가려내는 식별용 이름이다. 단계와 폭은 확률을 세는 데만 쓰고 화면에는
+ * 효과 이름과 수치만 보인다.
+ */
 export const scrollLabel = (scroll: HolyWaterScroll) =>
   `${HOLY_WATER_EFFECTS[scroll.effect].name}${scroll.grade ? ` ${scroll.grade}` : ''}`;
 

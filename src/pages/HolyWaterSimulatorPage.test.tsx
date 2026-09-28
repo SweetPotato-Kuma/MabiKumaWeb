@@ -76,7 +76,8 @@ describe('무리아스의 성수 시뮬레이터', () => {
     rigMaxDamageE(5);
     fireEvent.click(screen.getByRole('button', { name: '바르기' }));
     expect(within(latest()).getByText('최대 대미지')).toBeInTheDocument();
-    expect(within(latest()).getByText('최대 대미지 E (25~30)')).toBeInTheDocument();
+    // 단계 글자와 폭은 확률을 세는 데만 쓰고 보이지 않는다.
+    expect(latest()).not.toHaveTextContent(/최대 대미지 E|25~30/);
     expect(within(latest()).getByText('+30')).toBeInTheDocument();
     expect(within(latest()).getByText('99% 이상')).toBeInTheDocument();
 
