@@ -26,7 +26,7 @@ import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
-import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, HammerIcon, ImageIcon, KeyIcon, LightModeIcon, MenuIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
+import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, HammerIcon, ImageIcon, KeyIcon, LightModeIcon, MenuIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon, WaterDropIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -64,6 +64,11 @@ const NAV_ITEMS: NavItem[] = [
         key: '/reforge-simulator',
         icon: <HammerIcon />,
         label: <NavLink to="/reforge-simulator">세공</NavLink>,
+      },
+      {
+        key: '/holy-water-simulator',
+        icon: <WaterDropIcon />,
+        label: <NavLink to="/holy-water-simulator">무리아스의 성수</NavLink>,
       },
     ],
   },

@@ -12,6 +12,7 @@ import { DungeonCoinsPage } from '@/pages/DungeonCoinsPage';
 import { RelicsPage } from '@/pages/RelicsPage';
 import { RelicSimulatorPage } from '@/pages/RelicSimulatorPage';
 import { ReforgeSimulatorPage } from '@/pages/ReforgeSimulatorPage';
+import { HolyWaterSimulatorPage } from '@/pages/HolyWaterSimulatorPage';
 import { ItemCardPage } from '@/pages/ItemCardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PrivacyPage } from '@/pages/PrivacyPage';
@@ -57,6 +58,7 @@ export const router = createBrowserRouter(
         { path: 'relics', element: <RelicsPage /> },
         { path: 'relic-simulator', element: <RelicSimulatorPage /> },
         { path: 'reforge-simulator', element: <ReforgeSimulatorPage /> },
+        { path: 'holy-water-simulator', element: <HolyWaterSimulatorPage /> },
         { path: 'privacy', element: <PrivacyPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },
