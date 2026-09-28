@@ -561,7 +561,7 @@ export function BagsPage() {
         type="error"
         showIcon
         message="주머니를 받지 못했습니다"
-        description="잠시 후 다시 찾아 주세요. 계속 안 되면 오른쪽 아래 의견 보내기로 알려 주세요."
+        description="잠시 후 다시 찾아 주세요. 계속 안 되면 오른쪽 아래 의견 단추로 알려 주세요."
       />
     ) : listings.length === 0 && loading ? (
       <Card aria-busy="true">
@@ -663,29 +663,43 @@ export function BagsPage() {
             {state.status !== 'idle' && state.status !== 'error' && listings.length > 0 ? (
               showTabs ? (
                 // 개수는 탭마다 붙어 있으므로 따로 줄을 쓰지 않는다. 그만큼 격자가 한 줄 더 들어간다.
-                <Tabs
-                  size="small"
-                  activeKey={currentTab}
-                  onChange={setActiveTab}
-                  tabBarStyle={{ marginBottom: 0 }}
-                  tabBarExtraContent={
-                    <Flex gap={12} align="center">
-                      {validity ? (
-                        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                          {validity}
-                        </Text>
-                      ) : null}
+                // 768px 미만에서는 탭 옆에 유효 시각과 보기 단추를 두면 탭이 한두 개만 남고 단추가
+                // 잘렸다. 그때는 그 둘을 탭 위 한 줄로 올린다.
+                <Flex vertical gap={8}>
+                  {wide ? null : (
+                    <Flex justify="space-between" align="center" gap={12} wrap>
+                      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                        {validity}
+                      </Text>
                       {viewToggle}
                     </Flex>
-                  }
-                  items={[
-                    { key: ALL_TAB, label: tabLabel('전체', listings.length) },
-                    ...categoryTabs.map((tab) => ({
-                      key: tab.key,
-                      label: tabLabel(tab.title, tab.count),
-                    })),
-                  ]}
-                />
+                  )}
+                  <Tabs
+                    size="small"
+                    activeKey={currentTab}
+                    onChange={setActiveTab}
+                    tabBarStyle={{ marginBottom: 0 }}
+                    tabBarExtraContent={
+                      wide ? (
+                        <Flex gap={12} align="center">
+                          {validity ? (
+                            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                              {validity}
+                            </Text>
+                          ) : null}
+                          {viewToggle}
+                        </Flex>
+                      ) : undefined
+                    }
+                    items={[
+                      { key: ALL_TAB, label: tabLabel('전체', listings.length) },
+                      ...categoryTabs.map((tab) => ({
+                        key: tab.key,
+                        label: tabLabel(tab.title, tab.count),
+                      })),
+                    ]}
+                  />
+                </Flex>
               ) : (
                 <Flex justify="space-between" align="center" gap={12} wrap>
                   <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>

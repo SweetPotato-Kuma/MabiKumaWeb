@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, App, Button, Card, Col, Divider, Flex, Grid, Row, Tooltip, Typography } from 'antd';
-import { HEADER_HEIGHT } from '@/app/theme';
+import { headerHeightFor } from '@/app/theme';
 import { BaseStatsPanel } from '@/components/equipment/BaseStatsPanel';
 import { EnchantPanel } from '@/components/equipment/EnchantPanel';
 import { EquipmentPreview, type ReforgeLine } from '@/components/equipment/EquipmentPreview';
@@ -139,8 +139,8 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
             screens.lg
               ? {
                   position: 'sticky',
-                  top: HEADER_HEIGHT + 16,
-                  maxHeight: `calc(100dvh - ${HEADER_HEIGHT + 32}px)`,
+                  top: headerHeightFor(screens) + 16,
+                  maxHeight: `calc(100dvh - ${headerHeightFor(screens) + 32}px)`,
                   display: 'flex',
                   flexDirection: 'column',
                 }

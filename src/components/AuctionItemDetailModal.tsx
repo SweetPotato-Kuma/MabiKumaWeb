@@ -166,8 +166,9 @@ function OptionGroupTable({ group }: { group: OptionGroup }) {
         {group.title}
       </Text>
       <Descriptions
-        // 값이 짧은 묶음은 두 칸으로 놓아 줄 수를 절반으로 줄인다.
-        column={group.dense ? 2 : 1}
+        // 값이 짧은 묶음은 두 칸으로 놓아 줄 수를 절반으로 줄인다. 576px 미만에서는 두 칸을 두면
+        // 값 칸이 한 글자 폭으로 눌려 "7~16" 이 세로로 쪼개졌다. 그때는 한 칸이다.
+        column={group.dense ? { xs: 1, sm: 2 } : 1}
         size="small"
         bordered
         styles={{ label: LABEL_STYLE }}

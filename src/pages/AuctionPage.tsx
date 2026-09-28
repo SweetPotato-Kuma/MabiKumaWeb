@@ -60,6 +60,7 @@ import { useMarketRecentQuery } from '@/features/market/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { useIconMaps } from '@/features/itemcard/iconMap';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
+import { headerHeightFor } from '@/app/theme';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
@@ -146,6 +147,8 @@ function ItemNameCell({ displayName, notes }: { displayName: string; notes?: str
 
 /** 그림 칸 폭. 칸 안쪽 여백까지 더한다. */
 const ICON_COLUMN_WIDTH = AUCTION_ICON_BOX + 24;
+/** 좁은 화면의 그림 칸. 작은 표의 칸 여백(양쪽 8px)만 더해 이름 칸에 폭을 돌린다. */
+const COMPACT_ICON_COLUMN_WIDTH = AUCTION_ICON_BOX + 16;
 
 /**
  * 표 아래 한 줄. 끝쪽에서 다음 묶음을 받는 중인지, 드물게 걸려 멈췄는지 알린다.
@@ -197,6 +200,9 @@ export function AuctionPage() {
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const isWide = Boolean(screens.md);
+  // 표 머리는 사이트 헤더 바로 아래에 붙는다. 0 에 붙이면 헤더 밑으로 숨어 보이지 않았다.
+  const headerHeight = headerHeightFor(screens);
+  const stickyHeader = useMemo(() => ({ offsetHeader: headerHeight }), [headerHeight]);
 
   // 아이템 정보에서 넘어올 때 조건이 주소에 실려 온다. 첫 렌더에서만 읽고 이후에는 화면이 주인이다.
   const [searchParams] = useSearchParams();
@@ -501,7 +507,7 @@ export function AuctionPage() {
    * 열은 그림, 이름, 수량, 가격, 남은 시간 다섯뿐이다. 카테고리와 옵션은 표에서 뺐다.
    * 옵션은 줄을 누르면 뜨는 상세 창에 전부 있다. 표는 훑어보는 자리라 칸이 적을수록 읽힌다.
    */
-  const itemColumns = useMemo<TableColumnsType<AuctionItem>>(() => [
+  const itemColumns = useMemo<TableColumnsType<AuctionItem>>(() => isWide ? [
     {
       title: '',
       key: 'icon',
@@ -573,10 +579,48 @@ export function AuctionPage() {
         </Flex>
       ),
     },
-  ], [recentByName, filtering, deferredFilter]);
+  ] : [
+    // 768px 미만. 다섯 칸을 가로로 밀면 이름 칸이 한 글자 폭으로 눌렸다. 그림, 이름, 가격 세 칸만
+    // 두고 수량과 남은 시간, 1일 중위는 이름 아래에 적는다. 가로 스크롤 없이 한 화면에 든다.
+    {
+      title: '',
+      key: 'icon',
+      width: COMPACT_ICON_COLUMN_WIDTH,
+      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} />,
+    },
+    {
+      title: '이름',
+      dataIndex: 'item_display_name',
+      render: (_value, record) => {
+        const summary = recentByName?.[record.item_name];
+        const remaining = formatRemaining(record.date_auction_expire);
+        return (
+          <ItemNameCell
+            displayName={record.item_display_name}
+            notes={[
+              `${formatNumber(record.item_count)}개, ${remaining === '만료' ? remaining : `${remaining} 남음`}`,
+              ...(summary ? [`1일 중위 ${formatGold(summary.mid)}`] : []),
+              ...(filtering ? describeMatch(record, deferredFilter) : []),
+            ]}
+          />
+        );
+      },
+    },
+    {
+      title: '가격',
+      dataIndex: 'auction_price_per_unit',
+      align: 'right',
+      defaultSortOrder: 'ascend',
+      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+      render: (_value, record) => (
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+      ),
+    },
+  ], [isWide, recentByName, filtering, deferredFilter]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
-  const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => [
+  const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => isWide ? [
     {
       title: '',
       key: 'icon',
@@ -619,7 +663,38 @@ export function AuctionPage() {
       sorter: (a, b) => Date.parse(a.date_auction_buy) - Date.parse(b.date_auction_buy),
       render: (value: string) => <span className="tnum">{formatDateTime(value)}</span>,
     },
-  ], [filtering, deferredFilter]);
+  ] : [
+    // 768px 미만. 판매 중 매물 표와 같은 까닭으로 세 칸만 둔다.
+    {
+      title: '',
+      key: 'icon',
+      width: COMPACT_ICON_COLUMN_WIDTH,
+      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} />,
+    },
+    {
+      title: '이름',
+      dataIndex: 'item_display_name',
+      render: (_value, record) => (
+        <ItemNameCell
+          displayName={record.item_display_name}
+          notes={[
+            `${formatNumber(record.item_count)}개, ${formatDateTime(record.date_auction_buy)}`,
+            ...(filtering ? describeMatch(record, deferredFilter) : []),
+          ]}
+        />
+      ),
+    },
+    {
+      title: '가격',
+      dataIndex: 'auction_price_per_unit',
+      align: 'right',
+      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+      render: (_value, record) => (
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+      ),
+    },
+  ], [isWide, filtering, deferredFilter]);
 
   /**
    * 결과 영역은 검색어 타이핑과 분리한다.
@@ -682,8 +757,8 @@ export function AuctionPage() {
             rowKey={(record, index) => `${record.item_display_name}-${record.date_auction_expire}-${index ?? 0}`}
             size="small"
             pagination={itemsPaging.pagination}
-            scroll={{ x: 640 }}
-            sticky
+            scroll={isWide ? { x: 640 } : undefined}
+            sticky={stickyHeader}
           />
           <LoadMoreStatus
             hasNextPage={itemsQuery.hasNextPage}
@@ -694,7 +769,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, itemColumns, visibleItems, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, recent, rowInteraction, singleItem]);
+  ), [enabled, itemColumns, visibleItems, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <QueryState
@@ -735,8 +810,8 @@ export function AuctionPage() {
           rowKey={(record) => record.auction_buy_id}
           size="small"
           pagination={historyPaging.pagination}
-          scroll={{ x: 640 }}
-          sticky
+          scroll={isWide ? { x: 640 } : undefined}
+          sticky={stickyHeader}
         />
         <LoadMoreStatus
           hasNextPage={historyQuery.hasNextPage}
@@ -746,7 +821,7 @@ export function AuctionPage() {
         />
       </Flex>
     </QueryState>
-  ), [enabled, visibleHistory, historyColumns, historyLoaded, historyMore, historyPaging.pagination, historyQuery, rowInteraction]);
+  ), [enabled, visibleHistory, historyColumns, historyLoaded, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   return (
     <Flex vertical gap={16}>
@@ -860,7 +935,7 @@ export function AuctionPage() {
               <Card variant="outlined">
                 <EmptyState
                   variant="search"
-                  description="왼쪽에서 카테고리를 고르거나, 아이템명이나 상세 검색 조건을 넣은 뒤 찾기를 누르세요."
+                  description="카테고리를 고르거나, 아이템명이나 상세 검색 조건을 넣은 뒤 찾기를 누르세요."
                 />
               </Card>
             ) : (

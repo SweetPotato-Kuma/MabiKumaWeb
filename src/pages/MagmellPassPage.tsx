@@ -160,7 +160,7 @@ export function MagmellPassPage() {
       {
         title: '순위',
         dataIndex: 'rank',
-        width: 72,
+        width: wide ? 72 : 52,
         align: 'right',
         className: 'tnum',
         render: (rank: number) =>
@@ -213,6 +213,8 @@ export function MagmellPassPage() {
         width: wide ? 200 : undefined,
         align: 'right',
         className: 'tnum',
+        // 좁은 화면에서 "100,000 골드" 가 두 줄로 접히지 않게 한다. 남는 폭은 채널 칸이 줄어 맞춘다.
+        onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
         render: (price: number, row) =>
           row.rank === 1 ? (
             <Flex
@@ -260,14 +262,30 @@ export function MagmellPassPage() {
           {/* 세 칸. 768px 미만에서는 한 단으로 떨어진다. */}
           <Row gutter={[16, 16]} align="bottom">
             <Col xs={24} md={11}>
-              <Form.Item label="서버" style={{ marginBottom: 0 }}>
-                <Segmented
-                  aria-label="서버"
-                  value={server}
-                  onChange={(value) => setServer(String(value))}
-                  options={SERVER_OPTIONS}
-                  style={{ maxWidth: '100%', overflowX: 'auto' }}
-                />
+              {/*
+                576px 미만에서는 다섯 칸이 한 줄에 다 들지 않아 끝 서버가 잘렸다. 그때는 고르기 상자다.
+              */}
+              <Form.Item
+                label="서버"
+                htmlFor={screens.sm === false ? 'pass-server' : undefined}
+                style={{ marginBottom: 0 }}
+              >
+                {screens.sm === false ? (
+                  <Select
+                    id="pass-server"
+                    value={server}
+                    onChange={(value: string) => setServer(value)}
+                    options={SERVER_OPTIONS}
+                  />
+                ) : (
+                  <Segmented
+                    aria-label="서버"
+                    value={server}
+                    onChange={(value) => setServer(String(value))}
+                    options={SERVER_OPTIONS}
+                    style={{ maxWidth: '100%', overflowX: 'auto' }}
+                  />
+                )}
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
@@ -350,7 +368,7 @@ export function MagmellPassPage() {
           type="error"
           showIcon
           message="통행증 값을 받지 못했습니다"
-          description="잠시 후 다시 불러와 주세요. 계속 안 되면 오른쪽 아래 의견 보내기로 알려 주세요."
+          description="잠시 후 다시 불러와 주세요. 계속 안 되면 오른쪽 아래 의견 단추로 알려 주세요."
           action={
             <Button size="small" onClick={() => void search()}>
               다시 불러오기

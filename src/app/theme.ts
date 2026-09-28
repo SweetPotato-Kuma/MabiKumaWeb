@@ -89,6 +89,26 @@ const BORDER_RADIUS = 10;
 export const HEADER_HEIGHT = 72;
 
 /**
+ * 1200px 미만 헤더 높이. 가로 메뉴가 서랍으로 들어가 헤더에는 로고와 단추만 남는다.
+ * 휴대폰에서 세로 자리를 본문에 돌려준다. 어느 폭에서 어느 높이인지는 headerHeightFor 가 정한다.
+ */
+export const HEADER_HEIGHT_COMPACT = 56;
+
+/**
+ * 가로 메뉴가 한 줄에 다 드는 폭인가. 메뉴 칸 여섯(운영자는 일곱)과 로고, 단추가 들어가려면
+ * 1200px(antd xl) 이 필요하다. 그보다 좁으면 antd 넘침 메뉴(...)가 묶음 칸을 한 번 더 옆으로
+ * 띄우는데, 그 칸이 화면 밖으로 밀려 잘렸다. 그래서 그 아래는 서랍 메뉴를 쓴다.
+ */
+export function hasFullNav(screens: { xl?: boolean }): boolean {
+  return Boolean(screens.xl);
+}
+
+/** 지금 폭의 헤더 높이. sticky 로 헤더 아래에 붙는 것들도 이 값을 쓴다. */
+export function headerHeightFor(screens: { xl?: boolean }): number {
+  return hasFullNav(screens) ? HEADER_HEIGHT : HEADER_HEIGHT_COMPACT;
+}
+
+/**
  * 글꼴은 Pretendard 하나. main.tsx 가 사이트 안에 실은 것을 쓴다(외부 CDN 을 부르지 않는다).
  * 글꼴을 정하지 않으면 윈도우는 맑은 고딕, 맥은 애플 SD 고딕으로 떨어져 기기마다 모양이 달랐다.
  * 받기 전이나 못 받았을 때를 위해 뒤에 OS 글꼴을 둔다. 받는 동안은 이 글꼴로 먼저 그린다(swap).
@@ -119,11 +139,17 @@ export function applyThemeVariables(mode: ThemeMode): void {
 }
 
 /**
+ * narrow 는 휴대폰 폭(576px 미만)이다. 좁은 화면에서만 달라야 하는 여백을 토큰으로 바꾼다.
+ *
  * reducedMotion 은 OS 의 움직임 줄이기 설정이다. 켜져 있으면 antd 의 움직임을 antd 방식으로 끈다.
  * CSS 로 모든 요소의 전환 시간을 줄이면 전환이 없던 top, left 에도 전환이 생겨, 팝업이 제자리를
  * 재는 순간 옛 자리가 읽히고 화면 밖으로 튀었다. 그래서 styles/index.css 는 전환을 건드리지 않는다.
  */
-export function buildThemeConfig(mode: ThemeMode, reducedMotion = false): ThemeConfig {
+export function buildThemeConfig(
+  mode: ThemeMode,
+  reducedMotion = false,
+  narrow = false,
+): ThemeConfig {
   const isDark = mode === 'dark';
   const surface = SURFACE[mode];
   const accent = isDark ? ACCENT_DARK : ACCENT_LIGHT;
@@ -187,6 +213,9 @@ export function buildThemeConfig(mode: ThemeMode, reducedMotion = false): ThemeC
       Card: {
         // 카드 헤더가 본문보다 앞으로 나서지 않게 여백만 손본다.
         headerFontSize: 15,
+        // 휴대폰 폭(narrow)에서는 기본 안쪽 여백 24px 이 카드 안 표와 입력칸의 폭을 한참 먹었다.
+        // 페이지 좌우 여백(16px)과 맞춘다. 작은 카드(12px)는 그대로 둔다.
+        ...(narrow ? { bodyPadding: 16, headerPadding: 16 } : {}),
       },
       Statistic: {
         contentFontSize: 22,

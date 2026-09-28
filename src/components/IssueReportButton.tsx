@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Alert, App, Button, FloatButton, Form, Input, Modal, Radio, Typography } from 'antd';
+import { Alert, App, Button, FloatButton, Form, Grid, Input, Modal, Radio, Typography } from 'antd';
 import { canReportIssue, submitIssueReport, type IssueCategory } from '@/features/report/api';
 import { BugIcon, ChatIcon } from '@/components/icons';
 
@@ -37,6 +37,7 @@ export function IssueReportButton() {
   const location = useLocation();
   const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
+  const screens = Grid.useBreakpoint();
 
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -81,15 +82,21 @@ export function IssueReportButton() {
         아이콘만 있는 동그란 버튼은 아무도 누르지 않는다. 무엇을 하는 버튼인지 글자로
         말해 주고, 액센트 색을 입혀 본문과 분리한다. 색은 토큰에서 나오므로 화면마다
         다른 색이 되지 않는다.
+        휴대폰 폭에서는 80px 칸이 표의 가격 열을 가렸다. 칸을 줄이고 글자도 두 자로 줄인다.
+        푸터 고지가 가려지지 않게 RootLayout 이 그만큼 푸터 아래를 비운다.
       */}
       <FloatButton
         type="primary"
         shape="square"
         icon={<ChatIcon />}
-        description="의견 보내기"
-        tooltip="버그 신고나 기능 요청을 보냅니다"
+        description={screens.md ? '의견 보내기' : '의견'}
+        tooltip={screens.md ? '버그 신고나 기능 요청을 보냅니다' : undefined}
         aria-label="의견 보내기. 버그 신고나 기능 요청을 보냅니다"
-        style={{ width: 80, height: 80, insetInlineEnd: 24, insetBlockEnd: 24 }}
+        style={
+          screens.md
+            ? { width: 80, height: 80, insetInlineEnd: 24, insetBlockEnd: 24 }
+            : { width: 52, height: 52, insetInlineEnd: 12, insetBlockEnd: 12 }
+        }
         onClick={() => setOpen(true)}
       />
 

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Button,
   Flex,
+  Grid,
   Input,
   Segmented,
   Table,
@@ -72,6 +73,7 @@ function EnchantList({
   const [view, setView] = useState<View>(notable.length ? 'notable' : 'all');
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
+  const screens = Grid.useBreakpoint();
   const label = slot === 0 ? '접두' : '접미';
   const chosen = options.find((enchant) => enchant.id === value);
 
@@ -81,7 +83,30 @@ function EnchantList({
     ? base.filter((enchant) => `${enchant.name} ${effectSummary(enchant)}`.includes(needle))
     : base;
 
-  const columns: TableColumnsType<EnchantDef> = [
+  // 576px 미만. 효과 칸을 따로 두면 한두 글자만 남고 잘렸다. 이름 아래에 효과를 적는다.
+  const compactColumns: TableColumnsType<EnchantDef> = [
+    {
+      title: '랭크',
+      key: 'rank',
+      width: 56,
+      className: 'tnum',
+      render: (_, enchant) => rankLabel(enchant),
+    },
+    {
+      title: '이름과 효과',
+      key: 'name',
+      render: (_, enchant) => (
+        <Flex vertical gap={2}>
+          <Text strong>{enchant.name}</Text>
+          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+            {effectSummary(enchant)}
+          </Text>
+        </Flex>
+      ),
+    },
+  ];
+
+  const wideColumns: TableColumnsType<EnchantDef> = [
     {
       title: '랭크',
       key: 'rank',
@@ -127,7 +152,7 @@ function EnchantList({
             <Text>없음</Text>
           )}
         </Flex>
-        <Flex align="center" gap={8}>
+        <Flex align="center" gap={8} style={screens.sm ? undefined : { width: '100%' }}>
           <Segmented<View>
             aria-label={`${label} 인챈트 보기`}
             size="small"
@@ -151,7 +176,7 @@ function EnchantList({
             }}
             placeholder="예: 최대 대미지"
             allowClear
-            style={{ width: 180 }}
+            style={screens.sm ? { width: 180 } : { flex: 1, minWidth: 0 }}
           />
         </Flex>
       </Flex>
@@ -161,7 +186,7 @@ function EnchantList({
           size="small"
           rowKey="id"
           tableLayout="fixed"
-          columns={columns}
+          columns={screens.sm ? wideColumns : compactColumns}
           dataSource={rows}
           rowSelection={{
             type: 'radio',

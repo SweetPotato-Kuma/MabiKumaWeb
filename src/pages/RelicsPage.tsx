@@ -195,6 +195,8 @@ const ARCANA_COLUMN = 136;
  * 줄마다 같은 틀이라 가격 길이가 달라도 칸끼리 세로로 맞는다.
  */
 const LEVEL_GRID = 'max-content minmax(0, 1fr) max-content';
+/** 레벨 칸 하나의 최소 폭. "10레벨  1억 1,100만  12건" 이 한 줄에 드는 폭이다. */
+const LEVEL_CELL_MIN = 168;
 
 /**
  * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다의 최저가를 두 칸씩 다섯 줄로
@@ -230,13 +232,17 @@ function OptionCard({
             </Text>
           </Flex>
         </Flex>
-        {/* 두 레벨씩 한 줄. 왼쪽이 높은 레벨이라 왼쪽에서 오른쪽, 위에서 아래로 10부터 1까지 읽힌다. */}
+        {/*
+          두 레벨씩 한 줄. 왼쪽이 높은 레벨이라 왼쪽에서 오른쪽, 위에서 아래로 10부터 1까지 읽힌다.
+          카드가 두 칸을 담지 못하는 폭(휴대폰)에서는 한 줄에 한 레벨로 떨어진다. 두 칸을 억지로
+          두면 "1억 1,100만" 같은 긴 가격이 옆 칸의 레벨 글자 위로 넘쳐 겹쳤다.
+        */}
         <div
           role="list"
           aria-label={`${row.name} 레벨별 최저가(골드)`}
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            gridTemplateColumns: `repeat(auto-fill, minmax(${LEVEL_CELL_MIN}px, 1fr))`,
             columnGap: 14,
             rowGap: 2,
           }}

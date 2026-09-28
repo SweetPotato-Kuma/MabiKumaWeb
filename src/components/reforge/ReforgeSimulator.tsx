@@ -506,6 +506,45 @@ const HistoryTable = memo(function HistoryTable({
   );
   const poolOf = (draw: ReforgeDraw) =>
     data.pools[data.tables[tableKey(draw.tool, draw.type, draw.race)]];
+  const screens = Grid.useBreakpoint();
+  const lines = (draw: ReforgeDraw) => {
+    const pool = poolOf(draw);
+    return (
+      <Flex vertical gap={2}>
+        {draw.lines.map((line) => (
+          <CompactLine
+            key={line.option}
+            line={line}
+            option={options[line.option]}
+            normalMax={normalMaxOf(pool, line)}
+          />
+        ))}
+      </Flex>
+    );
+  };
+  // 576px 미만. 도구와 장비 칸이 폭을 다 가져가 옵션이 화면 밖으로 밀렸다. 옵션 위에 한 줄로 적는다.
+  const compactColumns: TableColumnsType<ReforgeDraw> = [
+    {
+      title: '번째',
+      dataIndex: 'no',
+      width: 48,
+      align: 'right',
+      render: (no: number) => <span className="tnum">{formatNumber(no)}</span>,
+    },
+    {
+      title: '옵션',
+      key: 'lines',
+      render: (_value, draw) => (
+        <Flex vertical gap={4}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {toolName.get(draw.tool)}
+            {draw.gem ? ', 기억의 보석' : ''}, {typeName.get(draw.type)}, {data.races[draw.race]}
+          </Text>
+          {lines(draw)}
+        </Flex>
+      ),
+    },
+  ];
   const columns: TableColumnsType<ReforgeDraw> = [
     {
       title: '번째',
@@ -536,27 +575,13 @@ const HistoryTable = memo(function HistoryTable({
     {
       title: '옵션',
       key: 'lines',
-      render: (_value, draw) => {
-        const pool = poolOf(draw);
-        return (
-          <Flex vertical gap={2}>
-            {draw.lines.map((line) => (
-              <CompactLine
-                key={line.option}
-                line={line}
-                option={options[line.option]}
-                normalMax={normalMaxOf(pool, line)}
-              />
-            ))}
-          </Flex>
-        );
-      },
+      render: (_value, draw) => lines(draw),
     },
   ];
 
   return (
     <Table<ReforgeDraw>
-      columns={columns}
+      columns={screens.sm === false ? compactColumns : columns}
       dataSource={rows}
       rowKey="no"
       size="small"
@@ -565,7 +590,7 @@ const HistoryTable = memo(function HistoryTable({
           ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
           : false
       }
-      scroll={{ x: 'max-content' }}
+      scroll={screens.sm === false ? undefined : { x: 'max-content' }}
       locale={{ emptyText: '아직 세공하지 않았습니다.' }}
     />
   );

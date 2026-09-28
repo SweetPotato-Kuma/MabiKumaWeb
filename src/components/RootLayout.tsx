@@ -1,8 +1,9 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Button,
+  Drawer,
   Flex,
   Grid,
   Layout,
@@ -15,7 +16,7 @@ import {
   type MenuProps,
 } from 'antd';
 import { usePageMeta } from '@/app/pageMeta';
-import { HEADER_HEIGHT } from '@/app/theme';
+import { HEADER_HEIGHT, hasFullNav, headerHeightFor } from '@/app/theme';
 import logoMarkDark from '@/assets/logo-mark-dark.png';
 import logoMark from '@/assets/logo-mark.png';
 import wordmarkDark from '@/assets/wordmark-dark.png';
@@ -25,7 +26,7 @@ import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
-import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, HammerIcon, ImageIcon, KeyIcon, LightModeIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
+import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, HammerIcon, ImageIcon, KeyIcon, LightModeIcon, MenuIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -33,7 +34,9 @@ const { Text } = Typography;
 type NavItem = { key: string; icon: ReactNode; label: ReactNode; children?: NavItem[] };
 
 /**
- * 내비는 데스크톱에서 한 줄을 넘지 않는다. 좁아지면 antd 가 알아서 넘침 메뉴로 접는다.
+ * 내비는 데스크톱에서 한 줄을 넘지 않는다. 한 줄에 다 들어가지 않는 폭(1200px 미만)에서는
+ * 가로 메뉴를 쓰지 않고 오른쪽 서랍으로 옮긴다(theme.ts 의 hasFullNav). antd 의 넘침 메뉴(...)는
+ * 묶음 칸을 한 번 더 옆으로 띄우는데, 휴대폰 폭에서는 그 칸이 화면 밖으로 밀려 글자가 잘렸다.
  *
  * 시뮬레이터와 NPC 상점에서 찾는 것들은 한 칸 아래로 묶는다. 화면이 하나씩 늘어나도 헤더가
  * 한 줄을 넘지 않게 하려는 것이다. 묶음 칸 자체는 화면이 없어 누르면 펼쳐지기만 한다.
@@ -88,6 +91,18 @@ const ADMIN_NAV_ITEM: NavItem = {
   icon: <ImageIcon />,
   label: <NavLink to="/item-card">카드 만들기</NavLink>,
 };
+
+/**
+ * 서랍 메뉴에서는 묶음을 접지 않고 제목(group)으로 펼쳐 둔다. 항목이 열 개가 안 되니
+ * 한 번 더 눌러 펼치게 할 까닭이 없다.
+ */
+function toDrawerItems(items: NavItem[]): MenuProps['items'] {
+  return items.map((item) =>
+    item.children
+      ? { key: item.key, type: 'group' as const, label: item.label, children: item.children }
+      : item,
+  );
+}
 
 /** 현재 경로에 해당하는 메뉴 키. 루트로 들어오면 경매장이 첫 화면이다. */
 function selectedKeyFor(pathname: string): string {
@@ -156,7 +171,25 @@ export function RootLayout() {
     return () => window.clearTimeout(timer);
   }, [queryClient]);
 
-  const navItems: MenuProps['items'] = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const navItems = hasAdminKey ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const selectedKeys = [selectedKeyFor(location.pathname)];
+  // 1200px 미만은 가로 메뉴가 한 줄에 다 들어가지 않는다. 서랍으로 옮긴다.
+  const compactNav = !hasFullNav(screens);
+  const headerHeight = headerHeightFor(screens);
+
+  const navigate = useNavigate();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // 화면을 옮기면 서랍은 닫힌다. 뒤로 가기로 옮겨 가도 닫혀야 해서 경로를 본다.
+  useEffect(() => setDrawerOpen(false), [location.pathname]);
+
+  /**
+   * 메뉴 칸의 글자만 링크다. 글자 옆 빈 곳을 눌러도 옮겨 가게 한다. 링크를 눌렀을 때는
+   * 링크가 이미 옮겼으므로 한 번 더 옮기지 않는다(뒤로 가기가 두 번 걸린다).
+   */
+  const handleMenuClick: MenuProps['onClick'] = ({ key, domEvent }) => {
+    if ((domEvent.target as Element).closest('a')) return;
+    if (key.startsWith('/')) navigate(key);
+  };
 
   /**
    * 본문 폭. 1160 은 좁아서 넓은 화면에서 좌우가 한참 비었다. 표가 주인공인 화면이라
@@ -178,8 +211,8 @@ export function RootLayout() {
           position: 'sticky',
           top: 0,
           zIndex: 10,
-          height: HEADER_HEIGHT,
-          lineHeight: `${HEADER_HEIGHT}px`,
+          height: headerHeight,
+          lineHeight: `${headerHeight}px`,
           borderBottom: `1px solid ${token.colorBorder}`,
           background: token.colorBgContainer,
           // 본문이 헤더 밑으로 지나갈 때 경계가 분명해야 한다. 배경색 계열로만 옅게 깐다.
@@ -187,7 +220,11 @@ export function RootLayout() {
         }}
       >
         {/* Header 가 물려주는 line-height 를 여기서 끊는다. 배지와 글자가 세로로 늘어난다. */}
-        <Flex align="center" gap={screens.md ? 28 : 12} style={{ ...containerStyle, lineHeight: 'normal' }}>
+        <Flex
+          align="center"
+          gap={screens.md ? 28 : 12}
+          style={{ ...containerStyle, height: '100%', lineHeight: 'normal' }}
+        >
           <NavLink to="/auction" aria-label="마비쿠마 홈">
             <Space size={8}>
               {/* 원본은 2배 크기로 담았다. 너비와 높이를 적어 두어야 그림이 늦게 떠도 글자가 밀리지 않는다. */}
@@ -208,25 +245,66 @@ export function RootLayout() {
             </Space>
           </NavLink>
 
-          <nav aria-label="주요 메뉴" style={{ flex: 1, minWidth: 0 }}>
-            <Menu
-              mode="horizontal"
-              items={navItems}
-              selectedKeys={[selectedKeyFor(location.pathname)]}
-              style={{
-                borderBottom: 'none',
-                background: 'transparent',
-                lineHeight: `${HEADER_HEIGHT}px`,
-              }}
-            />
-          </nav>
+          {compactNav ? (
+            <div style={{ flex: 1 }} />
+          ) : (
+            <nav aria-label="주요 메뉴" style={{ flex: 1, minWidth: 0 }}>
+              <Menu
+                mode="horizontal"
+                items={navItems}
+                selectedKeys={selectedKeys}
+                onClick={handleMenuClick}
+                style={{
+                  borderBottom: 'none',
+                  background: 'transparent',
+                  lineHeight: `${HEADER_HEIGHT}px`,
+                }}
+              />
+            </nav>
+          )}
 
-          <Space size={8}>
+          <Space size={4}>
             {screens.sm ? <EndpointTag /> : null}
             <ThemeToggle />
+            {compactNav ? (
+              <Button
+                type="text"
+                aria-label="메뉴 열기"
+                aria-expanded={drawerOpen}
+                icon={<MenuIcon />}
+                onClick={() => setDrawerOpen(true)}
+              />
+            ) : null}
           </Space>
         </Flex>
       </Header>
+
+      {compactNav ? (
+        <Drawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          placement="right"
+          size={280}
+          title="메뉴"
+          styles={{ body: { padding: 8 } }}
+        >
+          <nav aria-label="주요 메뉴">
+            <Menu
+              mode="inline"
+              items={toDrawerItems(navItems)}
+              selectedKeys={selectedKeys}
+              onClick={handleMenuClick}
+              style={{ borderInlineEnd: 'none', background: 'transparent' }}
+            />
+          </nav>
+          {/* 좁은 화면은 헤더에 조회 상태 배지를 둘 자리가 없다. 서랍 아래에 옮겨 둔다. */}
+          {screens.sm ? null : (
+            <div style={{ padding: '12px 16px' }}>
+              <EndpointTag />
+            </div>
+          )}
+        </Drawer>
+      ) : null}
 
       <Content style={{ ...containerStyle, paddingBlock: screens.md ? 32 : 20 }}>
         <Outlet />
@@ -240,7 +318,10 @@ export function RootLayout() {
         style={{
           borderTop: `1px solid ${token.colorBorderSecondary}`,
           textAlign: 'center',
-          paddingBlock: 12,
+          paddingBlockStart: 12,
+          // 휴대폰에서는 의견 단추(52px, 아래 여백 12px)가 고지 끝줄을 덮지 않게 비운다.
+          paddingBlockEnd: screens.md ? 12 : 72,
+          paddingInline: 16,
         }}
       >
         <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.6 }}>
