@@ -327,6 +327,29 @@ npx wrangler d1 migrations apply mabikuma-market --remote
 npx wrangler d1 execute mabikuma-market --remote --command "SELECT COUNT(*) FROM trades"
 ```
 
+## 뿔피리 기록 (/horn)
+
+뿔피리 내역 API 는 서버마다 최근 1,000건만 줍니다. 류트는 30분이면 1,000건이 찹니다. 그래서 두 크론이 모두
+네 서버를 받아(5분마다) 시세 기록과 같은 D1(`MARKET`)의 `horn_posts` 에 쌓습니다. 찾을 때 그 서버를 받은 지
+1분이 넘었으면 먼저 받고 찾으므로 화면은 1분 안쪽으로 새롭습니다. 코드는 `horn.js`, 표는 `migrations/0002_horn.sql` 입니다.
+
+| 경로 | 누가 | 하는 일 |
+| --- | --- | --- |
+| `GET /horn/search?server=&q=&not=&char=&kind=&days=&limit=` | 공개 | 서버 하나, 기간 하나에서 찾기 |
+| `POST /horn/collect` | 운영자 | 크론을 기다리지 않고 네 서버를 지금 받기 |
+
+- 받은 글의 9할이 저절로 되풀이되는 파티 광고입니다. 같은 캐릭터가 같은 글을 30분 안에 다시 외치면 새 줄을
+  만들지 않고 횟수와 마지막 시각만 올립니다. 류트 1,000건이 170줄 남짓이 됩니다.
+- 여러 요청이 한꺼번에 와도 `meta` 의 `horn_claim:<서버>` 를 조건부로 바꿔 한 요청만 넥슨에 갑니다.
+- 90일 지난 줄은 받을 때마다 조금씩 지웁니다. 조회는 30초 엣지 캐시, 제한은 `MARKET_RATE_LIMIT` 를 같이 씁니다.
+- 검색어는 띄어쓰기가 "그리고", 쉼표가 "또는" 입니다. 공백과 대소문자를 가리지 않도록 `norm` 칸에서 찾습니다.
+
+```bash
+# 표를 만든 뒤 한 번 받아 보기
+npx wrangler d1 migrations apply mabikuma-market --remote
+curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY"   https://mabikuma-api.inbox7.workers.dev/horn/collect
+```
+
 ## 경매장 장비 매물 모아 두기 (/auction/snapshot)
 
 넥슨 경매장 API 는 옵션으로 찾지 못하고, 한 쪽 500건을 앞 쪽의 커서로만 넘깁니다. 세공이나 인챈트로

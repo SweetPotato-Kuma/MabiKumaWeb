@@ -8,6 +8,7 @@ import { ItemsPage } from '@/pages/ItemsPage';
 import { LegacyRedirect } from '@/pages/LegacyRedirect';
 import { BagsPage } from '@/pages/BagsPage';
 import { MagmellPassPage } from '@/pages/MagmellPassPage';
+import { HornPage } from '@/pages/HornPage';
 import { DungeonCoinsPage } from '@/pages/DungeonCoinsPage';
 import { RelicsPage } from '@/pages/RelicsPage';
 import { RelicSimulatorPage } from '@/pages/RelicSimulatorPage';
@@ -54,6 +55,7 @@ export const router = createBrowserRouter(
         { path: 'npc-shop', element: <Navigate to="/bags" replace /> },
         { path: 'bags', element: <BagsPage /> },
         { path: 'magmell-pass', element: <MagmellPassPage /> },
+        { path: 'horn', element: <HornPage /> },
         { path: 'dungeon-coins', element: <DungeonCoinsPage /> },
         { path: 'relics', element: <RelicsPage /> },
         { path: 'relic-simulator', element: <RelicSimulatorPage /> },

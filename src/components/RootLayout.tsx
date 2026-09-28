@@ -26,7 +26,7 @@ import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
-import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, HammerIcon, ImageIcon, KeyIcon, LightModeIcon, MenuIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon, WaterDropIcon } from '@/components/icons';
+import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, HammerIcon, HornIcon, ImageIcon, KeyIcon, LightModeIcon, MenuIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon, WaterDropIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -50,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
     label: <NavLink to="/dungeon-coins">던전 코인</NavLink>,
   },
   { key: '/relics', icon: <MuseumIcon />, label: <NavLink to="/relics">유물 시세</NavLink> },
+  { key: '/horn', icon: <HornIcon />, label: <NavLink to="/horn">뿔피리</NavLink> },
   {
     key: 'simulator',
     icon: <DiceIcon />,

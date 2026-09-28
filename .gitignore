@@ -30,6 +30,9 @@ Thumbs.db
 # 로컬 캐시
 .cache/
 
+# wrangler dev 가 만드는 로컬 D1 과 캐시
+.wrangler/
+
 # 운영자가 자기 컴퓨터에서만 쓰는 도구. 올리지 않는다.
 # 여기 있던 것을 지우면 되살릴 곳이 없으니 따로 백업해 둘 것.
 scripts/local/

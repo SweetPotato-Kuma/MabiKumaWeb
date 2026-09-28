@@ -391,7 +391,7 @@ function marketError(name, message, status, cors) {
  * 엣지 캐시. 같은 아이템을 여럿이 보면 D1 까지 한 번만 간다.
  * 응답에 붙는 CORS 헤더는 부른 쪽마다 다르므로 본문만 담아 두고 헤더는 나갈 때 붙인다.
  */
-async function withEdgeCache(cacheKey, compute) {
+export async function withEdgeCache(cacheKey, compute, seconds = CACHE_SECONDS) {
   const cache = typeof globalThis.caches === 'undefined' ? null : globalThis.caches.default;
   const request = new Request(cacheKey);
   if (cache) {
@@ -402,13 +402,14 @@ async function withEdgeCache(cacheKey, compute) {
   if (cache) {
     await cache.put(
       request,
-      new Response(body, { headers: { 'cache-control': `public, max-age=${CACHE_SECONDS}` } }),
+      new Response(body, { headers: { 'cache-control': `public, max-age=${seconds}` } }),
     );
   }
   return { body, hit: false };
 }
 
-async function rateLimited(request, env) {
+/** 시세 기록과 뿔피리 찾기가 같이 쓴다. 둘 다 D1 을 읽는 조회다. */
+export async function rateLimited(request, env) {
   if (!env.MARKET_RATE_LIMIT) return false;
   const key = request.headers.get('CF-Connecting-IP') || 'unknown';
   const { success } = await env.MARKET_RATE_LIMIT.limit({ key });

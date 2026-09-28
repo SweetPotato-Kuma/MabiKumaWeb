@@ -72,6 +72,7 @@ database_id = "cba3a0e7-3c6d-4e3f-a0d3-c741d1d53ab0"
 migrations_dir = "migrations"
 
 # 정각 10분마다: 거래 내역과 장비 매물. 5분 어긋나게: 던전 코인 화면의 시세(priceSnapshot.js).
+# 뿔피리(horn.js)는 두 크론 모두에서 받는다. 류트는 30분이면 API 의 1,000건이 차므로 5분마다 받는다.
 # 두 번째 값은 priceSnapshot.js 의 PRICE_CRON 과 글자까지 같아야 한다. 워커가 이 글자로 가른다.
 [triggers]
 crons = ["*/10 * * * *", "5,15,25,35,45,55 * * * *"]

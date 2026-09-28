@@ -21,7 +21,9 @@ import {
  */
 function fakeD1() {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(readFileSync(new URL('./migrations/0001_market.sql', import.meta.url), 'utf8'));
+  for (const file of ['0001_market.sql', '0002_horn.sql']) {
+    sqlite.exec(readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'));
+  }
 
   return {
     sqlite,

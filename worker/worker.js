@@ -37,6 +37,9 @@
  *
  * 경매장 장비 매물 모아 두기(GET /auction/snapshot)는 auctionSnapshot.js 에 있다. 같은 크론이
  * 장비 카테고리를 전부 받아 ICONS 버킷에 올리고, 화면은 ICON_BASE_URL 에서 받아 상세 검색으로 거른다.
+ *
+ * 거대한 외침의 뿔피리 찾기(GET /horn/search)는 horn.js 에 있다. 두 크론 모두 네 서버의 뿔피리를
+ * 받아 MARKET 에 쌓고(5분마다), 찾을 때도 1분이 지났으면 먼저 받는다.
  */
 
 import {
@@ -51,6 +54,8 @@ import {
   marketOptionTrades,
 } from './market.js';
 import { PRICE_COLLECT_PATH, PRICE_CRON, collectPrices, pricesCollect } from './priceSnapshot.js';
+import { SERVER_CHANNELS } from './servers.js';
+import { HORN_COLLECT_PATH, HORN_SEARCH_PATH, collectHorns, hornCollect, hornSearch } from './horn.js';
 import {
   SNAPSHOT_COLLECT_PATH,
   SNAPSHOT_PATH,
@@ -161,8 +166,6 @@ const BAG_SELLERS = [
   '얼리', '데위', '테일로', '상인 세누', '상인 베루', '상인 에루', '상인 네루', '카디',
 ];
 
-/** 서버별 채널 수. 화면(src/features/servers/constants.ts)과 같은 값이다. 통행증 찾기도 같이 쓴다. */
-const SERVER_CHANNELS = { 류트: 44, 만돌린: 16, 하프: 25, 울프: 16 };
 
 /** 모든 NPC 가 답하지 못했을 때는 오래 들고 있지 않는다. 잠깐 뒤 다시 물어볼 수 있게. */
 const BAG_PARTIAL_TTL_MS = 30 * 1000;
@@ -1332,6 +1335,24 @@ export default {
       return marketOptionTrades(request, url, env, cors);
     }
 
+    // 뿔피리 찾기. 서버 하나, 기간 하나에서 검색어로 거른다.
+    if (url.pathname === HORN_SEARCH_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('HORN_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return hornSearch(request, url, env, cors);
+    }
+
+    // 뿔피리 지금 받기는 운영자만.
+    if (url.pathname === HORN_COLLECT_PATH) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      if (request.method !== 'POST') {
+        return errorResponse('HORN_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+      }
+      return hornCollect(env, cors);
+    }
+
     // 지금 한 번 받기는 운영자만. 크론을 기다리지 않고 수집이 도는지 볼 때 쓴다.
     if (url.pathname === MARKET_COLLECT_PATH) {
       const problem = adminProblem(request, env, cors);
@@ -1488,14 +1509,22 @@ export default {
    * 크론(wrangler.toml 의 [triggers]). 정각 10분마다 경매장 거래 내역을 받아 시세 기록에 쌓고, 장비
    * 매물을 모아 둔다. 둘은 서로 기다리지 않는다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
    * 5분 어긋난 크론은 이름으로 묻는 시세를 모은다. 넥슨 요청이 한 실행에 몰리지 않게 나눴다.
+   * 뿔피리는 두 크론 모두에서 받는다. 류트는 30분이면 API 의 1,000건이 차므로 5분마다 받아야 빠지지 않는다.
    */
   async scheduled(controller, env) {
+    const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
     if (controller?.cron === PRICE_CRON) {
-      console.log(JSON.stringify({ prices: await collectPrices(env).catch(String) }));
+      const [prices, horn] = await Promise.allSettled([collectPrices(env), collectHorns(env)]);
+      console.log(JSON.stringify({ prices: outcome(prices), horn: outcome(horn) }));
       return;
     }
-    const [market, snapshot] = await Promise.allSettled([collectTrades(env), collectSnapshot(env)]);
-    const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
-    console.log(JSON.stringify({ market: outcome(market), snapshot: outcome(snapshot) }));
+    const [market, snapshot, horn] = await Promise.allSettled([
+      collectTrades(env),
+      collectSnapshot(env),
+      collectHorns(env),
+    ]);
+    console.log(
+      JSON.stringify({ market: outcome(market), snapshot: outcome(snapshot), horn: outcome(horn) }),
+    );
   },
 };
