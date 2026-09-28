@@ -60,6 +60,24 @@ export function drawLines(
   return lines;
 }
 
+/**
+ * 눈에 띄게 할 레벨. 한계 돌파는 일반 구간을 넘은 것이라 따로 가른다.
+ * - limitBreak: 한계 돌파 구간에서 나온 레벨
+ * - max: 일반 구간의 끝 레벨
+ * - high: 일반 구간 끝 레벨의 90% 이상
+ */
+export type LevelTier = 'limitBreak' | 'max' | 'high' | null;
+
+/** 높다고 칠 레벨의 비율. 끝 레벨의 90% 이상이다. */
+export const HIGH_LEVEL_SHARE = 0.9;
+
+export function levelTier(line: ReforgeLine, normalMax: number): LevelTier {
+  if (line.limitBreak || line.level > normalMax) return 'limitBreak';
+  if (line.level >= normalMax) return 'max';
+  if (line.level >= normalMax * HIGH_LEVEL_SHARE) return 'high';
+  return null;
+}
+
 /** 목표 한 줄. 이 옵션이 이 레벨 이상으로 붙기를 바란다. */
 export interface ReforgeTarget {
   option: number;

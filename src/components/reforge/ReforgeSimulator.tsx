@@ -12,6 +12,8 @@ import {
   Button,
   Card,
   Col,
+  Collapse,
+  Divider,
   Flex,
   Grid,
   InputNumber,
@@ -29,6 +31,7 @@ import {
   theme,
   type TableColumnsType,
 } from 'antd';
+import { SERIES_COLORS } from '@/app/theme';
 import { EmptyState } from '@/components/EmptyState';
 import {
   AddIcon,
@@ -38,6 +41,7 @@ import {
   InfoIcon,
   ResetIcon,
   StarFillIcon,
+  StarIcon,
 } from '@/components/icons';
 import { useMarketPrices, type PriceState } from '@/features/crafting/market';
 import {
@@ -54,12 +58,14 @@ import {
 } from '@/features/reforge/data';
 import {
   isSameItem,
+  levelTier,
   meetsTargets,
   optionEffect,
   parseOption,
   REFORGE_LINES,
   targetChance,
   UNTIL_CAP,
+  type LevelTier,
   type ParsedOption,
   type ReforgeDraw,
   type ReforgeLine,
@@ -69,6 +75,7 @@ import {
 } from '@/features/reforge/simulator';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
 import { usePrefersReducedMotion } from '@/lib/reducedMotion';
+import { useResolvedThemeMode } from '@/lib/themePreference';
 import './reforgeFx.css';
 
 const { Text } = Typography;
@@ -117,6 +124,10 @@ function rangeText(row: PoolRow): string {
   return `${min}~${max}레벨${lbMax ? `, 한계 돌파 ${lbMin}~${lbMax}` : ''}`;
 }
 
+/** 옵션의 일반 구간 끝 레벨. 묶음에 없으면(다른 장비의 기록) 그 레벨을 끝으로 본다. */
+const normalMaxOf = (pool: readonly PoolRow[] | undefined, line: ReforgeLine) =>
+  pool?.find((row) => row[0] === line.option)?.[2] ?? line.level;
+
 function readFxSetting(): boolean {
   try {
     return window.localStorage.getItem(FX_STORAGE_KEY) !== 'off';
@@ -147,23 +158,62 @@ function StatTitle({ label, detail }: { label: string; detail: string }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <Flex vertical gap={4} style={{ minWidth: 0 }}>
-      <Text type="secondary" style={{ fontSize: 13 }}>
-        {label}
-      </Text>
-      {children}
-    </Flex>
-  );
+/**
+ * 레벨 표시. 한계 돌파는 "한계 돌파" 글자 표, 일반 구간의 끝 레벨은 채운 별과 "최대", 끝 레벨의
+ * 90% 이상은 빈 별이다. 한계 돌파와 수치 강조가 섞여 보이지 않게 모양과 글자를 다르게 둔다.
+ */
+function TierMark({ tier }: { tier: LevelTier }) {
+  const { token } = theme.useToken();
+  const limitBreak = useLimitBreakColor();
+  if (tier === 'limitBreak')
+    return (
+      <Tag
+        style={{
+          marginInlineEnd: 0,
+          color: limitBreak,
+          borderColor: limitBreak,
+          background: 'transparent',
+        }}
+      >
+        한계 돌파
+      </Tag>
+    );
+  if (tier === 'max')
+    return (
+      <Flex gap={2} align="center" style={{ color: token.colorPrimary, whiteSpace: 'nowrap' }}>
+        <StarFillIcon aria-hidden style={{ fontSize: 13 }} />
+        <Text strong style={{ color: token.colorPrimary, fontSize: 12 }}>
+          최대
+        </Text>
+      </Flex>
+    );
+  if (tier === 'high')
+    return (
+      <Tooltip title="일반 구간 끝 레벨의 90% 이상">
+        <StarIcon
+          aria-label="끝 레벨의 90% 이상"
+          style={{ color: token.colorPrimary, fontSize: 13 }}
+        />
+      </Tooltip>
+    );
+  return null;
 }
 
-function LimitBreakTag() {
-  return (
-    <Tag color="processing" style={{ marginInlineEnd: 0 }}>
-      한계 돌파
-    </Tag>
-  );
+/**
+ * 한계 돌파의 색. 이 사이트의 info 색은 액센트와 같아 수치 강조와 섞이므로, 항목을 가르는 데이터 색의
+ * 첫 번째를 쓴다. 글자 표("한계 돌파")가 함께 붙어 색만으로 가르지 않는다.
+ */
+function useLimitBreakColor(): string {
+  return SERIES_COLORS[useResolvedThemeMode()][0];
+}
+
+/** 강조할 레벨의 글자색. 한계 돌파는 데이터 색, 수치 강조는 액센트다. */
+function useTierColor(tier: LevelTier): string | undefined {
+  const { token } = theme.useToken();
+  const limitBreak = useLimitBreakColor();
+  if (tier === 'limitBreak') return limitBreak;
+  if (tier === 'max' || tier === 'high') return token.colorPrimary;
+  return undefined;
 }
 
 /** 목표를 채운 결과 표시. 테두리 색에 더해 글자로도 알린다. */
@@ -185,12 +235,26 @@ function HitTag() {
 }
 
 /** 기록 표의 한 줄. 옵션 이름, 레벨, 효과. */
-function CompactLine({ line, option }: { line: ReforgeLine; option: ParsedOption }) {
+function CompactLine({
+  line,
+  option,
+  normalMax,
+}: {
+  line: ReforgeLine;
+  option: ParsedOption;
+  normalMax: number;
+}) {
+  const tier = levelTier(line, normalMax);
+  const color = useTierColor(tier);
   const effect = optionEffect(option, line.level);
   return (
-    <Flex gap={6} align="baseline" wrap style={{ minWidth: 0 }}>
-      <Text style={{ fontSize: 13 }}>{option.name}</Text>
-      <Text className="tnum" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+    <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
+      <Text style={{ fontSize: 13, color }}>{option.name}</Text>
+      <Text
+        className="tnum"
+        strong={tier !== null}
+        style={{ fontSize: 13, whiteSpace: 'nowrap', color }}
+      >
         {line.level}레벨
       </Text>
       {effect ? (
@@ -198,47 +262,36 @@ function CompactLine({ line, option }: { line: ReforgeLine; option: ParsedOption
           {effect}
         </Text>
       ) : null}
-      {line.limitBreak ? <LimitBreakTag /> : null}
+      <TierMark tier={tier} />
     </Flex>
   );
 }
 
-/**
- * 세공 창의 옵션 한 줄. 게임처럼 이름 아래에 "(7/10 레벨 : 7% 증가)" 를 적는다. 일반 구간의 끝
- * 레벨 이상이면 액센트 색과 별로 가른다. 색만으로 가르지 않게 별 그림이 함께 붙는다.
- */
+/** 세공 창의 옵션 한 줄. 게임처럼 이름 아래에 "(7/10 레벨 : 7% 증가)" 를 적는다. */
 function WindowLine({
   line,
   option,
-  row,
+  normalMax,
   index,
 }: {
   line: ReforgeLine;
   option: ParsedOption;
-  row: PoolRow | undefined;
+  normalMax: number;
   index: number;
 }) {
-  const { token } = theme.useToken();
-  const max = row?.[2] ?? line.level;
-  const top = line.level >= max;
+  const tier = levelTier(line, normalMax);
+  const color = useTierColor(tier);
   const effect = optionEffect(option, line.level);
   return (
     <div className="rf-line" style={{ '--i': index } as CSSProperties}>
       <Flex gap={6} align="center" wrap>
-        {top ? (
-          <StarFillIcon aria-hidden style={{ color: token.colorPrimary, fontSize: 13 }} />
-        ) : null}
-        <Text strong style={{ color: top ? token.colorPrimary : undefined }}>
+        <Text strong style={{ color }}>
           {option.name}
         </Text>
-        {line.limitBreak ? <LimitBreakTag /> : null}
+        <TierMark tier={tier} />
       </Flex>
-      <Text
-        type={top ? undefined : 'secondary'}
-        className="tnum"
-        style={{ fontSize: 13, color: top ? token.colorPrimary : undefined }}
-      >
-        ({line.level}/{max} 레벨{effect ? ` : ${effect}` : ''})
+      <Text type={tier ? undefined : 'secondary'} className="tnum" style={{ fontSize: 13, color }}>
+        ({line.level}/{normalMax} 레벨{effect ? ` : ${effect}` : ''})
       </Text>
     </div>
   );
@@ -276,7 +329,7 @@ function OptionBox({
         borderRadius: token.borderRadius,
         background: hit ? token.colorPrimaryBg : token.colorFillQuaternary,
         padding: 12,
-        minHeight: 132,
+        minHeight: 120,
       }}
     >
       <Flex justify="space-between" align="center" gap={8} style={{ marginBottom: 8 }}>
@@ -298,7 +351,7 @@ function OptionBox({
               key={line.option}
               line={line}
               option={options[line.option]}
-              row={pool.find((entry) => entry[0] === line.option)}
+              normalMax={normalMaxOf(pool, line)}
               index={index}
             />
           ))}
@@ -400,11 +453,6 @@ function Workbench({
   );
 }
 
-interface HistoryRow {
-  draw: ReforgeDraw;
-  hit: boolean;
-}
-
 /**
  * 세공 기록 표. 기록이 쌓일수록 그리는 데 오래 걸려, 세공 창보다 한 박자 늦게 그린다
  * (rows 는 useDeferredValue 로 늦춘 값이다). 같은 rows 면 다시 그리지 않는다.
@@ -414,11 +462,10 @@ const HistoryTable = memo(function HistoryTable({
   data,
   options,
 }: {
-  rows: HistoryRow[];
+  rows: ReforgeDraw[];
   data: ReforgeData;
   options: ParsedOption[];
 }) {
-  const { token } = theme.useToken();
   const toolName = useMemo(
     () => new Map(data.tools.map((tool) => [tool.id, shortToolName(tool.name)])),
     [data.tools],
@@ -427,26 +474,28 @@ const HistoryTable = memo(function HistoryTable({
     () => new Map(data.types.map((type) => [type.id, type.name])),
     [data.types],
   );
-  const columns: TableColumnsType<HistoryRow> = [
+  const poolOf = (draw: ReforgeDraw) =>
+    data.pools[data.tables[tableKey(draw.tool, draw.type, draw.race)]];
+  const columns: TableColumnsType<ReforgeDraw> = [
     {
       title: '번째',
-      key: 'no',
+      dataIndex: 'no',
       width: 64,
       align: 'right',
-      render: (_value, row) => <span className="tnum">{formatNumber(row.draw.no)}</span>,
+      render: (no: number) => <span className="tnum">{formatNumber(no)}</span>,
     },
     {
       title: '도구와 장비',
       key: 'setting',
       width: 150,
-      render: (_value, row) => (
+      render: (_value, draw) => (
         <Flex vertical gap={0}>
           <Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-            {toolName.get(row.draw.tool)}
-            {row.draw.gem ? ', 기억의 보석' : ''}
+            {toolName.get(draw.tool)}
+            {draw.gem ? ', 기억의 보석' : ''}
           </Text>
           <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-            {typeName.get(row.draw.type)}, {data.races[row.draw.race]}
+            {typeName.get(draw.type)}, {data.races[draw.race]}
           </Text>
         </Flex>
       ),
@@ -454,54 +503,54 @@ const HistoryTable = memo(function HistoryTable({
     {
       title: '옵션',
       key: 'lines',
-      render: (_value, row) => (
-        <Flex vertical gap={2}>
-          {row.draw.lines.map((line) => (
-            <CompactLine key={line.option} line={line} option={options[line.option]} />
-          ))}
-        </Flex>
-      ),
-    },
-    {
-      title: '목표',
-      key: 'hit',
-      width: 96,
-      align: 'right',
-      render: (_value, row) => (row.hit ? <HitTag /> : null),
+      render: (_value, draw) => {
+        const pool = poolOf(draw);
+        return (
+          <Flex vertical gap={2}>
+            {draw.lines.map((line) => (
+              <CompactLine
+                key={line.option}
+                line={line}
+                option={options[line.option]}
+                normalMax={normalMaxOf(pool, line)}
+              />
+            ))}
+          </Flex>
+        );
+      },
     },
   ];
 
   return (
-    <Card variant="outlined" style={{ minWidth: 0 }} styles={{ body: { padding: 0 } }}>
-      <Table<HistoryRow>
-        columns={columns}
-        dataSource={rows}
-        rowKey={(row) => row.draw.no}
-        size="small"
-        onRow={(row) => (row.hit ? { style: { background: token.colorPrimaryBg } } : {})}
-        pagination={
-          rows.length > PAGE_SIZE
-            ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
-            : false
-        }
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: '아직 세공하지 않았습니다.' }}
-      />
-    </Card>
+    <Table<ReforgeDraw>
+      columns={columns}
+      dataSource={rows}
+      rowKey="no"
+      size="small"
+      pagination={
+        rows.length > PAGE_SIZE
+          ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
+          : false
+      }
+      scroll={{ x: 'max-content' }}
+      locale={{ emptyText: '아직 세공하지 않았습니다.' }}
+    />
   );
 });
 
-/** 목표 옵션 고르기. 세 줄까지, 옵션마다 바라는 가장 낮은 레벨. */
+/** 목표 옵션 고르기. 세 줄까지, 옵션마다 바라는 가장 낮은 레벨. 고르지 않으면 단추 하나만 남는다. */
 function TargetEditor({
   pool,
   options,
   targets,
   onChange,
+  summary,
 }: {
   pool: readonly PoolRow[];
   options: ParsedOption[];
   targets: ReforgeTarget[];
   onChange: (targets: ReforgeTarget[]) => void;
+  summary: ReactNode;
 }) {
   const rowOf = (option: number) => pool.find((row) => row[0] === option);
   const add = () => {
@@ -517,7 +566,7 @@ function TargetEditor({
   };
 
   return (
-    <Flex vertical gap={8}>
+    <Flex vertical gap={6}>
       {targets.map((target, index) => {
         const row = rowOf(target.option);
         if (!row) return null;
@@ -527,6 +576,7 @@ function TargetEditor({
           <Flex key={`${target.option}-${index}`} gap={8} align="center" wrap>
             <Select<number>
               aria-label={`목표 옵션 ${index + 1}`}
+              size="small"
               showSearch
               optionFilterProp="label"
               value={target.option}
@@ -538,11 +588,12 @@ function TargetEditor({
                 .filter((entry) => !used.has(entry[0]))
                 .map((entry) => ({ value: entry[0], label: options[entry[0]].name }))}
               popupMatchSelectWidth={false}
-              style={{ flex: '1 1 220px', minWidth: 0, maxWidth: 360 }}
+              style={{ flex: '1 1 200px', minWidth: 0, maxWidth: 320 }}
             />
             <Tooltip title={rangeText(row)}>
               <InputNumber
                 aria-label={`목표 옵션 ${index + 1}의 가장 낮은 레벨`}
+                size="small"
                 min={row[1]}
                 max={highest}
                 value={target.minLevel}
@@ -553,7 +604,7 @@ function TargetEditor({
                 }}
                 suffix="레벨 이상"
                 className="tnum"
-                style={{ width: 132 }}
+                style={{ width: 120 }}
               />
             </Tooltip>
             <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
@@ -561,6 +612,7 @@ function TargetEditor({
             </Text>
             <Button
               type="text"
+              size="small"
               icon={<DeleteIcon />}
               aria-label={`목표 옵션 ${index + 1} 빼기`}
               onClick={() => replace(index, null)}
@@ -568,15 +620,17 @@ function TargetEditor({
           </Flex>
         );
       })}
-      <div>
+      <Flex gap={8} align="center" wrap>
         <Button
+          size="small"
           icon={<AddIcon />}
           onClick={add}
           disabled={targets.length >= MAX_TARGETS || targets.length >= pool.length}
         >
           목표 옵션 추가
         </Button>
-      </div>
+        {summary}
+      </Flex>
     </Flex>
   );
 }
@@ -587,63 +641,12 @@ function lowestOf(state: PriceState | undefined): number | null {
   return state.price.offers[0]?.price ?? null;
 }
 
-/** 한 개 값 입력칸. 경매장 최저가가 기본이고, 고쳐 넣으면 그 값을 쓴다. */
-function PriceField({
-  name,
-  market,
-  edited,
-  value,
-  onChange,
-}: {
-  name: string;
-  market: PriceState | undefined;
-  edited: boolean;
-  value: number | null;
-  onChange: (value: number | null) => void;
-}) {
-  const lowest = lowestOf(market);
-  const note = (() => {
-    if (edited)
-      return lowest !== null
-        ? `직접 넣은 값입니다. 경매장 최저가는 ${formatGold(lowest)}입니다.`
-        : '직접 넣은 값입니다.';
-    if (!market || market.status === 'loading') return '경매장 최저가를 받는 중입니다.';
-    if (market.status === 'error') return '경매장 시세를 받지 못했습니다. 값을 넣으면 셉니다.';
-    return lowest === null
-      ? '경매장에 매물이 없습니다. 값을 넣으면 셉니다.'
-      : '경매장 최저가입니다. 게임 데이터는 평균 10분 지연됩니다.';
-  })();
-  return (
-    <Field label={`${name} 한 개 값`}>
-      <Flex gap={8} align="center" wrap>
-        <InputNumber<number>
-          aria-label={`${name} 한 개 값`}
-          min={0}
-          step={100_000}
-          value={value}
-          onChange={onChange}
-          formatter={(input) => (input ? formatNumber(Number(input)) : '')}
-          parser={(input) => Number((input ?? '').replace(/[^\d]/g, ''))}
-          suffix="G"
-          className="tnum"
-          style={{ width: 180 }}
-        />
-        {edited ? <Button onClick={() => onChange(null)}>최저가로 되돌리기</Button> : null}
-        {market?.status === 'loading' ? <Spin size="small" /> : null}
-      </Flex>
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        {note}
-      </Text>
-    </Field>
-  );
-}
-
 /**
  * 세공 시뮬레이터 본체. 확률표를 받은 뒤에 그린다.
  *
- * 게임의 세공 창처럼 왼쪽 작업대에 장비와 기억의 보석을 올리고 세공한다. 기억의 보석을 쓰면 장비의
- * 옵션은 그대로 두고 새 옵션만 보여 주며, "신규 옵션 적용하기" 를 눌러야 붙는다. 쓴 골드는 도구와
- * 보석마다 쓴 개수에 한 개 값을 곱해 더한다.
+ * 세공 창 위쪽 한 줄에서 도구와 장비를 고르고, 게임의 세공 창처럼 왼쪽 작업대에 장비와 기억의 보석을
+ * 올려 세공한다. 기억의 보석을 쓰면 장비의 옵션은 그대로 두고 새 옵션만 보여 주며, "신규 옵션
+ * 적용하기" 를 눌러야 붙는다. 쓴 골드는 도구와 보석마다 쓴 개수에 경매장 최저가를 곱해 더한다.
  */
 function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simulator }) {
   const screens = Grid.useBreakpoint();
@@ -697,30 +700,22 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const [fxOn, setFxOn] = useState(readFxSetting);
   const animate = fxOn && !reducedMotion;
 
-  // 도구와 보석 값. 경매장 최저가가 기본이고, 고쳐 넣은 값이 있으면 그것을 쓴다.
+  // 도구와 보석 값은 경매장 최저가다. 방문자가 넣지 않아도 아래 통계에서 알아서 센다.
   const priceNames = useMemo(
     () => [...data.tools.map((entry) => entry.name), GEM_NAME],
     [data.tools],
   );
   const marketPrices = useMarketPrices(priceNames);
-  const [priceEdits, setPriceEdits] = useState<Record<string, number>>({});
-  const priceOf = (name: string): number | null =>
-    priceEdits[name] ?? lowestOf(marketPrices.get(name));
-  const editPrice = (name: string) => (value: number | null) =>
-    setPriceEdits((prev) => {
-      const next = { ...prev };
-      if (value === null) delete next[name];
-      else next[name] = value;
-      return next;
-    });
-  const toolPrice = priceOf(tool.name);
+  const priceOf = (name: string): number | null => lowestOf(marketPrices.get(name));
+  const pricesLoading = priceNames.some((name) => marketPrices.get(name)?.status === 'loading');
   const gemPrice = priceOf(GEM_NAME);
+  const toolPrice = priceOf(tool.name);
   const onePull = toolPrice === null ? null : toolPrice + (gemOn ? (gemPrice ?? 0) : 0);
 
   const { draws } = simulator;
   const count = draws.length;
-  const hits = useMemo(
-    () => draws.map((draw) => meetsTargets(draw.lines, targets)),
+  const hitCount = useMemo(
+    () => draws.filter((draw) => meetsTargets(draw.lines, targets)).length,
     [draws, targets],
   );
 
@@ -738,15 +733,19 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   }, [draws]);
   let toolSpent = 0;
   let unpriced = 0;
+  const priceLines: string[] = [];
   for (const [id, used] of usage.tools) {
-    const price = priceOf(data.tools.find((entry) => entry.id === id)?.name ?? '');
+    const name = data.tools.find((entry) => entry.id === id)?.name ?? '';
+    const price = priceOf(name);
     if (price === null) unpriced += used;
     else toolSpent += price * used;
+    priceLines.push(`${name} ${price === null ? '시세 없음' : formatGold(price)}`);
   }
+  if (usage.gems > 0)
+    priceLines.push(`${GEM_NAME} ${gemPrice === null ? '시세 없음' : formatGold(gemPrice)}`);
   const gemSpent = gemPrice === null ? 0 : gemPrice * usage.gems;
   if (gemPrice === null) unpriced += usage.gems;
   const spent = toolSpent + gemSpent;
-  const hitCount = hits.filter(Boolean).length;
 
   // 연출. 한 번 세공했을 때만 돌린다. 여러 번 한 뒤에는 마지막 결과만 바로 보인다.
   const last = draws[count - 1] ?? null;
@@ -767,114 +766,88 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const revealKey = animate && lastIsHere ? last.no : null;
   const revealsPending = last?.gem ?? false;
 
-  const history = useMemo(
-    () => draws.map((draw, index) => ({ draw, hit: hits[index] })).reverse(),
-    [draws, hits],
-  );
+  const history = useMemo(() => [...draws].reverse(), [draws]);
   // 표는 세공 창보다 늦게 그린다. 누르자마자 창에 결과가 먼저 뜬다.
   const settledHistory = useDeferredValue(history);
 
   const itemLabel = `${typeName.get(typeId)}${data.races[race] === '공용' ? '' : ` (${data.races[race]})`}`;
-  const pullNote =
-    onePull === null
-      ? '도구 값을 모릅니다.'
-      : `한 번에 ${formatGoldShort(onePull)}${gemOn ? ' (도구와 기억의 보석)' : ''}`;
+
+  const targetSummary =
+    targets.length === 0 ? (
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        고르면 한 번에 붙을 확률과 평균 비용을 셉니다.
+      </Text>
+    ) : (
+      <Text className="tnum" style={{ fontSize: 13 }}>
+        {chance > 0 ? (
+          <>
+            한 번에 모두 붙을 확률 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
+            <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
+            {onePull !== null ? (
+              <>
+                , 평균 <Text strong>{formatGoldShort(onePull / chance)}</Text>
+              </>
+            ) : null}
+          </>
+        ) : (
+          '이 목표는 이 장비에서 나올 수 없습니다.'
+        )}
+      </Text>
+    );
 
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
-      <Card variant="outlined">
-        <Flex vertical gap={16}>
-          {/* 두 칸. 768px 미만에서는 한 칸으로 떨어진다. */}
-          <Row gutter={[24, 16]}>
-            <Col xs={24} md={12}>
-              <Field label="세공 도구">
-                <Segmented<ReforgeToolId>
-                  block
-                  value={tool.id}
-                  onChange={setToolId}
-                  options={data.tools.map((entry) => ({
-                    value: entry.id,
-                    label: shortToolName(entry.name),
-                  }))}
-                />
-              </Field>
-            </Col>
-            <Col xs={24} md={12}>
-              <Field label="장비 종류">
-                <Flex vertical gap={8}>
-                  <Segmented<TypeGroup>
-                    block
-                    value={group}
-                    onChange={setGroup}
-                    options={TYPE_GROUPS.filter((entry) =>
-                      types.some((type) => groupOfType(type.name) === entry),
-                    ).map((entry) => ({ value: entry, label: entry }))}
-                  />
-                  <Flex gap={8} wrap>
-                    <Select<number>
-                      aria-label="아이템 타입"
-                      showSearch
-                      optionFilterProp="label"
-                      value={typeId}
-                      onChange={setTypeChoice}
-                      options={groupTypes.map((type) => ({ value: type.id, label: type.name }))}
-                      style={{ flex: '1 1 160px', minWidth: 0 }}
-                    />
-                    <Select<number>
-                      aria-label="착용 종족"
-                      value={race}
-                      onChange={setRaceChoice}
-                      options={races.map((entry) => ({ value: entry, label: data.races[entry] }))}
-                      style={{ flex: '1 1 120px', minWidth: 0 }}
-                    />
-                  </Flex>
-                </Flex>
-              </Field>
-            </Col>
-            <Col xs={24} md={12}>
-              <PriceField
-                name={tool.name}
-                market={marketPrices.get(tool.name)}
-                edited={priceEdits[tool.name] !== undefined}
-                value={toolPrice}
-                onChange={editPrice(tool.name)}
-              />
-            </Col>
-            <Col xs={24} md={12}>
-              <PriceField
-                name={GEM_NAME}
-                market={marketPrices.get(GEM_NAME)}
-                edited={priceEdits[GEM_NAME] !== undefined}
-                value={gemPrice}
-                onChange={editPrice(GEM_NAME)}
-              />
-            </Col>
-          </Row>
-
-          <Field label="목표 옵션 (고르지 않아도 됩니다)">
-            <TargetEditor pool={pool} options={options} targets={targets} onChange={setTargets} />
-            {targets.length > 0 ? (
-              <Text className="tnum" style={{ fontSize: 13 }}>
-                {chance > 0 ? (
-                  <>
-                    한 번에 모두 붙을 확률 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
-                    <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
-                    {onePull !== null ? (
-                      <>
-                        , 평균 <Text strong>{formatGoldShort(onePull / chance)}</Text>
-                      </>
-                    ) : null}
-                  </>
-                ) : (
-                  '이 목표는 이 장비에서 나올 수 없습니다.'
-                )}
-              </Text>
-            ) : null}
-          </Field>
-        </Flex>
-      </Card>
-
       <Card variant="outlined" role="region" aria-label="세공 창">
+        {/* 고르는 칸은 한 줄. 좁으면 알아서 다음 줄로 넘어간다. */}
+        <Flex gap={8} align="center" wrap>
+          <Segmented<ReforgeToolId>
+            value={tool.id}
+            onChange={setToolId}
+            aria-label="세공 도구"
+            options={data.tools.map((entry) => ({
+              value: entry.id,
+              label: shortToolName(entry.name),
+            }))}
+          />
+          <Segmented<TypeGroup>
+            value={group}
+            onChange={setGroup}
+            aria-label="장비 갈래"
+            options={TYPE_GROUPS.filter((entry) =>
+              types.some((type) => groupOfType(type.name) === entry),
+            ).map((entry) => ({ value: entry, label: entry }))}
+          />
+          <Select<number>
+            aria-label="아이템 타입"
+            showSearch
+            optionFilterProp="label"
+            value={typeId}
+            onChange={setTypeChoice}
+            options={groupTypes.map((type) => ({ value: type.id, label: type.name }))}
+            popupMatchSelectWidth={false}
+            style={{ flex: '1 1 150px', minWidth: 0, maxWidth: 220 }}
+          />
+          <Select<number>
+            aria-label="착용 종족"
+            value={race}
+            onChange={setRaceChoice}
+            options={races.map((entry) => ({ value: entry, label: data.races[entry] }))}
+            popupMatchSelectWidth={false}
+            style={{ flex: '0 1 130px', minWidth: 0 }}
+          />
+        </Flex>
+        <div style={{ marginTop: 10 }}>
+          <TargetEditor
+            pool={pool}
+            options={options}
+            targets={targets}
+            onChange={setTargets}
+            summary={targetSummary}
+          />
+        </div>
+
+        <Divider style={{ marginBlock: 16 }} />
+
         {/* 작업대와 옵션 두 칸. 768px 미만에서는 위아래로 쌓는다. */}
         <Row gutter={[24, 20]}>
           <Col xs={24} md={10}>
@@ -898,17 +871,25 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               >
                 세공하기
               </Button>
-              <Flex vertical gap={0} align="center">
-                <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-                  {tool.name} {formatNumber(usage.tools.get(tool.id) ?? 0)}개 사용
-                </Text>
-                <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-                  기억의 보석 {formatNumber(usage.gems)}개 사용
-                </Text>
-                <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                  {pullNote}
+              {/* 세공하기 바로 아래에 둔다. 누르기 전에 눈에 들어와야 끌지 말지 고른다. */}
+              <Flex gap={8} align="center">
+                <Switch
+                  checked={fxOn && !reducedMotion}
+                  disabled={reducedMotion}
+                  onChange={(on) => {
+                    setFxOn(on);
+                    writeFxSetting(on);
+                  }}
+                  aria-label="세공 연출"
+                />
+                <Text style={{ fontSize: 13 }}>
+                  {reducedMotion ? '움직임 줄이기 설정이라 연출을 끕니다' : '세공 연출'}
                 </Text>
               </Flex>
+              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                {tool.name} {formatNumber(usage.tools.get(tool.id) ?? 0)}개, 기억의 보석{' '}
+                {formatNumber(usage.gems)}개 사용
+              </Text>
             </Flex>
           </Col>
           <Col xs={24} md={14}>
@@ -959,24 +940,14 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               목표 나올 때까지
             </Button>
           </Tooltip>
-          <Button icon={<ResetIcon />} onClick={simulator.reset} disabled={count === 0}>
+          <Button
+            icon={<ResetIcon />}
+            onClick={simulator.reset}
+            disabled={count === 0}
+            style={{ marginLeft: wide ? 'auto' : undefined }}
+          >
             처음부터
           </Button>
-          <Flex gap={8} align="center" style={{ marginLeft: wide ? 'auto' : undefined }}>
-            <Switch
-              size="small"
-              checked={fxOn && !reducedMotion}
-              disabled={reducedMotion}
-              onChange={(on) => {
-                setFxOn(on);
-                writeFxSetting(on);
-              }}
-              aria-label="세공 연출"
-            />
-            <Text type="secondary" style={{ fontSize: 13 }}>
-              {reducedMotion ? '움직임 줄이기 설정이라 연출을 끕니다' : '세공 연출'}
-            </Text>
-          </Flex>
         </Flex>
         {simulator.lastBatch > 1 && lastIsHere ? (
           <Text
@@ -991,29 +962,36 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
       </Card>
 
       <Card variant="outlined">
-        {/* 네 칸. 768px 미만에서는 두 칸, 576px 미만에서는 한 칸으로 떨어진다. */}
+        {/* 네 칸. 768px 미만에서는 두 칸씩 두 줄로 떨어진다. */}
         <Row gutter={[24, 16]} align="top">
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={12} md={6}>
             <Statistic title="세공" value={formatNumber(count)} suffix="번" styles={NUMERIC} />
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={12} md={6}>
             <Statistic
               title={
                 <StatTitle
                   label="쓴 골드"
-                  detail="도구와 기억의 보석마다 쓴 개수에 한 개 값을 곱해 더했습니다. 값을 고치면 다시 셉니다."
+                  detail={`도구와 기억의 보석마다 쓴 개수에 경매장 최저가를 곱해 더했습니다. 게임 데이터는 평균 10분 지연됩니다.${
+                    priceLines.length ? ` 개당 ${priceLines.join(', ')}.` : ''
+                  }`}
                 />
               }
               value={formatGoldShort(spent)}
               styles={NUMERIC}
             />
-            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-              {unpriced > 0
-                ? `값을 모르는 ${formatNumber(unpriced)}개는 빠졌습니다.`
-                : `도구 ${formatGoldShort(toolSpent)}, 기억의 보석 ${formatGoldShort(gemSpent)}`}
-            </Text>
+            <Flex gap={6} align="center">
+              {pricesLoading ? <Spin size="small" /> : null}
+              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                {pricesLoading
+                  ? '경매장 시세를 받는 중입니다.'
+                  : unpriced > 0
+                    ? `시세가 없는 ${formatNumber(unpriced)}개는 빠졌습니다.`
+                    : `도구 ${formatGoldShort(toolSpent)}, 기억의 보석 ${formatGoldShort(gemSpent)}`}
+              </Text>
+            </Flex>
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={12} md={6}>
             <Statistic
               title={
                 <StatTitle
@@ -1026,7 +1004,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               styles={NUMERIC}
             />
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={12} md={6}>
             <Statistic
               title="한계 돌파 줄"
               value={formatNumber(usage.limitBreaks)}
@@ -1037,34 +1015,39 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
         </Row>
       </Card>
 
-      <Flex
-        vertical
-        gap={8}
-        role="region"
-        aria-labelledby="reforge-sim-history"
-        style={{ minWidth: 0 }}
-      >
-        <Text strong style={{ fontSize: 16 }} id="reforge-sim-history">
-          세공 기록
-        </Text>
-        <HistoryTable rows={settledHistory} data={data} options={options} />
-        {count === 0 ? (
-          <EmptyState
-            size="small"
-            variant="search"
-            description="세공하기를 누르면 붙은 옵션 세 줄이 여기에 쌓입니다."
-          />
-        ) : null}
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {tool.name}는 {formatTableDate(tool.date)} 이후 확률표를 따릅니다. 확률표는 랭크를 고르게
-          되어 있지만 세공은 늘 1랭크 세 줄로 붙습니다. 쓴 골드는 도구와 기억의 보석 값만 셉니다.
-        </Text>
-      </Flex>
+      <Collapse
+        items={[
+          {
+            key: 'history',
+            label: (
+              <Text strong className="tnum">
+                세공 기록 {formatNumber(count)}번
+              </Text>
+            ),
+            styles: { body: { padding: 0 } },
+            children:
+              count === 0 ? (
+                <EmptyState
+                  size="small"
+                  variant="search"
+                  description="세공하기를 누르면 붙은 옵션 세 줄이 여기에 쌓입니다."
+                />
+              ) : (
+                <HistoryTable rows={settledHistory} data={data} options={options} />
+              ),
+          },
+        ]}
+      />
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        {tool.name}는 {formatTableDate(tool.date)} 이후 확률표를 따릅니다. 확률표는 랭크를 고르게
+        되어 있지만 세공은 늘 1랭크 세 줄로 붙습니다. 채운 별과 "최대" 는 일반 구간의 끝 레벨, 빈
+        별은 끝 레벨의 90% 이상, "한계 돌파" 는 한계 돌파 구간에서 나온 레벨입니다.
+      </Text>
     </Flex>
   );
 }
 
-/** 확률표를 받은 뒤 본체를 그린다. 받는 동안은 설정 칸 모양의 뼈대를 보인다. */
+/** 확률표를 받은 뒤 본체를 그린다. 받는 동안은 세공 창 모양의 뼈대를 보인다. */
 export function ReforgeSimulatorView({ simulator }: { simulator: Simulator }) {
   const query = useReforgeDataQuery();
   const { data } = query;

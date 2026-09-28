@@ -4,6 +4,7 @@ import {
   advance,
   drawLines,
   levelAtLeast,
+  levelTier,
   meetsTargets,
   optionEffect,
   parseOption,
@@ -87,6 +88,27 @@ describe('advance', () => {
     const next = advance(start, setting, 50, false, () => true, Math.random);
     expect(next.draws).toHaveLength(1);
     expect(next.lastBatch).toBe(1);
+  });
+});
+
+describe('levelTier', () => {
+  const line = (level: number, limitBreak = false) => ({ option: 0, level, limitBreak });
+
+  it('한계 돌파는 끝 레벨과 따로 가른다', () => {
+    expect(levelTier(line(12, true), 10)).toBe('limitBreak');
+    expect(levelTier(line(10), 10)).toBe('max');
+  });
+
+  it('끝 레벨의 90% 이상이면 높은 레벨로 친다', () => {
+    expect(levelTier(line(9), 10)).toBe('high');
+    expect(levelTier(line(8), 10)).toBeNull();
+    expect(levelTier(line(18), 20)).toBe('high');
+    expect(levelTier(line(17), 20)).toBeNull();
+  });
+
+  it('끝 레벨이 낮으면 끝 레벨만 강조된다', () => {
+    expect(levelTier(line(2), 3)).toBeNull();
+    expect(levelTier(line(3), 3)).toBe('max');
   });
 });
 

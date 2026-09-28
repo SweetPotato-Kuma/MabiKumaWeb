@@ -93,35 +93,34 @@ describe('세공 시뮬레이터', () => {
 
   it('세공하면 옵션 세 줄이 붙고 도구 최저가로 쓴 골드를 센다', async () => {
     renderPage();
-    const reforge = await screen.findByRole('button', { name: '세공하기' });
-    await screen.findAllByText('경매장 최저가입니다. 게임 데이터는 평균 10분 지연됩니다.');
-
-    fireEvent.click(reforge);
+    fireEvent.click(await screen.findByRole('button', { name: '세공하기' }));
     const window = screen.getByRole('region', { name: '세공 창' });
     expect(within(window).getByText('(5/5 레벨 : 5% 증가)')).toBeInTheDocument();
     expect(within(window).getByText('(3/3 레벨 : 6 증가)')).toBeInTheDocument();
     expect(within(window).getByText('(20/20 레벨 : 30 증가)')).toBeInTheDocument();
-    expect(screen.getByText('300만 G')).toBeInTheDocument();
+    expect(await screen.findByText('300만 G')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '10번 세공' }));
     expect(screen.getByText('3,300만 G')).toBeInTheDocument();
   });
 
-  it('도구 값을 고쳐 넣으면 그 값으로 다시 센다', async () => {
+  it('끝 레벨은 최대로 강조하고, 세공 기록은 펼쳐야 보인다', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: '세공하기' }));
-    fireEvent.change(screen.getByLabelText('정교한 세공 도구 한 개 값'), {
-      target: { value: '5,000,000' },
-    });
-    expect(await screen.findByText('500만 G')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '최저가로 되돌리기' })).toBeInTheDocument();
+    // 레벨 폭이 한 칸이라 세 줄 모두 끝 레벨이다.
+    const window = screen.getByRole('region', { name: '세공 창' });
+    expect(within(window).getAllByText('최대')).toHaveLength(3);
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('세공 기록 1번'));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
   });
 
   it('기억의 보석은 옵션이 붙은 뒤에 쓸 수 있고, 새 옵션은 적용해야 붙는다', async () => {
     renderPage();
     // 세공할 때마다 작업대를 새로 그려 연출을 다시 돌리므로 보석 칸은 그때그때 찾는다.
     const gem = () => screen.getByRole('button', { name: '기억의 보석 사용' });
-    await screen.findAllByText('경매장 최저가입니다. 게임 데이터는 평균 10분 지연됩니다.');
+    await screen.findByText('도구 0 G, 기억의 보석 0 G');
     expect(gem()).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
