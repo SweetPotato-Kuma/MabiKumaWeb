@@ -35,6 +35,7 @@ import {
 import { SERIES_COLORS } from '@/app/theme';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
+import { TrialOdds } from '@/components/simulator/TrialOdds';
 import {
   AddIcon,
   DeleteIcon,
@@ -74,6 +75,7 @@ import {
   type ReforgeSimulator as Simulator,
   type ReforgeTarget,
 } from '@/features/reforge/simulator';
+import { formatChance } from '@/features/simulator/trials';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
 import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import { useResolvedThemeMode } from '@/lib/themePreference';
@@ -110,13 +112,6 @@ const shortToolName = (name: string) => name.replace(/\s*세공 도구$/, '');
 
 /** 트리 묶음의 값. 타입 번호와 겹치지 않게 문자열로 둔다. */
 const groupKey = (name: string) => `group:${name}`;
-
-/** 확률을 사람이 읽는 퍼센트로. 아주 작은 값도 0% 로 뭉개지 않는다. */
-function formatChance(chance: number): string {
-  const percent = chance * 100;
-  if (percent >= 1) return `${percent.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}%`;
-  return `${percent.toLocaleString('ko-KR', { maximumSignificantDigits: 3 })}%`;
-}
 
 /** "20260723" -> "2026. 7. 23." */
 const formatTableDate = (date: string) =>
@@ -940,6 +935,12 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
             onChange={setTargets}
             summary={targetSummary}
           />
+          {/* 목표를 고르면 n 번 세공했을 때 나올 확률과 기댓값을 함께 본다. 세공은 매번 따로 뽑는다. */}
+          {targets.length > 0 && chance > 0 ? (
+            <div style={{ marginTop: 8 }}>
+              <TrialOdds chance={chance} verb="세공" costPerTrial={onePull} />
+            </div>
+          ) : null}
         </div>
 
         <Divider style={{ marginBlock: 16 }} />

@@ -19,6 +19,7 @@ import {
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { InfoIcon, ResetIcon, StarFillIcon } from '@/components/icons';
+import { TrialOdds } from '@/components/simulator/TrialOdds';
 import {
   skillOfOption,
   useArcanaQuery,
@@ -28,6 +29,7 @@ import {
 import {
   formatRelicValue,
   muriasAuctionPath,
+  RELIC_LEVELS,
   RELIC_MAX_LEVEL,
   relicValueAt,
 } from '@/features/relics/murias';
@@ -430,6 +432,26 @@ export function RelicSimulatorView({
     return { top, known, total, above };
   }, [priced, ideaPrice]);
 
+  /**
+   * 한 번 복원해 이데아 최저가 이상이 나올 확률. 모든 옵션과 레벨이 똑같이 나온다는 이 화면의 가정
+   * 아래에서, 시세를 아는 결과 가운데 이데아 최저가 이상인 결과의 비율이다. 복원은 매번 따로
+   * 뽑으므로 n 번 했을 때의 확률과 기댓값을 여기서 센다(TrialOdds).
+   */
+  const ideaChance = useMemo(() => {
+    if (!ready || ideaPrice === null) return null;
+    let known = 0;
+    let above = 0;
+    for (const option of MURIAS_RELIC_POOL) {
+      for (const level of RELIC_LEVELS) {
+        const price = drawPrice({ option, level }, ready);
+        if (!price) continue;
+        known += 1;
+        if (price.price >= ideaPrice) above += 1;
+      }
+    }
+    return known > 0 ? { chance: above / known, above, known } : null;
+  }, [ready, ideaPrice]);
+
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
       <Card variant="outlined">
@@ -453,6 +475,14 @@ export function RelicSimulatorView({
             나온다고 보고 뽑습니다. 결과 하나가 나올 확률은 1/{formatNumber(RELIC_OUTCOMES)}입니다.
             실제 확률은 공개되지 않았고, 골드나 아이템은 들지 않습니다.
           </Text>
+          {ideaChance && ideaChance.chance > 0 && ideaPrice !== null ? (
+            <TrialOdds
+              chance={ideaChance.chance}
+              verb="복원"
+              costPerTrial={ideaPrice}
+              note={`이데아 최저가 이상이 나올 확률로 셉니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개가 이데아 최저가 이상입니다. 드는 골드는 이데아를 최저가로 샀을 때입니다.`}
+            />
+          ) : null}
         </Flex>
       </Card>
       <PriceFreshness prices={prices} />
