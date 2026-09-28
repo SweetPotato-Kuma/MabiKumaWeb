@@ -183,7 +183,6 @@ describe('유물 시세', () => {
     // 이데아 1억 3,400만 이상은 둘이라 66.7%.
     expect(screen.getByText('본전 확률')).toBeInTheDocument();
     expect(screen.getByText('66.7%')).toBeInTheDocument();
-    expect(screen.getByLabelText(/값을 아는 3가지 중 2가지/)).toBeInTheDocument();
   });
 
   it('그 밖의 유물은 일반, 특급, 이데아로 나눠 보여 준다', async () => {

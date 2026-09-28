@@ -14,7 +14,6 @@ import {
   Statistic,
   Table,
   Tabs,
-  Tooltip,
   Typography,
   theme,
   type TableColumnsType,
@@ -23,7 +22,7 @@ import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
-import { InfoIcon, RefreshIcon, SearchIcon } from '@/components/icons';
+import { RefreshIcon, SearchIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import {
@@ -460,33 +459,9 @@ const tradeDay = (iso: string) => tradeDayFormat.format(new Date(iso));
 /**
  * 본전 확률. 이데아를 열었을 때 이데아 최저가 이상이 나올 확률이다. 옵션과 레벨의 실제 확률이
  * 공개되지 않아 모두 똑같이 나온다고 본다(features/relics/prices.ts 의 ideaOdds).
- *
- * 몇 가지로 셈했는지, 무엇을 가정했는지, 표의 굵은 글자와 "최종" 이 무슨 뜻인지는 제목 옆
- * 그림에 올려 두었다. 요약 칸 아래에 늘어놓으니 표보다 설명이 먼저 읽혔다.
  */
 function IdeaOddsStat({ odds, ideaListed }: { odds: IdeaOdds | null; ideaListed: boolean }) {
-  const detail = odds
-    ? [
-        `이데아 최저가 이상인 결과가 나올 확률입니다.`,
-        `모든 옵션과 레벨이 고르게 나온다고 가정해 값을 아는 ${formatNumber(odds.known)}가지 중 ${formatNumber(odds.above)}가지로 셈했습니다.`,
-        odds.known < odds.total
-          ? `매물도 거래 기록도 없는 ${formatNumber(odds.total - odds.known)}가지는 뺐습니다.`
-          : '',
-        `표의 굵은 가격이 이데아 최저가 이상, "최종" 이 붙은 흐린 가격은 매물이 없어 최종 거래가를 적은 것입니다.`,
-      ]
-        .filter(Boolean)
-        .join(' ')
-    : '';
-  const title = (
-    <Flex gap={4} align="center">
-      본전 확률
-      {detail ? (
-        <Tooltip title={detail}>
-          <InfoIcon aria-label={detail} tabIndex={0} style={{ cursor: 'help' }} />
-        </Tooltip>
-      ) : null}
-    </Flex>
-  );
+  const title = '본전 확률';
   if (!ideaListed)
     return <Statistic title={title} value="이데아 매물 없음" styles={{ content: { fontSize: 16 } }} />;
   if (!odds) return <Statistic title={title} value="-" loading />;

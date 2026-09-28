@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Flex, InputNumber, Tooltip, Typography, theme } from 'antd';
-import { InfoIcon } from '@/components/icons';
+import { Flex, InputNumber, Typography, theme } from 'antd';
 import { atLeastOnce, expectedHits, formatChance } from '@/features/simulator/trials';
 import { formatGoldShort } from '@/lib/format';
 
@@ -62,8 +61,6 @@ interface TrialOddsProps {
   trials?: number;
   /** 제 입력 칸을 쓸 때 처음 들어 있는 횟수. */
   defaultTrials?: number;
-  /** 확률에 섞인 가정. 화면에 늘어놓지 않고 ⓘ 툴팁에 덧붙인다. */
-  note?: string;
   /**
    * 테두리 상자로 감쌀지. 카드 안에서 다른 줄과 이어 쓰면 상자가 카드를 둘로 가른 것처럼 보여 끈다.
    */
@@ -72,7 +69,7 @@ interface TrialOddsProps {
 
 /**
  * n 번 하면 원하는 것이 한 번 이상 나올 확률과 나오는 횟수의 기댓값. 매번 같은 확률로 따로
- * 뽑는 시뮬레이터(독립시행)라면 어디든 붙인다. 계산 방법과 가정은 ⓘ 툴팁에 있다.
+ * 뽑는 시뮬레이터(독립시행)라면 어디든 붙인다.
  */
 export function TrialOdds({
   chance,
@@ -81,7 +78,6 @@ export function TrialOdds({
   costPerTrial = null,
   trials: fixedTrials,
   defaultTrials = 10,
-  note,
   framed = true,
 }: TrialOddsProps) {
   const { token } = theme.useToken();
@@ -93,12 +89,6 @@ export function TrialOdds({
   const hit = atLeastOnce(chance, trials);
   const expected = expectedHits(chance, trials);
   const cost = costPerTrial === null ? null : costPerTrial * trials;
-  const help = [
-    `n번 안에 한 번 이상 나올 확률은 1 - (1 - p)^n, 나오는 횟수의 기댓값은 n x p 입니다. 한 번에 나올 확률 p 는 ${formatChance(chance)}입니다.`,
-    note,
-  ]
-    .filter(Boolean)
-    .join(' ');
 
   return (
     <section
@@ -128,13 +118,6 @@ export function TrialOdds({
             </>
           ) : null}
         </Text>
-        <Tooltip title={help}>
-          <InfoIcon
-            aria-label="계산 방법"
-            tabIndex={0}
-            style={{ cursor: 'help', color: token.colorTextTertiary }}
-          />
-        </Tooltip>
       </Flex>
     </section>
   );

@@ -16,7 +16,6 @@ import {
   Switch,
   Table,
   Tag,
-  Tooltip,
   Typography,
   theme,
   type TableColumnsType,
@@ -25,7 +24,6 @@ import { ItemIcon } from '@/components/ItemIcon';
 import {
   CalculateIcon,
   CloseIcon,
-  InfoIcon,
   ResetIcon,
   StarFillIcon,
   WaterDropIcon,
@@ -509,17 +507,6 @@ function ResultList({ draws }: { draws: ShownDraw[] }) {
   );
 }
 
-/** 제목 옆 설명 그림. 올리거나 키보드로 닿으면 풀어 쓴 설명이 뜬다. */
-function StatTitle({ label, detail }: { label: string; detail: string }) {
-  return (
-    <Flex gap={4} align="center">
-      {label}
-      <Tooltip title={detail}>
-        <InfoIcon aria-label={detail} tabIndex={0} style={{ cursor: 'help' }} />
-      </Tooltip>
-    </Flex>
-  );
-}
 
 /**
  * 바른 기록 표. 기록이 쌓일수록 그리는 데 오래 걸려, 방금 나온 효과 칸보다 한 박자 늦게 그린다
@@ -593,11 +580,6 @@ const EFFECT_OPTIONS = HOLY_WATER_EFFECTS.map((effect, index) => ({
 
 /** 등급마다 한 번 발라 그 등급 이상이 나올 확률. 늘 같아 한 번만 센다. */
 const TIER_CHANCES = new Map(HOLY_WATER_TIERS.map((tier) => [tier, tierChance(tier)]));
-
-/** 수치가 하나뿐이라 등급을 매기지 않는 스크롤 수. */
-const FIXED_SCROLLS = HOLY_WATER_SCROLLS.filter(
-  (scroll) => effectMax(HOLY_WATER_EFFECTS[scroll.effect]) <= 1,
-).length;
 
 /** 노리는 효과. 이 효과가 이 수치 이상으로 붙기를 바란다. effect 는 HOLY_WATER_EFFECTS 의 순번이다. */
 interface EffectTarget {
@@ -770,7 +752,6 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
             chance={targetChance}
             verb="바르기"
             costPerTrial={price}
-            note={`스크롤 ${formatNumber(HOLY_WATER_SCROLLS.length)}장이 똑같이 나오고 수치는 그 스크롤의 폭 안에서 고르게 나온다고 본 확률입니다. 골드는 성수 최저가 기준입니다.`}
           />
         </>
       ) : null}
@@ -793,11 +774,6 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
                 <Text strong style={{ fontSize: 16 }}>
                   {HOLY_WATER_NAME}
                 </Text>
-                <Tooltip
-                  title={`효과 스크롤 ${formatNumber(HOLY_WATER_SCROLLS.length)}장 가운데 한 장이 똑같은 확률(1/${formatNumber(HOLY_WATER_SCROLLS.length)})로 골라지고, 수치는 그 스크롤의 폭 안에서 고르게 정해집니다. 게임 클라이언트 데이터 기준이며 골드나 아이템은 들지 않습니다.`}
-                >
-                  <InfoIcon aria-label="뽑는 방식" tabIndex={0} style={{ cursor: 'help' }} />
-                </Tooltip>
               </Flex>
               <HolyWaterBench
                 result={last}
@@ -931,16 +907,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
             </Col>
             <Col xs={12} sm={8} lg={4}>
               <Statistic
-                title={
-                  <StatTitle
-                    label="쓴 골드"
-                    detail={
-                      price === null
-                        ? '성수 매물이 없거나 시세를 받지 못해 셀 수 없습니다.'
-                        : `바른 횟수에 성수 최저가 ${formatGold(price)}를 곱했습니다.`
-                    }
-                  />
-                }
+                title="쓴 골드"
                 value={price === null ? '-' : formatGoldShort(price * count)}
                 loading={priceLoading}
                 styles={NUMERIC}
@@ -949,12 +916,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
             {HOLY_WATER_TIERS.map((tier) => (
               <Col key={tier} xs={12} sm={8} lg={4}>
                 <Statistic
-                  title={
-                    <StatTitle
-                      label={`${tier}% 이상`}
-                      detail={`수치가 그 효과 최대치의 ${tier}% 이상인 횟수입니다. 한 번에 ${formatChance(TIER_CHANCES.get(tier) ?? 0)}입니다. 수치가 하나뿐인 스크롤 ${formatNumber(FIXED_SCROLLS)}장(세트 효과, 음악 버프 효과, 피어싱 저항)은 세지 않습니다.`}
-                    />
-                  }
+                  title={`${tier}% 이상`}
                   value={formatNumber(tierCounts.get(tier) ?? 0)}
                   suffix="번"
                   styles={NUMERIC}

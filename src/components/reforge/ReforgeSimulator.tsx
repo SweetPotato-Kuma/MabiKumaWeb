@@ -45,7 +45,6 @@ import {
   DeleteIcon,
   GemIcon,
   HammerIcon,
-  InfoIcon,
   ResetIcon,
   StarFillIcon,
   StarIcon,
@@ -123,10 +122,6 @@ const shortToolName = (name: string) => name.replace(/\s*세공 도구$/, '');
 /** 트리 묶음의 값. 타입 번호와 겹치지 않게 문자열로 둔다. */
 const groupKey = (name: string) => `group:${name}`;
 
-/** "20260723" -> "2026. 7. 23." */
-const formatTableDate = (date: string) =>
-  `${date.slice(0, 4)}. ${Number(date.slice(4, 6))}. ${Number(date.slice(6))}.`;
-
 /** 옵션 하나의 레벨 폭. "4~10, 한계 돌파 11~13" */
 function rangeText(row: PoolRow): string {
   const [, min, max, lbMin = 0, lbMax = 0] = row;
@@ -163,17 +158,6 @@ function writeFxSetting(on: boolean): void {
   }
 }
 
-/** 설명 그림. 올리거나 키보드로 닿으면 풀어 쓴 설명이 뜬다. */
-function StatTitle({ label, detail }: { label: string; detail: string }) {
-  return (
-    <Flex gap={4} align="center">
-      {label}
-      <Tooltip title={detail}>
-        <InfoIcon aria-label={detail} tabIndex={0} style={{ cursor: 'help' }} />
-      </Tooltip>
-    </Flex>
-  );
-}
 
 /** 장비 타입의 그림. 그 타입의 대표 아이템 그림을 쓴다. 대표가 없으면 그리지 않는다. */
 function TypeIcon({ name, size }: { name: string; size: number }) {
@@ -978,7 +962,6 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
           chance={chance}
           verb="세공"
           costPerTrial={onePull}
-          note="고른 목표 옵션이 한 번의 세공에 모두 붙을 확률로 셉니다. 골드는 도구값이고, 기억의 보석을 올렸으면 보석값도 더합니다."
         />
       ) : null}
     </Flex>
@@ -1079,11 +1062,6 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                 <Text strong style={{ fontSize: 16 }}>
                   {tool.name}
                 </Text>
-                <Tooltip
-                  title={`${formatTableDate(tool.date)} 이후 확률표를 따릅니다. 확률표는 랭크를 고르게 되어 있지만 세공은 늘 1랭크 세 줄로 붙습니다. 채운 별과 "최대" 는 일반 구간의 끝 레벨, 빈 별은 끝 레벨의 90% 이상, "한계 돌파" 는 한계 돌파 구간에서 나온 레벨입니다.`}
-                >
-                  <InfoIcon aria-label="확률표와 표시" tabIndex={0} style={{ cursor: 'help' }} />
-                </Tooltip>
               </Flex>
               <Workbench
                 itemName={typeName.get(typeId) ?? ''}
@@ -1198,14 +1176,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
           </Col>
           <Col xs={12} md={6}>
             <Statistic
-              title={
-                <StatTitle
-                  label="쓴 골드"
-                  detail={`도구와 기억의 보석마다 쓴 개수에 경매장 최저가를 곱해 더했습니다. 게임 데이터는 평균 10분 지연됩니다.${
-                    priceLines.length ? ` 개당 ${priceLines.join(', ')}.` : ''
-                  }`}
-                />
-              }
+              title="쓴 골드"
               value={formatGoldShort(spent)}
               styles={NUMERIC}
             />
@@ -1222,12 +1193,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
           </Col>
           <Col xs={12} md={6}>
             <Statistic
-              title={
-                <StatTitle
-                  label="목표 달성"
-                  detail="지금 고른 목표를 모두 채운 세공 횟수입니다. 목표를 바꾸면 지난 기록도 새 목표로 다시 셉니다."
-                />
-              }
+              title="목표 달성"
               value={targets.length === 0 ? '-' : formatNumber(hitCount)}
               suffix={targets.length === 0 ? undefined : '번'}
               styles={NUMERIC}

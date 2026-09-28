@@ -17,7 +17,6 @@ import {
   Switch,
   Table,
   Tag,
-  Tooltip,
   Typography,
   theme,
   type TableColumnsType,
@@ -27,7 +26,6 @@ import { ItemIcon } from '@/components/ItemIcon';
 import {
   CalculateIcon,
   CloseIcon,
-  InfoIcon,
   ResetIcon,
   StarFillIcon,
   TrendingUpIcon,
@@ -51,7 +49,6 @@ import {
   drawPrice,
   meetsRelicTarget,
   MURIAS_RELIC_POOL,
-  RELIC_OUTCOMES,
   relicTargetChance,
   type DrawPrice,
   type RelicDraw,
@@ -474,17 +471,6 @@ function ResultList({
   );
 }
 
-/** 제목 옆 설명 그림. 올리거나 키보드로 닿으면 풀어 쓴 설명이 뜬다. */
-function StatTitle({ label, detail }: { label: string; detail: string }) {
-  return (
-    <Flex gap={4} align="center">
-      {label}
-      <Tooltip title={detail}>
-        <InfoIcon aria-label={detail} tabIndex={0} style={{ cursor: 'help' }} />
-      </Tooltip>
-    </Flex>
-  );
-}
 
 /** 시세가 언제 것인지, 받는 중인지. 게임 데이터 지연 고지를 함께 적는다. */
 function PriceFreshness({ prices }: { prices: RelicPriceState }) {
@@ -789,11 +775,6 @@ export function RelicSimulatorView({
               금액 <Text strong>{formatGoldShort(ideaChance.mean * trials)}</Text> (이데아{' '}
               {formatGoldShort(ideaPrice * trials)})
             </Text>
-            <Tooltip
-              title={`복원한 유물 ${formatNumber(trials)}개의 시세 합이 이데아 ${formatNumber(trials)}개 최저가 합 이상일 확률입니다. 옵션과 레벨이 모두 똑같이 나온다고 보고, 시세를 아는 결과 ${formatNumber(ideaChance.known)}개로 셉니다. 2,000번까지는 여러 번 뽑아 보고, 그보다 많으면 정규분포로 어림합니다.`}
-            >
-              <InfoIcon aria-label="본전 계산 방법" tabIndex={0} style={{ cursor: 'help' }} />
-            </Tooltip>
           </Flex>
         </section>
       ) : null}
@@ -848,7 +829,6 @@ export function RelicSimulatorView({
             chance={targetChance}
             verb="복원"
             costPerTrial={ideaPrice}
-            note="옵션과 레벨이 모두 똑같이 나온다고 본 확률입니다. 골드는 이데아 최저가 기준입니다."
           />
         </>
       ) : null}
@@ -871,11 +851,6 @@ export function RelicSimulatorView({
                 <Text strong style={{ fontSize: 16 }}>
                   무리아스의 유물(이데아)
                 </Text>
-                <Tooltip
-                  title={`옵션 ${formatNumber(MURIAS_RELIC_POOL.length)}종과 1~${RELIC_MAX_LEVEL}레벨이 모두 똑같이 나온다고 보고 뽑습니다(결과 하나 1/${formatNumber(RELIC_OUTCOMES)}). 실제 확률은 공개되지 않았고, 골드나 아이템은 들지 않습니다.`}
-                >
-                  <InfoIcon aria-label="뽑는 방식" tabIndex={0} style={{ cursor: 'help' }} />
-                </Tooltip>
               </Flex>
               <RestoreBench
                 result={last}
@@ -1008,11 +983,6 @@ export function RelicSimulatorView({
               <Text strong className="tnum" style={{ fontSize: 16 }}>
                 {formatChance(ideaChance.chance)}
               </Text>
-              <Tooltip
-                title={`본전은 이데아 최저가 이상이 나오는 것입니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개입니다.`}
-              >
-                <InfoIcon aria-label="본전 확률 기준" tabIndex={0} style={{ cursor: 'help' }} />
-              </Tooltip>
             </Flex>
           ) : null}
           {/* 네 칸. 768px 미만에서는 두 칸씩 두 줄로 떨어진다. */}
@@ -1030,16 +1000,7 @@ export function RelicSimulatorView({
             </Col>
             <Col xs={12} md={6}>
               <Statistic
-                title={
-                  <StatTitle
-                    label="이데아 최저가 이상"
-                    detail={
-                      ideaPrice === null
-                        ? '이데아 매물이 없거나 시세를 아직 받지 못해 견줄 수 없습니다.'
-                        : `나온 유물의 시세가 이데아 최저가 ${formatGold(ideaPrice)} 이상인 횟수입니다. 시세를 아는 ${formatNumber(stats.known)}번 가운데서 셉니다.`
-                    }
-                  />
-                }
+                title="이데아 최저가 이상"
                 value={ideaPrice === null ? '-' : formatNumber(stats.above)}
                 suffix={ideaPrice === null ? undefined : '번'}
                 loading={loading}
@@ -1048,12 +1009,7 @@ export function RelicSimulatorView({
             </Col>
             <Col xs={12} md={6}>
               <Statistic
-                title={
-                  <StatTitle
-                    label="나온 유물 시세 합계"
-                    detail={`그 옵션 그 레벨의 지금 최저가, 매물이 없으면 최종 거래가로 더했습니다. 매물도 거래 기록도 없는 ${formatNumber(count - stats.known)}번은 뺐습니다.${ideaPrice !== null && count > 0 ? ` 이데아 ${formatNumber(count)}개 최저가로는 ${formatGold(ideaPrice * count)}입니다.` : ''}`}
-                  />
-                }
+                title="나온 유물 시세 합계"
                 value={ready ? formatGoldShort(stats.total) : '-'}
                 loading={loading}
                 styles={NUMERIC}
@@ -1073,9 +1029,6 @@ export function RelicSimulatorView({
                 <Text strong className="tnum">
                   복원 기록 {formatNumber(count)}번
                 </Text>
-                <Tooltip title='"이데아 이상" 은 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린 시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의 매물을 봅니다.'>
-                  <InfoIcon aria-label="기록 표 읽는 법" tabIndex={0} style={{ cursor: 'help' }} />
-                </Tooltip>
               </Flex>
             ),
             styles: { body: { padding: 0 } },
