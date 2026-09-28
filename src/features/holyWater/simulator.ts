@@ -140,6 +140,10 @@ export function effectChance(effect: number, minValue: number): number {
   return chance / HOLY_WATER_SCROLLS.length;
 }
 
+/** 그 효과가 붙었을 때 수치가 value 이상일 몫. 같은 효과 안에서 상위 몇 % 인지다. */
+export const topShare = (effect: number, value: number) =>
+  effectChance(effect, value) / effectChance(effect, 1);
+
 /** 한 번 발라 그 등급 이상이 나올 확률. */
 export function tierChance(tier: HolyWaterTier): number {
   return HOLY_WATER_EFFECTS.reduce(

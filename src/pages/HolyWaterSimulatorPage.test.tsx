@@ -99,12 +99,18 @@ describe('무리아스의 성수 시뮬레이터', () => {
     expect(stage().className).toContain('hw-t90');
     expect(stage().className).not.toContain('hw-t95');
     expect(document.querySelector('.hw-gold-layer')).toBeNull();
+    // 27 이상은 최대 대미지 가운데 4/30, 한 번에 (4/6)/102 = 1/153.
+    expect(latest()).toHaveTextContent('상위 13.33%');
+    expect(latest()).toHaveTextContent('평균 153번에 한 번');
+    expect(latest()).toHaveTextContent('1번째처음 붙음');
 
     rigMaxDamageE(5);
     fireEvent.click(screen.getByRole('button', { name: '바르기' }));
     expect(stage().className).toContain('hw-t95');
     expect(stage().className).toContain('hw-t99');
     expect(document.querySelector('.hw-gold-layer')).not.toBeNull();
+    expect(latest()).toHaveTextContent('0.163%평균 612번에 한 번');
+    expect(latest()).toHaveTextContent('2번째새 최고, 이전 +27');
 
     // 최대 대미지 A 의 1 은 등급이 없어 기본 연출만 돈다.
     vi.spyOn(Math, 'random')
@@ -113,13 +119,16 @@ describe('무리아스의 성수 시뮬레이터', () => {
     fireEvent.click(screen.getByRole('button', { name: '바르기' }));
     expect(stage().className).toContain('hw-play');
     expect(stage().className).not.toContain('hw-t50');
+    expect(latest()).toHaveTextContent('3번째최고 +30');
   });
 
   it('10번 바르기는 연출 없이 목록으로 보인다', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '10번 바르기' }));
     expect(document.querySelector('.hw-play')).toBeNull();
-    expect(screen.getByRole('region', { name: '방금 붙은 효과 10개' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '방금 붙은 효과 10개' })).toHaveTextContent(
+      /50% 이상\d+개90% 이상\d+개95% 이상\d+개99% 이상\d+개/,
+    );
     expect(screen.getByText('바른 기록 10번')).toBeInTheDocument();
   });
 

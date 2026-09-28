@@ -39,6 +39,7 @@ import {
   HOLY_WATER_SCROLLS,
   HOLY_WATER_TIERS,
   tierChance,
+  topShare,
   tierOf,
   type HolyWaterDraw,
   type HolyWaterEffect,
@@ -132,13 +133,13 @@ function TierTag({ tier }: { tier: HolyWaterTier }) {
 }
 
 /** "+30". 99% 이상은 굵은 액센트 색이다. 색만으로 가르지 않게 등급 표시가 함께 붙는다. */
-function ValueText({ draw, size }: { draw: ShownDraw; size?: number }) {
+function ValueText({ draw, size, strong }: { draw: ShownDraw; size?: number; strong?: boolean }) {
   const { token } = theme.useToken();
   const top = draw.tier === 99;
   return (
     <Text
       className="tnum"
-      strong={top}
+      strong={strong || top}
       style={{
         fontSize: size,
         whiteSpace: 'nowrap',
@@ -268,30 +269,209 @@ function HolyWaterBench({
   );
 }
 
-/** 방금 붙은 효과 하나를 크게. 한 번 발랐을 때 오른쪽 칸을 채운다. */
-function ResultDetail({ draw }: { draw: ShownDraw }) {
+/**
+ * 수치가 1부터 최대치 사이 어디쯤인지. 눈금은 등급 경계(50, 90, 95, 99%)다. 채운 막대가 아니라 점 하나로
+ * 자리만 짚는다. 수치가 하나뿐인 효과는 그릴 것이 없어 비운다.
+ */
+function ValueScale({ draw }: { draw: ShownDraw }) {
+  const { token } = theme.useToken();
+  const max = effectMax(draw.effect);
+  if (max <= 1) return null;
+  const at = (draw.value / max) * 100;
   return (
-    <Flex vertical gap={12}>
-      <Text
-        className="hw-line"
-        strong
-        style={{ display: 'block', fontSize: 18, '--i': 0 } as CSSProperties}
+    <div
+      role="img"
+      aria-label={`최대치 ${formatNumber(max)} 가운데 ${formatNumber(draw.value)}`}
+      style={{ paddingBlock: 6 }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          height: 4,
+          borderRadius: 2,
+          background: token.colorFillSecondary,
+        }}
       >
-        {draw.effect.name}
+        {HOLY_WATER_TIERS.map((tier) => (
+          <span
+            key={tier}
+            style={{
+              position: 'absolute',
+              left: `${tier}%`,
+              top: -3,
+              width: 1,
+              height: 10,
+              background: token.colorBorder,
+            }}
+          />
+        ))}
+        <span
+          style={{
+            position: 'absolute',
+            left: `${at}%`,
+            top: '50%',
+            width: 14,
+            height: 14,
+            borderRadius: '50%',
+            transform: 'translate(-50%, -50%)',
+            background:
+              draw.tier !== null && draw.tier >= 90 ? token.colorPrimary : token.colorText,
+            border: `2px solid ${token.colorBgContainer}`,
+          }}
+        />
+      </div>
+      <Flex justify="space-between" style={{ marginTop: 6 }}>
+        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+          1
+        </Text>
+        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+          최대 {formatNumber(max)}
+        </Text>
+      </Flex>
+    </div>
+  );
+}
+
+/** 방금 붙은 효과 칸의 숫자 한 칸. 이름, 큰 숫자, 그 아래 한 줄. */
+function Fact({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  const { token } = theme.useToken();
+  return (
+    <Flex
+      vertical
+      gap={2}
+      style={{
+        padding: '10px 12px',
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: token.borderRadius,
+        background: token.colorBgContainer,
+        minWidth: 0,
+      }}
+    >
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        {label}
       </Text>
-      <Flex
-        className={draw.tier === 99 ? 'hw-line hw-line--max' : 'hw-line'}
-        gap={10}
-        align="baseline"
-        wrap
-        style={{ '--i': 1 } as CSSProperties}
-      >
-        <ValueText draw={draw} size={28} />
-        <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-          최대 {formatNumber(effectMax(draw.effect))}
+      <Text strong className="tnum" style={{ fontSize: 16, whiteSpace: 'nowrap' }}>
+        {value}
+      </Text>
+      {sub ? (
+        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+          {sub}
+        </Text>
+      ) : null}
+    </Flex>
+  );
+}
+
+/** 그 효과가 지금까지 몇 번째로 붙었는지와, 이번 것을 빼고 가장 높았던 수치. */
+interface EffectRecord {
+  nth: number;
+  best: number | null;
+}
+
+/** 방금 붙은 효과 하나를 크게. 한 번 발랐을 때 오른쪽 칸을 채운다. */
+function ResultDetail({ draw, record }: { draw: ShownDraw; record: EffectRecord }) {
+  const fixed = effectMax(draw.effect) <= 1;
+  const chance = effectChance(draw.source.effect, draw.value);
+  const recordSub =
+    record.best === null
+      ? '처음 붙음'
+      : fixed
+        ? undefined
+        : draw.value > record.best
+          ? `새 최고, 이전 +${formatNumber(record.best)}`
+          : `최고 +${formatNumber(record.best)}`;
+  return (
+    <Flex vertical gap={14} style={{ width: '100%', maxWidth: 480 }}>
+      <Flex className="hw-line" gap={12} align="center" style={{ '--i': 0 } as CSSProperties}>
+        <ItemIcon category={HOLY_WATER_CATEGORY} name={HOLY_WATER_NAME} size={40} />
+        <Text strong style={{ flex: 1, minWidth: 0, fontSize: 18, lineHeight: 1.3 }}>
+          {draw.effect.name}
         </Text>
         {draw.tier !== null ? <TierTag tier={draw.tier} /> : null}
       </Flex>
+      <div
+        className={draw.tier === 99 ? 'hw-line hw-line--max' : 'hw-line'}
+        style={{ '--i': 1 } as CSSProperties}
+      >
+        <Flex gap={8} align="baseline">
+          <ValueText draw={draw} size={40} strong />
+          <Text type="secondary" className="tnum" style={{ fontSize: 16, whiteSpace: 'nowrap' }}>
+            / {formatNumber(effectMax(draw.effect))}
+          </Text>
+        </Flex>
+        <ValueScale draw={draw} />
+      </div>
+      {/* 좁으면 알아서 두 칸, 한 칸으로 떨어진다. */}
+      <div
+        className="hw-line"
+        style={
+          {
+            '--i': 2,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))',
+            gap: 8,
+          } as CSSProperties
+        }
+      >
+        {fixed ? null : (
+          <Fact
+            label="같은 효과 가운데"
+            value={`상위 ${formatChance(topShare(draw.source.effect, draw.value))}`}
+          />
+        )}
+        <Fact
+          label={fixed ? '이 효과가 붙을 확률' : '이 수치 이상 붙을 확률'}
+          value={formatChance(chance)}
+          sub={`평균 ${formatNumber(Math.round(1 / chance))}번에 한 번`}
+        />
+        <Fact label="이 효과 기록" value={`${formatNumber(record.nth)}번째`} sub={recordSub} />
+      </div>
+    </Flex>
+  );
+}
+
+/** 여러 번 발랐을 때 등급마다 몇 개 나왔는지. 목록 위에 한 줄로 둔다. */
+function BatchSummary({ draws }: { draws: ShownDraw[] }) {
+  return (
+    <Flex gap={6} align="center" wrap style={{ marginBottom: 10 }}>
+      {HOLY_WATER_TIERS.map((tier) => {
+        const hits = draws.filter((draw) => draw.tier !== null && draw.tier >= tier).length;
+        return (
+          <Flex key={tier} gap={4} align="center">
+            <TierTag tier={tier} />
+            <Text strong className="tnum" style={{ fontSize: 13 }}>
+              {formatNumber(hits)}개
+            </Text>
+          </Flex>
+        );
+      })}
+    </Flex>
+  );
+}
+
+/** 아직 바르지 않았을 때. 한 번 바를 때 등급마다 나올 확률을 둔다. */
+function TierOdds() {
+  return (
+    <Flex vertical gap={8}>
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        아직 바르지 않았습니다.
+      </Text>
+      {HOLY_WATER_TIERS.map((tier) => {
+        const chance = TIER_CHANCES.get(tier) ?? 0;
+        return (
+          <Flex key={tier} gap={8} align="center">
+            <span style={{ width: 88 }}>
+              <TierTag tier={tier} />
+            </span>
+            <Text strong className="tnum">
+              {formatChance(chance)}
+            </Text>
+            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              평균 {formatNumber(Math.round(1 / chance))}번에 한 번
+            </Text>
+          </Flex>
+        );
+      })}
     </Flex>
   );
 }
@@ -315,13 +495,14 @@ function ResultList({ draws }: { draws: ShownDraw[] }) {
             } as CSSProperties
           }
         >
+          {/* 등급 표시는 수치 앞에 한 줄로 둔다. 수치 아래로 내리면 줄 높이가 들쭉날쭉해진다. */}
           <Text strong style={{ flex: 1, minWidth: 0, lineHeight: 1.35 }}>
             {draw.effect.name}
           </Text>
-          <Flex vertical gap={2} align="flex-end" style={{ flex: 'none', minWidth: 72 }}>
-            <ValueText draw={draw} />
-            {draw.tier !== null ? <TierTag tier={draw.tier} /> : null}
-          </Flex>
+          {draw.tier !== null ? <TierTag tier={draw.tier} /> : null}
+          <span style={{ flex: 'none', minWidth: 52, textAlign: 'right' }}>
+            <ValueText draw={draw} strong />
+          </span>
         </Flex>
       ))}
     </Flex>
@@ -442,6 +623,18 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
   const shown = useMemo(() => simulator.draws.map(showDraw), [simulator.draws]);
   const latest = shown.slice(shown.length - simulator.lastBatch).reverse();
   const last = shown[shown.length - 1] ?? null;
+  // 방금 붙은 효과가 몇 번째로 붙었는지와 그 앞까지의 최고 수치.
+  const lastRecord = useMemo((): EffectRecord => {
+    if (!last) return { nth: 0, best: null };
+    let nth = 1;
+    let best: number | null = null;
+    for (const draw of shown) {
+      if (draw === last || draw.source.effect !== last.source.effect) continue;
+      nth += 1;
+      best = Math.max(best ?? 0, draw.value);
+    }
+    return { nth, best };
+  }, [shown, last]);
 
   // 연출. 한 번 발랐을 때만 돌리고, 누를 때 걸어 둔다(끈 채 바른 뒤 켜도 지난 연출이 돌지 않게).
   const [fxOn, setFxOn] = useState(readFxSetting);
@@ -697,9 +890,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
                 {simulator.lastBatch > 1 ? ` ${formatNumber(simulator.lastBatch)}개` : ''}
               </Text>
               {last === null ? (
-                <Text type="secondary" style={{ fontSize: 13 }}>
-                  아직 바르지 않았습니다.
-                </Text>
+                <TierOdds />
               ) : (
                 <div
                   key={reveal ?? 'still'}
@@ -716,7 +907,14 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
                     } as CSSProperties
                   }
                 >
-                  {single ? <ResultDetail draw={last} /> : <ResultList draws={latest} />}
+                  {single ? (
+                    <ResultDetail draw={last} record={lastRecord} />
+                  ) : (
+                    <>
+                      <BatchSummary draws={latest} />
+                      <ResultList draws={latest} />
+                    </>
+                  )}
                 </div>
               )}
             </section>
