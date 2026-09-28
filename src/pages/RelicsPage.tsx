@@ -187,20 +187,33 @@ const ARCANA_ICON = 36;
 const ARCANA_BUTTON_ICON = 20;
 /** 옵션 카드의 스킬 그림. */
 const SKILL_ICON = 28;
-/** 넓은 화면에서 아르카나 이름을 두는 왼쪽 칸 폭. "포비든 알케미스트" 가 한 줄에 든다. */
+/** 아주 넓은 화면(1600px 이상)에서 아르카나 이름을 두는 왼쪽 칸 폭. "포비든 알케미스트" 가 한 줄에 든다. */
 const ARCANA_COLUMN = 136;
 
 /**
- * 레벨 칸 한 개의 세 칸. 레벨과 매물 수는 글자만큼, 가격이 남는 폭을 오른쪽 정렬로 쓴다.
- * 줄마다 같은 틀이라 가격 길이가 달라도 칸끼리 세로로 맞는다.
+ * 레벨 줄 한 개의 세 칸. 레벨과 매물 수 칸은 폭을 못 박고, 가격이 가운데를 오른쪽 정렬로 쓴다.
+ * 양옆을 글자만큼(max-content)으로 두면 "4건" 과 "12건" 줄의 가격 끝이 어긋났다. 폭을 박아 두면
+ * 가격 끝이 세로로 한 줄에 선다.
  */
-const LEVEL_GRID = 'max-content minmax(0, 1fr) max-content';
-/** 레벨 칸 하나의 최소 폭. "10레벨  1억 1,100만  12건" 이 한 줄에 드는 폭이다. */
-const LEVEL_CELL_MIN = 168;
+const LEVEL_GRID = '40px minmax(max-content, 1fr) 28px';
+/**
+ * 레벨 단의 최소 폭. "10레벨"(39px), "4억 4,500만"(굵게 83px), "12건"(25px) 이 칸 사이 4px 씩과
+ * 함께 한 줄에 드는 폭이다. 드물게 "21억 7,000만"(93px) 처럼 더 긴 가격은 단 사이 여백으로 조금 넘친다.
+ */
+const LEVEL_COLUMN_MIN = 160;
+/** 레벨 두 단 사이. 가운데에 선이 지나간다. */
+const LEVEL_COLUMN_GAP = 24;
+/** 옵션 카드의 최소 폭. 레벨 두 단과 단 사이, 작은 카드 안쪽 여백(양쪽 12px)이 드는 폭이다. */
+const OPTION_CARD_MIN = LEVEL_COLUMN_MIN * 2 + LEVEL_COLUMN_GAP + 24;
+/**
+ * 레벨 줄의 최대 폭. 한 단으로 떨어지는 휴대폰에서 줄이 화면 끝까지 늘면 레벨과 가격 사이가
+ * 한참 벌어져 어느 가격이 어느 레벨 것인지 눈으로 따라가야 했다.
+ */
+const LEVEL_ROW_MAX = 240;
 
 /**
- * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다의 최저가를 두 칸씩 다섯 줄로
- * 적는다(10과 9, 8과 7, ...). 한 줄에 한 레벨씩 열 줄이면 아르카나 하나가 화면을 다 채워
+ * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다의 최저가를 두 단 다섯 줄로
+ * 적는다(왼쪽 단 10~6, 오른쪽 단 5~1). 한 줄에 한 레벨씩 열 줄이면 아르카나 하나가 화면을 다 채워
  * 여러 아르카나를 견줄 수 없었다. 레벨마다의 수치는 머리의 10레벨 수치를 10으로 나누면 되고,
  * 레벨 글자에 마우스를 올려도 보인다.
  */
@@ -216,6 +229,7 @@ function OptionCard({
   ideaPrice: number | null;
 }) {
   const { row, skill } = option;
+  const { token } = theme.useToken();
   const aboveIdea = (price: number) => ideaPrice !== null && price >= ideaPrice;
   return (
     <Card type="inner" size="small" variant="outlined">
@@ -233,18 +247,19 @@ function OptionCard({
           </Flex>
         </Flex>
         {/*
-          두 레벨씩 한 줄. 왼쪽이 높은 레벨이라 왼쪽에서 오른쪽, 위에서 아래로 10부터 1까지 읽힌다.
-          카드가 두 칸을 담지 못하는 폭(휴대폰)에서는 한 줄에 한 레벨로 떨어진다. 두 칸을 억지로
-          두면 "1억 1,100만" 같은 긴 가격이 옆 칸의 레벨 글자 위로 넘쳐 겹쳤다.
+          두 단. 다단 배치는 위에서 아래로 먼저 채우므로 왼쪽 단이 10~6, 오른쪽 단이 5~1 이다.
+          레벨이 차례대로 세로로 이어져 지그재그로 읽지 않아도 되고, 값이 큰 높은 레벨이 왼쪽 단에 모인다.
+          카드가 두 단을 담지 못하는 폭(휴대폰)에서는 한 단 열 줄로 떨어진다.
         */}
         <div
           role="list"
           aria-label={`${row.name} 레벨별 최저가(골드)`}
           style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(auto-fill, minmax(${LEVEL_CELL_MIN}px, 1fr))`,
-            columnGap: 14,
-            rowGap: 2,
+            columnCount: 2,
+            columnWidth: LEVEL_COLUMN_MIN,
+            columnGap: LEVEL_COLUMN_GAP,
+            // 단 사이 선. 없으면 왼쪽 단의 "4건" 과 오른쪽 단의 "5레벨" 이 한 줄로 이어 읽혔다.
+            columnRule: `1px solid ${token.colorBorderSecondary}`,
           }}
         >
           {[...RELIC_LEVELS].reverse().map((level) => {
@@ -263,14 +278,18 @@ function OptionCard({
                   display: 'grid',
                   gridTemplateColumns: LEVEL_GRID,
                   alignItems: 'baseline',
-                  columnGap: 6,
+                  columnGap: 4,
+                  maxWidth: LEVEL_ROW_MAX,
+                  paddingBlock: 2,
+                  // 다단 배치에서 한 줄이 두 단에 걸쳐 쪼개지지 않게 한다.
+                  breakInside: 'avoid',
                 }}
               >
+                {/* 레벨은 보조 글자색이면 가격 옆에서 묻혔다. 본문색 굵은 글자로 가격과 짝을 이루게 한다. */}
                 <Text
-                  type="secondary"
                   className="tnum"
                   title={formatRelicValue(row, relicValueAt(row, level))}
-                  style={{ fontSize: 13, whiteSpace: 'nowrap' }}
+                  style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}
                 >
                   {level}레벨
                 </Text>
@@ -321,9 +340,11 @@ function OptionCard({
 }
 
 /**
- * 아르카나 하나의 묶음. 넓은 화면에서는 아르카나 그림과 이름을 왼쪽 칸에 두고 옵션 카드를 오른쪽에
- * 나란히 둔다. 이름을 위 머리 줄에 두면 묶음마다 한 줄씩 높아져 한 화면에 들어가는 아르카나가
- * 줄었다. 768px 미만에서는 이름이 위, 옵션 카드가 한 줄에 하나씩 아래로 온다.
+ * 아르카나 하나의 묶음. 아주 넓은 화면(1600px 이상)에서는 아르카나 그림과 이름을 왼쪽 칸에 두고
+ * 옵션 카드를 오른쪽에 나란히 둔다. 이름을 위 머리 줄에 두면 묶음마다 한 줄씩 높아진다.
+ * 그보다 좁으면 이름이 위로 올라간다. 왼쪽 칸이 폭을 먹으면 옵션 카드가 레벨 두 단을 담지 못해
+ * 한 단 열 줄로 길어졌다. 옵션 카드는 두 단이 드는 폭(OPTION_CARD_MIN)을 지키며 한 줄에 셋까지
+ * 놓이고, 폭이 모자라면 둘, 하나로 줄어든다. 휴대폰에서는 한 줄에 하나다.
  */
 function ArcanaSection({
   group,
@@ -360,13 +381,11 @@ function ArcanaSection({
         }}
       >
         {title}
-        {/* 옵션 카드는 한 줄에 셋까지 폭을 나눠 채운다. 768px 미만에서는 한 줄에 하나. */}
+        {/* min(100%) 는 휴대폰처럼 카드 최소 폭보다 좁은 화면에서 격자가 밖으로 넘치지 않게 한다. */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: wide
-              ? 'repeat(auto-fill, minmax(max(260px, calc((100% - 16px) / 3)), 1fr))'
-              : 'minmax(0, 1fr)',
+            gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, max(${OPTION_CARD_MIN}px, calc((100% - 16px) / 3))), 1fr))`,
             gap: 8,
           }}
         >
@@ -483,7 +502,8 @@ function IdeaOddsStat({ odds, ideaListed }: { odds: IdeaOdds | null; ideaListed:
 
 function MuriasView({ items }: { items: AuctionItem[] }) {
   const screens = Grid.useBreakpoint();
-  const wide = screens.md ?? true;
+  // 아르카나 이름을 왼쪽 칸에 두는 폭. 까닭은 ArcanaSection 에 있다.
+  const wide = screens.xxl ?? true;
   const summary = useMemo(() => summarizeMurias(items), [items]);
   const arcanaQuery = useArcanaQuery();
   const groups = useMemo(
