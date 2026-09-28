@@ -471,7 +471,6 @@ function ResultList({
   );
 }
 
-
 /** 시세가 언제 것인지, 받는 중인지. 게임 데이터 지연 고지를 함께 적는다. */
 function PriceFreshness({ prices }: { prices: RelicPriceState }) {
   const note = (text: string) => (
@@ -703,6 +702,10 @@ export function RelicSimulatorView({
     }
     return { top, known, total, above };
   }, [counted, ideaPrice]);
+  // 복원한 만큼의 이데아를 지금 최저가에 샀다고 친 값과, 나온 유물 시세 합계와의 차이.
+  // 실제로 골드가 드는 것은 아니다. 복원해 판 것이 이데아로 판 것보다 나았는지를 본다.
+  const ideaSpent = ready && ideaPrice !== null ? ideaPrice * count : null;
+  const balance = ideaSpent === null ? null : stats.total - ideaSpent;
 
   /**
    * 본전 확률. 한 번 복원해 이데아 최저가 이상이 나올 확률이다. 모든 옵션과 레벨이 똑같이 나온다는
@@ -985,12 +988,15 @@ export function RelicSimulatorView({
               </Text>
             </Flex>
           ) : null}
-          {/* 네 칸. 768px 미만에서는 두 칸씩 두 줄로 떨어진다. */}
+          {/*
+            여섯 칸. 윗줄은 나온 것, 아랫줄은 쓴 이데아 값과 나온 유물 값의 견줌이다.
+            768px 미만에서는 두 칸씩 세 줄로 떨어진다.
+          */}
           <Row gutter={[24, 16]} align="top">
-            <Col xs={12} md={6}>
+            <Col xs={12} md={8}>
               <Statistic title="복원" value={formatNumber(count)} suffix="번" styles={NUMERIC} />
             </Col>
-            <Col xs={12} md={6}>
+            <Col xs={12} md={8}>
               <Statistic
                 title={`${RELIC_MAX_LEVEL}레벨`}
                 value={formatNumber(stats.top)}
@@ -998,7 +1004,7 @@ export function RelicSimulatorView({
                 styles={NUMERIC}
               />
             </Col>
-            <Col xs={12} md={6}>
+            <Col xs={12} md={8}>
               <Statistic
                 title="이데아 최저가 이상"
                 value={ideaPrice === null ? '-' : formatNumber(stats.above)}
@@ -1007,12 +1013,44 @@ export function RelicSimulatorView({
                 styles={NUMERIC}
               />
             </Col>
-            <Col xs={12} md={6}>
+            <Col xs={12} md={8}>
+              <Statistic
+                title="쓴 이데아 값"
+                value={ideaSpent === null ? '-' : formatGoldShort(ideaSpent)}
+                loading={loading}
+                styles={NUMERIC}
+              />
+            </Col>
+            <Col xs={12} md={8}>
               <Statistic
                 title="나온 유물 시세 합계"
                 value={ready ? formatGoldShort(stats.total) : '-'}
                 loading={loading}
                 styles={NUMERIC}
+              />
+            </Col>
+            <Col xs={12} md={8}>
+              <Statistic
+                // 휴대폰 두 칸 폭에서는 값 뒤에 이득, 손해를 붙이면 잘려 제목에 둔다.
+                title={
+                  balance === null || balance === 0
+                    ? '차이'
+                    : balance > 0
+                      ? '차이 (이득)'
+                      : '차이 (손해)'
+                }
+                value={
+                  balance === null
+                    ? '-'
+                    : `${balance > 0 ? '+' : balance < 0 ? '-' : ''}${formatGoldShort(Math.abs(balance))}`
+                }
+                loading={loading}
+                styles={{
+                  content: {
+                    ...NUMERIC.content,
+                    color: balance !== null && balance > 0 ? token.colorPrimary : undefined,
+                  },
+                }}
               />
             </Col>
           </Row>
