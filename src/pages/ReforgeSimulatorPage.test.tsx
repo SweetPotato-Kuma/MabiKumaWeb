@@ -89,6 +89,7 @@ describe('세공 시뮬레이터', () => {
     vi.unstubAllGlobals();
     vi.mocked(fetchAuctionList).mockReset();
     vi.restoreAllMocks();
+    window.localStorage.clear();
   });
 
   it('세공하면 옵션 세 줄이 붙고 도구 최저가로 쓴 골드를 센다', async () => {
@@ -152,5 +153,21 @@ describe('세공 시뮬레이터', () => {
     fireEvent.click(screen.getByRole('button', { name: '목표 나올 때까지' }));
     const window = screen.getByRole('region', { name: '세공 창' });
     expect(within(window).getByText('목표 달성')).toBeInTheDocument();
+  });
+
+  it('연출은 세공할 때만 돈다. 끈 채로 세공한 뒤 켜도 지난 세공의 연출은 돌지 않는다', async () => {
+    renderPage();
+    const reforge = await screen.findByRole('button', { name: '세공하기' });
+    fireEvent.click(reforge);
+    expect(document.querySelector('.rf-play')).not.toBeNull();
+
+    const toggle = screen.getByRole('switch', { name: '세공 연출' });
+    fireEvent.click(toggle);
+    expect(document.querySelector('.rf-play')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(document.querySelector('.rf-play')).toBeNull();
+    expect(document.querySelector('.rf-reveal')).toBeNull();
   });
 });

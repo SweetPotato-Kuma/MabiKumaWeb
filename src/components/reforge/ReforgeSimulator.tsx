@@ -27,12 +27,14 @@ import {
   Table,
   Tag,
   Tooltip,
+  TreeSelect,
   Typography,
   theme,
   type TableColumnsType,
 } from 'antd';
 import { SERIES_COLORS } from '@/app/theme';
 import { EmptyState } from '@/components/EmptyState';
+import { ItemIcon } from '@/components/ItemIcon';
 import {
   AddIcon,
   DeleteIcon,
@@ -45,16 +47,15 @@ import {
 } from '@/components/icons';
 import { useMarketPrices, type PriceState } from '@/features/crafting/market';
 import {
-  groupOfType,
   racesFor,
   tableKey,
   typesFor,
-  TYPE_GROUPS,
+  TYPE_ICONS,
+  typeTree,
   useReforgeDataQuery,
   type PoolRow,
   type ReforgeData,
   type ReforgeToolId,
-  type TypeGroup,
 } from '@/features/reforge/data';
 import {
   isSameItem,
@@ -107,6 +108,9 @@ const TOOL_FX: Record<
 /** "정교한 세공 도구" -> "정교한". 좁은 칸에서 쓴다. */
 const shortToolName = (name: string) => name.replace(/\s*세공 도구$/, '');
 
+/** 트리 묶음의 값. 타입 번호와 겹치지 않게 문자열로 둔다. */
+const groupKey = (name: string) => `group:${name}`;
+
 /** 확률을 사람이 읽는 퍼센트로. 아주 작은 값도 0% 로 뭉개지 않는다. */
 function formatChance(chance: number): string {
   const percent = chance * 100;
@@ -156,6 +160,13 @@ function StatTitle({ label, detail }: { label: string; detail: string }) {
       </Tooltip>
     </Flex>
   );
+}
+
+/** 장비 타입의 그림. 그 타입의 대표 아이템 그림을 쓴다. 대표가 없으면 그리지 않는다. */
+function TypeIcon({ name, size }: { name: string; size: number }) {
+  const entry = TYPE_ICONS[name];
+  if (!entry) return null;
+  return <ItemIcon category={entry[0]} name={entry[1]} size={size} />;
 }
 
 /**
@@ -370,6 +381,7 @@ function OptionBox({
  * 새로 그려 그 도구의 연출을 처음부터 돌린다.
  */
 function Workbench({
+  itemName,
   itemLabel,
   gemOn,
   gemUsable,
@@ -377,6 +389,8 @@ function Workbench({
   play,
   fxStyle,
 }: {
+  /** 장비 타입 이름. 그림을 찾는 데 쓴다. */
+  itemName: string;
   itemLabel: string;
   gemOn: boolean;
   gemUsable: boolean;
@@ -410,7 +424,8 @@ function Workbench({
         <div className="rf-flash" />
         <div className="rf-item">
           <div className="rf-sheen" />
-          <Text strong style={{ fontSize: 13, lineHeight: 1.3, position: 'relative' }}>
+          <TypeIcon name={itemName} size={44} />
+          <Text strong style={{ fontSize: 11, lineHeight: 1.2, position: 'relative' }}>
             {itemLabel}
           </Text>
         </div>
@@ -487,16 +502,19 @@ const HistoryTable = memo(function HistoryTable({
     {
       title: '도구와 장비',
       key: 'setting',
-      width: 150,
+      width: 190,
       render: (_value, draw) => (
-        <Flex vertical gap={0}>
-          <Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-            {toolName.get(draw.tool)}
-            {draw.gem ? ', 기억의 보석' : ''}
-          </Text>
-          <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-            {typeName.get(draw.type)}, {data.races[draw.race]}
-          </Text>
+        <Flex gap={8} align="center">
+          <TypeIcon name={typeName.get(draw.type) ?? ''} size={28} />
+          <Flex vertical gap={0}>
+            <Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+              {toolName.get(draw.tool)}
+              {draw.gem ? ', 기억의 보석' : ''}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+              {typeName.get(draw.type)}, {data.races[draw.race]}
+            </Text>
+          </Flex>
         </Flex>
       ),
     },
@@ -658,12 +676,11 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const tool = data.tools.find((entry) => entry.id === toolId) ?? data.tools[0];
   const types = useMemo(() => typesFor(data, tool.id), [data, tool.id]);
 
-  const [group, setGroup] = useState<TypeGroup>('무기');
-  const groupTypes = types.filter((type) => groupOfType(type.name) === group);
+  const tree = useMemo(() => typeTree(types), [types]);
   const [typeChoice, setTypeChoice] = useState<number | null>(null);
-  // 고른 타입이 이 도구, 이 갈래에 없으면 갈래의 첫 타입으로 간다.
+  // 고른 타입을 이 도구로 세공할 수 없으면 트리의 첫 타입으로 간다.
   const typeId =
-    groupTypes.find((type) => type.id === typeChoice)?.id ?? groupTypes[0]?.id ?? types[0].id;
+    types.find((type) => type.id === typeChoice)?.id ?? tree[0]?.types[0]?.id ?? types[0].id;
 
   const races = racesFor(data, tool.id, typeId);
   const [raceChoice, setRaceChoice] = useState(0);
@@ -699,6 +716,15 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
 
   const [fxOn, setFxOn] = useState(readFxSetting);
   const animate = fxOn && !reducedMotion;
+  /**
+   * 마지막 세공을 연출로 보여 줄지. 세공 단추를 누를 때 정한다. 스위치 상태만 보고 정하면, 끈 채로
+   * 세공한 뒤 스위치를 켜는 순간 지난 세공의 연출이 돌았다.
+   */
+  const [armed, setArmed] = useState(false);
+  const reforge = (times: number) => {
+    setArmed(animate);
+    simulator.draw(setting, times, gemOn);
+  };
 
   // 도구와 보석 값은 경매장 최저가다. 방문자가 넣지 않아도 아래 통계에서 알아서 센다.
   const priceNames = useMemo(
@@ -750,7 +776,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   // 연출. 한 번 세공했을 때만 돌린다. 여러 번 한 뒤에는 마지막 결과만 바로 보인다.
   const last = draws[count - 1] ?? null;
   const lastIsHere = last !== null && item !== null && simulator.lastBatch > 0;
-  const play = animate && lastIsHere && simulator.lastBatch === 1 ? last : null;
+  const play = armed && animate && lastIsHere && simulator.lastBatch === 1 ? last : null;
   const fx = TOOL_FX[play?.tool ?? tool.id];
   const fxStyle = {
     '--fx-accent': token.colorPrimary,
@@ -763,12 +789,30 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
     '--fx-spin': `${fx.spin}deg`,
   } as CSSProperties;
   // 방금 나온 옵션이 들어간 칸만 한 줄씩 드러낸다.
-  const revealKey = animate && lastIsHere ? last.no : null;
+  const revealKey = armed && animate && lastIsHere ? last.no : null;
   const revealsPending = last?.gem ?? false;
 
   const history = useMemo(() => [...draws].reverse(), [draws]);
   // 표는 세공 창보다 늦게 그린다. 누르자마자 창에 결과가 먼저 뜬다.
   const settledHistory = useDeferredValue(history);
+
+  // 묶음은 펼치기만 하고 고를 수 없다. 잎마다 그 타입의 그림을 붙인다.
+  const treeData = tree.map((group) => ({
+    value: groupKey(group.name),
+    label: group.name,
+    title: group.name,
+    selectable: false,
+    children: group.types.map((type) => ({
+      value: type.id,
+      label: type.name,
+      title: (
+        <Flex gap={8} align="center">
+          <TypeIcon name={type.name} size={22} />
+          <span>{type.name}</span>
+        </Flex>
+      ),
+    })),
+  }));
 
   const itemLabel = `${typeName.get(typeId)}${data.races[race] === '공용' ? '' : ` (${data.races[race]})`}`;
 
@@ -809,23 +853,22 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               label: shortToolName(entry.name),
             }))}
           />
-          <Segmented<TypeGroup>
-            value={group}
-            onChange={setGroup}
-            aria-label="장비 갈래"
-            options={TYPE_GROUPS.filter((entry) =>
-              types.some((type) => groupOfType(type.name) === entry),
-            ).map((entry) => ({ value: entry, label: entry }))}
-          />
-          <Select<number>
-            aria-label="아이템 타입"
+          <TreeSelect<number>
+            aria-label="장비 종류"
             showSearch
-            optionFilterProp="label"
+            treeNodeFilterProp="label"
             value={typeId}
             onChange={setTypeChoice}
-            options={groupTypes.map((type) => ({ value: type.id, label: type.name }))}
+            treeData={treeData}
+            // 처음 열면 고른 타입이 든 묶음만 펼친다. 찾으면 맞는 묶음이 알아서 펼쳐진다.
+            treeDefaultExpandedKeys={[
+              groupKey(
+                tree.find((group) => group.types.some((type) => type.id === typeId))?.name ?? '',
+              ),
+            ]}
+            listHeight={360}
             popupMatchSelectWidth={false}
-            style={{ flex: '1 1 150px', minWidth: 0, maxWidth: 220 }}
+            style={{ flex: '1 1 200px', minWidth: 0, maxWidth: 280 }}
           />
           <Select<number>
             aria-label="착용 종족"
@@ -856,6 +899,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                 {tool.name}
               </Text>
               <Workbench
+                itemName={typeName.get(typeId) ?? ''}
                 itemLabel={itemLabel}
                 gemOn={gemOn}
                 gemUsable={gemUsable}
@@ -866,7 +910,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               <Button
                 type="primary"
                 size="large"
-                onClick={() => simulator.draw(setting, 1, gemOn)}
+                onClick={() => reforge(1)}
                 style={{ minWidth: 160 }}
               >
                 세공하기
@@ -878,6 +922,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                   disabled={reducedMotion}
                   onChange={(on) => {
                     setFxOn(on);
+                    setArmed(false);
                     writeFxSetting(on);
                   }}
                   aria-label="세공 연출"
@@ -925,7 +970,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
           </Col>
         </Row>
         <Flex gap={8} wrap align="center" style={{ marginTop: 20 }}>
-          <Button onClick={() => simulator.draw(setting, 10, gemOn)}>10번 세공</Button>
+          <Button onClick={() => reforge(10)}>10번 세공</Button>
           <Tooltip
             title={
               targets.length === 0
@@ -934,7 +979,10 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
             }
           >
             <Button
-              onClick={() => simulator.drawUntil(setting, targets, gemOn)}
+              onClick={() => {
+                setArmed(animate);
+                simulator.drawUntil(setting, targets, gemOn);
+              }}
               disabled={targets.length === 0 || chance === 0}
             >
               목표 나올 때까지
