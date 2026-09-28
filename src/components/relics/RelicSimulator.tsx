@@ -354,7 +354,7 @@ function ResultDetail({
           최대 {formatRelicValue(draw.option, draw.option.max)}
         </Text>
       </Flex>
-      <Flex className="rl-line" gap={8} align="center" style={{ '--i': 2 } as CSSProperties}>
+      <Flex className="rl-line" gap={8} align="center" wrap style={{ '--i': 2 } as CSSProperties}>
         <Text type="secondary" style={{ fontSize: 13 }}>
           시세
         </Text>
@@ -402,7 +402,11 @@ function ResultList({
               <OptionName draw={draw} />
             </div>
             <LevelLabel level={draw.level} />
-            <div style={{ width: 96, textAlign: 'right' }}>
+            {/*
+              시세 칸은 최소 폭만 잡고 글자만큼 늘어난다. 매물이 없어 "최종" 이 붙으면 96px 를 넘어 칸이
+              가로로 넘쳤다. 대신 옵션 이름 칸이 줄어든다.
+            */}
+            <div style={{ flex: 'none', minWidth: 96, textAlign: 'right' }}>
               <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
             </div>
           </Flex>
