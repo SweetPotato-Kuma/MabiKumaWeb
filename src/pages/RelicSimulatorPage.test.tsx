@@ -61,6 +61,9 @@ function rigOverDriveSeven() {
     .mockReturnValueOnce(6.5 / 10);
 }
 
+/** 연출이 끝나 통계가 올라갈 때까지 기다리는 시간. 금빛까지 더해도 넉넉하다. */
+const FX_WAIT = 4000;
+
 describe('무리아스의 유물 복원 시뮬레이터', () => {
   let priceResponse: () => Promise<Response>;
 
@@ -165,7 +168,10 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     // 창을 열어 둔 채 복원해도 닫히지 않고, 나온 횟수를 센다.
     rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
-    expect(screen.getByText(/^한 번에/)).toHaveTextContent('지금까지 0번');
+    // 나온 횟수는 연출이 끝난 뒤에 센다.
+    await waitFor(() => expect(screen.getByText(/^한 번에/)).toHaveTextContent('지금까지 0번'), {
+      timeout: FX_WAIT,
+    });
 
     fireEvent.click(screen.getByRole('button', { name: '특정 유물 기댓값 닫기' }));
     await waitFor(() =>
@@ -173,24 +179,40 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     );
   });
 
-  it('본전 이상이 나온 복원에만 금빛이 붙고, 10번 복원은 목록으로 보인다', async () => {
+  it('10레벨은 금빛, 10레벨이 아닌 이데아 최저가 이상은 빛살로 둘 중 하나만 연출한다', async () => {
+    // 이데아 최저가를 낮춰 7레벨(8천만)도 이데아 최저가 이상이 되게 한다.
+    priceResponse = async () =>
+      new Response(JSON.stringify({ ...PRICE_FILE, idea: [50_000_000, 1] }));
     renderPage();
     await screen.findByText(/3분 전에 모은 경매장 시세입니다/);
     rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
     expect(document.querySelector('.rl-play')).not.toBeNull();
-    // 7레벨은 8천만이라 이데아 최저가(1억 3,400만)에 못 미친다.
-    expect(document.querySelector('.rl-gold')).toBeNull();
+    expect(document.querySelector('.rl-big')).not.toBeNull();
+    expect(document.querySelector('.rl-max')).toBeNull();
 
-    // 10레벨은 2억이라 본전 이상이다.
+    // 10레벨(2억)은 이데아 최저가 이상이기도 하지만 금빛만 붙는다.
     vi.spyOn(Math, 'random')
       .mockReturnValueOnce(16.5 / 30)
       .mockReturnValueOnce(9.5 / 10);
     fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
-    expect(document.querySelector('.rl-gold')).not.toBeNull();
+    expect(document.querySelector('.rl-max')).not.toBeNull();
+    expect(document.querySelector('.rl-big')).toBeNull();
+  });
+
+  it('통계는 연출이 끝난 뒤 올라가고, 10번 복원은 연출 없이 목록으로 보인다', async () => {
+    renderPage();
+    await screen.findByText(/3분 전에 모은 경매장 시세입니다/);
+    rigOverDriveSeven();
+    fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
+    expect(document.querySelector('.rl-big')).toBeNull();
+    expect(document.querySelector('.rl-max')).toBeNull();
+    expect(screen.getByText('복원 기록 0번')).toBeInTheDocument();
+    expect(await screen.findByText('복원 기록 1번', {}, { timeout: FX_WAIT })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '10번 복원' }));
     expect(document.querySelector('.rl-play')).toBeNull();
     expect(screen.getByRole('region', { name: '방금 나온 유물 10개' })).toBeInTheDocument();
+    expect(screen.getByText('복원 기록 11번')).toBeInTheDocument();
   });
 });

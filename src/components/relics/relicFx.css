@@ -6,7 +6,9 @@
  * 연출은 .rl-play 와 .rl-reveal 이 붙은 곳에서만 돈다. 움직임 줄이기 설정이나 "연출 끄기" 면 붙지 않는다.
  *
  * 복원: 원판이 돌고 빛 조각이 가운데로 모여들면, 이데아가 부풀었다 사라지며 번쩍이고, 나온 유물의
- * 스킬 그림이 튀어나온다. 이데아 최저가 이상(본전)이 나오면 금빛이 두 번 번쩍이고 빛살이 퍼진다.
+ * 스킬 그림이 튀어나온다. 특별한 결과에는 둘 중 하나가 더해진다.
+ *  - 10레벨(.rl-max): 세공의 한계 돌파처럼 금빛이 두 번 번쩍이고, 빛살이 돌며 퍼지고, 별빛이 튄다.
+ *  - 10레벨이 아닌 이데아 최저가 이상(.rl-big): 찬란한 세공 도구처럼 빛살이 뻗고 둘레가 반짝이며 판이 흔들린다.
  */
 
 .rl-stage {
@@ -14,6 +16,11 @@
   width: calc(var(--rf, 1) * 208px);
   height: calc(var(--rf, 1) * 208px);
   margin-inline: auto;
+}
+
+.rl-stage-body {
+  position: absolute;
+  inset: 0;
 }
 
 .rl-ring {
@@ -60,6 +67,9 @@
 
 .rl-flash,
 .rl-mote,
+.rl-ray,
+.rl-spark,
+.rl-glint,
 .rl-gold-layer,
 .rl-gold-ray {
   position: absolute;
@@ -67,7 +77,10 @@
 }
 
 .rl-flash,
-.rl-mote {
+.rl-mote,
+.rl-ray,
+.rl-spark,
+.rl-glint {
   opacity: 0;
 }
 
@@ -95,7 +108,40 @@
   color: var(--fx-accent);
 }
 
-/* 본전: 금빛. 원판보다 조금 넓은 원 안에서만 보인다. */
+/* 이데아 최저가 이상: 원판 둘레의 반짝임과 빛살. --a 가 각도, --i 가 순번이다. */
+.rl-spark {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 12px);
+  height: calc(var(--rf, 1) * 12px);
+  margin: calc(var(--rf, 1) * -6px) 0 0 calc(var(--rf, 1) * -6px);
+  font-size: calc(var(--rf, 1) * 12px);
+  line-height: 1;
+  color: var(--fx-accent);
+}
+
+.rl-ray {
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: calc(var(--rf, 1) * 64px);
+  margin: calc(var(--rf, 1) * -64px) 0 0 -1px;
+  border-radius: 1px;
+  background: var(--fx-accent);
+  transform-origin: 50% 100%;
+}
+
+/* 10레벨: 가운데 칸 오른쪽 위에 튀는 별빛 */
+.rl-glint {
+  left: 50%;
+  top: 50%;
+  margin: calc(var(--rf, 1) * -58px) 0 0 calc(var(--rf, 1) * 26px);
+  font-size: calc(var(--rf, 1) * 30px);
+  line-height: 1;
+  color: var(--fx-gold);
+}
+
+/* 10레벨: 금빛. 원판보다 조금 넓은 원 안에서만 보인다. */
 .rl-gold-layer {
   inset: -6%;
   border-radius: 50%;
@@ -150,14 +196,32 @@
   animation: rl-flash var(--fx-dur) ease-out both;
 }
 
-.rl-play.rl-gold .rl-gold-flash {
+.rl-play.rl-big .rl-ray {
+  animation: rl-ray var(--fx-dur) ease-out both;
+}
+
+.rl-play.rl-big .rl-spark {
+  animation: rl-twinkle var(--fx-dur) ease-out both;
+  animation-delay: calc(var(--i) * 45ms);
+}
+
+.rl-play.rl-big .rl-stage-body {
+  animation: rl-shake var(--fx-dur) linear both;
+}
+
+.rl-play.rl-max .rl-gold-flash {
   animation: rl-gold-flash 1100ms ease-out both;
   animation-delay: calc(var(--fx-dur) * 0.62);
 }
 
-.rl-play.rl-gold .rl-gold-ray {
+.rl-play.rl-max .rl-gold-ray {
   animation: rl-gold-ray 1100ms ease-out both;
   animation-delay: calc(var(--fx-dur) * 0.62 + var(--i) * 15ms);
+}
+
+.rl-play.rl-max .rl-glint {
+  animation: rl-glint 900ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.62);
 }
 
 /* 이데아 이상 칸의 빨간 바탕. 연출이 있으면 결과가 드러나는 순간에 켜진다. */
@@ -185,6 +249,23 @@
 .rl-reveal .rl-line {
   animation: rl-reveal 360ms ease-out both;
   animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms) + var(--i, 0) * 60ms);
+}
+
+/* 10레벨 줄은 드러난 뒤 금빛 줄기가 한 번 훑고 지나간다. */
+.rl-line--max {
+  position: relative;
+  overflow: hidden;
+}
+
+.rl-reveal .rl-line--max::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, var(--fx-gold) 50%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  animation: rl-shine 900ms ease-in-out both;
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms) + var(--i, 0) * 60ms + 360ms);
 }
 
 @keyframes rl-spin {
@@ -309,5 +390,93 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes rl-twinkle {
+  0%,
+  45% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -88px)) scale(0);
+  }
+  68% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -96px)) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -104px)) scale(0.4);
+  }
+}
+
+@keyframes rl-ray {
+  0%,
+  60% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -30px)) scaleY(0);
+  }
+  70% {
+    opacity: 0.9;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -40px)) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -56px)) scaleY(1.2);
+  }
+}
+
+@keyframes rl-shake {
+  0%,
+  60% {
+    transform: translate(0, 0);
+  }
+  63% {
+    transform: translate(-4px, 2px);
+  }
+  66% {
+    transform: translate(4px, -2px);
+  }
+  69% {
+    transform: translate(-3px, -1px);
+  }
+  72% {
+    transform: translate(2px, 1px);
+  }
+  76%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes rl-glint {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.5) rotate(90deg);
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(0.9) rotate(150deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7) rotate(220deg);
+  }
+}
+
+@keyframes rl-shine {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  20% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
   }
 }

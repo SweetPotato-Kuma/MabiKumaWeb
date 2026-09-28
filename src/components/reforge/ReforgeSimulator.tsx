@@ -1,6 +1,7 @@
 import {
   memo,
   useDeferredValue,
+  useEffect,
   useId,
   useMemo,
   useState,
@@ -825,7 +826,51 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const toolPrice = priceOf(tool.name);
   const onePull = toolPrice === null ? null : toolPrice + (gemOn ? (gemPrice ?? 0) : 0);
 
-  const { draws } = simulator;
+  // 연출. 한 번 세공했을 때만 돌린다. 여러 번 한 뒤에는 마지막 결과만 바로 보인다.
+  const last = simulator.draws[simulator.draws.length - 1] ?? null;
+  const lastIsHere = last !== null && item !== null && simulator.lastBatch > 0;
+  const play = armed && animate && lastIsHere && simulator.lastBatch === 1 ? last : null;
+  // 한계 돌파 줄이 나온 세공은 번쩍이는 빛이 더 붙고, 옵션은 그만큼 늦게 드러난다.
+  const playLimitBreak = play !== null && play.lines.some((line) => line.limitBreak);
+  const fx = TOOL_FX[play?.tool ?? tool.id];
+  const fxStyle = {
+    '--fx-accent': token.colorPrimary,
+    '--fx-soft': token.colorPrimaryBg,
+    '--fx-line': token.colorBorder,
+    '--fx-muted': token.colorTextTertiary,
+    '--fx-bg': token.colorBgContainer,
+    '--fx-surface': token.colorFillQuaternary,
+    '--fx-dur': `${play ? fx.duration : 0}ms`,
+    '--fx-spin': `${fx.spin}deg`,
+    // 한계 돌파 이스터에그의 빛은 금빛이다. antd 기본 팔레트의 금색 토큰을 쓴다.
+    '--fx-lb': token.gold,
+    '--fx-extra': playLimitBreak ? `${LB_EXTRA_MS}ms` : '0ms',
+    '--rf': stageScale,
+  } as CSSProperties;
+  // 방금 나온 옵션이 들어간 칸만 한 줄씩 드러낸다.
+  const revealKey = armed && animate && lastIsHere ? last.no : null;
+  const revealsPending = last?.gem ?? false;
+
+  /*
+   * 연출이 도는 동안에는 통계와 기록에 방금 세공한 것을 넣지 않는다. 먼저 올라가면 연출이 끝나기 전에
+   * 목표 달성이나 한계 돌파를 알려 버린다. 연출이 끝나면 넣는다.
+   */
+  const [settledNo, setSettledNo] = useState(0);
+  const fxPending = play !== null && settledNo < play.no ? play.no : null;
+  const fxTotal = (play ? fx.duration : 0) + (playLimitBreak ? LB_EXTRA_MS : 0);
+  useEffect(() => {
+    if (fxPending === null) return;
+    const timer = window.setTimeout(() => setSettledNo(fxPending), fxTotal);
+    return () => window.clearTimeout(timer);
+  }, [fxPending, fxTotal]);
+
+  const draws = useMemo(
+    () =>
+      fxPending === null
+        ? simulator.draws
+        : simulator.draws.filter((draw) => draw.no !== fxPending),
+    [simulator.draws, fxPending],
+  );
   const count = draws.length;
   const hitCount = useMemo(
     () => draws.filter((draw) => meetsTargets(draw.lines, targets)).length,
@@ -859,31 +904,6 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const gemSpent = gemPrice === null ? 0 : gemPrice * usage.gems;
   if (gemPrice === null) unpriced += usage.gems;
   const spent = toolSpent + gemSpent;
-
-  // 연출. 한 번 세공했을 때만 돌린다. 여러 번 한 뒤에는 마지막 결과만 바로 보인다.
-  const last = draws[count - 1] ?? null;
-  const lastIsHere = last !== null && item !== null && simulator.lastBatch > 0;
-  const play = armed && animate && lastIsHere && simulator.lastBatch === 1 ? last : null;
-  // 한계 돌파 줄이 나온 세공은 번쩍이는 빛이 더 붙고, 옵션은 그만큼 늦게 드러난다.
-  const playLimitBreak = play !== null && play.lines.some((line) => line.limitBreak);
-  const fx = TOOL_FX[play?.tool ?? tool.id];
-  const fxStyle = {
-    '--fx-accent': token.colorPrimary,
-    '--fx-soft': token.colorPrimaryBg,
-    '--fx-line': token.colorBorder,
-    '--fx-muted': token.colorTextTertiary,
-    '--fx-bg': token.colorBgContainer,
-    '--fx-surface': token.colorFillQuaternary,
-    '--fx-dur': `${play ? fx.duration : 0}ms`,
-    '--fx-spin': `${fx.spin}deg`,
-    // 한계 돌파 이스터에그의 빛은 금빛이다. antd 기본 팔레트의 금색 토큰을 쓴다.
-    '--fx-lb': token.gold,
-    '--fx-extra': playLimitBreak ? `${LB_EXTRA_MS}ms` : '0ms',
-    '--rf': stageScale,
-  } as CSSProperties;
-  // 방금 나온 옵션이 들어간 칸만 한 줄씩 드러낸다.
-  const revealKey = armed && animate && lastIsHere ? last.no : null;
-  const revealsPending = last?.gem ?? false;
 
   const history = useMemo(() => [...draws].reverse(), [draws]);
   // 표는 세공 창보다 늦게 그린다. 누르자마자 창에 결과가 먼저 뜬다.
@@ -1117,7 +1137,14 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                     목표 나올 때까지
                   </Button>
                 </Tooltip>
-                <Button icon={<ResetIcon />} onClick={simulator.reset} disabled={count === 0}>
+                <Button
+                  icon={<ResetIcon />}
+                  onClick={() => {
+                    setSettledNo(0);
+                    simulator.reset();
+                  }}
+                  disabled={simulator.draws.length === 0}
+                >
                   처음부터
                 </Button>
               </Flex>

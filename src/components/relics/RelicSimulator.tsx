@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useMemo, useState, type CSSProperties } from 'react';
+import { memo, useDeferredValue, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Button,
@@ -178,7 +178,10 @@ const FX_DURATION = 1300;
 const FX_SPIN = 360;
 const MOTES = 10;
 const GOLD_RAYS = 16;
-/** 본전 금빛 때문에 결과를 늦게 드러내는 시간. */
+/** 이데아 최저가 이상일 때의 빛살과 둘레 반짝임 수. 찬란한 세공 도구와 같다. */
+const BIG_RAYS = 12;
+const BIG_SPARKS = 10;
+/** 10레벨 금빛 때문에 결과를 늦게 드러내는 시간. */
 const GOLD_EXTRA_MS = 500;
 /** "연출 끄기" 를 이 브라우저에 기억해 두는 자리. */
 const FX_STORAGE_KEY = 'mabikuma:relicFx';
@@ -213,7 +216,8 @@ const angles = (count: number) =>
 function RestoreBench({
   result,
   play,
-  gold,
+  big,
+  max,
   iconSize,
   fxStyle,
 }: {
@@ -221,8 +225,10 @@ function RestoreBench({
   result: PricedDraw | null;
   /** 연출할 복원의 번호. 연출하지 않으면 null. */
   play: number | null;
-  /** 연출할 복원이 이데아 최저가 이상인지. 맞으면 금빛이 번쩍인다. */
-  gold: boolean;
+  /** 연출할 복원이 이데아 최저가 이상인지. 맞으면 찬란한 세공 도구처럼 빛살이 퍼지고 판이 흔들린다. */
+  big: boolean;
+  /** 연출할 복원이 10레벨인지. 맞으면 세공의 한계 돌파처럼 금빛이 번쩍인다. */
+  max: boolean;
   iconSize: number;
   fxStyle: CSSProperties;
 }) {
@@ -240,49 +246,71 @@ function RestoreBench({
       <LevelLabel level={result.level} size={12} />
     </div>
   ) : null;
+  const playing = play !== null;
+  const classes = ['rl-stage'];
+  if (playing) classes.push('rl-play');
+  if (playing && big) classes.push('rl-big');
+  if (playing && max) classes.push('rl-max');
   return (
-    <div
-      key={play ?? 'still'}
-      className={`rl-stage${play !== null ? ` rl-play${gold ? ' rl-gold' : ''}` : ''}`}
-      style={fxStyle}
-      aria-hidden
-    >
-      <div className="rl-ring" />
-      <div className="rl-ring rl-ring--inner" />
-      <div className="rl-ring rl-ring--core" />
-      {play !== null && gold ? (
-        <div className="rl-gold-layer">
-          <div className="rl-gold-flash" />
-          {angles(GOLD_RAYS).map((angle, index) => (
-            <span
-              key={angle}
-              className="rl-gold-ray"
-              style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
-            />
-          ))}
+    <div key={play ?? 'still'} className={classes.join(' ')} style={fxStyle} aria-hidden>
+      <div className="rl-stage-body">
+        <div className="rl-ring" />
+        <div className="rl-ring rl-ring--inner" />
+        <div className="rl-ring rl-ring--core" />
+        {playing && max ? (
+          <div className="rl-gold-layer">
+            <div className="rl-gold-flash" />
+            {angles(GOLD_RAYS).map((angle, index) => (
+              <span
+                key={angle}
+                className="rl-gold-ray"
+                style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+              />
+            ))}
+          </div>
+        ) : null}
+        {playing && big
+          ? angles(BIG_RAYS).map((angle) => (
+              <span
+                key={`ray-${angle}`}
+                className="rl-ray"
+                style={{ '--a': `${angle}deg` } as CSSProperties}
+              />
+            ))
+          : null}
+        <div className="rl-flash" />
+        <div className="rl-slot">
+          {playing ? (
+            <>
+              {idea}
+              {shown}
+            </>
+          ) : (
+            (shown ?? idea)
+          )}
         </div>
-      ) : null}
-      <div className="rl-flash" />
-      <div className="rl-slot">
-        {play !== null ? (
-          <>
-            {idea}
-            {shown}
-          </>
-        ) : (
-          (shown ?? idea)
-        )}
+        {playing
+          ? angles(MOTES).map((angle, index) => (
+              <StarFillIcon
+                key={`mote-${angle}`}
+                aria-hidden
+                className="rl-mote"
+                style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+              />
+            ))
+          : null}
+        {playing && big
+          ? angles(BIG_SPARKS).map((angle, index) => (
+              <StarFillIcon
+                key={`spark-${angle}`}
+                aria-hidden
+                className="rl-spark"
+                style={{ '--a': `${angle + 18}deg`, '--i': index } as CSSProperties}
+              />
+            ))
+          : null}
+        {playing && max ? <StarFillIcon aria-hidden className="rl-glint" /> : null}
       </div>
-      {play !== null
-        ? angles(MOTES).map((angle, index) => (
-            <StarFillIcon
-              key={angle}
-              aria-hidden
-              className="rl-mote"
-              style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
-            />
-          ))
-        : null}
     </div>
   );
 }
@@ -312,7 +340,7 @@ function ResultDetail({
         </Flex>
       </Flex>
       <Flex
-        className="rl-line"
+        className={draw.level === RELIC_MAX_LEVEL ? 'rl-line rl-line--max' : 'rl-line'}
         gap={10}
         align="baseline"
         wrap
@@ -577,10 +605,46 @@ export function RelicSimulatorView({
   const state = prices.status;
   const loading = state === 'loading';
   const ideaPrice = ready?.ideaPrice ?? null;
-  const count = priced.length;
-  const latest = priced.slice(count - simulator.lastBatch).reverse();
-  const last = priced[count - 1] ?? null;
-  const history = useMemo(() => [...priced].reverse(), [priced]);
+  const latest = priced.slice(priced.length - simulator.lastBatch).reverse();
+  const last = priced[priced.length - 1] ?? null;
+  // 연출. 한 번 복원했을 때만 돌리고, 누를 때 걸어 둔다(끈 채 복원한 뒤 켜도 지난 연출이 돌지 않게).
+  const [fxOn, setFxOn] = useState(readFxSetting);
+  const animate = fxOn && !reducedMotion;
+  const [armed, setArmed] = useState(false);
+  const restore = (times: number) => {
+    setArmed(animate);
+    simulator.draw(times);
+  };
+  const play = armed && animate && simulator.lastBatch === 1 && last ? last.no : null;
+  // 10레벨이면 한계 돌파 같은 금빛, 아니고 이데아 최저가 이상이면 찬란한 세공 도구 같은 빛살. 둘 중 하나만.
+  const playMax = play !== null && last !== null && last.level === RELIC_MAX_LEVEL;
+  const playBig =
+    play !== null &&
+    !playMax &&
+    last !== null &&
+    state === 'ready' &&
+    isAboveIdea(last.price, ideaPrice);
+  const reveal = armed && animate && simulator.lastBatch > 0 && last ? last.no : null;
+
+  /*
+   * 연출이 도는 동안에는 통계와 기록에 방금 복원한 것을 넣지 않는다. 먼저 올라가면 연출이 끝나기 전에
+   * 10레벨인지, 본전인지 알려 버린다. 연출이 끝나면 넣는다.
+   */
+  const [settledNo, setSettledNo] = useState(0);
+  const pending = play !== null && settledNo < play ? play : null;
+  const fxTotal = FX_DURATION + (playMax ? GOLD_EXTRA_MS : 0);
+  useEffect(() => {
+    if (pending === null) return;
+    const timer = window.setTimeout(() => setSettledNo(pending), fxTotal);
+    return () => window.clearTimeout(timer);
+  }, [pending, fxTotal]);
+  const counted = useMemo(
+    () => (pending === null ? priced : priced.filter((draw) => draw.no !== pending)),
+    [priced, pending],
+  );
+
+  const count = counted.length;
+  const history = useMemo(() => [...counted].reverse(), [counted]);
   // 표는 복원 창보다 늦게 그린다. 누르자마자 창에 결과와 시세가 먼저 뜬다.
   const settledHistory = useDeferredValue(history);
 
@@ -589,7 +653,7 @@ export function RelicSimulatorView({
     let known = 0;
     let total = 0;
     let above = 0;
-    for (const draw of priced) {
+    for (const draw of counted) {
       if (draw.level === RELIC_MAX_LEVEL) top += 1;
       if (!draw.price) continue;
       known += 1;
@@ -597,7 +661,7 @@ export function RelicSimulatorView({
       if (ideaPrice !== null && draw.price.price >= ideaPrice) above += 1;
     }
     return { top, known, total, above };
-  }, [priced, ideaPrice]);
+  }, [counted, ideaPrice]);
 
   /**
    * 본전 확률. 한 번 복원해 이데아 최저가 이상이 나올 확률이다. 모든 옵션과 레벨이 똑같이 나온다는
@@ -621,19 +685,6 @@ export function RelicSimulatorView({
     return { chance: above / values.length, above, known: values.length, values, mean };
   }, [ready, ideaPrice]);
 
-  // 연출. 한 번 복원했을 때만 돌리고, 누를 때 걸어 둔다(끈 채 복원한 뒤 켜도 지난 연출이 돌지 않게).
-  const [fxOn, setFxOn] = useState(readFxSetting);
-  const animate = fxOn && !reducedMotion;
-  const [armed, setArmed] = useState(false);
-  const restore = (times: number) => {
-    setArmed(animate);
-    simulator.draw(times);
-  };
-  const play = armed && animate && simulator.lastBatch === 1 && last ? last.no : null;
-  const playGold =
-    play !== null && last !== null && state === 'ready' && isAboveIdea(last.price, ideaPrice);
-  const reveal = armed && animate && simulator.lastBatch > 0 && last ? last.no : null;
-
   // 작업대 배율. 휴대폰 폭에서는 원래 크기이고 넓을수록 키운다. 연출도 같은 배율로 커진다.
   const stageScale = screens.xl ? 1.45 : screens.lg ? 1.3 : screens.md ? 1.15 : 1;
   const fxStyle = {
@@ -641,11 +692,11 @@ export function RelicSimulatorView({
     '--fx-soft': token.colorPrimaryBg,
     '--fx-line': token.colorBorder,
     '--fx-surface': token.colorFillQuaternary,
-    // 본전 금빛. 세공의 한계 돌파 빛과 같은 금색 토큰이다.
+    // 10레벨 금빛. 세공의 한계 돌파 빛과 같은 금색 토큰이다.
     '--fx-gold': token.gold,
     '--fx-dur': `${play !== null ? FX_DURATION : 0}ms`,
     '--fx-spin': `${FX_SPIN}deg`,
-    '--fx-extra': playGold ? `${GOLD_EXTRA_MS}ms` : '0ms',
+    '--fx-extra': playMax ? `${GOLD_EXTRA_MS}ms` : '0ms',
     '--rf': stageScale,
   } as CSSProperties;
 
@@ -659,8 +710,8 @@ export function RelicSimulatorView({
   const [target, setTarget] = useState<RelicTarget | null>(null);
   const targetChance = target ? relicTargetChance(target) : 0;
   const targetHits = useMemo(
-    () => (target ? simulator.draws.filter((draw) => meetsRelicTarget(draw, target)).length : 0),
-    [simulator.draws, target],
+    () => (target ? counted.filter((draw) => meetsRelicTarget(draw, target)).length : 0),
+    [counted, target],
   );
   // n 번 복원한 유물의 시세 합이 이데아 n 개 최저가 이상일 확률. 창을 열었을 때만 센다.
   const breakEven = useMemo(
@@ -775,7 +826,8 @@ export function RelicSimulatorView({
               <RestoreBench
                 result={last}
                 play={play}
-                gold={playGold}
+                big={playBig}
+                max={playMax}
                 iconSize={Math.round(48 * stageScale)}
                 fxStyle={fxStyle}
               />
@@ -828,7 +880,14 @@ export function RelicSimulatorView({
                     특정 유물 기댓값
                   </Button>
                 </Popover>
-                <Button icon={<ResetIcon />} onClick={simulator.reset} disabled={count === 0}>
+                <Button
+                  icon={<ResetIcon />}
+                  onClick={() => {
+                    setSettledNo(0);
+                    simulator.reset();
+                  }}
+                  disabled={priced.length === 0}
+                >
                   처음부터
                 </Button>
               </Flex>

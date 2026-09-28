@@ -89,6 +89,9 @@ const LIMIT_BREAK_DATA: ReforgeData = {
 
 let data: ReforgeData = DATA;
 
+/** 연출이 끝나 통계가 올라갈 때까지 기다리는 시간. 가장 긴 도구 연출에 한계 돌파 빛을 더해도 넉넉하다. */
+const FX_WAIT = 4000;
+
 describe('세공 시뮬레이터', () => {
   beforeEach(() => {
     data = DATA;
@@ -134,7 +137,10 @@ describe('세공 시뮬레이터', () => {
     expect(within(window).getByText('(5/5 레벨 : 5% 증가)')).toBeInTheDocument();
     expect(within(window).getByText('(3/3 레벨 : 6 증가)')).toBeInTheDocument();
     expect(within(window).getByText('(20/20 레벨 : 30 증가)')).toBeInTheDocument();
-    expect(await screen.findByText('300만 G')).toBeInTheDocument();
+    // 통계와 기록은 연출이 끝난 뒤에 올라간다. 먼저 올라가면 결과를 미리 알려 버린다.
+    expect(screen.getByText('세공 기록 0번')).toBeInTheDocument();
+    expect(await screen.findByText('300만 G', {}, { timeout: FX_WAIT })).toBeInTheDocument();
+    expect(screen.getByText('세공 기록 1번')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '10번 세공' }));
     expect(screen.getByText('3,300만 G')).toBeInTheDocument();
@@ -148,7 +154,7 @@ describe('세공 시뮬레이터', () => {
     expect(within(window).getAllByText('최대')).toHaveLength(3);
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('세공 기록 1번'));
+    fireEvent.click(await screen.findByText('세공 기록 1번', {}, { timeout: FX_WAIT }));
     expect(await screen.findByRole('table')).toBeInTheDocument();
   });
 
@@ -172,7 +178,7 @@ describe('세공 시뮬레이터', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
     // 도구 둘에 보석 하나.
-    expect(screen.getByText('650만 G')).toBeInTheDocument();
+    expect(await screen.findByText('650만 G', {}, { timeout: FX_WAIT })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '새 옵션' })).toHaveTextContent(
       '(5/5 레벨 : 5% 증가)',
     );
