@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -17,7 +17,11 @@ vi.mock('@/features/itemcard/iconMap', async (importOriginal) => ({
 const PRICE_FILE: RelicPriceFile = {
   at: Date.now() - 3 * 60_000,
   idea: [134_000_000, 1],
-  offers: [['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 80_000_000, 2]],
+  offers: [
+    ['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 80_000_000, 2],
+    // 이데아 최저가 이상인 결과. 본전 확률이 0 이 아니게 한다.
+    ['오버 드라이브 폭발 공격 대미지 700% 증가 (최대 700%)', 200_000_000, 1],
+  ],
   trades: [],
 };
 
@@ -82,7 +86,11 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
   it('뽑은 유물에 모아 둔 시세를 붙이고, 받은 파일을 다음을 위해 남긴다', async () => {
     renderPage();
 
-    expect(screen.getByText(/복원 단추를 누르면/)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: '방금 나온 유물' })).getByText(
+        '아직 복원하지 않았습니다.',
+      ),
+    ).toBeInTheDocument();
     expect(await screen.findByText(/3분 전에 모은 경매장 시세입니다/)).toBeInTheDocument();
     rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
@@ -95,7 +103,11 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     expect(readRelicPriceCache()?.at).toBe(PRICE_FILE.at);
 
     fireEvent.click(screen.getByRole('button', { name: /처음부터/ }));
-    expect(screen.getByText(/복원 단추를 누르면/)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: '방금 나온 유물' })).getByText(
+        '아직 복원하지 않았습니다.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('지난번에 받은 시세가 있으면 새 파일을 기다리지 않고 바로 붙인다', () => {
@@ -122,12 +134,16 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     expect(within(card).getByText('490% 증가')).toBeInTheDocument();
   });
 
-  it('보고 싶은 유물을 고르면 한 번에 나올 확률과 n 번 복원했을 때 볼 확률을 센다', async () => {
+  it('본전 확률은 카드에 두고, 특정 유물 기댓값은 떠 있는 창에서 센다', async () => {
     renderPage();
     await screen.findByText(/3분 전에 모은 경매장 시세입니다/);
+    // 본전: 시세를 아는 결과 가운데 이데아 최저가 이상인 비율로 n 번 확률을 센다.
+    // 시세를 아는 두 결과 가운데 하나가 이데아 최저가 이상이다. 10번이면 1 - 0.5^10.
+    expect(screen.getByRole('region', { name: '본전' })).toHaveTextContent('복원하면 99.9%');
     expect(screen.queryByRole('region', { name: '복원 횟수별 확률' })).not.toBeInTheDocument();
 
-    fireEvent.mouseDown(screen.getByLabelText('보고 싶은 유물 옵션'));
+    fireEvent.click(screen.getByRole('button', { name: /특정 유물 기댓값/ }));
+    fireEvent.mouseDown(await screen.findByLabelText('특정 유물 옵션'));
     fireEvent.click(
       await screen.findByText('오버 드라이브 폭발 공격 대미지', {
         selector: '.ant-select-item-option-content',
@@ -135,16 +151,19 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     );
 
     // 30종 x 10레벨 중 10레벨 하나: 1/300. 10번이면 1 - (299/300)^10 = 3.28%.
-    expect(screen.getByText(/한 번에 나올 확률/)).toHaveTextContent(
-      '한 번에 나올 확률 0.333%, 평균 300번에 한 번',
-    );
+    expect(screen.getByText(/^한 번에/)).toHaveTextContent('한 번에 0.333%, 평균 300번에 한 번');
     expect(screen.getByRole('region', { name: '복원 횟수별 확률' })).toHaveTextContent(
-      '한 번 이상 나올 확률 3.28%',
+      '복원하면 3.28%',
     );
 
+    // 창을 열어 둔 채 복원해도 닫히지 않고, 나온 횟수를 센다.
     rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
-    // 7레벨이 나왔으니 10레벨을 바라면 아직 0번이다.
-    expect(screen.getByText(/지금까지/)).toHaveTextContent('지금까지 0번 나왔습니다');
+    expect(screen.getByText(/^한 번에/)).toHaveTextContent('지금까지 0번');
+
+    fireEvent.click(screen.getByRole('button', { name: '특정 유물 기댓값 닫기' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: '복원 횟수별 확률' })).not.toBeInTheDocument(),
+    );
   });
 });

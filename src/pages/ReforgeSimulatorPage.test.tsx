@@ -143,9 +143,7 @@ describe('세공 시뮬레이터', () => {
     );
     expect(apply).toBeEnabled();
     fireEvent.click(apply);
-    expect(screen.getByRole('region', { name: '새 옵션' })).toHaveTextContent(
-      '세공하면 새 옵션이 여기에 나옵니다',
-    );
+    expect(screen.getByRole('region', { name: '새 옵션' })).toHaveTextContent('아직 없습니다.');
   });
 
   it('목표를 고르면 한 번에 붙을 확률을 보이고, 채운 세공에 목표 달성을 붙인다', async () => {
@@ -155,7 +153,7 @@ describe('세공 시뮬레이터', () => {
     expect(screen.getAllByText('100%').length).toBeGreaterThan(0);
     // 목표를 고르면 n 번 세공했을 때의 확률도 함께 나온다.
     expect(screen.getByRole('region', { name: '세공 횟수별 확률' })).toHaveTextContent(
-      '한 번 이상 나올 확률 100%',
+      '세공하면 100%',
     );
 
     fireEvent.click(screen.getByRole('button', { name: '목표 나올 때까지' }));

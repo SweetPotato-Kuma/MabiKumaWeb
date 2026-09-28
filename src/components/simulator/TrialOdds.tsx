@@ -26,11 +26,13 @@ interface TrialOddsProps {
   chance: number;
   /** 한 번을 부르는 말. "세공", "복원". */
   verb: string;
+  /** 무엇의 확률인지 짧은 이름. "본전". 주면 줄 앞에 굵게 붙고, 영역 이름도 이것으로 한다. */
+  label?: string;
   /** 한 번에 드는 골드. 모르면 비용 칸을 비운다. */
   costPerTrial?: number | null;
   /** 처음 칸에 들어 있는 횟수. */
   defaultTrials?: number;
-  /** 무엇을 기준으로 한 확률인지 한 줄. 가정이 있으면 여기 적는다. */
+  /** 확률에 섞인 가정. 화면에 늘어놓지 않고 ⓘ 툴팁에 덧붙인다. */
   note?: string;
   /**
    * 테두리 상자로 감쌀지. 카드 안에서 다른 줄과 이어 쓰면 상자가 카드를 둘로 가른 것처럼 보여 끈다.
@@ -41,10 +43,12 @@ interface TrialOddsProps {
 /**
  * n 번 하면 원하는 것이 한 번 이상 나올 확률과 나오는 횟수의 기댓값. 매번 같은 확률로 따로
  * 뽑는 시뮬레이터(독립시행)라면 어디든 붙인다. 50%, 90%, 99% 로 보려면 몇 번 해야 하는지도 함께 적는다.
+ * 설명 문장은 늘어놓지 않는다. 계산 방법과 가정은 ⓘ 툴팁에 있다.
  */
 export function TrialOdds({
   chance,
   verb,
+  label,
   costPerTrial = null,
   defaultTrials = 10,
   note,
@@ -59,10 +63,16 @@ export function TrialOdds({
   const hit = atLeastOnce(chance, trials);
   const expected = expectedHits(chance, trials);
   const trialsCost = cost(trials);
+  const help = [
+    `n번 안에 한 번 이상 나올 확률은 1 - (1 - p)^n, 나오는 횟수의 기댓값은 n x p 입니다. 한 번에 나올 확률 p 는 ${formatChance(chance)}입니다.`,
+    note,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <section
-      aria-label={`${verb} 횟수별 확률`}
+      aria-label={label ?? `${verb} 횟수별 확률`}
       style={
         framed
           ? {
@@ -76,6 +86,7 @@ export function TrialOdds({
     >
       <Flex vertical gap={6}>
         <Flex gap={8} align="center" wrap>
+          {label ? <Text strong>{label}</Text> : null}
           <InputNumber<number>
             aria-label={`${verb} 횟수`}
             size="small"
@@ -91,17 +102,15 @@ export function TrialOdds({
             style={{ width: 110 }}
           />
           <Text className="tnum" style={{ fontSize: 13 }}>
-            {verb}하면 한 번 이상 나올 확률 <Text strong>{formatChance(hit)}</Text>, 나오는 횟수는
-            평균 <Text strong>{formatExpected(expected)}번</Text>
+            {verb}하면 <Text strong>{formatChance(hit)}</Text>, 평균{' '}
+            <Text strong>{formatExpected(expected)}번</Text>
             {trialsCost !== null ? (
               <>
-                , 드는 골드 <Text strong>{formatGoldShort(trialsCost)}</Text>
+                , <Text strong>{formatGoldShort(trialsCost)}</Text>
               </>
             ) : null}
           </Text>
-          <Tooltip
-            title={`${verb}은 매번 앞 결과와 상관없이 같은 확률로 뽑습니다. n번 안에 한 번 이상 나올 확률은 1 - (1 - p)^n, 나오는 횟수의 기댓값은 n x p 입니다. 평균 횟수만큼 해도 한 번 이상 나올 확률은 63% 남짓입니다.`}
-          >
+          <Tooltip title={help}>
             <InfoIcon
               aria-label="계산 방법"
               tabIndex={0}
@@ -115,7 +124,7 @@ export function TrialOdds({
             const needCost = Number.isFinite(need) ? cost(need) : null;
             return (
               <Text key={goal} type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                {formatChance(goal)} 확률로 보려면{' '}
+                {formatChance(goal)}{' '}
                 <Text strong style={{ fontSize: 12 }}>
                   {Number.isFinite(need) ? `${formatNumber(need)}번` : '-'}
                 </Text>
@@ -124,11 +133,6 @@ export function TrialOdds({
             );
           })}
         </Flex>
-        {note ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {note}
-          </Text>
-        ) : null}
       </Flex>
     </section>
   );

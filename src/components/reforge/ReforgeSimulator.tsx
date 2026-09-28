@@ -865,24 +865,15 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const itemLabel = `${typeName.get(typeId)}${data.races[race] === '공용' ? '' : ` (${data.races[race]})`}`;
 
   const targetSummary =
-    targets.length === 0 ? (
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        고르면 한 번에 붙을 확률과 평균 비용을 셉니다.
-      </Text>
-    ) : (
+    targets.length === 0 ? null : (
       <Text className="tnum" style={{ fontSize: 13 }}>
         {chance > 0 ? (
           <>
-            한 번에 모두 붙을 확률 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
+            한 번에 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
             <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
-            {onePull !== null ? (
-              <>
-                , 평균 <Text strong>{formatGoldShort(onePull / chance)}</Text>
-              </>
-            ) : null}
           </>
         ) : (
-          '이 목표는 이 장비에서 나올 수 없습니다.'
+          '이 장비에서 나올 수 없는 목표'
         )}
       </Text>
     );
@@ -952,9 +943,16 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
         <Row gutter={[24, 20]} align="stretch">
           <Col xs={24} md={10} xl={9}>
             <Flex vertical gap={12} align="center">
-              <Text strong style={{ fontSize: 16 }}>
-                {tool.name}
-              </Text>
+              <Flex gap={4} align="center">
+                <Text strong style={{ fontSize: 16 }}>
+                  {tool.name}
+                </Text>
+                <Tooltip
+                  title={`${formatTableDate(tool.date)} 이후 확률표를 따릅니다. 확률표는 랭크를 고르게 되어 있지만 세공은 늘 1랭크 세 줄로 붙습니다. 채운 별과 "최대" 는 일반 구간의 끝 레벨, 빈 별은 끝 레벨의 90% 이상, "한계 돌파" 는 한계 돌파 구간에서 나온 레벨입니다.`}
+                >
+                  <InfoIcon aria-label="확률표와 표시" tabIndex={0} style={{ cursor: 'help' }} />
+                </Tooltip>
+              </Flex>
               <Workbench
                 itemName={typeName.get(typeId) ?? ''}
                 itemLabel={itemLabel}
@@ -985,9 +983,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                   }}
                   aria-label="세공 연출"
                 />
-                <Text style={{ fontSize: 13 }}>
-                  {reducedMotion ? '움직임 줄이기 설정이라 연출을 끕니다' : '세공 연출'}
-                </Text>
+                <Text style={{ fontSize: 13 }}>세공 연출</Text>
               </Flex>
               <Flex gap={8} wrap justify="center">
                 <Button onClick={() => reforge(10)}>10번 세공</Button>
@@ -1032,7 +1028,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                 options={options}
                 hit={itemLines !== null && meetsTargets(itemLines, targets)}
                 reveal={revealsPending ? null : revealKey}
-                empty="아직 세공하지 않았습니다. 세공하기를 누르면 옵션 세 줄이 붙습니다."
+                empty="아직 세공하지 않았습니다."
                 fxStyle={fxStyle}
               />
               <Button type="primary" block disabled={!pending} onClick={simulator.applyPending}>
@@ -1046,27 +1042,9 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                 hit={pending !== null && meetsTargets(pending, targets)}
                 reveal={revealsPending ? revealKey : null}
                 muted={!gemOn && !pending}
-                empty={
-                  gemOn
-                    ? '세공하면 새 옵션이 여기에 나옵니다. 적용하지 않으면 기억된 옵션이 그대로 남습니다.'
-                    : '작업대 위 마름모 칸에 기억의 보석을 올리면, 지금 옵션을 둔 채 새 옵션을 여기서 보고 고를 수 있습니다.'
-                }
+                empty={gemOn ? '아직 없습니다.' : '기억의 보석을 올리면 씁니다.'}
                 fxStyle={fxStyle}
               />
-              {/* 여러 번 세공한 뒤의 안내. 자리를 늘 잡아 두어 나타날 때 창이 늘지 않게 한다. */}
-              <Text
-                type="secondary"
-                className="tnum"
-                aria-hidden={!(simulator.lastBatch > 1 && lastIsHere)}
-                style={{
-                  fontSize: 12,
-                  minHeight: 20,
-                  visibility: simulator.lastBatch > 1 && lastIsHere ? 'visible' : 'hidden',
-                }}
-              >
-                방금 {formatNumber(Math.max(simulator.lastBatch, 1))}번 세공했습니다. 마지막 결과가
-                보이고, 나머지는 아래 기록에 있습니다.
-              </Text>
             </Flex>
           </Col>
         </Row>
@@ -1138,22 +1116,13 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
             styles: { body: { padding: 0 } },
             children:
               count === 0 ? (
-                <EmptyState
-                  size="small"
-                  variant="search"
-                  description="세공하기를 누르면 붙은 옵션 세 줄이 여기에 쌓입니다."
-                />
+                <EmptyState size="small" variant="search" description="아직 세공하지 않았습니다." />
               ) : (
                 <HistoryTable rows={settledHistory} data={data} options={options} />
               ),
           },
         ]}
       />
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        {tool.name}는 {formatTableDate(tool.date)} 이후 확률표를 따릅니다. 확률표는 랭크를 고르게
-        되어 있지만 세공은 늘 1랭크 세 줄로 붙습니다. 채운 별과 "최대" 는 일반 구간의 끝 레벨, 빈
-        별은 끝 레벨의 90% 이상, "한계 돌파" 는 한계 돌파 구간에서 나온 레벨입니다.
-      </Text>
     </Flex>
   );
 }

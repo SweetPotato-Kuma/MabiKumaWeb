@@ -4,9 +4,11 @@ import {
   Button,
   Card,
   Col,
+  Divider,
   Flex,
   Grid,
   InputNumber,
+  Popover,
   Row,
   Select,
   Spin,
@@ -20,7 +22,7 @@ import {
 } from 'antd';
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
-import { InfoIcon, ResetIcon, StarFillIcon } from '@/components/icons';
+import { CalculateIcon, CloseIcon, InfoIcon, ResetIcon, StarFillIcon } from '@/components/icons';
 import { TrialOdds } from '@/components/simulator/TrialOdds';
 import {
   skillOfOption,
@@ -31,6 +33,7 @@ import {
 import {
   formatRelicValue,
   muriasAuctionPath,
+  RELIC_LEVELS,
   RELIC_MAX_LEVEL,
   relicValueAt,
 } from '@/features/relics/murias';
@@ -437,7 +440,30 @@ export function RelicSimulatorView({
     return { top, known, total, above };
   }, [priced, ideaPrice]);
 
-  // 보고 싶은 유물. 고르면 한 번에 나올 확률과 n 번 복원했을 때 볼 확률을 센다.
+  /**
+   * 본전 확률. 한 번 복원해 이데아 최저가 이상이 나올 확률이다. 모든 옵션과 레벨이 똑같이 나온다는
+   * 이 화면의 가정 아래에서, 시세를 아는 결과 가운데 이데아 최저가 이상인 결과의 비율이다.
+   */
+  const ideaChance = useMemo(() => {
+    if (!ready || ideaPrice === null) return null;
+    let known = 0;
+    let above = 0;
+    for (const option of MURIAS_RELIC_POOL) {
+      for (const level of RELIC_LEVELS) {
+        const price = drawPrice({ option, level }, ready);
+        if (!price) continue;
+        known += 1;
+        if (price.price >= ideaPrice) above += 1;
+      }
+    }
+    return known > 0 ? { chance: above / known, above, known } : null;
+  }, [ready, ideaPrice]);
+
+  /**
+   * 특정 유물 기댓값 계산기. 떠 있는 창에 둔다. 창 밖을 눌러도 닫히지 않아, 열어 둔 채 복원을
+   * 이어 하며 그 유물이 몇 번 나왔는지 본다. 단추를 다시 누르거나 닫기를 누르면 닫힌다.
+   */
+  const [calcOpen, setCalcOpen] = useState(false);
   const [target, setTarget] = useState<RelicTarget | null>(null);
   const targetChance = target ? relicTargetChance(target) : 0;
   const targetHits = useMemo(
@@ -445,15 +471,108 @@ export function RelicSimulatorView({
     [simulator.draws, target],
   );
 
+  const calculator = (
+    <Flex vertical gap={10} style={{ width: 'min(440px, calc(100vw - 88px))' }}>
+      <Flex gap={8} align="center" wrap>
+        <Select<number>
+          aria-label="특정 유물 옵션"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="예: 오버 드라이브 폭발 공격 대미지"
+          value={target?.option ?? null}
+          onChange={(option) =>
+            setTarget(
+              option === undefined || option === null
+                ? null
+                : { option, minLevel: target?.minLevel ?? RELIC_MAX_LEVEL },
+            )
+          }
+          options={MURIAS_RELIC_POOL.map((option, index) => ({ value: index, label: option.name }))}
+          popupMatchSelectWidth={false}
+          style={{ flex: '1 1 220px', minWidth: 0 }}
+        />
+        <InputNumber<number>
+          aria-label="특정 유물의 가장 낮은 레벨"
+          min={1}
+          max={RELIC_MAX_LEVEL}
+          value={target?.minLevel ?? RELIC_MAX_LEVEL}
+          disabled={!target}
+          onChange={(level) => {
+            if (level === null || !target) return;
+            setTarget({
+              ...target,
+              minLevel: Math.min(Math.max(Math.round(level), 1), RELIC_MAX_LEVEL),
+            });
+          }}
+          suffix="레벨 이상"
+          className="tnum"
+          style={{ width: 120 }}
+        />
+      </Flex>
+      {target ? (
+        <>
+          <Text className="tnum" style={{ fontSize: 13 }}>
+            한 번에 <Text strong>{formatChance(targetChance)}</Text>, 평균{' '}
+            <Text strong>{formatNumber(Math.ceil(1 / targetChance))}번</Text>에 한 번
+            {count > 0 ? `, 지금까지 ${formatNumber(targetHits)}번` : ''}
+          </Text>
+          <TrialOdds
+            framed={false}
+            chance={targetChance}
+            verb="복원"
+            costPerTrial={ideaPrice}
+            note="옵션과 레벨이 모두 똑같이 나온다고 본 확률입니다. 골드는 이데아 최저가 기준입니다."
+          />
+        </>
+      ) : null}
+    </Flex>
+  );
+
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
+      {/*
+        복원 단추, 본전 확률, 결과 통계를 한 카드에 둔다. 뽑기 전에도 통계 칸을 모두 그려 둔다.
+        첫 복원에서 요약 칸을 새로 만들면 그만큼 결과가 늦게 떴다.
+      */}
       <Card variant="outlined">
-        <Flex vertical gap={12}>
+        <Flex vertical gap={14}>
           <Flex gap={8} wrap align="center">
             <Button type="primary" onClick={() => simulator.draw(1)}>
               1번 복원
             </Button>
             <Button onClick={() => simulator.draw(10)}>10번 복원</Button>
+            <Popover
+              open={calcOpen}
+              trigger={[]}
+              placement="bottomLeft"
+              title={
+                <Flex justify="space-between" align="center" gap={8}>
+                  <span>특정 유물 기댓값</span>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CloseIcon />}
+                    aria-label="특정 유물 기댓값 닫기"
+                    onClick={() => setCalcOpen(false)}
+                  />
+                </Flex>
+              }
+              content={calculator}
+            >
+              <Button
+                icon={<CalculateIcon />}
+                aria-expanded={calcOpen}
+                onClick={() => setCalcOpen(!calcOpen)}
+              >
+                특정 유물 기댓값
+              </Button>
+            </Popover>
+            <Tooltip
+              title={`옵션 ${formatNumber(MURIAS_RELIC_POOL.length)}종과 1~${RELIC_MAX_LEVEL}레벨이 모두 똑같이 나온다고 보고 뽑습니다(결과 하나 1/${formatNumber(RELIC_OUTCOMES)}). 실제 확률은 공개되지 않았고, 골드나 아이템은 들지 않습니다.`}
+            >
+              <InfoIcon aria-label="뽑는 방식" tabIndex={0} style={{ cursor: 'help' }} />
+            </Tooltip>
             <Button
               icon={<ResetIcon />}
               onClick={simulator.reset}
@@ -463,128 +582,64 @@ export function RelicSimulatorView({
               처음부터
             </Button>
           </Flex>
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            옵션 {formatNumber(MURIAS_RELIC_POOL.length)}종과 1~{RELIC_MAX_LEVEL}레벨이 모두 똑같이
-            나온다고 보고 뽑습니다. 결과 하나가 나올 확률은 1/{formatNumber(RELIC_OUTCOMES)}입니다.
-            실제 확률은 공개되지 않았고, 골드나 아이템은 들지 않습니다.
-          </Text>
-          {/* 보고 싶은 유물. 같은 카드 안에 이어 둔다. 상자로 따로 감싸면 카드가 둘로 갈라져 보인다. */}
-          <Flex gap={8} align="center" wrap>
-            <Text style={{ fontSize: 13 }}>보고 싶은 유물</Text>
-            <Select<number>
-              aria-label="보고 싶은 유물 옵션"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder="예: 오버 드라이브 폭발 공격 대미지"
-              value={target?.option ?? null}
-              onChange={(option) =>
-                setTarget(
-                  option === undefined || option === null
-                    ? null
-                    : { option, minLevel: target?.minLevel ?? RELIC_MAX_LEVEL },
-                )
-              }
-              options={MURIAS_RELIC_POOL.map((option, index) => ({
-                value: index,
-                label: option.name,
-              }))}
-              popupMatchSelectWidth={false}
-              style={{ flex: '1 1 240px', minWidth: 0, maxWidth: 380 }}
-            />
-            <InputNumber<number>
-              aria-label="보고 싶은 유물의 가장 낮은 레벨"
-              min={1}
-              max={RELIC_MAX_LEVEL}
-              value={target?.minLevel ?? RELIC_MAX_LEVEL}
-              disabled={!target}
-              onChange={(level) => {
-                if (level === null || !target) return;
-                setTarget({
-                  ...target,
-                  minLevel: Math.min(Math.max(Math.round(level), 1), RELIC_MAX_LEVEL),
-                });
-              }}
-              suffix="레벨 이상"
-              className="tnum"
-              style={{ width: 120 }}
-            />
-            {target ? (
-              <Text className="tnum" style={{ fontSize: 13 }}>
-                한 번에 나올 확률 <Text strong>{formatChance(targetChance)}</Text>, 평균{' '}
-                <Text strong>{formatNumber(Math.ceil(1 / targetChance))}번</Text>에 한 번
-                {count > 0 ? `, 지금까지 ${formatNumber(targetHits)}번 나왔습니다` : ''}
-              </Text>
-            ) : null}
-          </Flex>
-          {target ? (
+          {ideaChance && ideaChance.chance > 0 && ideaPrice !== null ? (
             <TrialOdds
               framed={false}
-              chance={targetChance}
+              label="본전"
+              chance={ideaChance.chance}
               verb="복원"
               costPerTrial={ideaPrice}
-              note="옵션과 레벨이 모두 똑같이 나온다고 본 확률입니다. 드는 골드는 이데아를 최저가로 샀을 때입니다."
+              note={`본전은 이데아 최저가 이상이 나오는 것입니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개입니다.`}
             />
           ) : null}
+          <Divider style={{ margin: 0 }} />
+          {/* 네 칸. 768px 미만에서는 두 칸씩 두 줄로 떨어진다. */}
+          <Row gutter={[24, 16]} align="top">
+            <Col xs={12} md={6}>
+              <Statistic title="복원" value={formatNumber(count)} suffix="번" styles={NUMERIC} />
+            </Col>
+            <Col xs={12} md={6}>
+              <Statistic
+                title={`${RELIC_MAX_LEVEL}레벨`}
+                value={formatNumber(stats.top)}
+                suffix="번"
+                styles={NUMERIC}
+              />
+            </Col>
+            <Col xs={12} md={6}>
+              <Statistic
+                title={
+                  <StatTitle
+                    label="이데아 최저가 이상"
+                    detail={
+                      ideaPrice === null
+                        ? '이데아 매물이 없거나 시세를 아직 받지 못해 견줄 수 없습니다.'
+                        : `나온 유물의 시세가 이데아 최저가 ${formatGold(ideaPrice)} 이상인 횟수입니다. 시세를 아는 ${formatNumber(stats.known)}번 가운데서 셉니다.`
+                    }
+                  />
+                }
+                value={ideaPrice === null ? '-' : formatNumber(stats.above)}
+                suffix={ideaPrice === null ? undefined : '번'}
+                loading={loading}
+                styles={NUMERIC}
+              />
+            </Col>
+            <Col xs={12} md={6}>
+              <Statistic
+                title={
+                  <StatTitle
+                    label="나온 유물 시세 합계"
+                    detail={`그 옵션 그 레벨의 지금 최저가, 매물이 없으면 최종 거래가로 더했습니다. 매물도 거래 기록도 없는 ${formatNumber(count - stats.known)}번은 뺐습니다.${ideaPrice !== null && count > 0 ? ` 이데아 ${formatNumber(count)}개 최저가로는 ${formatGold(ideaPrice * count)}입니다.` : ''}`}
+                  />
+                }
+                value={ready ? formatGoldShort(stats.total) : '-'}
+                loading={loading}
+                styles={NUMERIC}
+              />
+            </Col>
+          </Row>
+          <PriceFreshness prices={prices} />
         </Flex>
-      </Card>
-      <PriceFreshness prices={prices} />
-
-      {/*
-        뽑기 전에도 틀을 모두 그려 둔다. 첫 복원에서 요약 칸과 표를 새로 만들면 그만큼 결과가
-        늦게 떴다. 첫 복원은 빈칸을 채우기만 한다.
-      */}
-      <Card variant="outlined">
-        {/* 네 칸. 768px 미만에서는 두 칸, 576px 미만에서는 한 칸으로 떨어진다. */}
-        <Row gutter={[24, 16]} align="top">
-          <Col xs={24} sm={12} md={6}>
-            <Statistic title="복원" value={formatNumber(count)} suffix="번" styles={NUMERIC} />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic
-              title={`${RELIC_MAX_LEVEL}레벨`}
-              value={formatNumber(stats.top)}
-              suffix="번"
-              styles={NUMERIC}
-            />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic
-              title={
-                <StatTitle
-                  label="이데아 최저가 이상"
-                  detail={
-                    ideaPrice === null
-                      ? '이데아 매물이 없거나 시세를 아직 받지 못해 견줄 수 없습니다.'
-                      : `나온 유물의 시세가 이데아 최저가 ${formatGold(ideaPrice)} 이상인 횟수입니다. 시세를 아는 ${formatNumber(stats.known)}번 가운데서 셉니다.`
-                  }
-                />
-              }
-              value={ideaPrice === null ? '-' : formatNumber(stats.above)}
-              suffix={ideaPrice === null ? undefined : '번'}
-              loading={loading}
-              styles={NUMERIC}
-            />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic
-              title={
-                <StatTitle
-                  label="나온 유물 시세 합계"
-                  detail={`그 옵션 그 레벨의 지금 최저가, 매물이 없으면 최종 거래가로 더했습니다. 매물도 거래 기록도 없는 ${formatNumber(count - stats.known)}번은 뺐습니다.`}
-                />
-              }
-              value={ready ? formatGoldShort(stats.total) : '-'}
-              loading={loading}
-              styles={NUMERIC}
-            />
-            {ideaPrice !== null && count > 0 ? (
-              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                이데아 {formatNumber(count)}개 최저가로는 {formatGoldShort(ideaPrice * count)}
-              </Text>
-            ) : null}
-          </Col>
-        </Row>
       </Card>
 
       <Flex vertical gap={8} role="region" aria-labelledby="relic-sim-latest">
@@ -605,11 +660,7 @@ export function RelicSimulatorView({
           ))}
         </div>
         {count === 0 ? (
-          <EmptyState
-            size="small"
-            variant="search"
-            description="복원 단추를 누르면 나온 유물과 지금 시세가 여기에 쌓입니다."
-          />
+          <EmptyState size="small" variant="search" description="아직 복원하지 않았습니다." />
         ) : null}
       </Flex>
 
@@ -620,15 +671,15 @@ export function RelicSimulatorView({
         aria-labelledby="relic-sim-history"
         style={{ minWidth: 0 }}
       >
-        <Text strong style={{ fontSize: 16 }} id="relic-sim-history">
-          복원 기록
-        </Text>
+        <Flex gap={4} align="center">
+          <Text strong style={{ fontSize: 16 }} id="relic-sim-history">
+            복원 기록
+          </Text>
+          <Tooltip title='빨간 줄과 "이데아 이상" 은 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린 시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의 매물을 봅니다.'>
+            <InfoIcon aria-label="기록 표 읽는 법" tabIndex={0} style={{ cursor: 'help' }} />
+          </Tooltip>
+        </Flex>
         <HistoryTable rows={settledHistory} ideaPrice={ideaPrice} state={state} />
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          빨간 줄과 "이데아 이상" 표시는 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린
-          시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의
-          매물을 봅니다.
-        </Text>
       </Flex>
     </Flex>
   );
