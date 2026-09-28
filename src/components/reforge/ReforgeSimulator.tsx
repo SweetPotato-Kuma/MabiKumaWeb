@@ -332,6 +332,7 @@ function OptionBox({
   hit,
   reveal,
   empty,
+  muted = false,
   fxStyle,
 }: {
   title: string;
@@ -342,6 +343,8 @@ function OptionBox({
   /** 방금 나온 옵션이라 한 줄씩 드러낼지. 값이 바뀌면 칸을 새로 그려 다시 드러낸다. */
   reveal: number | null;
   empty: string;
+  /** 쓰지 않는 칸. 기억의 보석을 올리기 전의 새 옵션 칸이다. 자리는 그대로 두고 흐리게 그린다. */
+  muted?: boolean;
   fxStyle: CSSProperties;
 }) {
   const { token } = theme.useToken();
@@ -350,16 +353,18 @@ function OptionBox({
     <section
       aria-labelledby={id}
       style={{
-        border: `1px solid ${hit ? token.colorPrimary : token.colorBorderSecondary}`,
+        border: `1px ${muted ? 'dashed' : 'solid'} ${hit ? token.colorPrimary : token.colorBorderSecondary}`,
         boxShadow: hit ? `inset 0 0 0 1px ${token.colorPrimary}` : undefined,
         borderRadius: token.borderRadius,
-        background: hit ? token.colorPrimaryBg : token.colorFillQuaternary,
+        background: hit ? token.colorPrimaryBg : muted ? 'transparent' : token.colorFillQuaternary,
         padding: 12,
-        minHeight: 120,
+        // 옵션 세 줄이 들어갈 높이를 미리 잡는다. 빈 칸과 채운 칸의 높이가 같아야 창이 들썩이지 않는다.
+        minHeight: 212,
+        flex: '1 0 auto',
       }}
     >
       <Flex justify="space-between" align="center" gap={8} style={{ marginBottom: 8 }}>
-        <Text strong id={id}>
+        <Text strong id={id} type={muted ? 'secondary' : undefined}>
           {title}
         </Text>
         {hit ? <HitTag /> : null}
@@ -398,6 +403,7 @@ function OptionBox({
 function Workbench({
   itemName,
   itemLabel,
+  iconSize,
   gemOn,
   gemUsable,
   onToggleGem,
@@ -407,6 +413,8 @@ function Workbench({
   /** 장비 타입 이름. 그림을 찾는 데 쓴다. */
   itemName: string;
   itemLabel: string;
+  /** 장비 칸 그림의 한 변. 작업대 배율을 따른다. */
+  iconSize: number;
   gemOn: boolean;
   gemUsable: boolean;
   onToggleGem: () => void;
@@ -439,7 +447,7 @@ function Workbench({
         <div className="rf-flash" />
         <div className="rf-item">
           <div className="rf-sheen" />
-          <TypeIcon name={itemName} size={44} />
+          <TypeIcon name={itemName} size={iconSize} />
           <Text strong style={{ fontSize: 11, lineHeight: 1.2, position: 'relative' }}>
             {itemLabel}
           </Text>
@@ -708,7 +716,11 @@ function lowestOf(state: PriceState | undefined): number | null {
  */
 function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simulator }) {
   const screens = Grid.useBreakpoint();
-  const wide = screens.md ?? true;
+  /**
+   * 작업대 배율. 휴대폰 폭에서는 원래 크기(208px)이고 넓을수록 키운다. 넓은 화면에서 작업대가 작으면
+   * 칸 안이 여백으로 비어 보였다. 연출도 같은 배율로 커진다(reforgeFx.css 의 --rf).
+   */
+  const stageScale = screens.xl ? 1.45 : screens.lg ? 1.3 : screens.md ? 1.15 : 1;
   const { token } = theme.useToken();
   const reducedMotion = usePrefersReducedMotion();
 
@@ -827,6 +839,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
     '--fx-surface': token.colorFillQuaternary,
     '--fx-dur': `${play ? fx.duration : 0}ms`,
     '--fx-spin': `${fx.spin}deg`,
+    '--rf': stageScale,
   } as CSSProperties;
   // 방금 나온 옵션이 들어간 칸만 한 줄씩 드러낸다.
   const revealKey = armed && animate && lastIsHere ? last.no : null;
@@ -931,9 +944,12 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
 
         <Divider style={{ marginBlock: 16 }} />
 
-        {/* 작업대와 옵션 두 칸. 768px 미만에서는 위아래로 쌓는다. */}
-        <Row gutter={[24, 20]}>
-          <Col xs={24} md={10}>
+        {/*
+          작업대와 옵션 두 칸. 768px 미만에서는 위아래로 쌓는다. 오른쪽 칸은 왼쪽 작업대 높이만큼
+          늘어나, 넓은 화면에서 한쪽만 비어 보이지 않게 한다.
+        */}
+        <Row gutter={[24, 20]} align="stretch">
+          <Col xs={24} md={10} xl={9}>
             <Flex vertical gap={12} align="center">
               <Text strong style={{ fontSize: 16 }}>
                 {tool.name}
@@ -941,6 +957,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               <Workbench
                 itemName={typeName.get(typeId) ?? ''}
                 itemLabel={itemLabel}
+                iconSize={Math.round(44 * stageScale)}
                 gemOn={gemOn}
                 gemUsable={gemUsable}
                 onToggleGem={() => setGemChoice(!gemOn)}
@@ -951,7 +968,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                 type="primary"
                 size="large"
                 onClick={() => reforge(1)}
-                style={{ minWidth: 160 }}
+                style={{ minWidth: 200 }}
               >
                 세공하기
               </Button>
@@ -971,14 +988,42 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                   {reducedMotion ? '움직임 줄이기 설정이라 연출을 끕니다' : '세공 연출'}
                 </Text>
               </Flex>
+              <Flex gap={8} wrap justify="center">
+                <Button onClick={() => reforge(10)}>10번 세공</Button>
+                <Tooltip
+                  title={
+                    targets.length === 0
+                      ? '목표 옵션을 고르면 쓸 수 있습니다.'
+                      : `목표를 채울 때까지 세공합니다. 많아야 ${formatNumber(UNTIL_CAP)}번까지입니다.`
+                  }
+                >
+                  <Button
+                    onClick={() => {
+                      setArmed(animate);
+                      simulator.drawUntil(setting, targets, gemOn);
+                    }}
+                    disabled={targets.length === 0 || chance === 0}
+                  >
+                    목표 나올 때까지
+                  </Button>
+                </Tooltip>
+                <Button icon={<ResetIcon />} onClick={simulator.reset} disabled={count === 0}>
+                  처음부터
+                </Button>
+              </Flex>
               <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
                 {tool.name} {formatNumber(usage.tools.get(tool.id) ?? 0)}개, 기억의 보석{' '}
                 {formatNumber(usage.gems)}개 사용
               </Text>
             </Flex>
           </Col>
-          <Col xs={24} md={14}>
-            <Flex vertical gap={10}>
+          {/*
+            기억의 보석을 켜든 끄든 칸 셋(옵션, 적용 단추, 새 옵션)을 늘 같은 자리에 둔다. 켤 때마다
+            칸이 생겼다 사라지면 창이 늘고 줄며 아래가 들썩였다. 끈 동안에는 적용 단추와 새 옵션 칸이
+            쓰지 않는 상태로 남는다.
+          */}
+          <Col xs={24} md={14} xl={15}>
+            <Flex vertical gap={10} style={{ height: '100%' }}>
               <OptionBox
                 title={gemOn || pending ? '기억된 옵션' : '세공 옵션'}
                 lines={itemLines}
@@ -989,64 +1034,41 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                 empty="아직 세공하지 않았습니다. 세공하기를 누르면 옵션 세 줄이 붙습니다."
                 fxStyle={fxStyle}
               />
-              {gemOn || pending ? (
-                <>
-                  <Button type="primary" block disabled={!pending} onClick={simulator.applyPending}>
-                    신규 옵션 적용하기
-                  </Button>
-                  <OptionBox
-                    title="새 옵션"
-                    lines={pending}
-                    pool={pool}
-                    options={options}
-                    hit={pending !== null && meetsTargets(pending, targets)}
-                    reveal={revealsPending ? revealKey : null}
-                    empty="기억의 보석을 올리고 세공하면 새 옵션이 여기에 나옵니다. 적용하지 않으면 기억된 옵션이 그대로 남습니다."
-                    fxStyle={fxStyle}
-                  />
-                </>
-              ) : null}
+              <Button type="primary" block disabled={!pending} onClick={simulator.applyPending}>
+                신규 옵션 적용하기
+              </Button>
+              <OptionBox
+                title="새 옵션"
+                lines={pending}
+                pool={pool}
+                options={options}
+                hit={pending !== null && meetsTargets(pending, targets)}
+                reveal={revealsPending ? revealKey : null}
+                muted={!gemOn && !pending}
+                empty={
+                  gemOn
+                    ? '세공하면 새 옵션이 여기에 나옵니다. 적용하지 않으면 기억된 옵션이 그대로 남습니다.'
+                    : '작업대 위 마름모 칸에 기억의 보석을 올리면, 지금 옵션을 둔 채 새 옵션을 여기서 보고 고를 수 있습니다.'
+                }
+                fxStyle={fxStyle}
+              />
+              {/* 여러 번 세공한 뒤의 안내. 자리를 늘 잡아 두어 나타날 때 창이 늘지 않게 한다. */}
+              <Text
+                type="secondary"
+                className="tnum"
+                aria-hidden={!(simulator.lastBatch > 1 && lastIsHere)}
+                style={{
+                  fontSize: 12,
+                  minHeight: 20,
+                  visibility: simulator.lastBatch > 1 && lastIsHere ? 'visible' : 'hidden',
+                }}
+              >
+                방금 {formatNumber(Math.max(simulator.lastBatch, 1))}번 세공했습니다. 마지막 결과가
+                보이고, 나머지는 아래 기록에 있습니다.
+              </Text>
             </Flex>
           </Col>
         </Row>
-        <Flex gap={8} wrap align="center" style={{ marginTop: 20 }}>
-          <Button onClick={() => reforge(10)}>10번 세공</Button>
-          <Tooltip
-            title={
-              targets.length === 0
-                ? '목표 옵션을 고르면 쓸 수 있습니다.'
-                : `목표를 채울 때까지 세공합니다. 많아야 ${formatNumber(UNTIL_CAP)}번까지입니다.`
-            }
-          >
-            <Button
-              onClick={() => {
-                setArmed(animate);
-                simulator.drawUntil(setting, targets, gemOn);
-              }}
-              disabled={targets.length === 0 || chance === 0}
-            >
-              목표 나올 때까지
-            </Button>
-          </Tooltip>
-          <Button
-            icon={<ResetIcon />}
-            onClick={simulator.reset}
-            disabled={count === 0}
-            style={{ marginLeft: wide ? 'auto' : undefined }}
-          >
-            처음부터
-          </Button>
-        </Flex>
-        {simulator.lastBatch > 1 && lastIsHere ? (
-          <Text
-            type="secondary"
-            className="tnum"
-            style={{ display: 'block', fontSize: 12, marginTop: 8 }}
-          >
-            방금 {formatNumber(simulator.lastBatch)}번 세공했습니다. 세공 창에는 마지막 결과가
-            보이고, 나머지는 아래 기록에 있습니다.
-          </Text>
-        ) : null}
       </Card>
 
       <Card variant="outlined">

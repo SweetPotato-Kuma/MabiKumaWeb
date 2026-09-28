@@ -4,14 +4,16 @@
  * 키프레임은 인라인 스타일로 쓸 수 없어 이 파일에 둔다. 색은 여기서 정하지 않고, 컴포넌트가 테마
  * 토큰을 CSS 변수(--fx-*)로 넘겨 준다. 움직이는 것은 transform 과 opacity 뿐이다.
  *
+ * 크기는 모두 --rf 배율을 곱한다. 넓은 화면에서 작업대를 키우면 원판, 장비, 망치, 빛살이 같이 커진다.
+ *
  * 연출은 .rf-play 와 .rf-reveal 이 붙은 곳에서만 돈다. 움직임 줄이기 설정이나 "연출 끄기" 면
  * 컴포넌트가 두 클래스를 붙이지 않는다.
  */
 
 .rf-stage {
   position: relative;
-  width: 208px;
-  height: 208px;
+  width: calc(var(--rf, 1) * 208px);
+  height: calc(var(--rf, 1) * 208px);
   margin-inline: auto;
 }
 
@@ -28,12 +30,12 @@
 }
 
 .rf-ring--inner {
-  inset: 18px;
+  inset: calc(var(--rf, 1) * 18px);
   border-style: dashed;
 }
 
 .rf-ring--core {
-  inset: 44px;
+  inset: calc(var(--rf, 1) * 44px);
   opacity: 0.6;
 }
 
@@ -41,9 +43,9 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 84px;
-  height: 84px;
-  margin: -42px 0 0 -42px;
+  width: calc(var(--rf, 1) * 84px);
+  height: calc(var(--rf, 1) * 84px);
+  margin: calc(var(--rf, 1) * -42px) 0 0 calc(var(--rf, 1) * -42px);
   border-radius: 10px;
   border: 1px solid var(--fx-line);
   background: var(--fx-surface);
@@ -81,31 +83,38 @@
 .rf-flash {
   left: 50%;
   top: 50%;
-  width: 150px;
-  height: 150px;
-  margin: -75px 0 0 -75px;
+  width: calc(var(--rf, 1) * 150px);
+  height: calc(var(--rf, 1) * 150px);
+  margin: calc(var(--rf, 1) * -75px) 0 0 calc(var(--rf, 1) * -75px);
   border-radius: 50%;
   border: 2px solid var(--fx-accent);
   background: var(--fx-soft);
 }
 
+/*
+ * 망치는 장비 오른쪽에 세워 두고 손잡이 끝을 축으로 왼쪽으로 내려친다. 그림의 머리는 왼쪽이 평평한
+ * 쪽, 오른쪽이 못을 뽑는 갈래라, 왼쪽으로 휘두르면 평평한 쪽이 장비에 닿는다.
+ */
 .rf-hammer {
   left: 50%;
   top: 50%;
-  margin: -64px 0 0 14px;
-  font-size: 34px;
+  width: 1em;
+  height: 1em;
+  line-height: 0;
+  margin: calc(var(--rf, 1) * -12px) 0 0 calc(var(--rf, 1) * 46px);
+  font-size: calc(var(--rf, 1) * 38px);
   color: var(--fx-accent);
-  transform-origin: 0% 100%;
+  transform-origin: 50% 100%;
 }
 
 /* 원판 둘레의 반짝임과 빛살. --a 가 각도, --i 가 순번이다. */
 .rf-spark {
   left: 50%;
   top: 50%;
-  width: 12px;
-  height: 12px;
-  margin: -6px 0 0 -6px;
-  font-size: 12px;
+  width: calc(var(--rf, 1) * 12px);
+  height: calc(var(--rf, 1) * 12px);
+  margin: calc(var(--rf, 1) * -6px) 0 0 calc(var(--rf, 1) * -6px);
+  font-size: calc(var(--rf, 1) * 12px);
   line-height: 1;
   color: var(--fx-accent);
 }
@@ -114,8 +123,8 @@
   left: 50%;
   top: 50%;
   width: 2px;
-  height: 64px;
-  margin: -64px 0 0 -1px;
+  height: calc(var(--rf, 1) * 64px);
+  margin: calc(var(--rf, 1) * -64px) 0 0 -1px;
   border-radius: 1px;
   background: var(--fx-accent);
   transform-origin: 50% 100%;
@@ -126,9 +135,9 @@
   position: absolute;
   left: 50%;
   top: 2px;
-  width: 34px;
-  height: 34px;
-  margin-left: -17px;
+  width: calc(var(--rf, 1) * 34px);
+  height: calc(var(--rf, 1) * 34px);
+  margin-left: calc(var(--rf, 1) * -17px);
   padding: 0;
   border: 0;
   background: none;
@@ -141,7 +150,7 @@
 
 .rf-gem-shape {
   position: absolute;
-  inset: 5px;
+  inset: calc(var(--rf, 1) * 5px);
   transform: rotate(45deg);
   border-radius: 4px;
   border: 1px dashed var(--fx-line);
@@ -159,7 +168,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: calc(var(--rf, 1) * 14px);
   color: var(--fx-muted);
 }
 
@@ -227,56 +236,57 @@
   }
 }
 
+/* 오른쪽으로 젖혀 들어 올렸다가 왼쪽으로 내려쳐 장비 오른쪽 모서리에 닿는다. */
 @keyframes rf-strike {
   0% {
     opacity: 0;
-    transform: rotate(-55deg);
+    transform: rotate(30deg);
   }
   20% {
     opacity: 1;
-    transform: rotate(-55deg);
+    transform: rotate(30deg);
   }
   62% {
-    transform: rotate(-60deg);
+    transform: rotate(42deg);
   }
   72% {
-    transform: rotate(8deg);
+    transform: rotate(-38deg);
   }
   80% {
     opacity: 1;
-    transform: rotate(-4deg);
+    transform: rotate(-30deg);
   }
   100% {
     opacity: 0;
-    transform: rotate(-20deg);
+    transform: rotate(-18deg);
   }
 }
 
 @keyframes rf-strike-twice {
   0% {
     opacity: 0;
-    transform: rotate(-55deg);
+    transform: rotate(30deg);
   }
   15% {
     opacity: 1;
-    transform: rotate(-55deg);
+    transform: rotate(30deg);
   }
   35% {
-    transform: rotate(6deg);
+    transform: rotate(-38deg);
   }
   48% {
-    transform: rotate(-60deg);
+    transform: rotate(42deg);
   }
   72% {
-    transform: rotate(10deg);
+    transform: rotate(-38deg);
   }
   82% {
     opacity: 1;
-    transform: rotate(-4deg);
+    transform: rotate(-30deg);
   }
   100% {
     opacity: 0;
-    transform: rotate(-20deg);
+    transform: rotate(-18deg);
   }
 }
 
@@ -319,15 +329,15 @@
   0%,
   40% {
     opacity: 0;
-    transform: rotate(var(--a)) translateY(-88px) scale(0);
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -88px)) scale(0);
   }
   62% {
     opacity: 1;
-    transform: rotate(var(--a)) translateY(-96px) scale(1.2);
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -96px)) scale(1.2);
   }
   100% {
     opacity: 0;
-    transform: rotate(var(--a)) translateY(-104px) scale(0.4);
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -104px)) scale(0.4);
   }
 }
 
@@ -335,15 +345,15 @@
   0%,
   66% {
     opacity: 0;
-    transform: rotate(var(--a)) translateY(-30px) scaleY(0);
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -30px)) scaleY(0);
   }
   76% {
     opacity: 0.9;
-    transform: rotate(var(--a)) translateY(-40px) scaleY(1);
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -40px)) scaleY(1);
   }
   100% {
     opacity: 0;
-    transform: rotate(var(--a)) translateY(-56px) scaleY(1.2);
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -56px)) scaleY(1.2);
   }
 }
 

@@ -124,6 +124,10 @@ describe('세공 시뮬레이터', () => {
     await screen.findByText('도구 0 G, 기억의 보석 0 G');
     expect(gem()).toBeDisabled();
 
+    // 보석을 올리기 전에도 적용 단추와 새 옵션 칸은 자리를 지킨다. 켜고 끌 때 창이 늘고 줄지 않는다.
+    expect(screen.getByRole('button', { name: '신규 옵션 적용하기' })).toBeDisabled();
+    expect(screen.getByRole('region', { name: '새 옵션' })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
     expect(gem()).toBeEnabled();
     fireEvent.click(gem());
@@ -140,7 +144,7 @@ describe('세공 시뮬레이터', () => {
     expect(apply).toBeEnabled();
     fireEvent.click(apply);
     expect(screen.getByRole('region', { name: '새 옵션' })).toHaveTextContent(
-      '기억의 보석을 올리고',
+      '세공하면 새 옵션이 여기에 나옵니다',
     );
   });
 
