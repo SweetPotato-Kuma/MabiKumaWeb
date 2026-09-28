@@ -26,9 +26,10 @@ description: MabiKuma 웹의 UI/디자인 작업 규칙. 화면·컴포넌트·�
 
 - `DESIGN_VARIANCE: 4` - 예측 가능한 그리드 우선. 비대칭 레이아웃은 조회 도구에서 비용만 된다.
 - `MOTION_INTENSITY: 3` - hover / active / focus 전이까지만. 스크롤 연출과 패럴랙스 없음.
-  예외: 세공 시뮬레이터의 세공 창은 사용자가 재미를 위해 도구별 연출을 요청해 올렸다(2026-09).
-  `src/components/reforge/reforgeFx.css` 에만 있고, transform/opacity 만 움직이며, 움직임 줄이기 설정과
-  "세공 연출" 끄기를 따른다. 다른 화면으로 번지게 하지 않는다.
+  예외: 세공 시뮬레이터의 세공 창과 유물 복원 시뮬레이터의 복원 창은 사용자가 재미를 위해 연출을 요청해
+  올렸다(2026-09). `src/components/reforge/reforgeFx.css`, `src/components/relics/relicFx.css` 에만 있고,
+  transform/opacity 만 움직이며, 움직임 줄이기 설정과 "세공 연출"/"복원 연출" 끄기를 따른다. 드문 결과(세공의
+  한계 돌파, 복원의 이데아 최저가 이상)에는 금빛(antd `gold` 토큰)이 번쩍인다. 시뮬레이터 밖으로 번지게 하지 않는다.
 - `VISUAL_DENSITY: 6` - 표준 앱 밀도. 결과 영역은 촘촘하게, 진입 영역은 숨 쉬게.
 
 Taste Skill 기본값 8/6/4는 랜딩용이므로 적용하지 않는다. 사용자가 대화로 올리라고 하면 그때만 올린다.

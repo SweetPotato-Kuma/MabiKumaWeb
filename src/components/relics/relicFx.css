@@ -1,0 +1,313 @@
+/*
+ * 유물 복원 창의 연출. 유물 복원 시뮬레이터 한 화면만 쓴다.
+ *
+ * 세공 창(reforge/reforgeFx.css)과 같은 규칙을 따른다. 색은 컴포넌트가 테마 토큰을 CSS 변수(--fx-*)로
+ * 넘겨 주고, 움직이는 것은 transform 과 opacity 뿐이며, 크기는 모두 --rf 배율을 곱한다.
+ * 연출은 .rl-play 와 .rl-reveal 이 붙은 곳에서만 돈다. 움직임 줄이기 설정이나 "연출 끄기" 면 붙지 않는다.
+ *
+ * 복원: 원판이 돌고 빛 조각이 가운데로 모여들면, 이데아가 부풀었다 사라지며 번쩍이고, 나온 유물의
+ * 스킬 그림이 튀어나온다. 이데아 최저가 이상(본전)이 나오면 금빛이 두 번 번쩍이고 빛살이 퍼진다.
+ */
+
+.rl-stage {
+  position: relative;
+  width: calc(var(--rf, 1) * 208px);
+  height: calc(var(--rf, 1) * 208px);
+  margin-inline: auto;
+}
+
+.rl-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--fx-line);
+}
+
+.rl-ring--inner {
+  inset: calc(var(--rf, 1) * 18px);
+  border-style: dashed;
+}
+
+.rl-ring--core {
+  inset: calc(var(--rf, 1) * 44px);
+  opacity: 0.6;
+}
+
+/* 가운데 칸. 이데아가 놓이고, 복원하면 나온 유물로 바뀐다. */
+.rl-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 92px);
+  height: calc(var(--rf, 1) * 92px);
+  margin: calc(var(--rf, 1) * -46px) 0 0 calc(var(--rf, 1) * -46px);
+  border-radius: 50%;
+  border: 1px solid var(--fx-line);
+  background: var(--fx-surface);
+}
+
+.rl-idea,
+.rl-result {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.rl-flash,
+.rl-mote,
+.rl-gold-layer,
+.rl-gold-ray {
+  position: absolute;
+  pointer-events: none;
+}
+
+.rl-flash,
+.rl-mote {
+  opacity: 0;
+}
+
+/* 모여든 빛이 터지는 자리 */
+.rl-flash {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 160px);
+  height: calc(var(--rf, 1) * 160px);
+  margin: calc(var(--rf, 1) * -80px) 0 0 calc(var(--rf, 1) * -80px);
+  border-radius: 50%;
+  border: 2px solid var(--fx-accent);
+  background: var(--fx-soft);
+}
+
+/* 가운데로 모여드는 빛 조각. --a 가 각도, --i 가 순번이다. */
+.rl-mote {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 12px);
+  height: calc(var(--rf, 1) * 12px);
+  margin: calc(var(--rf, 1) * -6px) 0 0 calc(var(--rf, 1) * -6px);
+  font-size: calc(var(--rf, 1) * 12px);
+  line-height: 1;
+  color: var(--fx-accent);
+}
+
+/* 본전: 금빛. 원판보다 조금 넓은 원 안에서만 보인다. */
+.rl-gold-layer {
+  inset: -6%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.rl-gold-flash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 280px);
+  height: calc(var(--rf, 1) * 280px);
+  margin: calc(var(--rf, 1) * -140px) 0 0 calc(var(--rf, 1) * -140px);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--fx-gold) 0%, transparent 62%);
+  filter: brightness(1.25) saturate(1.1);
+  opacity: 0;
+}
+
+.rl-gold-ray {
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: calc(var(--rf, 1) * 110px);
+  margin: calc(var(--rf, 1) * -110px) 0 0 -1.5px;
+  border-radius: 2px;
+  background: var(--fx-gold);
+  transform-origin: 50% 100%;
+  opacity: 0;
+}
+
+/* ---------- 연출 ---------- */
+
+.rl-play .rl-ring--inner {
+  animation: rl-spin var(--fx-dur) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.rl-play .rl-mote {
+  animation: rl-converge var(--fx-dur) ease-in both;
+  animation-delay: calc(var(--i) * 30ms);
+}
+
+.rl-play .rl-idea {
+  animation: rl-idea-out var(--fx-dur) ease-in-out both;
+}
+
+.rl-play .rl-result {
+  animation: rl-result-in var(--fx-dur) ease-out both;
+}
+
+.rl-play .rl-flash {
+  animation: rl-flash var(--fx-dur) ease-out both;
+}
+
+.rl-play.rl-gold .rl-gold-flash {
+  animation: rl-gold-flash 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.62);
+}
+
+.rl-play.rl-gold .rl-gold-ray {
+  animation: rl-gold-ray 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.62 + var(--i) * 15ms);
+}
+
+/* 이데아 이상 칸의 빨간 바탕. 연출이 있으면 결과가 드러나는 순간에 켜진다. */
+.rl-hit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rl-hit--delay {
+  animation: rl-fade-in 300ms ease-out both;
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms));
+}
+
+@keyframes rl-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 나온 유물 칸은 연출이 끝난 뒤 드러난다. */
+.rl-reveal .rl-line {
+  animation: rl-reveal 360ms ease-out both;
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms) + var(--i, 0) * 60ms);
+}
+
+@keyframes rl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(var(--fx-spin));
+  }
+}
+
+@keyframes rl-converge {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -110px)) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+    transform: rotate(calc(var(--a) + 90deg)) translateY(calc(var(--rf, 1) * -12px)) scale(1);
+  }
+  62%,
+  100% {
+    opacity: 0;
+    transform: rotate(calc(var(--a) + 110deg)) translateY(0) scale(0.2);
+  }
+}
+
+@keyframes rl-idea-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  60%,
+  100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes rl-result-in {
+  0%,
+  60% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  74% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rl-flash {
+  0%,
+  58% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  64% {
+    opacity: 0.85;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+@keyframes rl-gold-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  35% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes rl-gold-ray {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -20px)) scaleY(0);
+  }
+  25% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -46px)) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(calc(var(--a) + 30deg)) translateY(calc(var(--rf, 1) * -90px)) scaleY(1.3);
+  }
+}
+
+@keyframes rl-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

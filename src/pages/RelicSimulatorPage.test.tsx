@@ -93,7 +93,7 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     ).toBeInTheDocument();
     expect(await screen.findByText(/3분 전에 모은 경매장 시세입니다/)).toBeInTheDocument();
     rigOverDriveSeven();
-    fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
+    fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
 
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
     expect(within(card).getByText('오버 드라이브 폭발 공격 대미지')).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     renderPage();
 
     rigOverDriveSeven();
-    fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
+    fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
     expect(within(card).getByText('8,000만 G')).toBeInTheDocument();
     expect(screen.getByText('새 시세를 받는 중입니다.')).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
 
     expect(await screen.findByText(/시세를 받지 못했습니다/)).toBeInTheDocument();
     rigOverDriveSeven();
-    fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
+    fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
     expect(within(card).getByText('490% 증가')).toBeInTheDocument();
   });
@@ -164,12 +164,33 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
 
     // 창을 열어 둔 채 복원해도 닫히지 않고, 나온 횟수를 센다.
     rigOverDriveSeven();
-    fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
+    fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
     expect(screen.getByText(/^한 번에/)).toHaveTextContent('지금까지 0번');
 
     fireEvent.click(screen.getByRole('button', { name: '특정 유물 기댓값 닫기' }));
     await waitFor(() =>
       expect(screen.queryByRole('region', { name: '복원 횟수별 확률' })).not.toBeInTheDocument(),
     );
+  });
+
+  it('본전 이상이 나온 복원에만 금빛이 붙고, 10번 복원은 목록으로 보인다', async () => {
+    renderPage();
+    await screen.findByText(/3분 전에 모은 경매장 시세입니다/);
+    rigOverDriveSeven();
+    fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
+    expect(document.querySelector('.rl-play')).not.toBeNull();
+    // 7레벨은 8천만이라 이데아 최저가(1억 3,400만)에 못 미친다.
+    expect(document.querySelector('.rl-gold')).toBeNull();
+
+    // 10레벨은 2억이라 본전 이상이다.
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(16.5 / 30)
+      .mockReturnValueOnce(9.5 / 10);
+    fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
+    expect(document.querySelector('.rl-gold')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '10번 복원' }));
+    expect(document.querySelector('.rl-play')).toBeNull();
+    expect(screen.getByRole('region', { name: '방금 나온 유물 10개' })).toBeInTheDocument();
   });
 });

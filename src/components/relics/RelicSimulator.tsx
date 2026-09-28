@@ -1,9 +1,10 @@
-import { memo, useDeferredValue, useMemo, useState } from 'react';
+import { memo, useDeferredValue, useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Button,
   Card,
   Col,
+  Collapse,
   Divider,
   Flex,
   Grid,
@@ -13,6 +14,7 @@ import {
   Select,
   Spin,
   Statistic,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -21,7 +23,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
-import { EmptyState } from '@/components/EmptyState';
+import { ItemIcon } from '@/components/ItemIcon';
 import { CalculateIcon, CloseIcon, InfoIcon, ResetIcon, StarFillIcon } from '@/components/icons';
 import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import {
@@ -54,11 +56,13 @@ import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import { formatEstimatedChance, sumAtLeastChance } from '@/features/simulator/breakEven';
 import { formatChance } from '@/features/simulator/trials';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
+import { usePrefersReducedMotion } from '@/lib/reducedMotion';
+import './relicFx.css';
 
 const { Text } = Typography;
 
-/** 방금 나온 유물 카드의 스킬 그림. */
-const CARD_ICON = 36;
+/** 방금 나온 유물 칸의 스킬 그림. */
+const DETAIL_ICON = 64;
 /** 기록 표의 스킬 그림. */
 const ROW_ICON = 24;
 /** 기록 표 한 쪽의 줄 수. */
@@ -169,8 +173,122 @@ function OptionName({ draw }: { draw: PricedDraw }) {
   );
 }
 
-/** 방금 나온 유물 하나. */
-function DrawCard({
+/** 복원 연출 한 번의 길이와 원판 도는 각도, 모여드는 빛 조각과 본전 금빛 빛살 수. */
+const FX_DURATION = 1300;
+const FX_SPIN = 360;
+const MOTES = 10;
+const GOLD_RAYS = 16;
+/** 본전 금빛 때문에 결과를 늦게 드러내는 시간. */
+const GOLD_EXTRA_MS = 500;
+/** "연출 끄기" 를 이 브라우저에 기억해 두는 자리. */
+const FX_STORAGE_KEY = 'mabikuma:relicFx';
+/** 이데아 그림을 찾는 경매장 카테고리와 이름. */
+const IDEA_ICON = ['유물', '무리아스의 유물(이데아)'] as const;
+
+function readFxSetting(): boolean {
+  try {
+    return window.localStorage.getItem(FX_STORAGE_KEY) !== 'off';
+  } catch {
+    // 시크릿 모드 등 localStorage 접근이 막힌 환경
+    return true;
+  }
+}
+
+function writeFxSetting(on: boolean): void {
+  try {
+    if (on) window.localStorage.removeItem(FX_STORAGE_KEY);
+    else window.localStorage.setItem(FX_STORAGE_KEY, 'off');
+  } catch {
+    // 저장하지 못해도 이번 방문 동안은 고른 대로 간다.
+  }
+}
+
+const angles = (count: number) =>
+  Array.from({ length: count }, (_, index) => (360 / count) * index);
+
+/**
+ * 복원 작업대. 룬 원판 가운데 칸에 이데아가 놓이고, 복원하면 나온 유물의 스킬 그림으로 바뀐다.
+ * play 가 바뀌면 판을 새로 그려 연출을 처음부터 돌린다.
+ */
+function RestoreBench({
+  result,
+  play,
+  gold,
+  iconSize,
+  fxStyle,
+}: {
+  /** 가운데 칸에 놓인 결과. 아직 복원하지 않았으면 null 이고 이데아가 놓인다. */
+  result: PricedDraw | null;
+  /** 연출할 복원의 번호. 연출하지 않으면 null. */
+  play: number | null;
+  /** 연출할 복원이 이데아 최저가 이상인지. 맞으면 금빛이 번쩍인다. */
+  gold: boolean;
+  iconSize: number;
+  fxStyle: CSSProperties;
+}) {
+  const idea = (
+    <div className="rl-idea">
+      <ItemIcon category={IDEA_ICON[0]} name={IDEA_ICON[1]} size={iconSize} />
+      <Text type="secondary" style={{ fontSize: 11 }}>
+        이데아
+      </Text>
+    </div>
+  );
+  const shown = result ? (
+    <div className="rl-result">
+      {result.found ? <SkillIcon skillId={result.found.skill.id} size={iconSize} /> : null}
+      <LevelLabel level={result.level} size={12} />
+    </div>
+  ) : null;
+  return (
+    <div
+      key={play ?? 'still'}
+      className={`rl-stage${play !== null ? ` rl-play${gold ? ' rl-gold' : ''}` : ''}`}
+      style={fxStyle}
+      aria-hidden
+    >
+      <div className="rl-ring" />
+      <div className="rl-ring rl-ring--inner" />
+      <div className="rl-ring rl-ring--core" />
+      {play !== null && gold ? (
+        <div className="rl-gold-layer">
+          <div className="rl-gold-flash" />
+          {angles(GOLD_RAYS).map((angle, index) => (
+            <span
+              key={angle}
+              className="rl-gold-ray"
+              style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+            />
+          ))}
+        </div>
+      ) : null}
+      <div className="rl-flash" />
+      <div className="rl-slot">
+        {play !== null ? (
+          <>
+            {idea}
+            {shown}
+          </>
+        ) : (
+          (shown ?? idea)
+        )}
+      </div>
+      {play !== null
+        ? angles(MOTES).map((angle, index) => (
+            <StarFillIcon
+              key={angle}
+              aria-hidden
+              className="rl-mote"
+              style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
+/** 방금 나온 유물 하나를 크게. 한 번 복원했을 때 오른쪽 칸을 채운다. */
+function ResultDetail({
   draw,
   ideaPrice,
   state,
@@ -179,50 +297,90 @@ function DrawCard({
   ideaPrice: number | null;
   state: PriceState;
 }) {
-  const { token } = theme.useToken();
   const above = state === 'ready' && isAboveIdea(draw.price, ideaPrice);
   return (
-    <Card
-      type="inner"
-      size="small"
-      variant="outlined"
-      style={
-        above
-          ? {
-              borderColor: token.colorError,
-              // 테두리를 두껍게 보이되 칸 크기는 그대로 둔다.
-              boxShadow: `inset 0 0 0 1px ${token.colorError}`,
-              background: token.colorErrorBg,
-            }
-          : undefined
-      }
-    >
-      <Flex gap={10} align="flex-start">
-        {draw.found ? <SkillIcon skillId={draw.found.skill.id} size={CARD_ICON} /> : null}
-        <Flex vertical gap={2} style={{ minWidth: 0, flex: 1 }}>
-          <OptionName draw={draw} />
-          <Text type="secondary" style={{ fontSize: 12 }}>
+    <Flex vertical gap={12}>
+      <Flex className="rl-line" gap={12} align="center" style={{ '--i': 0 } as CSSProperties}>
+        {draw.found ? <SkillIcon skillId={draw.found.skill.id} size={DETAIL_ICON} /> : null}
+        <Flex vertical gap={2} style={{ minWidth: 0 }}>
+          <span style={{ fontSize: 18 }}>
+            <OptionName draw={draw} />
+          </span>
+          <Text type="secondary" style={{ fontSize: 13 }}>
             {draw.found?.arcana.name ?? '아르카나 정보 없음'}
           </Text>
-          <Flex gap={8} align="center" wrap>
-            <LevelLabel level={draw.level} size={15} />
-            <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-              {valueText(draw.option, draw.level)}
-            </Text>
-            <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-              최대 {formatRelicValue(draw.option, draw.option.max)}
-            </Text>
-          </Flex>
-        </Flex>
-        <Flex vertical align="flex-end" style={{ flex: '0 0 auto' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            시세
-          </Text>
-          <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
-          {above ? <IdeaTag /> : null}
         </Flex>
       </Flex>
-    </Card>
+      <Flex
+        className="rl-line"
+        gap={10}
+        align="baseline"
+        wrap
+        style={{ '--i': 1 } as CSSProperties}
+      >
+        <LevelLabel level={draw.level} size={22} />
+        <Text className="tnum" style={{ fontSize: 20, whiteSpace: 'nowrap' }}>
+          {valueText(draw.option, draw.level)}
+        </Text>
+        <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+          최대 {formatRelicValue(draw.option, draw.option.max)}
+        </Text>
+      </Flex>
+      <Flex className="rl-line" gap={8} align="center" style={{ '--i': 2 } as CSSProperties}>
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          시세
+        </Text>
+        <span style={{ fontSize: 18 }}>
+          <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
+        </span>
+        {above ? <IdeaTag /> : null}
+      </Flex>
+    </Flex>
+  );
+}
+
+/** 여러 번 복원했을 때 방금 나온 것들. 한 줄에 하나, 먼저 나온 것이 아래다. */
+function ResultList({
+  draws,
+  ideaPrice,
+  state,
+}: {
+  draws: PricedDraw[];
+  ideaPrice: number | null;
+  state: PriceState;
+}) {
+  const { token } = theme.useToken();
+  return (
+    <Flex vertical gap={2}>
+      {draws.map((draw, index) => {
+        const above = state === 'ready' && isAboveIdea(draw.price, ideaPrice);
+        return (
+          <Flex
+            key={draw.no}
+            className="rl-line"
+            gap={8}
+            align="center"
+            style={
+              {
+                '--i': index,
+                padding: '4px 6px',
+                borderRadius: token.borderRadiusSM,
+                background: above ? token.colorErrorBg : undefined,
+              } as CSSProperties
+            }
+          >
+            {draw.found ? <SkillIcon skillId={draw.found.skill.id} size={ROW_ICON} /> : null}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <OptionName draw={draw} />
+            </div>
+            <LevelLabel level={draw.level} />
+            <div style={{ width: 96, textAlign: 'right' }}>
+              <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
+            </div>
+          </Flex>
+        );
+      })}
+    </Flex>
   );
 }
 
@@ -354,36 +512,34 @@ const HistoryTable = memo(function HistoryTable({
   ];
 
   return (
-    <Card variant="outlined" style={{ minWidth: 0 }} styles={{ body: { padding: 0 } }}>
-      <Table<PricedDraw>
-        columns={columns}
-        dataSource={rows}
-        rowKey="no"
-        size="small"
-        // 이데아 최저가 이상인 줄은 빨갛게 깐다. 시세 칸에 글자 표시도 함께 붙는다.
-        onRow={(draw) =>
-          state === 'ready' && isAboveIdea(draw.price, ideaPrice)
-            ? { style: { background: token.colorErrorBg } }
-            : {}
-        }
-        pagination={
-          rows.length > PAGE_SIZE
-            ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
-            : false
-        }
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: '아직 복원하지 않았습니다.' }}
-      />
-    </Card>
+    <Table<PricedDraw>
+      columns={columns}
+      dataSource={rows}
+      rowKey="no"
+      size="small"
+      // 이데아 최저가 이상인 줄은 빨갛게 깐다. 시세 칸에 글자 표시도 함께 붙는다.
+      onRow={(draw) =>
+        state === 'ready' && isAboveIdea(draw.price, ideaPrice)
+          ? { style: { background: token.colorErrorBg } }
+          : {}
+      }
+      pagination={
+        rows.length > PAGE_SIZE
+          ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
+          : false
+      }
+      scroll={{ x: 'max-content' }}
+      locale={{ emptyText: '아직 복원하지 않았습니다.' }}
+    />
   );
 });
 
 const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
 
 /**
- * 무리아스의 유물(이데아) 복원 시뮬레이터. 단추를 누르면 옵션과 레벨을 고르게 뽑아 쌓는다.
- * 골드도 아이템도 들지 않는다. 나온 유물에는 지금 시세를 붙여, 실제로 열었다면 무엇이 나왔을지와
- * 그 값이 어느 정도인지를 함께 본다. 시세는 워커가 모아 둔 작은 파일에서 오고(priceFile.ts), 받지 못해도 뽑기는 된다.
+ * 무리아스의 유물(이데아) 복원 시뮬레이터. 세공 창처럼 왼쪽 작업대에서 이데아를 복원하고 오른쪽에
+ * 방금 나온 유물을 크게 보인다. 옵션과 레벨은 고르게 뽑고, 골드도 아이템도 들지 않는다. 나온 유물에는
+ * 지금 시세를 붙인다. 시세는 워커가 모아 둔 작은 파일에서 오고(priceFile.ts), 받지 못해도 복원은 된다.
  */
 export function RelicSimulatorView({
   simulator,
@@ -394,7 +550,8 @@ export function RelicSimulatorView({
   prices: RelicPriceState;
 }) {
   const screens = Grid.useBreakpoint();
-  const wide = screens.md ?? true;
+  const { token } = theme.useToken();
+  const reducedMotion = usePrefersReducedMotion();
   const arcanaQuery = useArcanaQuery();
   const arcanas = arcanaQuery.data?.arcanas;
 
@@ -422,8 +579,9 @@ export function RelicSimulatorView({
   const ideaPrice = ready?.ideaPrice ?? null;
   const count = priced.length;
   const latest = priced.slice(count - simulator.lastBatch).reverse();
+  const last = priced[count - 1] ?? null;
   const history = useMemo(() => [...priced].reverse(), [priced]);
-  // 표는 카드보다 늦게 그린다. 누르자마자 카드에 결과와 시세가 먼저 뜬다.
+  // 표는 복원 창보다 늦게 그린다. 누르자마자 창에 결과와 시세가 먼저 뜬다.
   const settledHistory = useDeferredValue(history);
 
   const stats = useMemo(() => {
@@ -462,6 +620,34 @@ export function RelicSimulatorView({
     const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
     return { chance: above / values.length, above, known: values.length, values, mean };
   }, [ready, ideaPrice]);
+
+  // 연출. 한 번 복원했을 때만 돌리고, 누를 때 걸어 둔다(끈 채 복원한 뒤 켜도 지난 연출이 돌지 않게).
+  const [fxOn, setFxOn] = useState(readFxSetting);
+  const animate = fxOn && !reducedMotion;
+  const [armed, setArmed] = useState(false);
+  const restore = (times: number) => {
+    setArmed(animate);
+    simulator.draw(times);
+  };
+  const play = armed && animate && simulator.lastBatch === 1 && last ? last.no : null;
+  const playGold =
+    play !== null && last !== null && state === 'ready' && isAboveIdea(last.price, ideaPrice);
+  const reveal = armed && animate && simulator.lastBatch > 0 && last ? last.no : null;
+
+  // 작업대 배율. 휴대폰 폭에서는 원래 크기이고 넓을수록 키운다. 연출도 같은 배율로 커진다.
+  const stageScale = screens.xl ? 1.45 : screens.lg ? 1.3 : screens.md ? 1.15 : 1;
+  const fxStyle = {
+    '--fx-accent': token.colorPrimary,
+    '--fx-soft': token.colorPrimaryBg,
+    '--fx-line': token.colorBorder,
+    '--fx-surface': token.colorFillQuaternary,
+    // 본전 금빛. 세공의 한계 돌파 빛과 같은 금색 토큰이다.
+    '--fx-gold': token.gold,
+    '--fx-dur': `${play !== null ? FX_DURATION : 0}ms`,
+    '--fx-spin': `${FX_SPIN}deg`,
+    '--fx-extra': playGold ? `${GOLD_EXTRA_MS}ms` : '0ms',
+    '--rf': stageScale,
+  } as CSSProperties;
 
   /**
    * 특정 유물 기댓값 계산기. 떠 있는 창에 둔다. 창 밖을 눌러도 닫히지 않아, 열어 둔 채 복원을
@@ -563,60 +749,169 @@ export function RelicSimulatorView({
     </Flex>
   );
 
+  const lastAbove = last !== null && state === 'ready' && isAboveIdea(last.price, ideaPrice);
+  const single = simulator.lastBatch <= 1;
+
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
-      {/*
-        복원 단추, 본전 확률, 결과 통계를 한 카드에 둔다. 뽑기 전에도 통계 칸을 모두 그려 둔다.
-        첫 복원에서 요약 칸을 새로 만들면 그만큼 결과가 늦게 떴다.
-      */}
-      <Card variant="outlined">
-        <Flex vertical gap={14}>
-          <Flex gap={8} wrap align="center">
-            <Button type="primary" onClick={() => simulator.draw(1)}>
-              1번 복원
-            </Button>
-            <Button onClick={() => simulator.draw(10)}>10번 복원</Button>
-            <Popover
-              open={calcOpen}
-              trigger={[]}
-              placement="bottomLeft"
-              title={
-                <Flex justify="space-between" align="center" gap={8}>
-                  <span>특정 유물 기댓값</span>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<CloseIcon />}
-                    aria-label="특정 유물 기댓값 닫기"
-                    onClick={() => setCalcOpen(false)}
-                  />
-                </Flex>
-              }
-              content={calculator}
-            >
+      <Card variant="outlined" role="region" aria-label="복원 창">
+        {/*
+          작업대와 방금 나온 유물 두 칸. 768px 미만에서는 위아래로 쌓는다. 오른쪽 칸은 높이를 정해 두어
+          한 번과 10번을 오가도 창이 늘고 줄지 않는다.
+        */}
+        <Row gutter={[24, 20]} align="stretch">
+          <Col xs={24} md={10} xl={9}>
+            <Flex vertical gap={12} align="center">
+              <Flex gap={4} align="center">
+                <Text strong style={{ fontSize: 16 }}>
+                  무리아스의 유물(이데아)
+                </Text>
+                <Tooltip
+                  title={`옵션 ${formatNumber(MURIAS_RELIC_POOL.length)}종과 1~${RELIC_MAX_LEVEL}레벨이 모두 똑같이 나온다고 보고 뽑습니다(결과 하나 1/${formatNumber(RELIC_OUTCOMES)}). 실제 확률은 공개되지 않았고, 골드나 아이템은 들지 않습니다.`}
+                >
+                  <InfoIcon aria-label="뽑는 방식" tabIndex={0} style={{ cursor: 'help' }} />
+                </Tooltip>
+              </Flex>
+              <RestoreBench
+                result={last}
+                play={play}
+                gold={playGold}
+                iconSize={Math.round(48 * stageScale)}
+                fxStyle={fxStyle}
+              />
               <Button
-                icon={<CalculateIcon />}
-                aria-expanded={calcOpen}
-                onClick={() => setCalcOpen(!calcOpen)}
+                type="primary"
+                size="large"
+                onClick={() => restore(1)}
+                style={{ minWidth: 200 }}
               >
-                특정 유물 기댓값
+                복원하기
               </Button>
-            </Popover>
-            <Tooltip
-              title={`옵션 ${formatNumber(MURIAS_RELIC_POOL.length)}종과 1~${RELIC_MAX_LEVEL}레벨이 모두 똑같이 나온다고 보고 뽑습니다(결과 하나 1/${formatNumber(RELIC_OUTCOMES)}). 실제 확률은 공개되지 않았고, 골드나 아이템은 들지 않습니다.`}
+              <Flex gap={8} align="center">
+                <Switch
+                  checked={fxOn && !reducedMotion}
+                  disabled={reducedMotion}
+                  onChange={(on) => {
+                    setFxOn(on);
+                    setArmed(false);
+                    writeFxSetting(on);
+                  }}
+                  aria-label="복원 연출"
+                />
+                <Text style={{ fontSize: 13 }}>복원 연출</Text>
+              </Flex>
+              <Flex gap={8} wrap justify="center">
+                <Button onClick={() => restore(10)}>10번 복원</Button>
+                <Popover
+                  open={calcOpen}
+                  trigger={[]}
+                  placement="bottomLeft"
+                  title={
+                    <Flex justify="space-between" align="center" gap={8}>
+                      <span>특정 유물 기댓값</span>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<CloseIcon />}
+                        aria-label="특정 유물 기댓값 닫기"
+                        onClick={() => setCalcOpen(false)}
+                      />
+                    </Flex>
+                  }
+                  content={calculator}
+                >
+                  <Button
+                    icon={<CalculateIcon />}
+                    aria-expanded={calcOpen}
+                    onClick={() => setCalcOpen(!calcOpen)}
+                  >
+                    특정 유물 기댓값
+                  </Button>
+                </Popover>
+                <Button icon={<ResetIcon />} onClick={simulator.reset} disabled={count === 0}>
+                  처음부터
+                </Button>
+              </Flex>
+            </Flex>
+          </Col>
+          <Col xs={24} md={14} xl={15}>
+            <section
+              aria-labelledby="relic-sim-latest"
+              style={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                minHeight: 320,
+                maxHeight: 520,
+                overflowY: 'auto',
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: token.borderRadius,
+                background: token.colorFillQuaternary,
+                padding: 16,
+              }}
             >
-              <InfoIcon aria-label="뽑는 방식" tabIndex={0} style={{ cursor: 'help' }} />
-            </Tooltip>
-            <Button
-              icon={<ResetIcon />}
-              onClick={simulator.reset}
-              disabled={count === 0}
-              style={{ marginLeft: wide ? 'auto' : undefined }}
-            >
-              처음부터
-            </Button>
-          </Flex>
-          {/* 본전은 한 번 복원 기준만 둔다. n 번은 특정 유물 기댓값 창에서 센다. */}
+              {/*
+                이데아 이상이면 칸을 빨갛게 깐다. 결과가 드러나는 순간에 켜야 한다. 누르자마자 켜면
+                연출이 끝나기 전에 결과를 알려 버린다.
+              */}
+              {single && lastAbove ? (
+                <div
+                  key={reveal ?? 'still'}
+                  aria-hidden
+                  className={reveal !== null ? 'rl-hit rl-hit--delay' : 'rl-hit'}
+                  style={
+                    {
+                      ...fxStyle,
+                      border: `2px solid ${token.colorError}`,
+                      background: token.colorErrorBg,
+                      borderRadius: token.borderRadius,
+                    } as CSSProperties
+                  }
+                />
+              ) : null}
+              <Text
+                strong
+                id="relic-sim-latest"
+                style={{ display: 'block', marginBottom: 12, position: 'relative' }}
+              >
+                방금 나온 유물
+                {simulator.lastBatch > 1 ? ` ${formatNumber(simulator.lastBatch)}개` : ''}
+              </Text>
+              {last === null ? (
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  아직 복원하지 않았습니다.
+                </Text>
+              ) : (
+                <div
+                  key={reveal ?? 'still'}
+                  className={reveal !== null ? 'rl-reveal' : undefined}
+                  style={
+                    {
+                      ...fxStyle,
+                      position: 'relative',
+                      // 한 번 복원한 결과는 칸 가운데에 크게 둔다.
+                      flex: single ? 1 : undefined,
+                      display: single ? 'flex' : undefined,
+                      alignItems: single ? 'center' : undefined,
+                      justifyContent: single ? 'center' : undefined,
+                    } as CSSProperties
+                  }
+                >
+                  {single ? (
+                    <ResultDetail draw={last} ideaPrice={ideaPrice} state={state} />
+                  ) : (
+                    <ResultList draws={latest} ideaPrice={ideaPrice} state={state} />
+                  )}
+                </div>
+              )}
+            </section>
+          </Col>
+        </Row>
+
+        <Divider style={{ marginBlock: 16 }} />
+
+        <Flex vertical gap={14}>
           {ideaChance ? (
             <Flex gap={6} align="center">
               <Text strong>본전 확률</Text>
@@ -630,7 +925,6 @@ export function RelicSimulatorView({
               </Tooltip>
             </Flex>
           ) : null}
-          <Divider style={{ margin: 0 }} />
           {/* 네 칸. 768px 미만에서는 두 칸씩 두 줄로 떨어진다. */}
           <Row gutter={[24, 16]} align="top">
             <Col xs={12} md={6}>
@@ -680,45 +974,25 @@ export function RelicSimulatorView({
         </Flex>
       </Card>
 
-      <Flex vertical gap={8} role="region" aria-labelledby="relic-sim-latest">
-        <Text strong style={{ fontSize: 16 }} id="relic-sim-latest">
-          방금 나온 유물
-        </Text>
-        {/* 넓은 화면에서는 두 칸, 768px 미만에서는 한 칸. */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns:
-              wide && latest.length > 1 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
-            gap: 8,
-          }}
-        >
-          {latest.map((draw) => (
-            <DrawCard key={draw.no} draw={draw} ideaPrice={ideaPrice} state={state} />
-          ))}
-        </div>
-        {count === 0 ? (
-          <EmptyState size="small" variant="search" description="아직 복원하지 않았습니다." />
-        ) : null}
-      </Flex>
-
-      <Flex
-        vertical
-        gap={8}
-        role="region"
-        aria-labelledby="relic-sim-history"
-        style={{ minWidth: 0 }}
-      >
-        <Flex gap={4} align="center">
-          <Text strong style={{ fontSize: 16 }} id="relic-sim-history">
-            복원 기록
-          </Text>
-          <Tooltip title='빨간 줄과 "이데아 이상" 은 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린 시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의 매물을 봅니다.'>
-            <InfoIcon aria-label="기록 표 읽는 법" tabIndex={0} style={{ cursor: 'help' }} />
-          </Tooltip>
-        </Flex>
-        <HistoryTable rows={settledHistory} ideaPrice={ideaPrice} state={state} />
-      </Flex>
+      <Collapse
+        items={[
+          {
+            key: 'history',
+            label: (
+              <Flex gap={4} align="center">
+                <Text strong className="tnum">
+                  복원 기록 {formatNumber(count)}번
+                </Text>
+                <Tooltip title='빨간 줄과 "이데아 이상" 은 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린 시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의 매물을 봅니다.'>
+                  <InfoIcon aria-label="기록 표 읽는 법" tabIndex={0} style={{ cursor: 'help' }} />
+                </Tooltip>
+              </Flex>
+            ),
+            styles: { body: { padding: 0 } },
+            children: <HistoryTable rows={settledHistory} ideaPrice={ideaPrice} state={state} />,
+          },
+        ]}
+      />
     </Flex>
   );
 }
