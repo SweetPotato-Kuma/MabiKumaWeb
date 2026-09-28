@@ -134,15 +134,18 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     expect(within(card).getByText('490% 증가')).toBeInTheDocument();
   });
 
-  it('본전 확률은 카드에 두고, 특정 유물 기댓값은 떠 있는 창에서 센다', async () => {
+  it('본전 확률은 카드에 한 번 기준으로, n 번과 특정 유물은 떠 있는 계산기에서 센다', async () => {
     renderPage();
     await screen.findByText(/3분 전에 모은 경매장 시세입니다/);
     // 본전: 시세를 아는 결과 가운데 이데아 최저가 이상인 비율로 n 번 확률을 센다.
-    // 시세를 아는 두 결과 가운데 하나가 이데아 최저가 이상이다. 10번이면 1 - 0.5^10.
-    expect(screen.getByRole('region', { name: '본전' })).toHaveTextContent('복원하면 99.9%');
-    expect(screen.queryByRole('region', { name: '복원 횟수별 확률' })).not.toBeInTheDocument();
+    // 시세를 아는 두 결과 가운데 하나가 이데아 최저가 이상이다. 카드에는 한 번 기준만 둔다.
+    expect(screen.getByText('본전 확률').closest('.ant-flex')).toHaveTextContent('본전 확률50%');
+    expect(screen.queryByRole('region', { name: '본전' })).not.toBeInTheDocument();
 
+    // n 번은 떠 있는 계산기에서 센다. 10번이면 1 - 0.5^10.
     fireEvent.click(screen.getByRole('button', { name: /특정 유물 기댓값/ }));
+    expect(await screen.findByRole('region', { name: '본전' })).toHaveTextContent('복원하면 99.9%');
+    expect(screen.queryByRole('region', { name: '복원 횟수별 확률' })).not.toBeInTheDocument();
     fireEvent.mouseDown(await screen.findByLabelText('특정 유물 옵션'));
     fireEvent.click(
       await screen.findByText('오버 드라이브 폭발 공격 대미지', {

@@ -473,6 +473,19 @@ export function RelicSimulatorView({
 
   const calculator = (
     <Flex vertical gap={10} style={{ width: 'min(440px, calc(100vw - 88px))' }}>
+      {ideaChance && ideaChance.chance > 0 && ideaPrice !== null ? (
+        <>
+          <TrialOdds
+            framed={false}
+            label="본전"
+            chance={ideaChance.chance}
+            verb="복원"
+            costPerTrial={ideaPrice}
+            note={`본전은 이데아 최저가 이상이 나오는 것입니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개입니다.`}
+          />
+          <Divider style={{ margin: 0 }} />
+        </>
+      ) : null}
       <Flex gap={8} align="center" wrap>
         <Select<number>
           aria-label="특정 유물 옵션"
@@ -582,15 +595,19 @@ export function RelicSimulatorView({
               처음부터
             </Button>
           </Flex>
-          {ideaChance && ideaChance.chance > 0 && ideaPrice !== null ? (
-            <TrialOdds
-              framed={false}
-              label="본전"
-              chance={ideaChance.chance}
-              verb="복원"
-              costPerTrial={ideaPrice}
-              note={`본전은 이데아 최저가 이상이 나오는 것입니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개입니다.`}
-            />
+          {/* 본전은 한 번 복원 기준만 둔다. n 번은 특정 유물 기댓값 창에서 센다. */}
+          {ideaChance ? (
+            <Flex gap={6} align="center">
+              <Text strong>본전 확률</Text>
+              <Text strong className="tnum" style={{ fontSize: 16 }}>
+                {formatChance(ideaChance.chance)}
+              </Text>
+              <Tooltip
+                title={`본전은 이데아 최저가 이상이 나오는 것입니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개입니다.`}
+              >
+                <InfoIcon aria-label="본전 확률 기준" tabIndex={0} style={{ cursor: 'help' }} />
+              </Tooltip>
+            </Flex>
           ) : null}
           <Divider style={{ margin: 0 }} />
           {/* 네 칸. 768px 미만에서는 두 칸씩 두 줄로 떨어진다. */}
