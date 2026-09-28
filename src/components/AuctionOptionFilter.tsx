@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { AutoComplete, Button, ColorPicker, Flex, Popover, Select, Slider, Typography } from 'antd';
+import { AutoComplete, Button, ColorPicker, Flex, Grid, Popover, Select, Slider, Typography } from 'antd';
 import { AddIcon, ArrowDownIcon, DeleteIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import {
@@ -55,6 +55,31 @@ const inPopover = (trigger: HTMLElement): HTMLElement =>
 
 /** 자동완성 목록에 한 번에 보여 줄 이름 수. 더 좁히려면 글자를 친다. */
 const NAME_SUGGESTION_LIMIT = 50;
+
+/** 숫자 칸 폭. "22" 와 지우기 단추, 자리 글 "레벨 이상" 이 드는 폭이다. */
+const NUMBER_INPUT_WIDTH = 112;
+
+/** 옆에 숫자 칸을 둘 때 이름 칸의 최소 폭. "컴뱃 마스터리 최대 대미지" 와 지우기 단추가 드는 폭이다. */
+const NAME_INPUT_MIN = 200;
+
+/**
+ * 조건 창 폭. 세공 한 줄(이름 칸, 숫자 칸, 빼기 단추)이 한 줄에 드는 폭이다.
+ * 휴대폰에서는 화면 좌우 16px 씩을 남기고 줄어든다.
+ */
+const POPOVER_WIDTH = 380;
+
+/**
+ * 이름 자동완성 목록의 폭. 입력칸보다 좁아지지 않고, 긴 이름("1막: 우연한 충돌 대미지 배율")은
+ * 이 폭까지 늘어난 뒤 줄을 바꾼다. 입력칸 폭에 묶어 두면 이름 끝이 잘려 무엇인지 알 수 없었다.
+ */
+const NAME_POPUP_STYLE = { maxWidth: 'min(360px, calc(100vw - 32px))' } as const;
+
+/**
+ * 창 안 입력 줄의 칸 나누기. 이름 칸은 남는 폭을 다 쓰되 0 까지 줄어들 수 있어야 한다.
+ * flex 로 두면 이름 칸이 자리 글 길이 밑으로 줄지 못해 숫자 칸과 빼기 단추가 창 밖으로 밀렸다.
+ */
+const rowGrid = (columns: string) =>
+  ({ display: 'grid', gridTemplateColumns: columns, gap: 6, alignItems: 'center' }) as const;
 
 /** 세공 조건은 세 줄까지. 장비의 세공 옵션이 최대 세 줄이다. */
 const MAX_REFORGE_CONDITIONS = 3;
@@ -209,20 +234,22 @@ export function DetailSearchBar({
             label={label}
             content={
               <Flex vertical gap={10}>
-                {conditions.map((condition) => (
-                  <Flex key={condition.id} gap={6} align="flex-start">
-                    <div style={{ flex: '1 1 auto', minWidth: 0 }}>{editorFor(condition)}</div>
-                    {group === 'reforge' && conditions.length > 1 ? (
+                {conditions.map((condition) =>
+                  group === 'reforge' && conditions.length > 1 ? (
+                    // 빼기 단추는 입력칸과 같은 높이(기본 크기)로 두어 한 줄 가운데에 선다.
+                    <div key={condition.id} style={rowGrid('minmax(0, 1fr) auto')}>
+                      {editorFor(condition)}
                       <Button
                         type="text"
-                        size="small"
                         icon={<DeleteIcon />}
                         aria-label="이 세공 조건 빼기"
                         onClick={() => remove(condition.id)}
                       />
-                    ) : null}
-                  </Flex>
-                ))}
+                    </div>
+                  ) : (
+                    <div key={condition.id}>{editorFor(condition)}</div>
+                  ),
+                )}
                 {group === 'reforge' && conditions.length < MAX_REFORGE_CONDITIONS ? (
                   <Button
                     size="small"
@@ -319,16 +346,20 @@ function ConditionPopover({
   label: string;
   content: ReactNode;
 }) {
+  const screens = Grid.useBreakpoint();
   return (
     <Popover
       open={open}
       onOpenChange={onOpenChange}
       trigger="click"
-      placement="bottomLeft"
+      // antd 는 bottomLeft 창이 화면을 넘으면 bottomRight 로 뒤집기만 하고 밀어 넣지는 않는다.
+      // 768px 미만에서 줄 가운데 단추(인챈트, 에르그)의 창이 어느 쪽으로 뒤집어도 화면 밖으로 나갔다.
+      // bottom 은 화면 안으로 밀어 넣는다.
+      placement={screens.md === false ? 'bottom' : 'bottomLeft'}
       destroyOnHidden
       title={title}
       content={
-        <Flex vertical gap={12} style={{ width: 340, maxWidth: 'calc(100vw - 48px)' }}>
+        <Flex vertical gap={12} style={{ width: POPOVER_WIDTH, maxWidth: 'calc(100vw - 56px)' }}>
           {content}
           <Flex justify="flex-end" gap={8}>
             <Button size="small" onClick={onClear}>
@@ -348,8 +379,12 @@ function ConditionPopover({
         icon={<ArrowDownIcon />}
         iconPlacement="end"
         aria-expanded={open}
+        title={label}
+        // 조건이 길면("세공 컴뱃 마스터리 최대 대미지 15레벨 이상 외 1") 단추가 화면보다 넓어졌다.
+        // 줄 폭을 넘지 않게 하고 넘치는 글은 말줄임한다. 전체 글은 title 로 보인다.
+        style={{ maxWidth: '100%' }}
       >
-        {label}
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
       </Button>
     </Popover>
   );
@@ -399,19 +434,7 @@ function NameInput({
     return suggestions
       .filter((each) => !needle || normalizeForSearch(each.value).includes(needle))
       .slice(0, NAME_SUGGESTION_LIMIT)
-      .map((each) => ({
-        value: each.value,
-        label: (
-          <Flex justify="space-between" gap={12}>
-            <span>{each.value}</span>
-            {each.count !== undefined ? (
-              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                {formatNumber(each.count)}건
-              </Text>
-            ) : null}
-          </Flex>
-        ),
-      }));
+      .map((each) => ({ value: each.value, label: each.value, count: each.count }));
   }, [suggestions, query]);
 
   return (
@@ -435,7 +458,22 @@ function NameInput({
       placeholder={placeholder}
       aria-label={label}
       getPopupContainer={inPopover}
-      style={{ width: '100%' }}
+      popupMatchSelectWidth={false}
+      styles={{ popup: { root: NAME_POPUP_STYLE } }}
+      // 목록 줄 모양은 optionRender 로만 그린다. label 에 넣으면 고른 뒤 입력칸 안에도 같은 모양으로
+      // 그려져, 줄바꿈 때문에 칸이 두 줄 높이로 늘었다.
+      optionRender={(option) => (
+        <Flex justify="space-between" align="baseline" gap={12}>
+          {/* 목록 줄은 기본이 한 줄 말줄임이다. 긴 이름은 줄을 바꿔 끝까지 보인다. */}
+          <span style={{ whiteSpace: 'normal' }}>{option.value}</span>
+          {option.data.count !== undefined ? (
+            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              {formatNumber(option.data.count)}건
+            </Text>
+          ) : null}
+        </Flex>
+      )}
+      style={{ width: '100%', minWidth: 0 }}
     />
   );
 }
@@ -522,10 +560,12 @@ function NumberInput({
       placeholder={`${unit ? `${unit} ` : ''}이상`}
       aria-label={label}
       getPopupContainer={inPopover}
-      // 칸은 좁아도 목록은 "20레벨 이상 55건" 이 잘리지 않게 내용만큼 넓힌다.
+      // 칸은 좁아도 목록은 "22레벨 이상 (한계 돌파) 55건" 이 잘리지 않게 내용만큼 넓힌다.
+      // 숫자 칸은 줄 오른쪽 끝에 있어 목록을 오른쪽에 맞춰 왼쪽으로 펼친다. 왼쪽에 맞추면 창 밖으로 나갔다.
       popupMatchSelectWidth={false}
+      placement="bottomRight"
       className="tnum"
-      style={{ width: 130, flex: '0 0 130px' }}
+      style={{ width: NUMBER_INPUT_WIDTH, flex: `0 0 ${NUMBER_INPUT_WIDTH}px` }}
     />
   );
 }
@@ -549,15 +589,19 @@ function ConditionEditor({
       const levels = entry?.numbers[condition.name.trim()] ?? entry?.numbers[''];
       // 세공마다 최대 레벨이 다르다(랜스 차지 쿨타임 감소는 5, 한계 돌파 7). 이름을 알면 그만큼만 권한다.
       const cap = reforgeCap(names, condition.name, category);
+      // 이름 칸이 NAME_INPUT_MIN 보다 좁아지면(휴대폰) 레벨 칸을 다음 줄로 넘겨 이름을 한 줄 전체로 쓴다.
+      // 좁은 칸에 두면 "컴뱃 마스터리 최대" 까지만 보여 어느 세공인지 알 수 없었다.
       return (
-        <Flex gap={6}>
-          <NameInput
-            value={condition.name}
-            onChange={(name) => onChange({ name })}
-            suggestions={mergeNames(entry?.values, names?.reforges)}
-            placeholder="세공 이름, 비우면 아무 세공"
-            label="세공 이름"
-          />
+        <Flex gap={6} wrap>
+          <div style={{ flex: `1 1 ${NAME_INPUT_MIN}px`, minWidth: 0 }}>
+            <NameInput
+              value={condition.name}
+              onChange={(name) => onChange({ name })}
+              suggestions={mergeNames(entry?.values, names?.reforges)}
+              placeholder="세공 이름, 비우면 아무 세공"
+              label="세공 이름"
+            />
+          </div>
           <NumberInput
             value={condition.minLevel}
             onChange={(minLevel) => onChange({ minLevel })}
@@ -575,7 +619,7 @@ function ConditionEditor({
     case 'enchant':
       // 두 칸을 나란히 둔다. 위아래로 두면 접두 칸의 목록이 접미 칸을 덮어 누를 수 없다.
       return (
-        <Flex gap={6}>
+        <div style={rowGrid('minmax(0, 1fr) minmax(0, 1fr)')}>
           <NameInput
             value={condition.prefix}
             onChange={(prefix) => onChange({ prefix })}
@@ -590,7 +634,7 @@ function ConditionEditor({
             placeholder="접미 인챈트"
             label="접미 인챈트"
           />
-        </Flex>
+        </div>
       );
     case 'special':
       return (

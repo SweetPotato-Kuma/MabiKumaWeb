@@ -285,6 +285,11 @@ LLM은 "성공한 정적 상태"만 만든다. 이 프로젝트에서는 **네 �
   `scroll.x`로 가로로 밀게 두면 이름 칸이 한 글자 폭으로 눌린다. 가격 칸은 `whiteSpace: 'nowrap'`.
 - 한 줄에 두 칸 이상 늘어놓는 격자는 `repeat(auto-fill, minmax(<한 칸 최소 폭>px, 1fr))`로 두어 좁으면 알아서 한 칸이 되게 한다.
 - 다섯 칸 넘는 `Segmented`는 576px 미만에서 `Select`로 바꾼다. 잘린 끝 칸은 있는 줄도 모른다.
+- `Popover`는 768px 미만에서 `placement="bottom"`을 쓴다. antd 는 `bottomLeft`/`bottomRight` 창을 좌우로 뒤집기만 하고
+  화면 안으로 밀어 넣지 않아, 줄 가운데 단추의 창이 화면 밖으로 나갔다.
+- 창 안에서 입력칸을 나란히 둘 때는 grid `minmax(0, 1fr)`이나 `minWidth: 0`을 준다. flex 기본값이면 자리 글 길이 밑으로
+  줄지 못해 옆 칸이 창 밖으로 밀린다.
+- 자동완성 목록 줄을 꾸밀 때는 `optionRender`를 쓴다. `label`에 넣으면 고른 뒤 입력칸 안에도 같은 모양으로 그려진다.
 - 좁은 화면에서만 달라야 하는 antd 여백은 토큰으로 바꾼다(`buildThemeConfig`의 `narrow`, `useNarrowScreen`). `.ant-*`를 CSS 로 덮지 않는다.
 - 한국어 줄바꿈은 `index.css`의 `word-break: keep-all`이 맡는다. 낱말 가운데서 끊기면 폭이 모자란 것이니 칸 구성을 고친다.
 - 화면 문구에 "왼쪽에서", "오른쪽 칸" 처럼 데스크톱 배치를 가정한 방향어를 쓰지 않는다. 휴대폰에서는 위아래로 쌓인다.
