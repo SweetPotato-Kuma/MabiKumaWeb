@@ -25,7 +25,7 @@ import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
-import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, ImageIcon, KeyIcon, LightModeIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
+import { AuctionIcon, BagIcon, BookIcon, DarkModeIcon, DiceIcon, HammerIcon, ImageIcon, KeyIcon, LightModeIcon, MuseumIcon, ShopIcon, TicketIcon, TollIcon } from '@/components/icons';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -56,6 +56,11 @@ const NAV_ITEMS: NavItem[] = [
         key: '/relic-simulator',
         icon: <MuseumIcon />,
         label: <NavLink to="/relic-simulator">무리아스의 유물 복원</NavLink>,
+      },
+      {
+        key: '/reforge-simulator',
+        icon: <HammerIcon />,
+        label: <NavLink to="/reforge-simulator">세공</NavLink>,
       },
     ],
   },
