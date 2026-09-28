@@ -37,6 +37,7 @@ import {
   HOLY_WATER_SCROLLS,
   HOLY_WATER_TIERS,
   tierChance,
+  TOP_TIER,
   topShare,
   tierOf,
   type HolyWaterDraw,
@@ -67,7 +68,7 @@ const RIPPLES = 3;
 const RAYS = 12;
 const SPARKS = 10;
 const GOLD_RAYS = 16;
-/** 99% 이상 금빛 때문에 결과를 늦게 드러내는 시간. */
+/** 98% 이상 금빛 때문에 결과를 늦게 드러내는 시간. */
 const GOLD_EXTRA_MS = 500;
 /** "연출 끄기" 를 이 브라우저에 기억해 두는 자리. */
 const FX_STORAGE_KEY = 'mabikuma:holyWaterFx';
@@ -107,22 +108,39 @@ const showDraw = (draw: HolyWaterDraw): ShownDraw => {
 };
 
 /**
- * 등급 표시. 99% 이상은 별과 굵은 액센트, 90%와 95% 이상은 액센트 테두리, 50% 이상은 기본 테두리다.
- * 바탕은 칠하지 않는다. 유물 복원 창의 "이데아 이상" 표시와 같다.
+ * 최상위(98% 이상) 금빛. 사용자가 최상위 옵션을 노란빛으로 가려 보길 원해, 연출 밖에서도 이 등급만
+ * antd 금색 팔레트로 칠한다. 글자는 배경 대비를 지키려고 진한 칸(큰 글자 7, 작은 글자 8)을 쓴다.
+ * 다크 모드는 antd 가 팔레트를 밝게 다시 만들어 같은 번호로 읽힌다.
+ */
+function useGold() {
+  const { token } = theme.useToken();
+  return {
+    line: token.gold,
+    bg: token.gold1,
+    soft: token.gold3,
+    big: token.gold7,
+    text: token.gold8,
+  };
+}
+
+/**
+ * 등급 표시. 98% 이상은 별과 금빛 바탕, 90%와 95% 이상은 액센트 테두리, 50% 이상은 기본 테두리다.
  */
 function TierTag({ tier }: { tier: HolyWaterTier }) {
   const { token } = theme.useToken();
+  const gold = useGold();
+  const top = tier === TOP_TIER;
   const accent = tier >= 90;
   return (
     <Tag
-      icon={tier === 99 ? <StarFillIcon aria-hidden /> : undefined}
+      icon={top ? <StarFillIcon aria-hidden /> : undefined}
       style={{
         marginInlineEnd: 0,
         whiteSpace: 'nowrap',
-        fontWeight: tier === 99 ? 700 : undefined,
-        color: accent ? token.colorPrimary : undefined,
-        borderColor: accent ? token.colorPrimary : undefined,
-        background: 'transparent',
+        fontWeight: top ? 700 : undefined,
+        color: top ? gold.text : accent ? token.colorPrimary : undefined,
+        borderColor: top ? gold.line : accent ? token.colorPrimary : undefined,
+        background: top ? gold.bg : 'transparent',
       }}
     >
       {tier}% 이상
@@ -130,10 +148,10 @@ function TierTag({ tier }: { tier: HolyWaterTier }) {
   );
 }
 
-/** "+30". 99% 이상은 굵은 액센트 색이다. 색만으로 가르지 않게 등급 표시가 함께 붙는다. */
+/** "+30". 98% 이상은 굵은 금빛이다. 색만으로 가르지 않게 등급 표시가 함께 붙는다. */
 function ValueText({ draw, size, strong }: { draw: ShownDraw; size?: number; strong?: boolean }) {
-  const { token } = theme.useToken();
-  const top = draw.tier === 99;
+  const gold = useGold();
+  const top = draw.tier === TOP_TIER;
   return (
     <Text
       className="tnum"
@@ -141,7 +159,7 @@ function ValueText({ draw, size, strong }: { draw: ShownDraw; size?: number; str
       style={{
         fontSize: size,
         whiteSpace: 'nowrap',
-        color: top ? token.colorPrimary : undefined,
+        color: top ? ((size ?? 0) >= 20 ? gold.big : gold.text) : undefined,
       }}
     >
       +{formatNumber(draw.value)}
@@ -189,7 +207,7 @@ function HolyWaterBench({
   const classes = ['hw-stage'];
   if (playing) {
     classes.push('hw-play');
-    // 등급은 아래 것을 모두 품는다. 99% 이상이면 번쩍임, 빛살, 반짝임, 금빛이 함께 돈다.
+    // 등급은 아래 것을 모두 품는다. 98% 이상이면 번쩍임, 빛살, 반짝임, 금빛이 함께 돈다.
     for (const step of HOLY_WATER_TIERS)
       if (tier !== null && tier >= step) classes.push(`hw-t${step}`);
   }
@@ -200,7 +218,7 @@ function HolyWaterBench({
         <div className="hw-ring" />
         <div className="hw-ring hw-ring--inner" />
         <div className="hw-ring hw-ring--core" />
-        {at(99) ? (
+        {at(TOP_TIER) ? (
           <div className="hw-gold-layer">
             <div className="hw-gold-flash" />
             {angles(GOLD_RAYS).map((angle, index) => (
@@ -261,18 +279,19 @@ function HolyWaterBench({
               />
             ))
           : null}
-        {at(99) ? <StarFillIcon aria-hidden className="hw-glint" /> : null}
+        {at(TOP_TIER) ? <StarFillIcon aria-hidden className="hw-glint" /> : null}
       </div>
     </div>
   );
 }
 
 /**
- * 수치가 1부터 최대치 사이 어디쯤인지. 눈금은 등급 경계(50, 90, 95, 99%)다. 채운 막대가 아니라 점 하나로
+ * 수치가 1부터 최대치 사이 어디쯤인지. 눈금은 등급 경계(50, 90, 95, 98%)다. 채운 막대가 아니라 점 하나로
  * 자리만 짚는다. 수치가 하나뿐인 효과는 그릴 것이 없어 비운다.
  */
 function ValueScale({ draw }: { draw: ShownDraw }) {
   const { token } = theme.useToken();
+  const gold = useGold();
   const max = effectMax(draw.effect);
   if (max <= 1) return null;
   const at = (draw.value / max) * 100;
@@ -313,7 +332,11 @@ function ValueScale({ draw }: { draw: ShownDraw }) {
             borderRadius: '50%',
             transform: 'translate(-50%, -50%)',
             background:
-              draw.tier !== null && draw.tier >= 90 ? token.colorPrimary : token.colorText,
+              draw.tier === TOP_TIER
+                ? gold.line
+                : draw.tier !== null && draw.tier >= 90
+                  ? token.colorPrimary
+                  : token.colorText,
             border: `2px solid ${token.colorBgContainer}`,
           }}
         />
@@ -378,8 +401,27 @@ function ResultDetail({ draw, record }: { draw: ShownDraw; record: EffectRecord 
         : draw.value > record.best
           ? `새 최고, 이전 +${formatNumber(record.best)}`
           : `최고 +${formatNumber(record.best)}`;
+  const { token } = theme.useToken();
+  const gold = useGold();
+  const top = draw.tier === TOP_TIER;
   return (
-    <Flex vertical gap={14} style={{ width: '100%', maxWidth: 480 }}>
+    <Flex
+      vertical
+      gap={14}
+      style={{
+        width: '100%',
+        maxWidth: 480,
+        // 최상위는 금빛 테두리와 옅은 금빛 바탕으로 칸 전체를 강조한다.
+        ...(top
+          ? {
+              padding: 16,
+              border: `1px solid ${gold.line}`,
+              borderRadius: token.borderRadiusLG,
+              background: gold.bg,
+            }
+          : undefined),
+      }}
+    >
       <Flex className="hw-line" gap={12} align="center" style={{ '--i': 0 } as CSSProperties}>
         <ItemIcon category={HOLY_WATER_CATEGORY} name={HOLY_WATER_NAME} size={40} />
         <Text strong style={{ flex: 1, minWidth: 0, fontSize: 18, lineHeight: 1.3 }}>
@@ -388,7 +430,7 @@ function ResultDetail({ draw, record }: { draw: ShownDraw; record: EffectRecord 
         {draw.tier !== null ? <TierTag tier={draw.tier} /> : null}
       </Flex>
       <div
-        className={draw.tier === 99 ? 'hw-line hw-line--max' : 'hw-line'}
+        className={draw.tier === TOP_TIER ? 'hw-line hw-line--max' : 'hw-line'}
         style={{ '--i': 1 } as CSSProperties}
       >
         <Flex gap={8} align="baseline">
@@ -477,12 +519,13 @@ function TierOdds() {
 /** 여러 번 발랐을 때 방금 나온 것들. 한 줄에 하나, 먼저 나온 것이 아래다. */
 function ResultList({ draws }: { draws: ShownDraw[] }) {
   const { token } = theme.useToken();
+  const gold = useGold();
   return (
     <Flex vertical gap={2}>
       {draws.map((draw, index) => (
         <Flex
           key={draw.no}
-          className={draw.tier === 99 ? 'hw-line hw-line--max' : 'hw-line'}
+          className={draw.tier === TOP_TIER ? 'hw-line hw-line--max' : 'hw-line'}
           gap={8}
           align="center"
           style={
@@ -490,6 +533,9 @@ function ResultList({ draws }: { draws: ShownDraw[] }) {
               '--i': index,
               padding: '4px 6px',
               borderRadius: token.borderRadiusSM,
+              // 테두리 폭은 모든 줄이 같게 두어 최상위 줄만 높이가 달라지지 않게 한다.
+              border: `1px solid ${draw.tier === TOP_TIER ? gold.soft : 'transparent'}`,
+              background: draw.tier === TOP_TIER ? gold.bg : undefined,
             } as CSSProperties
           }
         >
@@ -506,7 +552,6 @@ function ResultList({ draws }: { draws: ShownDraw[] }) {
     </Flex>
   );
 }
-
 
 /**
  * 바른 기록 표. 기록이 쌓일수록 그리는 데 오래 걸려, 방금 나온 효과 칸보다 한 박자 늦게 그린다
@@ -636,7 +681,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
    */
   const [settledNo, setSettledNo] = useState(0);
   const pending = play !== null && settledNo < play ? play : null;
-  const goldExtra = playTier === 99 ? GOLD_EXTRA_MS : 0;
+  const goldExtra = playTier === TOP_TIER ? GOLD_EXTRA_MS : 0;
   const fxTotal = FX_DURATION + goldExtra;
   useEffect(() => {
     if (pending === null) return;
@@ -671,7 +716,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
     '--fx-soft': token.colorPrimaryBg,
     '--fx-line': token.colorBorder,
     '--fx-surface': token.colorFillQuaternary,
-    // 99% 이상 금빛. 세공의 한계 돌파 빛과 같은 금색 토큰이다.
+    // 98% 이상 금빛. 세공의 한계 돌파 빛과 같은 금색 토큰이다.
     '--fx-gold': token.gold,
     '--fx-dur': `${play !== null ? FX_DURATION : 0}ms`,
     '--fx-spin': `${FX_SPIN}deg`,

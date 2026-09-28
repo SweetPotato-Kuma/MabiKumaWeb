@@ -108,13 +108,21 @@ export const scrollLabel = (scroll: HolyWaterScroll) =>
 /**
  * 연출과 표시를 가르는 등급. 수치가 그 효과 최대치의 몇 % 이상인지다. 효과의 단계들이 1부터 최대치까지
  * 빈틈없이 같은 폭으로 이어져 있어, 이 비율이 곧 같은 효과 안에서 몇 백분위에 있는지와 같다.
+ * 98% 이상은 최상위 옵션이라 금빛으로 강조한다.
  */
-export const HOLY_WATER_TIERS = [50, 90, 95, 99] as const;
+export const HOLY_WATER_TIERS = [50, 90, 95, 98] as const;
 export type HolyWaterTier = (typeof HOLY_WATER_TIERS)[number];
 
-/** 그 효과에서 그 등급이 되는 가장 낮은 수치. */
+/** 금빛으로 강조하는 등급. */
+export const TOP_TIER: HolyWaterTier = 98;
+
+/**
+ * 그 효과에서 그 등급이 되는 가장 낮은 수치. 최대치에 비율을 곱한 값에 가장 가까운 정수다. 최대
+ * 대미지(최대 30)의 98% 는 29.4 라 29 부터 최상위다. 올림으로 자르면 최대치 하나만 남아 29 처럼
+ * 최상위로 치는 수치가 빠진다.
+ */
 export const tierFloor = (effect: HolyWaterEffect, tier: HolyWaterTier) =>
-  Math.ceil((effectMax(effect) * tier) / 100);
+  Math.round((effectMax(effect) * tier) / 100);
 
 /**
  * 수치의 등급. 수치가 하나뿐인 효과(세트 효과, 음악 버프 효과 같은)는 늘 최대치라 등급을 매기지 않는다.

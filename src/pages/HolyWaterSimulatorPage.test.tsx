@@ -79,7 +79,7 @@ describe('무리아스의 성수 시뮬레이터', () => {
     // 단계 글자와 폭은 확률을 세는 데만 쓰고 보이지 않는다.
     expect(latest()).not.toHaveTextContent(/최대 대미지 E|25~30/);
     expect(within(latest()).getByText('+30')).toBeInTheDocument();
-    expect(within(latest()).getByText('99% 이상')).toBeInTheDocument();
+    expect(within(latest()).getByText('98% 이상')).toBeInTheDocument();
 
     expect(await screen.findByText('바른 기록 1번', {}, { timeout: FX_WAIT })).toBeInTheDocument();
     expect(screen.getByText('쓴 골드').closest('.ant-statistic')).toHaveTextContent('250만 G');
@@ -88,7 +88,7 @@ describe('무리아스의 성수 시뮬레이터', () => {
     expect(within(latest()).getByText('아직 바르지 않았습니다.')).toBeInTheDocument();
   });
 
-  it('등급이 오를수록 연출이 더해지고, 99% 이상만 금빛이 돈다', () => {
+  it('등급이 오를수록 연출이 더해지고, 98% 이상만 금빛이 돈다', () => {
     renderPage();
     // 27 은 최대치 30 의 90% 다.
     rigMaxDamageE(2);
@@ -107,7 +107,7 @@ describe('무리아스의 성수 시뮬레이터', () => {
     rigMaxDamageE(5);
     fireEvent.click(screen.getByRole('button', { name: '바르기' }));
     expect(stage().className).toContain('hw-t95');
-    expect(stage().className).toContain('hw-t99');
+    expect(stage().className).toContain('hw-t98');
     expect(document.querySelector('.hw-gold-layer')).not.toBeNull();
     expect(latest()).toHaveTextContent('0.163%평균 612번에 한 번');
     expect(latest()).toHaveTextContent('2번째새 최고, 이전 +27');
@@ -122,12 +122,22 @@ describe('무리아스의 성수 시뮬레이터', () => {
     expect(latest()).toHaveTextContent('3번째최고 +30');
   });
 
+  it('최대 대미지 29 도 30 처럼 최상위(98% 이상)로 금빛이 돈다', () => {
+    renderPage();
+    rigMaxDamageE(4);
+    fireEvent.click(screen.getByRole('button', { name: '바르기' }));
+    expect(within(latest()).getByText('+29')).toBeInTheDocument();
+    expect(within(latest()).getByText('98% 이상')).toBeInTheDocument();
+    expect(document.querySelector('.hw-stage')!.className).toContain('hw-t98');
+    expect(document.querySelector('.hw-gold-layer')).not.toBeNull();
+  });
+
   it('10번 바르기는 연출 없이 목록으로 보인다', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '10번 바르기' }));
     expect(document.querySelector('.hw-play')).toBeNull();
     expect(screen.getByRole('region', { name: '방금 붙은 효과 10개' })).toHaveTextContent(
-      /50% 이상\d+개90% 이상\d+개95% 이상\d+개99% 이상\d+개/,
+      /50% 이상\d+개90% 이상\d+개95% 이상\d+개98% 이상\d+개/,
     );
     expect(screen.getByText('바른 기록 10번')).toBeInTheDocument();
   });

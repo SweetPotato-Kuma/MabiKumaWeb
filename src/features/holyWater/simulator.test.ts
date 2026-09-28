@@ -78,16 +78,20 @@ describe('effectChance', () => {
 });
 
 describe('tierOf', () => {
-  it('최대치의 50, 90, 95, 99% 이상으로 나눈다', () => {
+  it('최대치의 50, 90, 95, 98% 에 가장 가까운 수치로 나눈다', () => {
     const maxDamage = effectNamed('최대 대미지');
     expect(tierOf(maxDamage, 14)).toBeNull();
     expect(tierOf(maxDamage, 15)).toBe(50);
-    expect(tierOf(maxDamage, 27)).toBe(90);
-    expect(tierOf(maxDamage, 29)).toBe(95);
-    expect(tierOf(maxDamage, 30)).toBe(99);
+    expect(tierOf(maxDamage, 28)).toBe(90);
+    // 30 의 98% 는 29.4 라 29 도 최상위다.
+    expect(tierOf(maxDamage, 29)).toBe(98);
+    expect(tierOf(maxDamage, 30)).toBe(98);
+    const alchemy = effectNamed('4대 속성 연금 대미지');
+    expect(tierOf(alchemy, 48)).toBe(95);
+    expect(tierOf(alchemy, 49)).toBe(98);
     const regen = effectNamed('생명력 자연 회복량');
-    expect(tierOf(regen, 494)).toBe(95);
-    expect(tierOf(regen, 495)).toBe(99);
+    expect(tierOf(regen, 489)).toBe(95);
+    expect(tierOf(regen, 490)).toBe(98);
   });
 
   it('수치가 하나뿐인 효과는 등급을 매기지 않는다', () => {
@@ -96,7 +100,7 @@ describe('tierOf', () => {
   });
 
   it('등급 확률은 높을수록 작다', () => {
-    const chances = ([50, 90, 95, 99] as const).map(tierChance);
+    const chances = ([50, 90, 95, 98] as const).map(tierChance);
     for (let index = 1; index < chances.length; index += 1)
       expect(chances[index]).toBeLessThan(chances[index - 1]);
     // 수치가 하나뿐인 19장을 빼면 83장이고, 그 가운데 절반 남짓이 50% 이상이다.
