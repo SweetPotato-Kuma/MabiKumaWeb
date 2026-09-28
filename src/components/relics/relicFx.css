@@ -224,27 +224,6 @@
   animation-delay: calc(var(--fx-dur) * 0.62);
 }
 
-/* 이데아 이상 칸의 빨간 바탕. 연출이 있으면 결과가 드러나는 순간에 켜진다. */
-.rl-hit {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.rl-hit--delay {
-  animation: rl-fade-in 300ms ease-out both;
-  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms));
-}
-
-@keyframes rl-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 /* 나온 유물 칸은 연출이 끝난 뒤 드러난다. */
 .rl-reveal .rl-line {
   animation: rl-reveal 360ms ease-out both;

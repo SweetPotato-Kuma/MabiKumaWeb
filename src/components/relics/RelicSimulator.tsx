@@ -109,7 +109,8 @@ const isAboveIdea = (price: DrawPrice | null, ideaPrice: number | null) =>
 
 /**
  * 값 한 칸. 지금 최저가는 본문색, 매물이 없어 최종 거래가를 쓴 것은 흐리게 "최종" 을 붙인다.
- * 이데아 최저가 이상이면 굵은 빨강으로 적는다. 색만으로 가르지 않게 카드와 표에 글자 표시가 함께 붙는다.
+ * 이데아 최저가 이상이면 굵은 액센트 색으로 적는다. 세공의 최대 수치 강조와 같은 색이다. 색만으로
+ * 가르지 않게 "이데아 이상" 표시가 함께 붙는다.
  */
 function PriceText({
   price,
@@ -143,7 +144,7 @@ function PriceText({
       style={{
         whiteSpace: 'nowrap',
         fontWeight: above ? 700 : undefined,
-        color: above ? token.colorError : undefined,
+        color: above ? token.colorPrimary : undefined,
       }}
     >
       {formatGoldShort(price.price)}
@@ -152,10 +153,22 @@ function PriceText({
   );
 }
 
-/** 이데아 최저가 이상 표시. 빨간 색에 더해 글자로도 알린다. */
+/**
+ * 이데아 최저가 이상 표시. 세공 창의 "한계 돌파" 표시처럼 테두리만 있는 태그다. 칸이나 줄의 바탕은
+ * 칠하지 않는다. 세공 창도 특별한 결과를 바탕색 없이 글자 표시로만 알린다.
+ */
 function IdeaTag() {
+  const { token } = theme.useToken();
   return (
-    <Tag color="error" variant="solid" style={{ marginInlineEnd: 0, whiteSpace: 'nowrap' }}>
+    <Tag
+      style={{
+        marginInlineEnd: 0,
+        whiteSpace: 'nowrap',
+        color: token.colorPrimary,
+        borderColor: token.colorPrimary,
+        background: 'transparent',
+      }}
+    >
       이데아 이상
     </Tag>
   );
@@ -393,7 +406,6 @@ function ResultList({
                 '--i': index,
                 padding: '4px 6px',
                 borderRadius: token.borderRadiusSM,
-                background: above ? token.colorErrorBg : undefined,
               } as CSSProperties
             }
           >
@@ -406,9 +418,10 @@ function ResultList({
               시세 칸은 최소 폭만 잡고 글자만큼 늘어난다. 매물이 없어 "최종" 이 붙으면 96px 를 넘어 칸이
               가로로 넘쳤다. 대신 옵션 이름 칸이 줄어든다.
             */}
-            <div style={{ flex: 'none', minWidth: 96, textAlign: 'right' }}>
+            <Flex vertical gap={2} align="flex-end" style={{ flex: 'none', minWidth: 96 }}>
               <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
-            </div>
+              {above ? <IdeaTag /> : null}
+            </Flex>
           </Flex>
         );
       })}
@@ -476,7 +489,6 @@ const HistoryTable = memo(function HistoryTable({
   ideaPrice: number | null;
   state: PriceState;
 }) {
-  const { token } = theme.useToken();
   const columns: TableColumnsType<PricedDraw> = [
     {
       title: '번째',
@@ -549,12 +561,6 @@ const HistoryTable = memo(function HistoryTable({
       dataSource={rows}
       rowKey="no"
       size="small"
-      // 이데아 최저가 이상인 줄은 빨갛게 깐다. 시세 칸에 글자 표시도 함께 붙는다.
-      onRow={(draw) =>
-        state === 'ready' && isAboveIdea(draw.price, ideaPrice)
-          ? { style: { background: token.colorErrorBg } }
-          : {}
-      }
       pagination={
         rows.length > PAGE_SIZE
           ? { pageSize: PAGE_SIZE, showSizeChanger: false, size: 'small' }
@@ -804,7 +810,6 @@ export function RelicSimulatorView({
     </Flex>
   );
 
-  const lastAbove = last !== null && state === 'ready' && isAboveIdea(last.price, ideaPrice);
   const single = simulator.lastBatch <= 1;
 
   return (
@@ -914,30 +919,7 @@ export function RelicSimulatorView({
                 padding: 16,
               }}
             >
-              {/*
-                이데아 이상이면 칸을 빨갛게 깐다. 결과가 드러나는 순간에 켜야 한다. 누르자마자 켜면
-                연출이 끝나기 전에 결과를 알려 버린다.
-              */}
-              {single && lastAbove ? (
-                <div
-                  key={reveal ?? 'still'}
-                  aria-hidden
-                  className={reveal !== null ? 'rl-hit rl-hit--delay' : 'rl-hit'}
-                  style={
-                    {
-                      ...fxStyle,
-                      border: `2px solid ${token.colorError}`,
-                      background: token.colorErrorBg,
-                      borderRadius: token.borderRadius,
-                    } as CSSProperties
-                  }
-                />
-              ) : null}
-              <Text
-                strong
-                id="relic-sim-latest"
-                style={{ display: 'block', marginBottom: 12, position: 'relative' }}
-              >
+              <Text strong id="relic-sim-latest" style={{ display: 'block', marginBottom: 12 }}>
                 방금 나온 유물
                 {simulator.lastBatch > 1 ? ` ${formatNumber(simulator.lastBatch)}개` : ''}
               </Text>
@@ -1046,7 +1028,7 @@ export function RelicSimulatorView({
                 <Text strong className="tnum">
                   복원 기록 {formatNumber(count)}번
                 </Text>
-                <Tooltip title='빨간 줄과 "이데아 이상" 은 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린 시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의 매물을 봅니다.'>
+                <Tooltip title='"이데아 이상" 은 시세가 이데아 최저가 이상인 결과, "최종" 이 붙은 흐린 시세는 매물이 없어 최종 거래가를 적은 것입니다. 옵션 이름을 누르면 경매장에서 그 레벨의 매물을 봅니다.'>
                   <InfoIcon aria-label="기록 표 읽는 법" tabIndex={0} style={{ cursor: 'help' }} />
                 </Tooltip>
               </Flex>
