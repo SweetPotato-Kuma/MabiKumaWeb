@@ -24,7 +24,14 @@ import {
 } from 'antd';
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { ItemIcon } from '@/components/ItemIcon';
-import { CalculateIcon, CloseIcon, InfoIcon, ResetIcon, StarFillIcon } from '@/components/icons';
+import {
+  CalculateIcon,
+  CloseIcon,
+  InfoIcon,
+  ResetIcon,
+  StarFillIcon,
+  TrendingUpIcon,
+} from '@/components/icons';
 import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import {
   skillOfOption,
@@ -148,7 +155,8 @@ function PriceText({
       }}
     >
       {formatGoldShort(price.price)}
-      {trade ? ' 최종' : ''}
+      {/* 작게 붙여 가격 칸이 덜 넓어지게 한다. 좁은 목록에서도 한 줄에 든다. */}
+      {trade ? <span style={{ fontSize: 12, marginInlineStart: 4 }}>최종</span> : null}
     </Text>
   );
 }
@@ -171,6 +179,27 @@ function IdeaTag() {
     >
       이데아 이상
     </Tag>
+  );
+}
+
+/**
+ * 목록 줄의 이데아 최저가 이상 표시. 넓으면 "이데아 이상" 태그, 목록이 좁으면 오르는 화살표만
+ * 둔다(relicFx.css 의 .rl-rows). 화살표도 모양과 이름(aria-label)이 있어 색만으로 가르지 않는다.
+ */
+function IdeaMark() {
+  const { token } = theme.useToken();
+  return (
+    <>
+      <span className="rl-mark-full">
+        <IdeaTag />
+      </span>
+      <TrendingUpIcon
+        className="rl-mark-icon"
+        aria-label="이데아 이상"
+        title="이데아 이상"
+        style={{ color: token.colorPrimary, fontSize: 16 }}
+      />
+    </>
   );
 }
 
@@ -380,7 +409,14 @@ function ResultDetail({
   );
 }
 
-/** 여러 번 복원했을 때 방금 나온 것들. 한 줄에 하나, 먼저 나온 것이 아래다. */
+/**
+ * 여러 번 복원했을 때 방금 나온 것들. 한 줄에 하나, 먼저 나온 것이 아래다.
+ *
+ * 줄마다 따로 칸을 나누면 "최종" 이나 "이데아 이상" 이 붙은 줄만 가격 칸이 넓어지거나 두 줄이 되어
+ * 레벨과 가격이 줄마다 어긋났다. 목록 전체가 한 격자를 쓰고 줄은 그 칸을 나눠 받는다(subgrid).
+ * 칸 폭은 가장 긴 줄에 맞춰지고, 옵션 이름이 남는 폭을 쓰며 넘치면 말줄임으로 자른다. 휴대폰처럼
+ * 목록이 좁으면 이름을 윗줄에 두고 레벨과 가격을 아랫줄 오른쪽에 모은다(relicFx.css).
+ */
 function ResultList({
   draws,
   ideaPrice,
@@ -392,15 +428,13 @@ function ResultList({
 }) {
   const { token } = theme.useToken();
   return (
-    <Flex vertical gap={2}>
+    <div className="rl-rows">
       {draws.map((draw, index) => {
         const above = state === 'ready' && isAboveIdea(draw.price, ideaPrice);
         return (
-          <Flex
+          <div
             key={draw.no}
-            className="rl-line"
-            gap={8}
-            align="center"
+            className="rl-line rl-row"
             style={
               {
                 '--i': index,
@@ -409,23 +443,34 @@ function ResultList({
               } as CSSProperties
             }
           >
-            {draw.found ? <SkillIcon skillId={draw.found.skill.id} size={ROW_ICON} /> : null}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <span className="rl-cell-icon">
+              {draw.found ? <SkillIcon skillId={draw.found.skill.id} size={ROW_ICON} /> : null}
+            </span>
+            <div
+              className="rl-cell-name"
+              title={draw.option.name}
+              style={{
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               <OptionName draw={draw} />
             </div>
-            <LevelLabel level={draw.level} />
-            {/*
-              시세 칸은 최소 폭만 잡고 글자만큼 늘어난다. 매물이 없어 "최종" 이 붙으면 96px 를 넘어 칸이
-              가로로 넘쳤다. 대신 옵션 이름 칸이 줄어든다.
-            */}
-            <Flex vertical gap={2} align="flex-end" style={{ flex: 'none', minWidth: 96 }}>
-              <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
-              {above ? <IdeaTag /> : null}
+            <Flex className="rl-cell-level" justify="flex-end">
+              <LevelLabel level={draw.level} />
             </Flex>
-          </Flex>
+            <Flex className="rl-cell-price" justify="flex-end">
+              <PriceText price={draw.price} ideaPrice={ideaPrice} state={state} />
+            </Flex>
+            <Flex className="rl-cell-mark" align="center">
+              {above ? <IdeaMark /> : null}
+            </Flex>
+          </div>
         );
       })}
-    </Flex>
+    </div>
   );
 }
 
