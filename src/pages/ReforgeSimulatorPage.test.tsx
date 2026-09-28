@@ -39,6 +39,9 @@ const DATA: ReforgeData = {
   tables: { 'fine|1|0': 0, 'fine|23|0': 0, 'radiant|1|0': 0, 'brilliant|1|0': 0 },
 };
 
+/** 정교한 세공 도구와 기억의 보석만 매물이 있다. */
+const PRICES: Record<string, number> = { '정교한 세공 도구': 3_000_000, '기억의 보석': 500_000 };
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -62,23 +65,24 @@ describe('세공 시뮬레이터', () => {
         return new Response('', { status: 404 });
       }),
     );
-    // 정교한 세공 도구만 매물이 있다.
-    vi.mocked(fetchAuctionList).mockImplementation(async ({ itemName }) => ({
-      auction_item:
-        itemName === '정교한 세공 도구'
+    vi.mocked(fetchAuctionList).mockImplementation(async ({ itemName }) => {
+      const price = PRICES[itemName ?? ''];
+      return {
+        auction_item: price
           ? [
               {
-                item_name: itemName,
-                item_display_name: itemName,
+                item_name: itemName ?? '',
+                item_display_name: itemName ?? '',
                 item_count: 1,
                 auction_item_category: '기타',
-                auction_price_per_unit: 3_000_000,
+                auction_price_per_unit: price,
                 date_auction_expire: '2026-09-30T00:00:00Z',
               },
             ]
           : [],
-      next_cursor: null,
-    }));
+        next_cursor: null,
+      };
+    });
   });
 
   afterEach(() => {
@@ -89,14 +93,14 @@ describe('세공 시뮬레이터', () => {
 
   it('세공하면 옵션 세 줄이 붙고 도구 최저가로 쓴 골드를 센다', async () => {
     renderPage();
-    const drawOnce = await screen.findByRole('button', { name: '1번 세공' });
-    await screen.findByText('경매장 최저가입니다. 게임 데이터는 평균 10분 지연됩니다.');
+    const reforge = await screen.findByRole('button', { name: '세공하기' });
+    await screen.findAllByText('경매장 최저가입니다. 게임 데이터는 평균 10분 지연됩니다.');
 
-    fireEvent.click(drawOnce);
-    const latest = screen.getByRole('region', { name: '방금 나온 세공' });
-    expect(within(latest).getByText('5% 증가')).toBeInTheDocument();
-    expect(within(latest).getByText('6 증가')).toBeInTheDocument();
-    expect(within(latest).getByText('30 증가')).toBeInTheDocument();
+    fireEvent.click(reforge);
+    const window = screen.getByRole('region', { name: '세공 창' });
+    expect(within(window).getByText('(5/5 레벨 : 5% 증가)')).toBeInTheDocument();
+    expect(within(window).getByText('(3/3 레벨 : 6 증가)')).toBeInTheDocument();
+    expect(within(window).getByText('(20/20 레벨 : 30 증가)')).toBeInTheDocument();
     expect(screen.getByText('300만 G')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '10번 세공' }));
@@ -105,12 +109,39 @@ describe('세공 시뮬레이터', () => {
 
   it('도구 값을 고쳐 넣으면 그 값으로 다시 센다', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: '1번 세공' }));
+    fireEvent.click(await screen.findByRole('button', { name: '세공하기' }));
     fireEvent.change(screen.getByLabelText('정교한 세공 도구 한 개 값'), {
       target: { value: '5,000,000' },
     });
     expect(await screen.findByText('500만 G')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '최저가로 되돌리기' })).toBeInTheDocument();
+  });
+
+  it('기억의 보석은 옵션이 붙은 뒤에 쓸 수 있고, 새 옵션은 적용해야 붙는다', async () => {
+    renderPage();
+    // 세공할 때마다 작업대를 새로 그려 연출을 다시 돌리므로 보석 칸은 그때그때 찾는다.
+    const gem = () => screen.getByRole('button', { name: '기억의 보석 사용' });
+    await screen.findAllByText('경매장 최저가입니다. 게임 데이터는 평균 10분 지연됩니다.');
+    expect(gem()).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
+    expect(gem()).toBeEnabled();
+    fireEvent.click(gem());
+    expect(gem()).toHaveAttribute('aria-pressed', 'true');
+    const apply = screen.getByRole('button', { name: '신규 옵션 적용하기' });
+    expect(apply).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
+    // 도구 둘에 보석 하나.
+    expect(screen.getByText('650만 G')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '새 옵션' })).toHaveTextContent(
+      '(5/5 레벨 : 5% 증가)',
+    );
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+    expect(screen.getByRole('region', { name: '새 옵션' })).toHaveTextContent(
+      '기억의 보석을 올리고',
+    );
   });
 
   it('목표를 고르면 한 번에 붙을 확률을 보이고, 채운 세공에 목표 달성을 붙인다', async () => {
@@ -120,7 +151,7 @@ describe('세공 시뮬레이터', () => {
     expect(screen.getByText('100%')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '목표 나올 때까지' }));
-    const latest = screen.getByRole('region', { name: '방금 나온 세공' });
-    expect(within(latest).getByText('목표 달성')).toBeInTheDocument();
+    const window = screen.getByRole('region', { name: '세공 창' });
+    expect(within(window).getByText('목표 달성')).toBeInTheDocument();
   });
 });

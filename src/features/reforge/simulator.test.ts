@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PoolRow } from './data';
 import {
+  advance,
   drawLines,
   levelAtLeast,
   meetsTargets,
@@ -44,6 +45,48 @@ describe('drawLines', () => {
   it('진입 판정에 걸리지 않으면 일반 구간에서 고른다', () => {
     const [line] = drawLines(POOL, 0.001, sequence(0.25, 0.5, 0.99));
     expect(line).toEqual({ option: 1, level: 10, limitBreak: false });
+  });
+});
+
+describe('advance', () => {
+  const setting = { tool: 'fine' as const, type: 1, race: 0, pool: POOL, limitBreakRate: 0 };
+  const start = { draws: [], lastBatch: 0, item: null };
+  const never = () => false;
+
+  it('옵션이 없는 장비에는 기억의 보석을 쓰지 못해 첫 세공은 바로 붙는다', () => {
+    const next = advance(start, setting, 1, true, never, Math.random);
+    expect(next.draws[0].gem).toBe(false);
+    expect(next.item?.lines).toEqual(next.draws[0].lines);
+    expect(next.item?.pending).toBeNull();
+  });
+
+  it('기억의 보석을 쓰면 장비 옵션은 그대로 두고 새 옵션만 따로 둔다', () => {
+    const first = advance(start, setting, 1, false, never, Math.random);
+    const next = advance(first, setting, 3, true, never, Math.random);
+    expect(next.draws.slice(1).every((draw) => draw.gem)).toBe(true);
+    expect(next.item?.lines).toBe(first.item?.lines);
+    expect(next.item?.pending).toEqual(next.draws[3].lines);
+  });
+
+  it('보석 없이 세공하면 새 옵션이 바로 붙고 따로 둔 옵션은 사라진다', () => {
+    const first = advance(start, setting, 1, false, never, Math.random);
+    const gem = advance(first, setting, 1, true, never, Math.random);
+    const plain = advance(gem, setting, 1, false, never, Math.random);
+    expect(plain.item?.lines).toEqual(plain.draws[2].lines);
+    expect(plain.item?.pending).toBeNull();
+  });
+
+  it('장비 종류를 바꾸면 빈 새 장비로 시작한다', () => {
+    const first = advance(start, setting, 1, false, never, Math.random);
+    const other = advance(first, { ...setting, type: 23 }, 1, true, never, Math.random);
+    expect(other.draws[1].gem).toBe(false);
+    expect(other.item).toMatchObject({ type: 23, pending: null });
+  });
+
+  it('멈출 조건을 채우면 거기서 멈춘다', () => {
+    const next = advance(start, setting, 50, false, () => true, Math.random);
+    expect(next.draws).toHaveLength(1);
+    expect(next.lastBatch).toBe(1);
   });
 });
 

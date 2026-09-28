@@ -37,6 +37,8 @@ export interface ReforgeDraw {
   /** 확률표의 아이템 타입 번호와 종족 번호. */
   type: number;
   race: number;
+  /** 기억의 보석을 썼는지. 썼으면 보석값도 든다. */
+  gem: boolean;
   lines: ReforgeLine[];
 }
 
@@ -120,59 +122,114 @@ export interface ReforgeSetting {
   limitBreakRate: number;
 }
 
-export interface ReforgeSimulator {
+/** 세공 창에 올려 둔 장비. 장비 종류나 종족을 바꾸면 새 장비다. */
+export interface ReforgeItem {
+  type: number;
+  race: number;
+  /** 장비에 붙어 있는 옵션. 기억의 보석을 쓰면 "기억된 옵션" 이다. 아직 세공하지 않았으면 null. */
+  lines: ReforgeLine[] | null;
+  /** 기억의 보석을 쓰고 나온 새 옵션. 적용하기 전까지 장비에 붙지 않는다. */
+  pending: ReforgeLine[] | null;
+}
+
+export interface ReforgeSimulatorState {
   /** 지금까지 나온 것. 먼저 나온 것이 앞이다. */
   draws: ReforgeDraw[];
   /** 마지막으로 누른 단추가 몇 번 세공했는지. */
   lastBatch: number;
-  draw: (setting: ReforgeSetting, times: number) => void;
+  item: ReforgeItem | null;
+}
+
+export interface ReforgeSimulator extends ReforgeSimulatorState {
+  /** gem 이 참이면 기억의 보석을 쓴다. 옵션이 없는 장비에는 쓰지 못해 첫 세공은 보석 없이 한다. */
+  draw: (setting: ReforgeSetting, times: number, gem: boolean) => void;
   /** 목표를 채울 때까지, 많아야 UNTIL_CAP 번 세공한다. */
-  drawUntil: (setting: ReforgeSetting, targets: readonly ReforgeTarget[]) => void;
+  drawUntil: (setting: ReforgeSetting, targets: readonly ReforgeTarget[], gem: boolean) => void;
+  /** 기억의 보석으로 나온 새 옵션을 장비에 붙인다. */
+  applyPending: () => void;
   reset: () => void;
 }
 
+/** 그 설정의 장비인지. 아니면 세공 창에 새 장비를 올린 것으로 본다. */
+export const isSameItem = (
+  item: ReforgeItem | null,
+  setting: Pick<ReforgeSetting, 'type' | 'race'>,
+) => item !== null && item.type === setting.type && item.race === setting.race;
+
+const EMPTY: ReforgeSimulatorState = { draws: [], lastBatch: 0, item: null };
+
 /**
- * 세공 기록. 새로 고치거나 화면을 떠나면 처음부터다. 놀이 기록이라 브라우저에 남기지 않는다.
+ * 한 번 이상 세공한 다음 상태. 기억의 보석을 쓰면 장비의 옵션은 그대로 두고 새 옵션만 pending 에
+ * 둔다. 안 쓰면 새 옵션이 바로 장비에 붙는다. setState 갱신 함수 안에서 불러 순수하게 둔다.
+ */
+export function advance(
+  prev: ReforgeSimulatorState,
+  setting: ReforgeSetting,
+  limit: number,
+  gem: boolean,
+  stop: (lines: ReforgeLine[]) => boolean,
+  random: RandomSource,
+): ReforgeSimulatorState {
+  let item: ReforgeItem = isSameItem(prev.item, setting)
+    ? (prev.item as ReforgeItem)
+    : { type: setting.type, race: setting.race, lines: null, pending: null };
+  const added: ReforgeDraw[] = [];
+  while (added.length < limit) {
+    const lines = drawLines(setting.pool, setting.limitBreakRate, random);
+    const useGem = gem && item.lines !== null;
+    added.push({
+      no: prev.draws.length + added.length + 1,
+      tool: setting.tool,
+      type: setting.type,
+      race: setting.race,
+      gem: useGem,
+      lines,
+    });
+    item = useGem ? { ...item, pending: lines } : { ...item, lines, pending: null };
+    if (stop(lines)) break;
+  }
+  return { draws: [...prev.draws, ...added], lastBatch: added.length, item };
+}
+
+/**
+ * 세공 기록과 세공 창의 장비. 새로 고치거나 화면을 떠나면 처음부터다. 놀이 기록이라 브라우저에
+ * 남기지 않는다.
  */
 export function useReforgeSimulator(random?: RandomSource): ReforgeSimulator {
-  const [state, setState] = useState<{ draws: ReforgeDraw[]; lastBatch: number }>({
-    draws: [],
-    lastBatch: 0,
-  });
+  const [state, setState] = useState<ReforgeSimulatorState>(EMPTY);
 
   const run = useCallback(
-    (setting: ReforgeSetting, limit: number, stop: (lines: ReforgeLine[]) => boolean) =>
-      setState((prev) => {
-        const added: ReforgeDraw[] = [];
-        // 난수는 뽑을 때 찾는다. 처음 그릴 때의 Math.random 을 붙잡아 두지 않는다.
-        const source = random ?? Math.random;
-        while (added.length < limit) {
-          const lines = drawLines(setting.pool, setting.limitBreakRate, source);
-          added.push({
-            no: prev.draws.length + added.length + 1,
-            tool: setting.tool,
-            type: setting.type,
-            race: setting.race,
-            lines,
-          });
-          if (stop(lines)) break;
-        }
-        return { draws: [...prev.draws, ...added], lastBatch: added.length };
-      }),
+    (
+      setting: ReforgeSetting,
+      limit: number,
+      gem: boolean,
+      stop: (lines: ReforgeLine[]) => boolean,
+    ) =>
+      // 난수는 뽑을 때 찾는다. 처음 그릴 때의 Math.random 을 붙잡아 두지 않는다.
+      setState((prev) => advance(prev, setting, limit, gem, stop, random ?? Math.random)),
     [random],
   );
 
   const draw = useCallback(
-    (setting: ReforgeSetting, times: number) => run(setting, times, () => false),
+    (setting: ReforgeSetting, times: number, gem: boolean) => run(setting, times, gem, () => false),
     [run],
   );
   const drawUntil = useCallback(
-    (setting: ReforgeSetting, targets: readonly ReforgeTarget[]) =>
-      run(setting, UNTIL_CAP, (lines) => meetsTargets(lines, targets)),
+    (setting: ReforgeSetting, targets: readonly ReforgeTarget[], gem: boolean) =>
+      run(setting, UNTIL_CAP, gem, (lines) => meetsTargets(lines, targets)),
     [run],
   );
-  const reset = useCallback(() => setState({ draws: [], lastBatch: 0 }), []);
-  return { ...state, draw, drawUntil, reset };
+  const applyPending = useCallback(
+    () =>
+      setState((prev) =>
+        prev.item?.pending
+          ? { ...prev, item: { ...prev.item, lines: prev.item.pending, pending: null } }
+          : prev,
+      ),
+    [],
+  );
+  const reset = useCallback(() => setState(EMPTY), []);
+  return { ...state, draw, drawUntil, applyPending, reset };
 }
 
 /**

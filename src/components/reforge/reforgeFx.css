@@ -1,0 +1,394 @@
+/*
+ * 세공 창의 도구별 연출. 세공 시뮬레이터 한 화면만 쓴다.
+ *
+ * 키프레임은 인라인 스타일로 쓸 수 없어 이 파일에 둔다. 색은 여기서 정하지 않고, 컴포넌트가 테마
+ * 토큰을 CSS 변수(--fx-*)로 넘겨 준다. 움직이는 것은 transform 과 opacity 뿐이다.
+ *
+ * 연출은 .rf-play 와 .rf-reveal 이 붙은 곳에서만 돈다. 움직임 줄이기 설정이나 "연출 끄기" 면
+ * 컴포넌트가 두 클래스를 붙이지 않는다.
+ */
+
+.rf-stage {
+  position: relative;
+  width: 208px;
+  height: 208px;
+  margin-inline: auto;
+}
+
+.rf-stage-body {
+  position: absolute;
+  inset: 0;
+}
+
+.rf-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--fx-line);
+}
+
+.rf-ring--inner {
+  inset: 18px;
+  border-style: dashed;
+}
+
+.rf-ring--core {
+  inset: 44px;
+  opacity: 0.6;
+}
+
+.rf-item {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 84px;
+  height: 84px;
+  margin: -42px 0 0 -42px;
+  border-radius: 10px;
+  border: 1px solid var(--fx-line);
+  background: var(--fx-surface);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6px;
+}
+
+.rf-sheen,
+.rf-flash,
+.rf-hammer,
+.rf-spark,
+.rf-ray {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 영롱한: 장비 위를 훑고 지나가는 빛줄기 */
+.rf-sheen {
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 36%;
+  background: var(--fx-accent);
+  filter: blur(8px);
+}
+
+/* 망치가 닿는 순간 번지는 빛 */
+.rf-flash {
+  left: 50%;
+  top: 50%;
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  border-radius: 50%;
+  border: 2px solid var(--fx-accent);
+  background: var(--fx-soft);
+}
+
+.rf-hammer {
+  left: 50%;
+  top: 50%;
+  margin: -64px 0 0 14px;
+  font-size: 34px;
+  color: var(--fx-accent);
+  transform-origin: 0% 100%;
+}
+
+/* 원판 둘레의 반짝임과 빛살. --a 가 각도, --i 가 순번이다. */
+.rf-spark {
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--fx-accent);
+}
+
+.rf-ray {
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 64px;
+  margin: -64px 0 0 -1px;
+  border-radius: 1px;
+  background: var(--fx-accent);
+  transform-origin: 50% 100%;
+}
+
+/* 기억의 보석 칸. 마름모다. */
+.rf-gem {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.rf-gem:disabled {
+  cursor: not-allowed;
+}
+
+.rf-gem-shape {
+  position: absolute;
+  inset: 5px;
+  transform: rotate(45deg);
+  border-radius: 4px;
+  border: 1px dashed var(--fx-line);
+  background: var(--fx-bg);
+}
+
+.rf-gem[aria-pressed='true'] .rf-gem-shape {
+  border: 2px solid var(--fx-accent);
+  background: var(--fx-soft);
+}
+
+.rf-gem-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--fx-muted);
+}
+
+.rf-gem[aria-pressed='true'] .rf-gem-icon {
+  color: var(--fx-accent);
+}
+
+.rf-gem:focus-visible {
+  outline: 2px solid var(--fx-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- 연출 ---------- */
+
+.rf-play .rf-ring--inner {
+  animation: rf-spin var(--fx-dur) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.rf-play .rf-hammer {
+  animation: rf-strike var(--fx-dur) ease-in-out both;
+}
+
+.rf-play .rf-flash {
+  animation: rf-flash var(--fx-dur) ease-out both;
+}
+
+.rf-play.rf--radiant .rf-sheen {
+  animation: rf-sheen var(--fx-dur) ease-in-out both;
+}
+
+.rf-play .rf-spark {
+  animation: rf-twinkle var(--fx-dur) ease-out both;
+  animation-delay: calc(var(--i) * 45ms);
+}
+
+.rf-play.rf--brilliant .rf-hammer {
+  animation-name: rf-strike-twice;
+}
+
+.rf-play.rf--brilliant .rf-ray {
+  animation: rf-ray var(--fx-dur) ease-out both;
+}
+
+.rf-play.rf--brilliant .rf-stage-body {
+  animation: rf-shake var(--fx-dur) linear both;
+}
+
+.rf-play .rf-gem[aria-pressed='true'] .rf-gem-shape {
+  animation: rf-gem var(--fx-dur) ease-in-out both;
+}
+
+/* 새 옵션은 연출이 끝난 뒤 한 줄씩 드러난다. */
+.rf-reveal .rf-line {
+  animation: rf-reveal 360ms ease-out both;
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--i) * 160ms);
+}
+
+@keyframes rf-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(var(--fx-spin));
+  }
+}
+
+@keyframes rf-strike {
+  0% {
+    opacity: 0;
+    transform: rotate(-55deg);
+  }
+  20% {
+    opacity: 1;
+    transform: rotate(-55deg);
+  }
+  62% {
+    transform: rotate(-60deg);
+  }
+  72% {
+    transform: rotate(8deg);
+  }
+  80% {
+    opacity: 1;
+    transform: rotate(-4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-20deg);
+  }
+}
+
+@keyframes rf-strike-twice {
+  0% {
+    opacity: 0;
+    transform: rotate(-55deg);
+  }
+  15% {
+    opacity: 1;
+    transform: rotate(-55deg);
+  }
+  35% {
+    transform: rotate(6deg);
+  }
+  48% {
+    transform: rotate(-60deg);
+  }
+  72% {
+    transform: rotate(10deg);
+  }
+  82% {
+    opacity: 1;
+    transform: rotate(-4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-20deg);
+  }
+}
+
+@keyframes rf-flash {
+  0%,
+  68% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  73% {
+    opacity: 0.85;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes rf-sheen {
+  0%,
+  20% {
+    opacity: 0;
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  35% {
+    opacity: 0.45;
+  }
+  70% {
+    opacity: 0;
+    transform: translateX(320%) skewX(-18deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+
+@keyframes rf-twinkle {
+  0%,
+  40% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-88px) scale(0);
+  }
+  62% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(-96px) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-104px) scale(0.4);
+  }
+}
+
+@keyframes rf-ray {
+  0%,
+  66% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-30px) scaleY(0);
+  }
+  76% {
+    opacity: 0.9;
+    transform: rotate(var(--a)) translateY(-40px) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-56px) scaleY(1.2);
+  }
+}
+
+@keyframes rf-shake {
+  0%,
+  70% {
+    transform: translate(0, 0);
+  }
+  73% {
+    transform: translate(-4px, 2px);
+  }
+  76% {
+    transform: translate(4px, -2px);
+  }
+  79% {
+    transform: translate(-3px, -1px);
+  }
+  82% {
+    transform: translate(2px, 1px);
+  }
+  86%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes rf-gem {
+  0%,
+  10% {
+    transform: rotate(45deg) scale(1);
+  }
+  30% {
+    transform: rotate(45deg) scale(1.25);
+  }
+  55%,
+  100% {
+    transform: rotate(45deg) scale(1);
+  }
+}
+
+@keyframes rf-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
