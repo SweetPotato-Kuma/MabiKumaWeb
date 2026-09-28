@@ -83,6 +83,27 @@ export const MURIAS_RELIC_POOL: readonly RelicPoolEntry[] = [
 /** 나올 수 있는 결과 수. 옵션 수 x 10레벨. */
 export const RELIC_OUTCOMES = MURIAS_RELIC_POOL.length * RELIC_LEVELS.length;
 
+/** 보고 싶은 유물. 이 옵션이 이 레벨 이상으로 나오기를 바란다. option 은 MURIAS_RELIC_POOL 의 순번이다. */
+export interface RelicTarget {
+  option: number;
+  minLevel: number;
+}
+
+/**
+ * 한 번 복원해 그 유물이 나올 확률. 옵션과 레벨을 따로 고르게 뽑는다는 이 화면의 가정 그대로,
+ * 1/옵션 수 에 minLevel 이상인 레벨의 몫을 곱한다.
+ */
+export function relicTargetChance(target: RelicTarget): number {
+  if (!MURIAS_RELIC_POOL[target.option]) return 0;
+  const levels = RELIC_LEVELS.filter((level) => level >= target.minLevel).length;
+  return (1 / MURIAS_RELIC_POOL.length) * (levels / RELIC_LEVELS.length);
+}
+
+/** 나온 유물이 보고 싶은 유물인지. */
+export function meetsRelicTarget(draw: Pick<RelicDraw, 'option' | 'level'>, target: RelicTarget) {
+  return draw.option === MURIAS_RELIC_POOL[target.option] && draw.level >= target.minLevel;
+}
+
 export interface RelicDraw {
   /** 몇 번째 복원인지. 1부터. 표의 키로도 쓴다. */
   no: number;

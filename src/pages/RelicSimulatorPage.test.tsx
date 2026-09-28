@@ -121,4 +121,30 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
     expect(within(card).getByText('490% 증가')).toBeInTheDocument();
   });
+
+  it('보고 싶은 유물을 고르면 한 번에 나올 확률과 n 번 복원했을 때 볼 확률을 센다', async () => {
+    renderPage();
+    await screen.findByText(/3분 전에 모은 경매장 시세입니다/);
+    expect(screen.queryByRole('region', { name: '복원 횟수별 확률' })).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByLabelText('보고 싶은 유물 옵션'));
+    fireEvent.click(
+      await screen.findByText('오버 드라이브 폭발 공격 대미지', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    // 30종 x 10레벨 중 10레벨 하나: 1/300. 10번이면 1 - (299/300)^10 = 3.28%.
+    expect(screen.getByText(/한 번에 나올 확률/)).toHaveTextContent(
+      '한 번에 나올 확률 0.333%, 평균 300번에 한 번',
+    );
+    expect(screen.getByRole('region', { name: '복원 횟수별 확률' })).toHaveTextContent(
+      '한 번 이상 나올 확률 3.28%',
+    );
+
+    rigOverDriveSeven();
+    fireEvent.click(screen.getByRole('button', { name: '1번 복원' }));
+    // 7레벨이 나왔으니 10레벨을 바라면 아직 0번이다.
+    expect(screen.getByText(/지금까지/)).toHaveTextContent('지금까지 0번 나왔습니다');
+  });
 });

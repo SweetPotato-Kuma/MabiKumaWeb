@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useMemo } from 'react';
+import { memo, useDeferredValue, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Button,
@@ -6,7 +6,9 @@ import {
   Col,
   Flex,
   Grid,
+  InputNumber,
   Row,
+  Select,
   Spin,
   Statistic,
   Table,
@@ -29,21 +31,24 @@ import {
 import {
   formatRelicValue,
   muriasAuctionPath,
-  RELIC_LEVELS,
   RELIC_MAX_LEVEL,
   relicValueAt,
 } from '@/features/relics/murias';
 import type { RelicPriceState } from '@/features/relics/priceFile';
 import {
   drawPrice,
+  meetsRelicTarget,
   MURIAS_RELIC_POOL,
   RELIC_OUTCOMES,
+  relicTargetChance,
   type DrawPrice,
   type RelicDraw,
   type RelicPoolEntry,
   type RelicSimulator as Simulator,
+  type RelicTarget,
 } from '@/features/relics/simulator';
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
+import { formatChance } from '@/features/simulator/trials';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
 
 const { Text } = Typography;
@@ -432,25 +437,13 @@ export function RelicSimulatorView({
     return { top, known, total, above };
   }, [priced, ideaPrice]);
 
-  /**
-   * 한 번 복원해 이데아 최저가 이상이 나올 확률. 모든 옵션과 레벨이 똑같이 나온다는 이 화면의 가정
-   * 아래에서, 시세를 아는 결과 가운데 이데아 최저가 이상인 결과의 비율이다. 복원은 매번 따로
-   * 뽑으므로 n 번 했을 때의 확률과 기댓값을 여기서 센다(TrialOdds).
-   */
-  const ideaChance = useMemo(() => {
-    if (!ready || ideaPrice === null) return null;
-    let known = 0;
-    let above = 0;
-    for (const option of MURIAS_RELIC_POOL) {
-      for (const level of RELIC_LEVELS) {
-        const price = drawPrice({ option, level }, ready);
-        if (!price) continue;
-        known += 1;
-        if (price.price >= ideaPrice) above += 1;
-      }
-    }
-    return known > 0 ? { chance: above / known, above, known } : null;
-  }, [ready, ideaPrice]);
+  // 보고 싶은 유물. 고르면 한 번에 나올 확률과 n 번 복원했을 때 볼 확률을 센다.
+  const [target, setTarget] = useState<RelicTarget | null>(null);
+  const targetChance = target ? relicTargetChance(target) : 0;
+  const targetHits = useMemo(
+    () => (target ? simulator.draws.filter((draw) => meetsRelicTarget(draw, target)).length : 0),
+    [simulator.draws, target],
+  );
 
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
@@ -475,12 +468,62 @@ export function RelicSimulatorView({
             나온다고 보고 뽑습니다. 결과 하나가 나올 확률은 1/{formatNumber(RELIC_OUTCOMES)}입니다.
             실제 확률은 공개되지 않았고, 골드나 아이템은 들지 않습니다.
           </Text>
-          {ideaChance && ideaChance.chance > 0 && ideaPrice !== null ? (
+          {/* 보고 싶은 유물. 같은 카드 안에 이어 둔다. 상자로 따로 감싸면 카드가 둘로 갈라져 보인다. */}
+          <Flex gap={8} align="center" wrap>
+            <Text style={{ fontSize: 13 }}>보고 싶은 유물</Text>
+            <Select<number>
+              aria-label="보고 싶은 유물 옵션"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="예: 오버 드라이브 폭발 공격 대미지"
+              value={target?.option ?? null}
+              onChange={(option) =>
+                setTarget(
+                  option === undefined || option === null
+                    ? null
+                    : { option, minLevel: target?.minLevel ?? RELIC_MAX_LEVEL },
+                )
+              }
+              options={MURIAS_RELIC_POOL.map((option, index) => ({
+                value: index,
+                label: option.name,
+              }))}
+              popupMatchSelectWidth={false}
+              style={{ flex: '1 1 240px', minWidth: 0, maxWidth: 380 }}
+            />
+            <InputNumber<number>
+              aria-label="보고 싶은 유물의 가장 낮은 레벨"
+              min={1}
+              max={RELIC_MAX_LEVEL}
+              value={target?.minLevel ?? RELIC_MAX_LEVEL}
+              disabled={!target}
+              onChange={(level) => {
+                if (level === null || !target) return;
+                setTarget({
+                  ...target,
+                  minLevel: Math.min(Math.max(Math.round(level), 1), RELIC_MAX_LEVEL),
+                });
+              }}
+              suffix="레벨 이상"
+              className="tnum"
+              style={{ width: 120 }}
+            />
+            {target ? (
+              <Text className="tnum" style={{ fontSize: 13 }}>
+                한 번에 나올 확률 <Text strong>{formatChance(targetChance)}</Text>, 평균{' '}
+                <Text strong>{formatNumber(Math.ceil(1 / targetChance))}번</Text>에 한 번
+                {count > 0 ? `, 지금까지 ${formatNumber(targetHits)}번 나왔습니다` : ''}
+              </Text>
+            ) : null}
+          </Flex>
+          {target ? (
             <TrialOdds
-              chance={ideaChance.chance}
+              framed={false}
+              chance={targetChance}
               verb="복원"
               costPerTrial={ideaPrice}
-              note={`이데아 최저가 이상이 나올 확률로 셉니다. 시세를 아는 결과 ${formatNumber(ideaChance.known)}개 가운데 ${formatNumber(ideaChance.above)}개가 이데아 최저가 이상입니다. 드는 골드는 이데아를 최저가로 샀을 때입니다.`}
+              note="옵션과 레벨이 모두 똑같이 나온다고 본 확률입니다. 드는 골드는 이데아를 최저가로 샀을 때입니다."
             />
           ) : null}
         </Flex>

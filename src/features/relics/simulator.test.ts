@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { RELIC_MAX_LEVEL } from './murias';
 import { relicPricesFromFile } from './priceFile';
-import { drawPrice, drawRelic, MURIAS_RELIC_POOL, RELIC_OUTCOMES } from './simulator';
+import {
+  drawPrice,
+  drawRelic,
+  meetsRelicTarget,
+  MURIAS_RELIC_POOL,
+  RELIC_OUTCOMES,
+  relicTargetChance,
+} from './simulator';
 
 /** 정해 둔 값을 차례로 내놓는 난수. */
 const sequence = (...values: number[]) => {
@@ -66,5 +73,33 @@ describe('drawPrice', () => {
       source: 'trade',
     });
     expect(drawPrice({ option: overDrive, level: 1 }, prices)).toBeNull();
+  });
+});
+
+describe('relicTargetChance', () => {
+  it('옵션 하나를 10레벨로 보려면 결과 하나의 확률과 같다', () => {
+    expect(relicTargetChance({ option: 0, minLevel: RELIC_MAX_LEVEL })).toBeCloseTo(
+      1 / RELIC_OUTCOMES,
+    );
+  });
+
+  it('레벨을 낮추면 그 위 레벨의 몫만큼 늘어난다', () => {
+    expect(relicTargetChance({ option: 0, minLevel: 8 })).toBeCloseTo(3 / RELIC_OUTCOMES);
+    expect(relicTargetChance({ option: 0, minLevel: 1 })).toBeCloseTo(1 / MURIAS_RELIC_POOL.length);
+  });
+
+  it('없는 옵션이면 0 이다', () => {
+    expect(relicTargetChance({ option: 999, minLevel: 1 })).toBe(0);
+  });
+});
+
+describe('meetsRelicTarget', () => {
+  it('그 옵션이 그 레벨 이상으로 나와야 한다', () => {
+    const option = MURIAS_RELIC_POOL[3];
+    expect(meetsRelicTarget({ option, level: 9 }, { option: 3, minLevel: 9 })).toBe(true);
+    expect(meetsRelicTarget({ option, level: 8 }, { option: 3, minLevel: 9 })).toBe(false);
+    expect(
+      meetsRelicTarget({ option: MURIAS_RELIC_POOL[4], level: 10 }, { option: 3, minLevel: 1 }),
+    ).toBe(false);
   });
 });

@@ -32,6 +32,10 @@ interface TrialOddsProps {
   defaultTrials?: number;
   /** 무엇을 기준으로 한 확률인지 한 줄. 가정이 있으면 여기 적는다. */
   note?: string;
+  /**
+   * 테두리 상자로 감쌀지. 카드 안에서 다른 줄과 이어 쓰면 상자가 카드를 둘로 가른 것처럼 보여 끈다.
+   */
+  framed?: boolean;
 }
 
 /**
@@ -44,6 +48,7 @@ export function TrialOdds({
   costPerTrial = null,
   defaultTrials = 10,
   note,
+  framed = true,
 }: TrialOddsProps) {
   const { token } = theme.useToken();
   const [trials, setTrials] = useState(defaultTrials);
@@ -58,12 +63,16 @@ export function TrialOdds({
   return (
     <section
       aria-label={`${verb} 횟수별 확률`}
-      style={{
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: token.borderRadius,
-        background: token.colorFillQuaternary,
-        padding: '10px 12px',
-      }}
+      style={
+        framed
+          ? {
+              border: `1px solid ${token.colorBorderSecondary}`,
+              borderRadius: token.borderRadius,
+              background: token.colorFillQuaternary,
+              padding: '10px 12px',
+            }
+          : undefined
+      }
     >
       <Flex vertical gap={6}>
         <Flex gap={8} align="center" wrap>
