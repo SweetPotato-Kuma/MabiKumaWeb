@@ -179,7 +179,7 @@ function TypeIcon({ name, size }: { name: string; size: number }) {
         filter: dark ? `${outline} ${outline}` : undefined,
       }}
     >
-      <ItemIcon category={entry[0]} name={entry[1]} size={size} />
+      <ItemIcon category={entry[0]} name={entry[1]} file={entry[2]} size={size} />
     </span>
   );
 }
