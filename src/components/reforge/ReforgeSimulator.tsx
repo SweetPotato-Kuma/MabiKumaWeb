@@ -897,18 +897,32 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
 
   /**
    * 특정 세공 기댓값 계산기. 떠 있는 창에 둔다. 창 밖을 눌러도 닫히지 않아, 열어 둔 채 세공을 이어
-   * 하며 목표가 몇 번 나왔는지 본다. 목표는 세공 기록의 목표 달성과 "목표 나올 때까지" 에도 쓴다.
+   * 하며 본다. 목표는 세공하기와 이어진 설정이라(목표 달성, "목표 나올 때까지") 세공 창의 목표 옵션
+   * 칸에서 고르고, 여기서는 읽어서 셈만 한다.
    */
   const calculator = (
-    <Flex vertical gap={10} style={{ width: 'min(560px, calc(100vw - 88px))' }}>
+    <Flex vertical gap={10} style={{ width: 'min(480px, calc(100vw - 88px))' }}>
       <TrialCountInput value={trials} onChange={setTrials} />
-      <TargetEditor
-        pool={pool}
-        options={options}
-        targets={targets}
-        onChange={setTargets}
-        summary={targetSummary}
-      />
+      {targets.length === 0 ? (
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          고른 목표 옵션 없음
+        </Text>
+      ) : (
+        <Flex vertical gap={2}>
+          {targets.map((target) => {
+            const effect = optionEffect(options[target.option], target.minLevel);
+            return (
+              <Text key={target.option} className="tnum" style={{ fontSize: 13 }}>
+                {options[target.option].name}{' '}
+                <Text strong>
+                  {target.minLevel}레벨 이상{effect ? ` (${effect} 이상)` : ''}
+                </Text>
+              </Text>
+            );
+          })}
+          {targetSummary}
+        </Flex>
+      )}
       {targets.length > 0 && chance > 0 ? (
         <TrialOdds
           framed={false}
@@ -987,6 +1001,21 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               특정 세공 기댓값
             </Button>
           </Popover>
+        </Flex>
+        {/* 목표 옵션. 세공하기와 이어진 설정이라(목표 달성, "목표 나올 때까지") 계산기와 따로 둔다. */}
+        <Flex gap={8} align="flex-start" wrap style={{ marginTop: 10 }}>
+          <Text strong style={{ fontSize: 13, lineHeight: '24px' }}>
+            목표 옵션
+          </Text>
+          <div style={{ flex: '1 1 420px', minWidth: 0 }}>
+            <TargetEditor
+              pool={pool}
+              options={options}
+              targets={targets}
+              onChange={setTargets}
+              summary={targetSummary}
+            />
+          </div>
         </Flex>
 
         <Divider style={{ marginBlock: 16 }} />

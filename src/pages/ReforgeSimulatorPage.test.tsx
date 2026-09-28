@@ -171,15 +171,17 @@ describe('세공 시뮬레이터', () => {
 
   it('목표를 고르면 한 번에 붙을 확률을 보이고, 채운 세공에 목표 달성을 붙인다', async () => {
     renderPage();
-    // 목표는 떠 있는 특정 세공 기댓값 창에서 고른다.
-    fireEvent.click(await screen.findByRole('button', { name: /특정 세공 기댓값/ }));
+    // 목표는 세공 창의 목표 옵션 칸에서 고른다. 계산기 창을 열지 않아도 된다.
     fireEvent.click(await screen.findByRole('button', { name: /목표 옵션 추가/ }));
     // 레벨 옆에 그 레벨의 실제 수치를 적는다.
     expect(screen.getByText('5% 증가 이상')).toBeInTheDocument();
     // 옵션이 셋뿐이라 목표 옵션은 늘 붙는다.
     expect(screen.getAllByText('100%').length).toBeGreaterThan(0);
-    // 목표를 고르면 n 번 세공했을 때의 확률도 함께 나온다.
-    expect(screen.getByRole('region', { name: '세공 횟수별 확률' })).toHaveTextContent(
+    expect(screen.queryByRole('region', { name: '세공 횟수별 확률' })).not.toBeInTheDocument();
+
+    // 계산기 창은 고른 목표를 읽어 n 번 세공했을 때의 확률을 센다.
+    fireEvent.click(screen.getByRole('button', { name: /특정 세공 기댓값/ }));
+    expect(await screen.findByRole('region', { name: '세공 횟수별 확률' })).toHaveTextContent(
       '한 번 이상 나올 확률 100%',
     );
 
