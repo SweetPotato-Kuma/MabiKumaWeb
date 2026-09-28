@@ -164,9 +164,24 @@ function StatTitle({ label, detail }: { label: string; detail: string }) {
 
 /** 장비 타입의 그림. 그 타입의 대표 아이템 그림을 쓴다. 대표가 없으면 그리지 않는다. */
 function TypeIcon({ name, size }: { name: string; size: number }) {
+  const { token } = theme.useToken();
+  const dark = useResolvedThemeMode() === 'dark';
   const entry = TYPE_ICONS[name];
   if (!entry) return null;
-  return <ItemIcon category={entry[0]} name={entry[1]} size={size} />;
+  // 최상위 장비 그림은 검보라가 많아 어두운 바탕에 묻힌다. 어두운 화면에서는 밝은 윤곽을 얇게 둘러
+  // 도트 그림을 바탕에서 떼어 낸다. 그림의 크기와 자리는 그대로다.
+  const outline = `drop-shadow(0 0 1px ${token.colorTextSecondary})`;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        flex: `0 0 ${size}px`,
+        filter: dark ? `${outline} ${outline}` : undefined,
+      }}
+    >
+      <ItemIcon category={entry[0]} name={entry[1]} size={size} />
+    </span>
+  );
 }
 
 /**

@@ -195,6 +195,11 @@ export function buildThemeConfig(mode: ThemeMode, reducedMotion = false): ThemeC
       Segmented: {
         itemSelectedBg: isDark ? surface.elevated : surface.container,
       },
+      TreeSelect: {
+        // 잎은 들여쓰기 한 칸과 빈 화살표 자리 뒤에서 시작해 묶음보다 48px 안쪽에 있었다. 들여쓰기를
+        // 줄여 잎이 묶음 화살표 바로 옆에서 시작하게 한다. 묶음 두 단계짜리 트리(세공 장비)만 쓴다.
+        indentSize: 8,
+      },
     },
   };
 }
