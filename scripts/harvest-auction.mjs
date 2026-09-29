@@ -11,23 +11,9 @@
  *
  * 실행: NEXON_API_KEY=... node scripts/harvest-auction.mjs
  */
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { readCategories, readDictionary, readExcluded, writeDictionary } from './lib/dictionary.mjs';
 
 const API_ORIGIN = 'https://open.api.nexon.com';
-const OUT_DIR = resolve(process.cwd(), 'public/data/items');
-/** 전체 자동완성용 이름 인덱스. 카테고리 파일과 달리 category 필드가 없다. */
-const NAMES_FILE = 'names.json';
-const CONSTANTS_PATH = resolve(process.cwd(), 'src/features/auction/constants.ts');
-/**
- * 사전에 넣지 않을 이름. 카테고리 -> 이름 목록.
- *
- * 경매장에 올라오지만 게임 안에서 설명도 그림도 찾을 수 없는 이름들이다. 사전에 두면 빈 줄만
- * 늘어난다. 한 번 빼도 다음 수집 때 경매장에서 다시 보이므로 여기 적어 두고 매번 거른다.
- * 나중에 게임 데이터에 생기면 이 파일에서 지우면 다음 수집에 돌아온다.
- */
-const EXCLUDED_PATH = resolve(process.cwd(), 'scripts/dictionary-excluded.json');
 
 /** 넥슨 쪽에 부담을 주지 않도록 요청 간 간격을 둔다. */
 const REQUEST_DELAY_MS = 250;
@@ -45,22 +31,6 @@ const today = new Date().toISOString().slice(0, 10);
 
 function sleep(ms) {
   return new Promise((done) => setTimeout(done, ms));
-}
-
-/** 카테고리 이름에서 파일 이름을 만든다. 목록 순서가 바뀌어도 파일이 안 흔들리도록 해시를 쓴다. */
-function fileNameFor(category) {
-  return `${createHash('sha256').update(category).digest('hex').slice(0, 8)}.json`;
-}
-
-/**
- * 화면과 수집기가 같은 카테고리 목록을 보도록 상수 파일에서 읽어 온다.
- * .mjs 에서 .ts 를 import 할 수 없어 배열 리터럴만 뽑아낸다.
- */
-async function readCategories() {
-  const source = await readFile(CONSTANTS_PATH, 'utf8');
-  const block = source.match(/AUCTION_ITEM_CATEGORIES\s*=\s*\[([\s\S]*?)\]/);
-  if (!block) throw new Error('constants.ts 에서 AUCTION_ITEM_CATEGORIES 를 찾지 못했습니다.');
-  return [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
 }
 
 async function requestPage(category, cursor) {
@@ -87,51 +57,11 @@ async function requestPage(category, cursor) {
   throw new Error('재시도 한도를 넘었습니다.');
 }
 
-/** 뺄 이름을 "카테고리\u0000이름" 집합으로 읽는다. 파일이 없으면 빼지 않는다. */
-async function readExcluded() {
-  const excluded = new Set();
-  let parsed;
-  try {
-    parsed = JSON.parse(await readFile(EXCLUDED_PATH, 'utf8'));
-  } catch {
-    return excluded;
-  }
-  for (const [category, names] of Object.entries(parsed)) {
-    for (const name of names) excluded.add(`${category}\u0000${name}`);
-  }
-  return excluded;
-}
-
-/** 기존 사전을 읽어 이름 → 레코드 맵으로 만든다. 없으면 빈 맵. 뺄 이름은 여기서 버린다. */
-async function readExisting(excluded) {
-  const byCategory = new Map();
-  let files;
-  try {
-    files = await readdir(OUT_DIR);
-  } catch {
-    return byCategory;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith('.json') || file === 'index.json' || file === NAMES_FILE) continue;
-    try {
-      const parsed = JSON.parse(await readFile(resolve(OUT_DIR, file), 'utf8'));
-      if (!parsed?.category || !Array.isArray(parsed.items)) continue;
-      const kept = parsed.items.filter((item) => !excluded.has(`${parsed.category}\u0000${item.name}`));
-      byCategory.set(parsed.category, new Map(kept.map((item) => [item.name, item])));
-    } catch (cause) {
-      console.warn(`  기존 파일을 읽지 못해 건너뜁니다: ${file} (${cause.message})`);
-    }
-  }
-
-  return byCategory;
-}
-
 async function main() {
   const categories = await readCategories();
   const known = new Set(categories);
   const excluded = await readExcluded();
-  const dictionary = await readExisting(excluded);
+  const dictionary = await readDictionary(excluded);
   const before = [...dictionary.values()].reduce((sum, items) => sum + items.size, 0);
 
   console.log(`카테고리 ${categories.length}개, 기존 사전 ${before}개로 시작합니다. 뺄 이름 ${excluded.size}개.`);
@@ -197,37 +127,7 @@ async function main() {
     process.exit(1);
   }
 
-  await mkdir(OUT_DIR, { recursive: true });
-
-  const index = [];
-  // 전체 자동완성용. [이름, 카테고리 번호] 만 담아 한 파일로 둔다.
-  const nameRows = [];
-  for (const [category, items] of [...dictionary].sort((a, b) => a[0].localeCompare(b[0], 'ko'))) {
-    const sorted = [...items.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    const file = fileNameFor(category);
-    await writeFile(
-      resolve(OUT_DIR, file),
-      `${JSON.stringify({ category, updated: today, count: sorted.length, items: sorted }, null, 2)}\n`,
-    );
-    for (const item of sorted) nameRows.push([item.name, index.length]);
-    index.push({ name: category, file, count: sorted.length, ...(known.has(category) ? {} : { unlisted: true }) });
-  }
-
-  const total = index.reduce((sum, entry) => sum + entry.count, 0);
-  await writeFile(
-    resolve(OUT_DIR, 'index.json'),
-    `${JSON.stringify({ updated: today, total, categories: index }, null, 2)}\n`,
-  );
-
-  /**
-   * 전체 카테고리 자동완성은 이 파일 하나로 한다. 카테고리 파일 79개를 다 받을 수는 없다.
-   * 첫/마지막 관측일은 빼고 이름과 카테고리 번호만 남겨 들여쓰기 없이 쓴다.
-   * 15,000개 기준 원본 650KB, gzip 120KB 남짓이다.
-   */
-  await writeFile(
-    resolve(OUT_DIR, NAMES_FILE),
-    `${JSON.stringify({ updated: today, categories: index.map((entry) => entry.name), items: nameRows })}\n`,
-  );
+  const total = await writeDictionary(dictionary, { today, known });
 
   console.log(`\n요청 ${requests}회, 매물 ${listings}건을 훑어 사전 ${before} → ${total}개가 되었습니다.`);
   if (unlisted.size > 0) {

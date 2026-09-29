@@ -1,0 +1,120 @@
+name: Sync game data
+
+on:
+  # 손으로도 돌릴 수 있어야 한다. 게임 업데이트 직후나 처음 채울 때 쓴다.
+  workflow_dispatch:
+  # 월요일은 경매장 사전 수집(harvest.yml, 09:00 UTC) 뒤에, 목요일은 수요일 점검 뒤에 돈다.
+  schedule:
+    - cron: '0 12 * * 1,4'
+
+# contents 는 결과 커밋용, 나머지는 이어서 부르는 배포용.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# 경매장 사전 수집과 같은 파일(public/data/items)을 쓴다. 겹쳐 돌면 서로의 결과를 덮는다.
+concurrency:
+  group: harvest
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync
+    runs-on: ubuntu-latest
+    # 처음에는 그림과 장비 정보를 전부 받아 올린다. 그 뒤로는 새로 생긴 것만 받아 몇 분이면 끝난다.
+    timeout-minutes: 350
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 받아 둔 그림과 올린 기록. 없으면 처음부터 다시 받고 올린다.
+      - name: Restore download cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/item-cards
+            .cache/equipment
+          key: game-data-${{ github.run_id }}
+          restore-keys: game-data-
+
+      - name: Build recipes
+        run: node scripts/build-recipes.mjs
+
+      - name: Fill recipe-only names into the dictionary
+        run: node scripts/sync-recipe-names.mjs
+
+      # 새 데이터가 화면 규칙을 깨면 여기서 멈춘다. 아직 아무것도 올리거나 커밋하지 않았다.
+      - name: Test
+        run: npm test
+
+      - name: Fingerprint
+        id: fingerprint
+        run: |
+          mkdir -p .cache
+          value="$(node scripts/game-data/fingerprint.mjs)"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+          if [ -f .cache/game-data-stamp ] && [ "$(cat .cache/game-data-stamp)" = "$value" ]; then
+            echo "same=true" >> "$GITHUB_OUTPUT"
+            echo "리소스 버전과 사전이 지난번과 같습니다. 카드와 장비는 다시 올리지 않습니다."
+          else
+            echo "same=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload cards and equipment
+        if: steps.fingerprint.outputs.same != 'true'
+        env:
+          VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL }}
+          MABIKUMA_ADMIN_KEY: ${{ secrets.MABIKUMA_ADMIN_KEY }}
+        run: |
+          node --max-old-space-size=4096 scripts/game-data/collect-item-cards.mjs --recipe-icons
+          node scripts/build-recipes.mjs --icons-only
+          node --max-old-space-size=4096 scripts/game-data/collect-item-cards.mjs
+          node --max-old-space-size=4096 scripts/game-data/collect-equipment.mjs
+          echo "${{ steps.fingerprint.outputs.value }}" > .cache/game-data-stamp
+
+      # 성공하든 실패하든 받은 것은 남겨 다음에 이어서 한다.
+      - name: Save download cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/item-cards
+            .cache/equipment
+            .cache/game-data-stamp
+          key: game-data-${{ github.run_id }}
+
+      - name: Commit
+        id: commit
+        run: |
+          paths="public/data/items public/data/recipes.json public/data/skills"
+          if [ -z "$(git status --porcelain $paths)" ]; then
+            echo "바뀐 것이 없습니다."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $paths
+          git commit -m "chore: update recipes and item dictionary ($(date -u +%Y-%m-%d))"
+          git pull --rebase
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  # 커밋이 생겼을 때만 사이트에 반영한다.
+  deploy:
+    name: Deploy
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    uses: ./.github/workflows/deploy.yml
