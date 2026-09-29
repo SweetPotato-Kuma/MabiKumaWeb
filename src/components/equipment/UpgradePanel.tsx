@@ -1,4 +1,5 @@
-import { Descriptions, Flex, Select, Typography } from 'antd';
+import { Descriptions, Flex, Select, Tooltip, Typography } from 'antd';
+import { HelpIcon } from '@/components/icons';
 import { formatNumber } from '@/lib/format';
 import { selectedUpgrades, upgradeCost, upgradesForSlot } from '@/features/equipment/simulate';
 import { describeStats } from '@/features/equipment/stats';
@@ -57,17 +58,11 @@ function costText(def: UpgradeDef): string {
  * 개조. 칸 하나가 한 줄이다: 칸 이름, 고르는 칸, 고른 개조의 효과와 비용.
  *
  * 칸마다 할 수 있는 개조를 전부 펼쳐 두었더니 무기 하나에 수십 줄이 되어 무엇을 골랐는지 오히려
- * 안 보였다. 고른 것만 한 줄로 두고, 무엇이 있는지는 고르는 칸을 열면 효과, 비용, NPC 까지 보인다.
- * 한 장비의 개조는 대개 같은 NPC 가 해 주므로, 모두 같으면 NPC 는 맨 아래에 한 번만 적는다.
+ * 안 보였다. 고른 것만 한 줄로 두고, 무엇이 있는지는 고르는 칸을 열면 효과와 비용이 보인다.
+ * 개조를 해 주는 NPC 는 칸 이름 옆 (?) 에 올리면 보인다. 줄과 고르는 칸 양쪽에 적으면 같은 말이 겹치고 길어졌다.
  */
 export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: UpgradePanelProps) {
   const cost = upgradeCost(selectedUpgrades({ slots, gemSlots }, upgrades));
-
-  const all = [...new Set(item.upgrade?.ids ?? [])]
-    .map((id) => upgrades[id])
-    .filter((def): def is UpgradeDef => Boolean(def));
-  const npcTexts = new Set(all.map(npcText));
-  const commonNpc = npcTexts.size === 1 ? [...npcTexts][0] : null;
 
   const slotRow = (slot: number, gem: boolean) => {
     const current = gem ? gemSlots : slots;
@@ -81,14 +76,37 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
       else onChange(next, gemSlots);
     };
     const summary = chosen ? `${effectText(chosen)} (${costText(chosen)})` : '';
-    const slotNpcs = slotNpcText(candidates.map(([, def]) => def));
+    const slotNpcs = chosen ? npcText(chosen) : slotNpcText(candidates.map(([, def]) => def));
 
     return (
       // 한 줄. 좁은 화면에서는 효과가 고르는 칸 아래로 떨어진다.
       <Flex key={id} align="center" gap={12} wrap style={{ minHeight: 32 }}>
-        <label htmlFor={id} style={{ flex: '0 0 84px' }}>
-          <Text strong>{gem ? `보석 ${slot + 1}` : `${slot + 1}번째`}</Text>
-        </label>
+        <Flex align="center" gap={4} style={{ flex: '0 0 84px' }}>
+          <label htmlFor={id}>
+            <Text strong>{gem ? `보석 ${slot + 1}` : `${slot + 1}번째`}</Text>
+          </label>
+          {slotNpcs ? (
+            <Tooltip
+              placement="topLeft"
+              title={
+                <div style={{ fontSize: 12, maxWidth: 240 }}>
+                  <div>개조 NPC</div>
+                  <div>{slotNpcs}</div>
+                </div>
+              }
+            >
+              <span
+                tabIndex={0}
+                aria-label={`개조 NPC: ${slotNpcs}`}
+                style={{ display: 'inline-flex', fontSize: 14, cursor: 'help' }}
+              >
+                <Text type="secondary" style={{ display: 'inline-flex' }}>
+                  <HelpIcon />
+                </Text>
+              </span>
+            </Tooltip>
+          ) : null}
+        </Flex>
         <Select<number>
           id={id}
           allowClear
@@ -105,7 +123,6 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
           }))}
           optionRender={(option) => {
             const def: UpgradeDef = option.data.def;
-            const npcs = commonNpc === null ? npcText(def) : '';
             return (
               <Flex vertical style={{ maxWidth: 420, whiteSpace: 'normal' }}>
                 <span>{option.data.label}</span>
@@ -119,7 +136,6 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
                 ) : null}
                 <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
                   {costText(def)}
-                  {npcs ? `, NPC ${npcs}` : ''}
                 </Text>
               </Flex>
             );
@@ -131,11 +147,7 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
           style={{ flex: '2 1 240px', minWidth: 0 }}
           type={chosen ? undefined : 'secondary'}
         >
-          {chosen
-            ? summary
-            : candidates.length
-              ? slotNpcs && `NPC ${slotNpcs}`
-              : '이 칸에 할 수 있는 개조가 없습니다'}
+          {chosen ? summary : candidates.length ? '' : '이 칸에 할 수 있는 개조가 없습니다'}
         </Text>
       </Flex>
     );
@@ -161,9 +173,6 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
             label: '수수료 합계',
             children: <span className="tnum">{formatNumber(cost.gold)} G</span>,
           },
-          ...(commonNpc
-            ? [{ key: 'npc', label: '개조 NPC', children: commonNpc, span: 'filled' as const }]
-            : []),
         ]}
       />
     </Flex>

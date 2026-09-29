@@ -308,17 +308,13 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
     expect(await screen.findAllByText('체력 15 증가')).toHaveLength(2);
   });
 
-  it('개조 NPC 가 모두 같으면 한 번만 적고 이름 모르는 NPC 는 수만 센다', async () => {
+  it('개조 NPC 는 칸 이름 옆 (?) 에 올리면 보이고 이름 모르는 NPC 는 수만 센다', async () => {
     renderPage(SWORD_PATH);
+
+    const help = (await screen.findAllByLabelText('개조 NPC: 네리스, 퍼거스 외 1명(이름 미확인)'))[0];
+    fireEvent.mouseEnter(help);
 
     expect(await screen.findByText('개조 NPC')).toBeInTheDocument();
-    expect(screen.getByText('네리스, 퍼거스 외 1명(이름 미확인)')).toBeInTheDocument();
-  });
-
-  it('고르지 않은 개조 칸에는 몇 가지 중 고르는지 대신 해 주는 NPC 를 적는다', async () => {
-    renderPage(SWORD_PATH);
-
-    expect((await screen.findAllByText('NPC 네리스, 퍼거스 외 1명(이름 미확인)')).length).toBeGreaterThan(0);
     expect(screen.queryByText(/가지 중에서/)).not.toBeInTheDocument();
   });
 

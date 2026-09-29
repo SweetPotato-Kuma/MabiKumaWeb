@@ -16,6 +16,7 @@ import documentScannerSvg from '@material-symbols/svg-400/rounded/document_scann
 import gavelSvg from '@material-symbols/svg-400/rounded/gavel.svg?raw';
 import gridViewSvg from '@material-symbols/svg-400/rounded/grid_view.svg?raw';
 import hardwareSvg from '@material-symbols/svg-400/rounded/hardware.svg?raw';
+import helpSvg from '@material-symbols/svg-400/rounded/help.svg?raw';
 import homeSvg from '@material-symbols/svg-400/rounded/home.svg?raw';
 import imageSvg from '@material-symbols/svg-400/rounded/image.svg?raw';
 import infoSvg from '@material-symbols/svg-400/rounded/info.svg?raw';
@@ -112,6 +113,7 @@ export const DeleteIcon = createIcon(deleteSvg, 'DeleteIcon');
 export const GemIcon = createIcon(diamondSvg, 'GemIcon');
 export const GridIcon = createIcon(gridViewSvg, 'GridIcon');
 export const HammerIcon = createIcon(hardwareSvg, 'HammerIcon');
+export const HelpIcon = createIcon(helpSvg, 'HelpIcon');
 export const HomeIcon = createIcon(homeSvg, 'HomeIcon');
 export const HornIcon = createIcon(campaignSvg, 'HornIcon');
 export const ImageIcon = createIcon(imageSvg, 'ImageIcon');
