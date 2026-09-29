@@ -50,8 +50,9 @@ export type NavEntry = NavLeaf | NavGroup;
 export const isNavGroup = (entry: NavEntry): entry is NavGroup => 'sections' in entry;
 
 /**
- * 유물은 무리아스에 묶이지 않는다. 탈라 가흐 유물이나 잔흔석 같은 재화가 나와도 이 칸 아래로 들어오게
- * 따로 둔다. 시뮬레이터는 "장비" 소제목 아래에 세공과 성수를 둔다. 순서는 게임에 먼저 나온 것부터다.
+ * 사용자가 직접 해 보는 것(세공, 성수, 유물 복원)은 시뮬레이터 아래로 모은다. 소제목은 무엇을 다루는지로 가르고,
+ * 탈라 가흐 유물 복원이 나오면 "유물" 소제목에 한 칸 더한다. 순서는 게임에 먼저 나온 것부터다.
+ * 유물 시세는 매물을 읽는 화면이라 경매장 곁에 둔다. 탈라 가흐 유물은 그 화면의 탭으로 들어간다.
  */
 export const NAV_TREE: NavEntry[] = [
   { path: '/auction', label: '경매장', icon: <AuctionIcon />, keywords: '시세 가격 매물' },
@@ -62,20 +63,8 @@ export const NAV_TREE: NavEntry[] = [
     alsoMatches: [ITEM_PATH_PREFIX],
     keywords: '사전 제작 레시피 장비 도감',
   },
+  { path: '/relics', label: '유물 시세', icon: <TrendingUpIcon />, keywords: '무리아스 이데아 탈라가흐' },
   { path: '/dungeon-coins', label: '던전 코인', icon: <TollIcon />, keywords: '코인 가치 교환' },
-  {
-    key: 'relic',
-    label: '유물',
-    icon: <MuseumIcon />,
-    sections: [
-      {
-        items: [
-          { path: '/relics', label: '유물 시세', icon: <TrendingUpIcon />, keywords: '무리아스 이데아' },
-          { path: '/relic-simulator', label: '유물 복원', icon: <MuseumIcon />, keywords: '무리아스 이데아 시뮬레이터' },
-        ],
-      },
-    ],
-  },
   {
     key: 'simulator',
     label: '시뮬레이터',
@@ -86,6 +75,12 @@ export const NAV_TREE: NavEntry[] = [
         items: [
           { path: '/reforge-simulator', label: '세공', icon: <HammerIcon />, keywords: '시뮬레이터 세공 도구' },
           { path: '/holy-water-simulator', label: '성수', icon: <WaterDropIcon />, keywords: '무리아스 시뮬레이터' },
+        ],
+      },
+      {
+        title: '유물',
+        items: [
+          { path: '/relic-simulator', label: '무리아스 복원', icon: <MuseumIcon />, keywords: '유물 복원 이데아 시뮬레이터' },
         ],
       },
     ],

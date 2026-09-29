@@ -13,11 +13,12 @@ describe('메뉴 구조', () => {
     for (const path of paths.filter((each) => each !== ADMIN_NAV_ITEM.path)) expect(known).toContain(path);
   });
 
-  it('시뮬레이터는 세공, 성수 순이고 유물 복원은 유물 아래에 있다', () => {
+  it('시뮬레이터는 세공, 성수, 유물 복원 순이고 유물 시세는 시뮬레이터 밖에 있다', () => {
     const pages = navPages(entries);
     const simulators = pages.filter(({ trail }) => trail.startsWith('시뮬레이터')).map(({ leaf }) => leaf.label);
-    expect(simulators).toEqual(['세공', '성수']);
-    expect(pages.find(({ leaf }) => leaf.path === '/relic-simulator')?.trail).toBe('유물');
+    expect(simulators).toEqual(['세공', '성수', '무리아스 복원']);
+    expect(pages.find(({ leaf }) => leaf.path === '/relic-simulator')?.trail).toBe('시뮬레이터, 유물');
+    expect(pages.find(({ leaf }) => leaf.path === '/relics')?.trail).toBe('');
   });
 
   it('아이템 상세를 보는 동안에도 아이템 정보 칸이 선택돼 있다', () => {
