@@ -39,6 +39,8 @@ const book = buildRecipeBook({
 const LISTINGS: Record<string, [number, number][]> = {
   철괴: [[50, 10]],
   가죽: [[400, 5]],
+  // 완성품. 최저가에서 개당 재료비를 빼 손익을 낸다.
+  검: [[700, 1], [900, 2]],
   철광석: [[1, 100]],
   '순도 높은 힘의 결정': [[10000, 5]],
   '깨어난 힘의 정수': [[100, 100]],
@@ -91,8 +93,16 @@ describe('제작 비용', () => {
       .mocked(fetchAuctionList)
       .mock.calls.map(([params]) => params.itemName)
       .sort();
-    // 철광석은 철괴를 펼치기 전까지 묻지 않는다.
-    expect(asked).toEqual(['가죽', '철괴']);
+    // 철광석은 철괴를 펼치기 전까지 묻지 않는다. 완성품(검)은 손익을 내려고 묻는다.
+    expect(asked).toEqual(['가죽', '검', '철괴']);
+  });
+
+  it('완성품 최저가에서 재료비를 빼 제작 시 손익을 보여 준다', async () => {
+    renderCost();
+
+    // 검 최저가 700 - 재료비 550 = 150 이득
+    expect(await screen.findByText('150 G 이득')).toBeInTheDocument();
+    expect(screen.getByText('700 G')).toBeInTheDocument();
   });
 
   it('재료를 펼치면 하위 재료와 제작했을 때의 값을 보여 준다', async () => {

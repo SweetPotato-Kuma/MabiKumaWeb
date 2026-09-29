@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+import type { PriceState } from './market';
+import type { CostSum } from './plan';
+import { craftProfit } from './profit';
+
+const sum = (gold: number, extra: Partial<CostSum> = {}): CostSum => ({
+  gold,
+  unpriced: [],
+  short: [],
+  pending: 0,
+  ...extra,
+});
+
+const listed = (...prices: number[]): PriceState => ({
+  status: 'ok',
+  price: { offers: prices.map((price) => ({ price, count: 1 })), supply: prices.length, complete: true },
+});
+
+const plan = (gold: number, extra: Partial<CostSum> = {}) => ({
+  total: sum(gold, extra),
+  beads: 0,
+  beadsWorth: sum(0),
+});
+
+describe('만들어 팔 때의 손익', () => {
+  it('완성품 최저가에서 개당 재료비를 뺀다', () => {
+    // 소울 리버레이트 스태프: 최저가 22억, 재료비 2,141,566,016
+    expect(craftProfit(plan(2_141_566_016), 1, listed(2_200_000_000, 2_300_000_000))).toEqual({
+      unitCost: 2_141_566_016,
+      lowest: 2_200_000_000,
+      profit: 58_433_984,
+    });
+  });
+
+  it('여러 개를 만들면 개당으로 나눈다', () => {
+    expect(craftProfit(plan(3_000), 3, listed(900))).toEqual({ unitCost: 1_000, lowest: 900, profit: -100 });
+  });
+
+  it('값을 모르는 재료가 있거나 시세를 받는 중이면 손익을 내지 않는다', () => {
+    expect(craftProfit(plan(1_000, { unpriced: [7] }), 1, listed(2_000)).profit).toBeUndefined();
+    expect(craftProfit(plan(1_000, { pending: 2 }), 1, listed(2_000)).unitCost).toBeUndefined();
+    expect(craftProfit(plan(1_000, { short: [7] }), 1, listed(2_000)).profit).toBeUndefined();
+  });
+
+  it('완성품 매물이 없거나 받는 중이면 최저가와 손익이 없다', () => {
+    expect(craftProfit(plan(1_000), 1, listed()).lowest).toBeUndefined();
+    expect(craftProfit(plan(1_000), 1, { status: 'loading' }).profit).toBeUndefined();
+  });
+
+  it('코인으로 산 재료는 경매장 가치만큼 재료비에 넣는다', () => {
+    const withCoins = { total: sum(1_000), beads: 5, beadsWorth: sum(500) };
+    expect(craftProfit(withCoins, 1, listed(2_000))).toEqual({ unitCost: 1_500, lowest: 2_000, profit: 500 });
+  });
+});

@@ -34,6 +34,7 @@ import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { coinPurchasesOf } from '@/features/dungeonCoins/exchanges';
 import { beadsToMake, mainCoinOf, makesFromBeads } from '@/features/dungeonCoins/subBeads';
 import { useMarketPrices } from '@/features/crafting/market';
+import { craftProfit } from '@/features/crafting/profit';
 import {
   isWednesdayInKorea,
   npcUnitPrice,
@@ -188,6 +189,15 @@ function RecipeCost({
       beads,
     });
   const plan = planWith(true);
+
+  /**
+   * 완성품 시세. 경매장에서 거래되는 물건만 묻는다. 최저가에서 개당 재료비를 빼 만들어 팔 때의 손익을 낸다.
+   */
+  const productName = book.itemName(recipe.item);
+  const productTradable = book.isTradable(recipe.item);
+  const productNames = useMemo(() => (productTradable ? [productName] : []), [productTradable, productName]);
+  const productPrice = useMarketPrices(productNames).get(productName);
+  const profit = craftProfit(plan, quantity, productPrice);
   // 비교용. NPC 에서 하나도 사지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
   const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
   const auctionPlan = usesNpc ? planWith(false) : undefined;
@@ -358,6 +368,48 @@ function RecipeCost({
                 value={formatGold(plan.total.gold)}
                 styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
               />
+              {quantity > 1 ? (
+                <Statistic
+                  title="개당 재료비"
+                  value={profit.unitCost === undefined ? '-' : formatGold(profit.unitCost)}
+                  styles={{
+                    content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontSize: 20 },
+                  }}
+                />
+              ) : null}
+              {productTradable ? (
+                <Statistic
+                  title="완성품 최저가"
+                  value={profit.lowest === undefined ? '-' : formatGold(profit.lowest)}
+                  styles={{
+                    content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontSize: 20 },
+                  }}
+                />
+              ) : null}
+              {productTradable ? (
+                <Statistic
+                  title="제작 시 손익"
+                  value={
+                    profit.profit === undefined
+                      ? '-'
+                      : `${formatGold(Math.abs(profit.profit))} ${profit.profit >= 0 ? '이득' : '손해'}`
+                  }
+                  styles={{
+                    content: {
+                      fontVariantNumeric: 'tabular-nums',
+                      whiteSpace: 'nowrap',
+                      fontSize: 20,
+                      // 색만으로 가르지 않는다. 값 뒤에 이득, 손해를 글자로 붙인다.
+                      color:
+                        profit.profit === undefined
+                          ? undefined
+                          : profit.profit >= 0
+                            ? token.colorSuccess
+                            : token.colorError,
+                    },
+                  }}
+                />
+              ) : null}
               {auctionPlan ? (
                 <Statistic
                   title="경매장에서만 산다면"
