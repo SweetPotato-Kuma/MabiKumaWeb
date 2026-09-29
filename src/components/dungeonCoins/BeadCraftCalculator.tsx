@@ -35,10 +35,8 @@ import { rankText, useRecipeBookQuery, type RecipeBook } from '@/features/crafti
 import {
   MAX_BEADS,
   beadCraftsOf,
-  expandCrafts,
   planWithInventory,
   rankCrafts,
-  subMaterialsOf,
   valueCraft,
   type BeadCraft,
   type BeadPlan,
@@ -148,12 +146,7 @@ function CraftName({
   const category = categoryOf(craft.name);
   return (
     <Flex gap={8} align="center">
-      <ItemIcon
-        category={category}
-        name={craft.name}
-        file={book.iconOf(craft.itemId)}
-        size={ITEM_ICON}
-      />
+      <ItemIcon category={category} name={craft.name} file={book.iconOf(craft.itemId)} size={ITEM_ICON} />
       <Flex vertical gap={2} style={{ minWidth: 0 }}>
         <Flex gap={6} align="center" wrap>
           <ItemInfoLink name={craft.name} category={category} />
@@ -174,9 +167,7 @@ function CraftName({
 /** 가진 재료로 채운 개수. 하나도 없으면 아무것도 그리지 않는다. */
 function heldText(held: number, count: number): string {
   if (held <= 0) return '';
-  return held >= count
-    ? `가진 것 ${formatNumber(held)}개로 다 채움, `
-    : `가진 것 ${formatNumber(held)}개, `;
+  return held >= count ? `가진 것 ${formatNumber(held)}개로 다 채움, ` : `가진 것 ${formatNumber(held)}개, `;
 }
 
 /** 줄을 펼치면 보이는 재료 내역. 구슬 재료와 사는 재료를 한 목록에 둔다. */
@@ -224,47 +215,30 @@ function CraftInputs({
         </Flex>
       ) : null}
       {pick ? <PlanUsage pick={pick} book={book} categoryOf={categoryOf} /> : null}
-      {pick
-        ? null
-        : craft.beadRows.map(({ input, held, beads, market }) => (
-            <Flex key={`bead-${input.itemId}`} justify="space-between" align="center" gap={16} wrap>
-              <Flex gap={6} align="center">
-                <MaterialName
-                  itemId={input.itemId}
-                  name={input.name}
-                  book={book}
-                  categoryOf={categoryOf}
-                />
-                <Text className="tnum">{formatNumber(input.count)}개</Text>
-              </Flex>
-              <Text type="secondary" className="tnum">
-                {heldText(held, input.count)}구슬 {formatNumber(beads)}개
-                {market.status === 'ok' ? ` (시세 ${formatGold(market.cost)})` : ''}
-              </Text>
-            </Flex>
-          ))}
-      {pick
-        ? null
-        : craft.inputs.map(({ input, held, cost }) => (
-            <Flex key={`buy-${input.itemId}`} justify="space-between" align="center" gap={16} wrap>
-              <Flex gap={6} align="center">
-                <MaterialName
-                  itemId={input.itemId}
-                  name={input.name}
-                  book={book}
-                  categoryOf={categoryOf}
-                />
-                <Text className="tnum">{formatNumber(input.count)}개</Text>
-              </Flex>
-              <Text
-                type={cost.status === 'ok' && cost.from !== 'held' ? undefined : 'secondary'}
-                className="tnum"
-              >
-                {cost.status === 'ok' && cost.from === 'held' ? '' : heldText(held, input.count)}
-                {inputCostText(cost)}
-              </Text>
-            </Flex>
-          ))}
+      {pick ? null : craft.beadRows.map(({ input, held, beads, market }) => (
+        <Flex key={`bead-${input.itemId}`} justify="space-between" align="center" gap={16} wrap>
+          <Flex gap={6} align="center">
+            <MaterialName itemId={input.itemId} name={input.name} book={book} categoryOf={categoryOf} />
+            <Text className="tnum">{formatNumber(input.count)}개</Text>
+          </Flex>
+          <Text type="secondary" className="tnum">
+            {heldText(held, input.count)}구슬 {formatNumber(beads)}개
+            {market.status === 'ok' ? ` (시세 ${formatGold(market.cost)})` : ''}
+          </Text>
+        </Flex>
+      ))}
+      {pick ? null : craft.inputs.map(({ input, held, cost }) => (
+        <Flex key={`buy-${input.itemId}`} justify="space-between" align="center" gap={16} wrap>
+          <Flex gap={6} align="center">
+            <MaterialName itemId={input.itemId} name={input.name} book={book} categoryOf={categoryOf} />
+            <Text className="tnum">{formatNumber(input.count)}개</Text>
+          </Flex>
+          <Text type={cost.status === 'ok' && cost.from !== 'held' ? undefined : 'secondary'} className="tnum">
+            {cost.status === 'ok' && cost.from === 'held' ? '' : heldText(held, input.count)}
+            {inputCostText(cost)}
+          </Text>
+        </Flex>
+      ))}
     </Flex>
   );
 }
@@ -290,26 +264,12 @@ function PlanUsage({
               ? `가진 것 ${formatNumber(row.held)}개로 다 채움`
               : `${heldPart}${formatGold(row.gold)} (${row.from === 'npc' ? 'NPC' : '경매장'})`;
         return (
-          <Flex
-            key={`${row.kind}-${row.itemId}`}
-            justify="space-between"
-            align="center"
-            gap={16}
-            wrap
-          >
+          <Flex key={`${row.kind}-${row.itemId}`} justify="space-between" align="center" gap={16} wrap>
             <Flex gap={6} align="center">
-              <MaterialName
-                itemId={row.itemId}
-                name={row.name}
-                book={book}
-                categoryOf={categoryOf}
-              />
+              <MaterialName itemId={row.itemId} name={row.name} book={book} categoryOf={categoryOf} />
               <Text className="tnum">{formatNumber(row.count)}개</Text>
             </Flex>
-            <Text
-              type={row.kind === 'buy' && row.held < row.count ? undefined : 'secondary'}
-              className="tnum"
-            >
+            <Text type={row.kind === 'buy' && row.held < row.count ? undefined : 'secondary'} className="tnum">
               {rest}
             </Text>
           </Flex>
@@ -349,9 +309,7 @@ function PlanSummary({ plan, beads, pending }: { plan: BeadPlan; beads: number; 
         <Statistic
           title="쓰는 구슬"
           value={`${formatNumber(plan.beadsUsed)} / ${formatNumber(beads)}개`}
-          styles={{
-            content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontSize: 20 },
-          }}
+          styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontSize: 20 } }}
         />
       </Flex>
       <Text type="secondary" style={{ fontSize: 13 }}>
@@ -484,8 +442,7 @@ function InventoryModal({
     >
       <Flex vertical gap={20}>
         <Text type="secondary" style={{ fontSize: 13 }}>
-          가진 만큼은 구슬을 쓰지 않고 사지 않은 것으로 계산합니다. 넣은 값은 이 브라우저에
-          남습니다.
+          가진 만큼은 구슬을 쓰지 않고 사지 않은 것으로 계산합니다. 넣은 값은 이 브라우저에 남습니다.
         </Text>
         {section('구슬로 교환해 둔 재료', items.bead)}
         {section('가진 일반 재료', items.buy)}
@@ -510,7 +467,11 @@ export function BeadCraftCalculator({ entry }: { entry: DungeonCoin }) {
       // 좁은 화면은 표 칸이 빠듯해 본문 여백을 줄인다.
       styles={{ body: screens.md === false ? { padding: 12 } : undefined }}
     >
-      <QueryState isLoading={bookQuery.isLoading} error={bookQuery.error} isEmpty={false}>
+      <QueryState
+        isLoading={bookQuery.isLoading}
+        error={bookQuery.error}
+        isEmpty={false}
+      >
         {bookQuery.data ? <CalculatorBody book={bookQuery.data} entry={entry} /> : null}
       </QueryState>
     </Card>
@@ -529,16 +490,11 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
   const [inventory, setInventory] = useInventory(entry.key);
   const [inventoryOpen, setInventoryOpen] = useState(false);
 
-  const [made, setMade] = useState<number[]>([]);
-
-  const baseCrafts = useMemo(() => beadCraftsOf(book, entry.exchanges), [book, entry]);
-  const subs = useMemo(() => subMaterialsOf(baseCrafts), [baseCrafts]);
-  const crafts = useMemo(() => expandCrafts(baseCrafts, new Set(made)), [baseCrafts, made]);
+  const crafts = useMemo(() => beadCraftsOf(book, entry.exchanges), [book, entry]);
   const names = useMemo(
     () => [
       ...new Set(
-        // 시세는 하위 재료를 어떻게 고르든 같은 이름을 묻는다. 고르는 순간 다시 받지 않도록 기본 목록으로 센다.
-        baseCrafts.flatMap((craft) => [
+        crafts.flatMap((craft) => [
           craft.name,
           ...craft.buyInputs.map((input) => input.name),
           // 원재료 시세. 구슬로 받는 판은 거래 불가라 같은 이름의 거래 가능한 판 시세를 본다.
@@ -546,7 +502,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
         ]),
       ),
     ],
-    [baseCrafts],
+    [crafts],
   );
   const { prices, collectedAt } = useDungeonPrices(names);
 
@@ -587,13 +543,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
       ]
     : ranked;
   const tagOf = (craft: ValuedCraft) =>
-    recommending
-      ? pickOf.has(craft.itemId)
-        ? '추천'
-        : undefined
-      : craft.best
-        ? '가장 이득'
-        : undefined;
+    recommending ? (pickOf.has(craft.itemId) ? '추천' : undefined) : craft.best ? '가장 이득' : undefined;
 
   const nameIndex = useItemNameIndexQuery().data;
   const categoryOf = (name: string) => nameIndex?.categoriesByName.get(name)?.[0];
@@ -676,11 +626,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
           align: 'right',
           width: 150,
           render: (_value, craft) =>
-            craft.value.status === 'ok' ? (
-              <Gold value={craft.value.sale} />
-            ) : (
-              <UnknownCell value={craft.value} />
-            ),
+            craft.value.status === 'ok' ? <Gold value={craft.value.sale} /> : <UnknownCell value={craft.value} />,
         },
         {
           title: '1회 차익',
@@ -688,11 +634,7 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
           align: 'right',
           width: 150,
           render: (_value, craft) =>
-            craft.value.status === 'ok' ? (
-              <Gold value={craft.value.profit} />
-            ) : (
-              <UnknownCell value={craft.value} />
-            ),
+            craft.value.status === 'ok' ? <Gold value={craft.value.profit} /> : <UnknownCell value={craft.value} />,
         },
         {
           title: '가공 이득',
@@ -723,15 +665,13 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
                 {pick ? (
                   <Text strong className="tnum" style={{ fontSize: 13, color: token.colorPrimary }}>
                     {formatNumber(pick.times)}번 제작
-                    {pick.heldTimes > 0 ? ` (가진 재료로 ${formatNumber(pick.heldTimes)}번)` : ''},
-                    차익 {formatGold(pick.profit)}
+                    {pick.heldTimes > 0 ? ` (가진 재료로 ${formatNumber(pick.heldTimes)}번)` : ''}, 차익{' '}
+                    {formatGold(pick.profit)}
                   </Text>
                 ) : null}
                 <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
                   1회 구슬 {formatNumber(craft.beads)}개
-                  {craft.value.status === 'ok'
-                    ? `, 1회 차익 ${formatGold(craft.value.profit)}`
-                    : ''}
+                  {craft.value.status === 'ok' ? `, 1회 차익 ${formatGold(craft.value.profit)}` : ''}
                 </Text>
                 {craft.gain !== undefined ? (
                   <Text
@@ -786,52 +726,6 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
           </Checkbox>
         </Flex>
       </Form>
-
-      {subs.length > 0 ? (
-        <Flex vertical gap={8}>
-          <Flex gap={12} align="center" wrap>
-            <Text strong>구슬로 직접 만들 하위 재료</Text>
-            <Button
-              size="small"
-              type="link"
-              onClick={() => setMade(subs.map((sub) => sub.itemId))}
-              disabled={made.length === subs.length}
-            >
-              모두 선택
-            </Button>
-            <Button
-              size="small"
-              type="link"
-              onClick={() => setMade([])}
-              disabled={made.length === 0}
-            >
-              선택 해제
-            </Button>
-          </Flex>
-          <Flex wrap style={{ columnGap: 24, rowGap: 8 }}>
-            {subs.map((sub) => (
-              <Checkbox
-                key={sub.itemId}
-                checked={made.includes(sub.itemId)}
-                onChange={(event) =>
-                  setMade(
-                    event.target.checked
-                      ? [...made, sub.itemId]
-                      : made.filter((id) => id !== sub.itemId),
-                  )
-                }
-              >
-                <MaterialName
-                  itemId={sub.itemId}
-                  name={sub.name}
-                  book={book}
-                  categoryOf={categoryOf}
-                />
-              </Checkbox>
-            ))}
-          </Flex>
-        </Flex>
-      ) : null}
 
       <InventoryModal
         open={inventoryOpen}
@@ -898,9 +792,9 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
 
       <Text type="secondary" style={{ fontSize: 12 }}>
         차익은 가공품 경매장 최저가에서 구슬 말고 사야 하는 재료 값을 뺀 값입니다. 가공 이득은 구슬
-        재료까지 경매장 시세로 샀다고 칠 때 남는 값으로, 음수면 가공하면 원재료 값보다 싸집니다.
-        가진 재료는 값을 치르지 않은 것으로 봅니다. 판매 수수료는 빼지 않았고, 여러 번 만들면 재료
-        매물이 모자라거나 판매가가 내려갈 수 있습니다.
+        재료까지 경매장 시세로 샀다고 칠 때 남는 값으로, 음수면 가공하면 원재료 값보다 싸집니다. 가진
+        재료는 값을 치르지 않은 것으로 봅니다. 판매 수수료는 빼지 않았고, 여러 번 만들면 재료 매물이 모자라거나
+        판매가가 내려갈 수 있습니다.
         {collectedAt ? ` 시세는 ${snapshotAgeLabel(collectedAt)} 모은 값입니다.` : ''}
       </Text>
     </Flex>

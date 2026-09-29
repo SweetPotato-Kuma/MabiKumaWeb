@@ -3,12 +3,10 @@ import type { PriceState } from '@/features/crafting/market';
 import { buildRecipeBook } from '@/features/crafting/recipes';
 import {
   beadCraftsOf,
-  expandCrafts,
   inputCostOf,
   planBeads,
   planWithInventory,
   rankCrafts,
-  subMaterialsOf,
   valueCraft,
   type BeadCraft,
 } from './beadCrafts';
@@ -75,70 +73,6 @@ describe('beadCraftsOf', () => {
     expect(craft.beadInputs).toEqual([{ itemId: 1, name: '이빨', count: 7, beads: 7 }]);
     // 거래 불가 판이 함께 적힌 칸은 거래되는 판으로 산다.
     expect(craft.buyInputs).toEqual([{ itemId: 3, name: '마력석', count: 20 }]);
-  });
-});
-
-describe('하위 재료', () => {
-  /**
-   * 가공한 이빨(10) 은 이빨 7 + 마력석 20 이고 한 번에 2개 나온다.
-   * 큰 가공품(30) = 이빨 3 + 가공한 이빨 5 이고, 최종품(40) 의 재료다.
-   */
-  const nested = buildRecipeBook({
-    updated: '2026-09-26',
-    skills: [{ id: 10013, name: '핸디크래프트', count: 2 }],
-    items: {
-      1: ['이빨', 1],
-      3: ['마력석', 1],
-      10: ['가공한 이빨', 1],
-      30: ['큰 가공품', 1],
-      40: ['최종품', 1],
-    },
-    recipes: [
-      {
-        item: 10,
-        skill: 10013,
-        rank: 13,
-        yield: 2,
-        materials: [
-          [[1], 7],
-          [[3], 20],
-        ],
-      },
-      {
-        item: 30,
-        skill: 10013,
-        rank: 14,
-        yield: 1,
-        materials: [
-          [[1], 3],
-          [[10], 5],
-        ],
-      },
-      { item: 40, skill: 10013, rank: 15, yield: 1, materials: [[[30], 1]] },
-    ],
-  });
-  const crafts = beadCraftsOf(nested, EXCHANGES);
-  const big = (list: BeadCraft[]) => list.find((craft) => craft.name === '큰 가공품')!;
-
-  it('다른 가공품이 사는 재료이면서 구슬로 만들 수 있는 것을 하위 재료로 꼽는다', () => {
-    expect(subMaterialsOf(crafts).map((craft) => craft.name)).toEqual(['가공한 이빨']);
-  });
-
-  it('고르지 않으면 재료 칸을 그대로 둔다', () => {
-    expect(expandCrafts(crafts, new Set())).toEqual(crafts);
-  });
-
-  it('고른 하위 재료는 사는 대신 구슬 칸과 살 칸으로 풀어 더한다', () => {
-    const expanded = big(expandCrafts(crafts, new Set([10])));
-    // 가공한 이빨 5개 = 2개씩 3번 = 이빨 21 + 마력석 60
-    expect(expanded.beadInputs).toEqual([{ itemId: 1, name: '이빨', count: 24, beads: 24 }]);
-    expect(expanded.buyInputs).toEqual([{ itemId: 3, name: '마력석', count: 60 }]);
-    expect(expanded.beads).toBe(24);
-  });
-
-  it('고른 것만 푼다', () => {
-    const untouched = big(expandCrafts(crafts, new Set([999])));
-    expect(untouched.buyInputs.map((input) => input.name)).toEqual(['가공한 이빨']);
   });
 });
 
@@ -244,12 +178,7 @@ describe('valueCraft', () => {
     };
     // 이빨 7개 중 4개, 마력석 20개 중 5개를 가지고 있다.
     const held: Record<number, number> = { 1: 4, 3: 5 };
-    const valued = valueCraft(
-      craft,
-      (name) => prices[name],
-      noNpc,
-      (id) => held[id] ?? 0,
-    );
+    const valued = valueCraft(craft, (name) => prices[name], noNpc, (id) => held[id] ?? 0);
     expect(valued.needBeads).toBe(3);
     expect(valued.usesHeld).toBe(true);
     expect(valued.beadRows[0]).toMatchObject({ held: 4, beads: 3 });
@@ -260,12 +189,7 @@ describe('valueCraft', () => {
   it('가진 재료로 다 채우면 구슬도 살 것도 없다', () => {
     const prices: Record<string, PriceState> = { '가공한 이빨': priced([100_000, 1]) };
     const held: Record<number, number> = { 1: 100, 3: 100 };
-    const valued = valueCraft(
-      craft,
-      (name) => prices[name],
-      noNpc,
-      (id) => held[id] ?? 0,
-    );
+    const valued = valueCraft(craft, (name) => prices[name], noNpc, (id) => held[id] ?? 0);
     expect(valued.needBeads).toBe(0);
     expect(valued.inputs[0].cost).toEqual({ status: 'ok', cost: 0, from: 'held' });
     expect(valued.value).toMatchObject({ profit: 100_000, perBead: null });

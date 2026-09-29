@@ -152,7 +152,9 @@ export interface BeadRow {
  * 없지만 같은 이름의 거래 가능한 판이 경매장에 있다. 하나라도 모르면 합을 매기지 않는다.
  */
 export type RawCost =
-  { status: 'loading' } | { status: 'unknown' } | { status: 'ok'; cost: number };
+  | { status: 'loading' }
+  | { status: 'unknown' }
+  | { status: 'ok'; cost: number };
 
 /** 사는 재료 한 칸. held 는 가진 재료로 채운 개수, cost 는 나머지를 사는 값. */
 export interface BuyRow {
@@ -247,13 +249,11 @@ export function valueCraft(
     : markets.every((market) => market.status === 'ok')
       ? {
           status: 'ok',
-          cost: markets.reduce(
-            (sum, market) => sum + (market.status === 'ok' ? market.cost : 0),
-            0,
-          ),
+          cost: markets.reduce((sum, market) => sum + (market.status === 'ok' ? market.cost : 0), 0),
         }
       : { status: 'unknown' };
-  const gain = value.status === 'ok' && raw.status === 'ok' ? value.profit - raw.cost : undefined;
+  const gain =
+    value.status === 'ok' && raw.status === 'ok' ? value.profit - raw.cost : undefined;
   return { ...craft, beadRows, inputs, needBeads, usesHeld, value, raw, gain };
 }
 
@@ -304,18 +304,9 @@ export interface BeadPlanPick {
 }
 
 /** 한 번 만든 값(valued)을 times 번만큼 재료 사용 내역에 더한다. */
-function addUsage(
-  usage: MaterialUsage[],
-  valued: Omit<ValuedCraft, 'best'>,
-  times: number,
-): MaterialUsage[] {
+function addUsage(usage: MaterialUsage[], valued: Omit<ValuedCraft, 'best'>, times: number): MaterialUsage[] {
   const byId = new Map(usage.map((row) => [`${row.kind}-${row.itemId}`, { ...row }]));
-  const add = (
-    kind: 'bead' | 'buy',
-    itemId: number,
-    name: string,
-    change: Partial<MaterialUsage>,
-  ) => {
+  const add = (kind: 'bead' | 'buy', itemId: number, name: string, change: Partial<MaterialUsage>) => {
     const key = `${kind}-${itemId}`;
     const row = byId.get(key) ?? { itemId, name, kind, count: 0, held: 0, beads: 0, gold: 0 };
     row.count += (change.count ?? 0) * times;
@@ -494,65 +485,4 @@ export function planWithInventory(
     beadsUsed: picks.reduce((sum, pick) => sum + pick.beads, 0),
     profit: picks.reduce((sum, pick) => sum + pick.profit, 0),
   };
-}
-
-/**
- * 다른 가공품의 살 재료로 들어가면서 구슬로도 만들 수 있는 하위 재료.
- * 순도 높은 융합의 나무판이 사는 순도 높은 힘의 결정이 그렇다. 그 결정도 구슬 재료로 만든다.
- */
-export function subMaterialsOf(crafts: readonly BeadCraft[]): BeadCraft[] {
-  const boughtBySomeone = new Set<number>();
-  for (const craft of crafts)
-    for (const input of craft.buyInputs)
-      if (input.itemId !== craft.itemId) boughtBySomeone.add(input.itemId);
-  return crafts.filter((craft) => boughtBySomeone.has(craft.itemId));
-}
-
-/**
- * 고른 하위 재료를 사지 않고 구슬로 만든다고 보고 가공품의 재료 칸을 바꿔 쓴다.
- * 하위 재료의 구슬 칸과 살 칸이 가공품의 칸에 필요한 만큼(한 번에 나오는 개수로 올림) 더해진다.
- * 하위 재료가 또 하위 재료를 쓰면 그것도 고른 것만 풀고, 서로 물고 물리는 경우는 더 풀지 않는다.
- */
-export function expandCrafts(crafts: readonly BeadCraft[], made: ReadonlySet<number>): BeadCraft[] {
-  if (made.size === 0) return [...crafts];
-  const byItem = new Map(crafts.map((craft) => [craft.itemId, craft]));
-
-  const resolve = (craft: BeadCraft, path: ReadonlySet<number>): BeadCraft => {
-    const beadInputs = new Map<number, BeadInput>();
-    const buyInputs = new Map<number, BuyInput>();
-    const addBead = (input: BeadInput, times: number) => {
-      const row = beadInputs.get(input.itemId) ?? { ...input, count: 0, beads: 0 };
-      row.count += input.count * times;
-      row.beads += input.beads * times;
-      beadInputs.set(input.itemId, row);
-    };
-    const addBuy = (input: BuyInput, times: number) => {
-      const row = buyInputs.get(input.itemId) ?? { ...input, count: 0 };
-      row.count += input.count * times;
-      buyInputs.set(input.itemId, row);
-    };
-    for (const input of craft.beadInputs) addBead(input, 1);
-    for (const input of craft.buyInputs) {
-      const sub = byItem.get(input.itemId);
-      if (!sub || !made.has(input.itemId) || path.has(input.itemId)) {
-        addBuy(input, 1);
-        continue;
-      }
-      const inner = resolve(sub, new Set([...path, input.itemId]));
-      const times = Math.ceil(input.count / sub.yieldCount);
-      for (const bead of inner.beadInputs) addBead(bead, times);
-      for (const buy of inner.buyInputs) addBuy(buy, times);
-    }
-    const beadRows = [...beadInputs.values()];
-    return {
-      ...craft,
-      beadInputs: beadRows,
-      buyInputs: [...buyInputs.values()],
-      beads: beadRows.reduce((sum, input) => sum + input.beads, 0),
-    };
-  };
-
-  return crafts
-    .map((craft) => resolve(craft, new Set([craft.itemId])))
-    .sort((a, b) => a.beads - b.beads || a.name.localeCompare(b.name, 'ko'));
 }
