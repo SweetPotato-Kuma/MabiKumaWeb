@@ -83,6 +83,10 @@ export interface PlanNode {
    * 켜진 재료 아래에서 코인으로 파는 재료는 코인으로 사고, 구슬로 만드는 재료는 만든다.
    */
   byBeads: boolean;
+  /** 구슬로 만들 수 있는 재료인지. 이 줄에 "구슬로 만들기" 칸이 생긴다. */
+  beadCraftable: boolean;
+  /** 만드는 중이고, 아래에서 코인으로 사거나 구슬로 만들 수 있는 재료를 모두 그렇게 골랐는지. 칸을 켠 것처럼 보인다. */
+  beadsAll?: boolean;
   /** 공정마다 넣는 개수. 공정을 여러 번 하는 제작법의 작업 재료일 때만. */
   perWork?: number;
   /** 만든다면 몇 번 만들어야 하는지, 한 번에 몇 개 나오는지. */
@@ -343,6 +347,8 @@ export function buildPlan(input: PlanInput): CraftPlan {
       chosen: chosenSource !== undefined || chosenCoin || chosenRecipe !== undefined,
       ...(coinUnit !== undefined ? { coinUnit } : {}),
       byBeads,
+      beadCraftable:
+        recipes.length > 0 && coinUnit === undefined && beads?.craftable(itemId) === true,
       ...(times > 1 ? { perWork: slot.count * multiplier } : {}),
       crafts: 0,
       yieldCount: 1,
@@ -386,7 +392,19 @@ export function buildPlan(input: PlanInput): CraftPlan {
     const craftCost = emptyCost();
     for (const child of node.children) addCost(craftCost, child.cost);
     node.craftCost = craftCost;
-    if (crafting) node.cost = craftCost;
+    if (crafting) {
+      node.cost = craftCost;
+      const options = node.children.filter(
+        (child) => child.coinUnit !== undefined || child.beadCraftable,
+      );
+      node.beadsAll =
+        options.length > 0 &&
+        options.every((child) =>
+          child.coinUnit !== undefined
+            ? child.method === 'coin'
+            : child.byBeads || child.beadsAll === true,
+        );
+    }
   };
 
   const crafts = Math.ceil(Math.max(1, quantity) / recipe.yield);

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -163,8 +163,8 @@ describe('제작 비용', () => {
       screen.getByText('필요한 탈라 가흐 구슬').closest('.ant-statistic') as HTMLElement;
     expect(await within(stat()).findByText('210개')).toBeInTheDocument();
     expect(within(tree).getByText(/^제작:/)).toBeInTheDocument();
-    // 윗줄의 구슬로 만들기 체크 칸은 켜지지 않는다.
-    expect(within(tree).queryByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
+    // 아래에서 코인으로 살 수 있는 재료를 모두 골랐으므로 윗줄의 만들기 칸도 켜진다.
+    expect(within(tree).getByRole('checkbox', { name: /로 만들기/ })).toBeChecked();
   });
 
   it('구슬로 만들 수 있는 하위 재료는 한 코인의 개수만 보여 주고, 고르면 코인 합계에 넣는다', async () => {
@@ -222,6 +222,48 @@ describe('제작 비용', () => {
       ).findByText('0개'),
     ).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
+  });
+
+  it('아래에서 코인으로 살 수 있는 재료를 모두 고르면 윗줄의 만들기 칸도 켜지고, 끄면 아래도 꺼진다', async () => {
+    const beadBook = buildRecipeBook({
+      updated: '2026-09-22',
+      skills: [{ id: 10013, name: '핸디크래프트', count: 1 }],
+      items: {
+        1: ['검', 1],
+        2: ['순도 높은 힘의 결정', 1],
+        3: ['가죽', 1],
+        4: ['깨어난 힘의 정수', 1],
+      },
+      recipes: [
+        { item: 1, skill: 10013, rank: 7, yield: 1, materials: [[[2], 1]] },
+        {
+          item: 2,
+          skill: 10013,
+          rank: 1,
+          yield: 1,
+          materials: [
+            [[3], 3],
+            [[4], 20],
+          ],
+        },
+      ],
+    });
+    renderCost(beadBook);
+    const tree = (await screen.findByText('제작 비용')).closest('.ant-card') as HTMLElement;
+    expect(await within(tree).findByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
+
+    fireEvent.click(within(tree).getAllByRole('button', { name: /펼치기|Expand row/i })[0]);
+    fireEvent.click(await within(tree).findByRole('checkbox', { name: /로 구매/ }));
+
+    await waitFor(() =>
+      expect(within(tree).getByRole('checkbox', { name: /로 만들기/ })).toBeChecked(),
+    );
+
+    fireEvent.click(within(tree).getByRole('checkbox', { name: /로 만들기/ }));
+    await waitFor(() =>
+      expect(within(tree).getByRole('checkbox', { name: /로 구매/ })).not.toBeChecked(),
+    );
+    expect(within(tree).getByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
   });
 
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {

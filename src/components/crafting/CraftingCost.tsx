@@ -757,7 +757,7 @@ function treeColumns(
             />
             {beads > 0 ? (
               <Checkbox
-                checked={node.byBeads}
+                checked={node.byBeads || node.beadsAll === true}
                 onChange={(event) =>
                   setBeads(node.key, event.target.checked, buyMethod ?? node.recipes[0].index)
                 }
