@@ -5,12 +5,10 @@ import {
   App,
   Button,
   Card,
-  Col,
   Flex,
   Form,
   Grid,
   Input,
-  Row,
   Segmented,
   Select,
   Switch,
@@ -369,31 +367,31 @@ export function HornPage() {
 
       <Card variant="outlined">
         <Form layout="vertical">
-          {/* 윗줄은 고르는 것, 아랫줄은 적는 것. 768px 미만에서는 한 단으로 떨어진다. */}
-          <Row gutter={[16, 16]} align="bottom">
-            <Col xs={24} sm={12} xl={6}>
+          {/*
+            윗줄은 고르는 것, 아랫줄은 적는 것. 768px 이상에서는 칸마다 제 폭만 차지한다. 격자로 나누면
+            검색어 칸이 화면 폭을 따라 500px 가까이 늘어나 눈이 오가는 거리만 길어졌다.
+            768px 미만에서는 한 단으로 쌓고 칸을 줄 폭에 맞춘다.
+          */}
+          <Flex vertical gap={16}>
+            <Flex vertical={!wide} wrap gap={wide ? 24 : 16}>
               <Form.Item label="서버" style={{ marginBottom: 0 }}>
                 <Segmented
                   aria-label="서버"
-                  block
+                  block={!wide}
                   value={server}
                   onChange={(value) => update({ server: value === SERVER_NAMES[0] ? null : String(value) })}
                   options={[...SERVER_NAMES]}
                 />
               </Form.Item>
-            </Col>
-            <Col xs={24} sm={12} xl={6}>
               <Form.Item label="기간" style={{ marginBottom: 0 }}>
                 <Segmented
                   aria-label="기간"
-                  block
+                  block={!wide}
                   value={days}
                   onChange={(value) => update({ days: value === HORN_DAYS[0] ? null : String(value) })}
                   options={DAY_OPTIONS}
                 />
               </Form.Item>
-            </Col>
-            <Col xs={24} xl={12}>
               {/* 576px 미만에서는 다섯 칸이 한 줄에 들지 않는다. 그때는 고르기 상자다. */}
               <Form.Item
                 label="분류"
@@ -410,16 +408,16 @@ export function HornPage() {
                 ) : (
                   <Segmented
                     aria-label="분류"
-                    block
+                    block={!wide}
                     value={kind}
                     onChange={(value) => update({ kind: value === 'all' ? null : String(value) })}
                     options={KIND_OPTIONS}
                   />
                 )}
               </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={9}>
-              <Form.Item label="검색어" htmlFor="horn-q" style={{ marginBottom: 0 }}>
+            </Flex>
+            <Flex vertical={!wide} wrap align={wide ? 'flex-end' : undefined} gap={wide ? 24 : 16}>
+              <Form.Item label="검색어" htmlFor="horn-q" style={{ marginBottom: 0, width: wide ? 300 : undefined }}>
                 <Input
                   id="horn-q"
                   allowClear
@@ -431,9 +429,7 @@ export function HornPage() {
                   onPressEnter={flushTyping}
                 />
               </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={7}>
-              <Form.Item label="뺄 말" htmlFor="horn-not" style={{ marginBottom: 0 }}>
+              <Form.Item label="뺄 말" htmlFor="horn-not" style={{ marginBottom: 0, width: wide ? 220 : undefined }}>
                 <Input
                   id="horn-not"
                   allowClear
@@ -444,8 +440,6 @@ export function HornPage() {
                   onPressEnter={flushTyping}
                 />
               </Form.Item>
-            </Col>
-            <Col xs={24} xl={8}>
               <Flex gap={20} wrap align="center" style={{ minHeight: token.controlHeight }}>
                 <Flex component="label" align="center" gap={8} style={{ cursor: 'pointer' }}>
                   <Switch size="small" checked={live || alerts} disabled={alerts} onChange={setLive} />
@@ -458,8 +452,8 @@ export function HornPage() {
                   </Flex>
                 ) : null}
               </Flex>
-            </Col>
-          </Row>
+            </Flex>
+          </Flex>
         </Form>
       </Card>
 
