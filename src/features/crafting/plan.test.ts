@@ -256,7 +256,11 @@ describe('buildPlan 의 코인(구슬) 구매', () => {
     expanded: new Set<string>(),
   };
   // 철괴(2)는 코인 30개에 판다고 친다.
-  const beads = { coinCostOf: (id: number) => (id === 2 ? 30 : undefined), craftable: () => false };
+  const beads = {
+    coinCostOf: (id: number) => (id === 2 ? 30 : undefined),
+    craftable: () => false,
+    checked: new Set<string>(),
+  };
 
   it('코인으로 사기로 한 재료는 경매장 값이 총액에서 빠지고 코인 개수로 센다', () => {
     const auction = buildPlan({ ...base, beads, methods: {} });
@@ -270,6 +274,8 @@ describe('buildPlan 의 코인(구슬) 구매', () => {
     expect(coin.nodes[0].cost.gold).toBe(0);
     expect(coin.total.gold).toBe(400);
     expect(coin.beads).toBe(3 * 30);
+    // 코인으로 산 재료를 경매장에서 샀다면 드는 값이 코인 개당 가치의 바탕이다.
+    expect(coin.beadsWorth.gold).toBe(150);
   });
 
   it('코인을 쓰지 않는 계산에서는 코인 선택이 무효라 경매장으로 돌아간다', () => {
@@ -278,19 +284,21 @@ describe('buildPlan 의 코인(구슬) 구매', () => {
     expect(result.total.gold).toBe(3 * 50 + 400);
   });
 
-  it('구슬로 만들기로 고른 재료 아래에서는 코인으로 파는 재료를 기본으로 코인으로 산다', () => {
-    // 철광석(5)은 코인 4개, 철괴(2)는 직접 만드는 것을 구슬로 만들기로 고른다.
+  it('구슬로 만들기를 켠 재료 아래에서는 코인으로 파는 재료를 기본으로 코인으로 산다', () => {
+    // 철광석(5)은 코인 4개, 철괴(2)는 직접 만드는 것을 구슬로 만들기로 켠다.
     const inherit = {
       ...base,
       priceOf: () => market([10, 100]),
       beads: {
         coinCostOf: (id: number) => (id === 5 ? 4 : undefined),
         craftable: (id: number) => id === 2,
+        checked: new Set(['m0']),
       },
-      methods: { m0: book.recipesOf(2)[0].index },
+      methods: {},
       expanded: new Set(['m0']),
     };
     const result = buildPlan(inherit);
+    expect(result.nodes[0].byBeads).toBe(true);
     const ore = result.nodes[0].children?.[0];
     expect(ore?.method).toBe('coin');
     expect(result.beads).toBe(2 * 4);
@@ -301,6 +309,28 @@ describe('buildPlan 의 코인(구슬) 구매', () => {
     const override = buildPlan({ ...inherit, methods: { ...inherit.methods, [oreKey]: 'buy' } });
     expect(override.nodes[0].children?.[0].method).toBe('buy');
     expect(override.beads).toBe(0);
+  });
+
+  it('제작을 고르거나 코인 구매를 고르는 것만으로는 구슬로 만들기가 켜지지 않는다', () => {
+    const options = {
+      ...base,
+      priceOf: () => market([10, 100]),
+      beads: {
+        coinCostOf: (id: number) => (id === 5 ? 4 : undefined),
+        craftable: (id: number) => id === 2,
+        checked: new Set<string>(),
+      },
+      expanded: new Set(['m0']),
+    };
+    const crafted = buildPlan({ ...options, methods: { m0: book.recipesOf(2)[0].index } });
+    expect(crafted.nodes[0].method).toBe(book.recipesOf(2)[0].index);
+    expect(crafted.nodes[0].byBeads).toBe(false);
+    // 켜지지 않았으니 아래 재료는 코인으로 사지 않는다.
+    expect(crafted.nodes[0].children?.[0].method).toBe('buy');
+    expect(crafted.beads).toBe(0);
+
+    const coin = buildPlan({ ...options, methods: { m0: 'coin' } });
+    expect(coin.nodes[0].byBeads).toBe(false);
   });
 });
 

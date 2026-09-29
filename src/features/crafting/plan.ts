@@ -78,8 +78,11 @@ export interface PlanNode {
   chosen: boolean;
   /** 코인으로 산다면 개당 코인 개수. 이 계획의 코인으로 파는 재료만. */
   coinUnit?: number;
-  /** 구슬로 만드는 재료라 아래 재료 가운데 코인으로 살 수 있는 것을 기본으로 코인으로 채우는지. */
-  inheritsBeads: boolean;
+  /**
+   * "구슬로 만들기" 가 켜진 재료인지. 사용자가 이 줄을 켰거나, 켠 윗줄 아래라 함께 켜진 것이다.
+   * 켜진 재료 아래에서 코인으로 파는 재료는 코인으로 사고, 구슬로 만드는 재료는 만든다.
+   */
+  byBeads: boolean;
   /** 공정마다 넣는 개수. 공정을 여러 번 하는 제작법의 작업 재료일 때만. */
   perWork?: number;
   /** 만든다면 몇 번 만들어야 하는지, 한 번에 몇 개 나오는지. */
@@ -112,6 +115,8 @@ export interface CraftPlan {
   total: CostSum;
   /** 코인으로 사기로 한 재료에 드는 코인 개수. */
   beads: number;
+  /** 코인으로 사기로 한 재료를 경매장에서 샀다면 드는 값. 코인 개당 가치를 구할 때 쓴다. */
+  beadsWorth: CostSum;
   /**
    * 맨 위 재료 칸을 공정 재료와 마무리 재료로 나눠 매긴 값. 마무리 재료가 없는 제작법은 없다.
    * 두 구역에 같은 재료가 있으면 따로 사는 값이라 둘을 더하면 total 보다 조금 클 수 있다.
@@ -144,9 +149,11 @@ export interface PlanInput {
   /**
    * 코인(구슬) 계산. 이 물건이 쓰는 코인 하나만 다룬다.
    * coinCostOf 는 그 코인으로 파는 재료의 개당 코인 개수, craftable 은 만들 때 그 코인이 드는 재료인지.
-   * 구슬로 만들기로 고른 재료 아래에서는 코인으로 파는 재료를 고르지 않아도 코인으로 산다.
+   * checked 는 "구슬로 만들기" 를 켠 줄의 key. 켠 재료 아래에서는 코인으로 파는 재료를 고르지 않아도
+   * 코인으로 산다.
    */
   beads?: {
+    checked: ReadonlySet<string>;
     coinCostOf: (itemId: number) => number | undefined;
     craftable: (itemId: number) => boolean;
   };
@@ -302,28 +309,23 @@ export function buildPlan(input: PlanInput): CraftPlan {
     const buyCost = buyCostOf(itemId, price, required, quote);
 
     const buyable = price.status === 'loading' || (quote !== undefined && quote.filled >= required);
-    // 구슬로 만드는 재료 아래에서는 고르지 않은 재료가 코인이면 코인으로 사고, 구슬로 만드는 재료면 만든다.
+    // "구슬로 만들기" 를 켠 재료 아래에서는 고르지 않은 재료가 코인이면 코인으로 사고, 구슬로 만드는 재료면 만든다.
     const inheritsCoin = inheritBeads && !chosenSource && !chosenRecipe && coinUnit !== undefined;
-    const inheritsCraft =
-      inheritBeads &&
+    const beadable =
       !chosenSource &&
       !chosenCoin &&
       !chosenRecipe &&
       coinUnit === undefined &&
       recipes.length > 0 &&
       beads?.craftable(itemId) === true;
+    const checkedHere = beadable && (inheritBeads || beads?.checked.has(key) === true);
     let method: Method = source;
     if (chosenRecipe) method = chosenRecipe.index;
     else if (chosenCoin || inheritsCoin) method = 'coin';
-    else if (inheritsCraft) method = recipes[0].index;
+    else if (checkedHere) method = recipes[0].index;
     else if (!chosenSource && !buyable && recipes.length > 0) method = recipes[0].index;
 
-    // 만들 수밖에 없는 재료는 사용자가 구슬로 만들기로 한 것과 같게 본다.
-    const forcedCraft = !tradable && npcUnit === undefined && !chosenRecipe;
-    const inheritsBeads =
-      typeof method === 'number' &&
-      beads?.craftable(itemId) === true &&
-      (chosenRecipe !== undefined || inheritsCraft || forcedCraft);
+    const byBeads = checkedHere && typeof method === 'number';
 
     const node: PlanNode = {
       key,
@@ -340,7 +342,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
       method,
       chosen: chosenSource !== undefined || chosenCoin || chosenRecipe !== undefined,
       ...(coinUnit !== undefined ? { coinUnit } : {}),
-      inheritsBeads,
+      byBeads,
       ...(times > 1 ? { perWork: slot.count * multiplier } : {}),
       crafts: 0,
       yieldCount: 1,
@@ -376,7 +378,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
         times,
         node.depth + 1,
         nextAncestors,
-        node.inheritsBeads,
+        node.byBeads,
       );
       expand(child, nextAncestors);
       return child;
@@ -417,19 +419,24 @@ export function buildPlan(input: PlanInput): CraftPlan {
 
     const total = emptyCost();
     let coins = 0;
+    const worth = emptyCost();
     const shopping = [...requiredByKey.values()].map(
       ({ itemId, source, required }): ShoppingRow => {
         const price = priceFor(itemId, source);
         const quote = quoteFor(price, required);
         addCost(total, buyCostOf(itemId, price, required, quote));
-        if (price.status === 'coin') coins += price.unit * required;
+        if (price.status === 'coin') {
+          coins += price.unit * required;
+          const auction = auctionPriceFor(itemId);
+          addCost(worth, buyCostOf(itemId, auction, required, quoteFor(auction, required)));
+        }
         return { itemId, required, price, quote };
       },
     );
-    return { shopping, total, coins };
+    return { shopping, total, coins, worth };
   };
 
-  const { shopping, total, coins } = buyAll(nodes);
+  const { shopping, total, coins, worth } = buyAll(nodes);
   const sections =
     recipe.finish.length > 0
       ? {
@@ -444,6 +451,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
     shopping,
     total,
     beads: coins,
+    beadsWorth: worth,
     ...(sections ? { sections } : {}),
     needed: [...needed],
   };

@@ -139,6 +139,8 @@ function RecipeCost({
   const [works, setWorks] = useState(DEFAULT_WORKS);
   const [methods, setMethods] = useState<Record<string, Method>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
+  /** "코인으로 만들기" 를 사용자가 직접 켠 줄의 key. 그 아래 줄은 함께 켜지므로 들어 있지 않다. */
+  const [beadChecked, setBeadChecked] = useState<string[]>([]);
 
   /**
    * 물어본 이름. 계산이 "이 시세가 필요하다" 고 하면 여기에 더한다. 빼지는 않는다.
@@ -167,8 +169,9 @@ function RecipeCost({
             coinCostOf: (id: number) =>
               coinPurchasesOf(book.itemName(id)).find((each) => each.coin === coin)?.cost,
             craftable: (id: number) => makesFromBeads(book, coin, id),
+            checked: new Set(beadChecked),
           },
-    [book, coin],
+    [book, coin, beadChecked],
   );
 
   const planWith = (npc: boolean) =>
@@ -196,8 +199,28 @@ function RecipeCost({
 
   const setMethod = (key: string, method: Method) => {
     setMethods((prev) => ({ ...prev, [key]: method }));
+    setBeadChecked((prev) => prev.filter((each) => each !== key));
     // 제작으로 바꾸면 무엇이 들어가는지 바로 보이게 펼친다.
     if (!isBuying(method)) setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
+  };
+
+  /**
+   * "코인으로 만들기" 를 켜고 끈다. 그 아래 줄은 각자 고른 것을 지우고 같은 쪽으로 맞춘다.
+   * off 로 끌 때 offMethod 를 남기는 것은 윗줄이 켜져 있어도 이 줄만 꺼진 채로 두기 위해서다.
+   */
+  const setBeads = (key: string, on: boolean, offMethod: Method) => {
+    const below = (each: string) => each.startsWith(`${key}.`);
+    setMethods((prev) => {
+      const next = Object.fromEntries(
+        Object.entries(prev).filter(([each]) => each !== key && !below(each)),
+      );
+      return on ? next : { ...next, [key]: offMethod };
+    });
+    setBeadChecked((prev) => {
+      const rest = prev.filter((each) => each !== key && !below(each));
+      return on ? [...rest, key] : rest;
+    });
+    if (on) setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
   };
 
   /** 전체 기본값을 바꾸면 줄마다 고른 구매처는 지운다. 제작과 코인으로 사기를 고른 것은 그대로 둔다. */
@@ -317,6 +340,23 @@ function RecipeCost({
                   }}
                 />
               ) : null}
+              {coin !== undefined ? (
+                <Statistic
+                  title={`${coin} 개당 가치`}
+                  value={
+                    plan.beads > 0 && isComplete(plan.beadsWorth)
+                      ? formatGold(Math.round(plan.beadsWorth.gold / plan.beads))
+                      : '-'
+                  }
+                  styles={{
+                    content: {
+                      fontVariantNumeric: 'tabular-nums',
+                      whiteSpace: 'nowrap',
+                      fontSize: 20,
+                    },
+                  }}
+                />
+              ) : null}
             </Flex>
             {/* 시세를 받는 동안만 나타나므로 자리를 비워 둔다. 나타날 때 아래 표가 밀리지 않게 한다. */}
             <div
@@ -355,7 +395,7 @@ function RecipeCost({
 
         <div ref={tableRef}>
           <Table<TreeRow>
-            columns={treeColumns(book, setMethod, categoryOf, coin, {
+            columns={treeColumns(book, setMethod, setBeads, categoryOf, coin, {
               background: token.colorFillQuaternary,
             })}
             dataSource={treeRowsOf(plan.nodes, plan.sections, workRecipe ? works : 1)}
@@ -585,6 +625,7 @@ function priceStatusText(price: NodePrice): string {
 function treeColumns(
   book: RecipeBook,
   setMethod: (key: string, method: Method) => void,
+  setBeads: (key: string, on: boolean, offMethod: Method) => void,
   categoryOf: (name: string) => string | undefined,
   coin: string | undefined,
   sectionStyle: CSSProperties,
@@ -637,7 +678,7 @@ function treeColumns(
       ),
     },
     {
-      title: '구하는 방법',
+      title: '구매 방법',
       key: 'method',
       width: 470,
       render: (_value, { node }) => {
@@ -662,12 +703,11 @@ function treeColumns(
           return (
             <Flex gap={8} align="center" style={{ whiteSpace: 'nowrap' }}>
               <Text type="secondary">
-                {byCoin ? '구슬 구매' : node.tradable ? '경매장 구매' : '거래 불가'}
+                {byCoin ? '코인 구매' : node.tradable ? '경매장 구매' : '거래 불가'}
               </Text>
               {coinCheckbox}
             </Flex>
           );
-        const crafting = !isBuying(node.method);
         const beads =
           coin && node.recipes.length > 0 && makesFromBeads(book, coin, node.itemId)
             ? beadsToMake(book, coin, node.itemId, node.required)
@@ -678,7 +718,7 @@ function treeColumns(
               size="small"
               value={node.method}
               onChange={(method) => setMethod(node.key, method)}
-              aria-label={`${book.itemName(node.itemId)} 구하는 방법`}
+              aria-label={`${book.itemName(node.itemId)} 구매 방법`}
               popupMatchSelectWidth={false}
               options={[
                 {
@@ -690,7 +730,7 @@ function treeColumns(
                   ? [{ value: 'npc' as const, label: `NPC 구매 (${formatGold(node.npcUnit)})` }]
                   : []),
                 ...(node.coinUnit !== undefined
-                  ? [{ value: 'coin' as const, label: '구슬 구매' }]
+                  ? [{ value: 'coin' as const, label: '코인 구매' }]
                   : []),
                 ...node.recipes.map((each) => ({
                   value: each.index,
@@ -701,13 +741,9 @@ function treeColumns(
             />
             {beads > 0 ? (
               <Checkbox
-                checked={crafting}
-                disabled={crafting && buyMethod === undefined}
+                checked={node.byBeads}
                 onChange={(event) =>
-                  setMethod(
-                    node.key,
-                    event.target.checked ? node.recipes[0].index : (buyMethod ?? 'buy'),
-                  )
+                  setBeads(node.key, event.target.checked, buyMethod ?? node.recipes[0].index)
                 }
               >
                 <Text className="tnum" style={{ fontSize: 12 }}>

@@ -137,7 +137,9 @@ describe('제작 비용', () => {
     fireEvent.click(box);
 
     expect(await within(stat()).findByText('70개')).toBeInTheDocument();
-    expect(screen.getByText('구슬 구매')).toBeInTheDocument();
+    expect(screen.getByText('코인 구매')).toBeInTheDocument();
+    // 코인으로 산 재료의 시세가 없으면 개당 가치는 계산하지 않는다.
+    expect(screen.getByText('탈라 가흐 구슬 개당 가치')).toBeInTheDocument();
   });
 
   it('구슬로 만들 수 있는 하위 재료는 한 코인의 개수만 보여 주고, 고르면 코인 합계에 넣는다', async () => {
@@ -185,6 +187,16 @@ describe('제작 비용', () => {
       within(title.closest('.ant-statistic') as HTMLElement).getByText('100개'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/필요한 심연의 증표/)).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /로 만들기/ })).toBeChecked();
+
+    // 끄면 합계도 0개로 돌아간다.
+    fireEvent.click(screen.getByRole('checkbox', { name: /로 만들기/ }));
+    expect(
+      await within(
+        screen.getByText('필요한 브리 레흐 구슬').closest('.ant-statistic') as HTMLElement,
+      ).findByText('0개'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
   });
 
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {
