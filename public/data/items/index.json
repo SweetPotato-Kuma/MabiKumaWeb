@@ -1,6 +1,6 @@
 {
-  "updated": "2026-09-28",
-  "total": 17289,
+  "updated": "2026-09-29",
+  "total": 17295,
   "categories": [
     {
       "name": "개조석",
@@ -15,7 +15,7 @@
     {
       "name": "경갑옷",
       "file": "1c762e8c.json",
-      "count": 92
+      "count": 93
     },
     {
       "name": "기타",
@@ -150,7 +150,7 @@
     {
       "name": "모자/가발",
       "file": "008ae516.json",
-      "count": 1611
+      "count": 1612
     },
     {
       "name": "방패",
@@ -210,7 +210,7 @@
     {
       "name": "신발",
       "file": "514d3c6f.json",
-      "count": 1092
+      "count": 1095
     },
     {
       "name": "실린더",
@@ -310,7 +310,7 @@
     {
       "name": "장갑",
       "file": "bb003394.json",
-      "count": 747
+      "count": 748
     },
     {
       "name": "제련/블랙스미스",

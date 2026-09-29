@@ -158,9 +158,22 @@ async function fetchOk(url) {
   return response;
 }
 
+/**
+ * 원본 기반 장비 목록에 잘못 들어간 후보. 제작 아이템 -> 뺄 아이템 묶음.
+ * 랑그히리스 아머(남 14137, 여 14138)의 목록에만 더스크바운드 비고러스 아머(남 2230046, 여 2230047)가
+ * 있고, 같은 세트의 글러브·부츠 목록에는 대응하는 비고러스 장비가 없다. 세트 안에서 아머만 어긋난다.
+ */
+const MISLISTED_BASES = new Map([
+  [14137, new Set([2230046, 2230047])],
+  [14138, new Set([2230046, 2230047])],
+]);
+
+const SCHEMA_PATTERN = () =>
+  /([\w$]+)=new class extends [\w$]+\{constructor\(\)\{super\(`([^`]+)`,\[/g;
+
 /** 번들에서 메시지 정의를 모두 읽는다. 이름 -> 필드 목록. */
 function extractSchemas(bundle) {
-  const pattern = /([\w$]+)=new class extends [\w$]+\{constructor\(\)\{super\(`([^`]+)`,\[/g;
+  const pattern = SCHEMA_PATTERN();
   const schemas = {};
   const nameOfVar = {};
   // 필드 목록 안의 T:()=>Xy 는 다른 메시지 변수를 가리킨다. 없는 이름은 이름 문자열로 돌려받는다.
@@ -337,7 +350,16 @@ async function main() {
   const html = await (await fetchOk(SITE)).text();
   const entry = html.match(/src="\/?(assets\/index-[\w-]+\.js)"/)?.[1];
   if (!entry) throw new Error('첫 화면에서 번들 주소를 찾지 못했습니다.');
-  const bundle = await (await fetchOk(new URL(entry, SITE))).text();
+  // 메시지 정의는 배포마다 다른 청크로 옮겨 다닌다. 첫 화면이 미리 읽는 청크까지 모두 받아,
+  // 정의가 든 것만 이어 붙인다.
+  const chunkPaths = [
+    entry,
+    ...new Set([...html.matchAll(/href="\/?(assets\/[\w.-]+\.js)"/g)].map((m) => m[1])),
+  ];
+  const chunks = await Promise.all(
+    chunkPaths.map(async (path) => (await fetchOk(new URL(path, SITE))).text()),
+  );
+  const bundle = chunks.filter((chunk) => SCHEMA_PATTERN().test(chunk)).join('\n');
   const { schemas, root } = extractSchemas(bundle);
   console.log(`스키마 ${Object.keys(schemas).length}개, 루트 ${root}`);
 
@@ -370,9 +392,10 @@ async function main() {
    */
   const usedItems = new Set();
   let droppedAlternatives = 0;
-  const slot = (essential) => {
+  const slot = (essential, recipeItem) => {
     const all = essential.ItemIds ?? [];
-    const named = all.filter((id) => nameOfId(id));
+    const banned = MISLISTED_BASES.get(recipeItem);
+    const named = all.filter((id) => nameOfId(id) && !banned?.has(id));
     droppedAlternatives += all.length - named.length;
     const ids = named.length ? named : all;
     for (const id of ids) usedItems.add(id);
@@ -399,13 +422,16 @@ async function main() {
       skill: kind.skill,
       rank: production.Level ?? 0,
       yield: production.ProductionCount > 1 ? production.ProductionCount : 1,
-      materials: (production.Essentials ?? []).map(slot),
+      materials: (production.Essentials ?? []).map((essential) =>
+        slot(essential, production.ItemId),
+      ),
     };
     if (kind.tool) recipe.tool = kind.tool;
     const station = production.NeedPropName ? text(production.NeedPropName) : '';
     if (station) recipe.station = station;
     const finish = production.CompleteEssentials?.[0]?.Essentials;
-    if (finish?.length) recipe.finish = finish.map(slot);
+    if (finish?.length)
+      recipe.finish = finish.map((essential) => slot(essential, production.ItemId));
     recipes.push(recipe);
   }
   if (unknownTypes.size)

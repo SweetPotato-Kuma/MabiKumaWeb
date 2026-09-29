@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildRecipeBook,
@@ -158,5 +160,31 @@ describe('제작 가능 아이템', () => {
     expect(materialUseText(mayo, materialUses(mayo, [4]))).toBe('골라 넣는 재료');
     // 블랙스미스는 공정마다 작업 재료를 다시 넣는다.
     expect(materialUseText(sword, materialUses(sword, [8]))).toBe('공정마다 3개');
+  });
+});
+
+describe('실제 제작법 데이터', () => {
+  const raw = JSON.parse(
+    readFileSync(resolve(__dirname, '../../../public/data/recipes.json'), 'utf8'),
+  ) as RawRecipeData;
+  const book = buildRecipeBook(raw);
+
+  it('랑그히리스 아머는 더스크바운드 비고러스 아머로 만들지 않는다', () => {
+    const usedBy = ['더스크바운드 비고러스 아머(남성용)', '더스크바운드 비고러스 아머(여성용)'].flatMap(
+      (name) => usesOfName(book, name).map((recipe) => book.itemName(recipe.item)),
+    );
+    expect(usedBy.filter((name) => name.includes('랑그히리스'))).toEqual([]);
+  });
+
+  it('랑그히리스 아머의 기반 장비는 같은 계열의 아머다', () => {
+    const armors = ['랑그히리스 체이서 아머 (남성용)', '랑그히리스 체이서 아머 (여성용)'];
+    for (const name of armors) {
+      const recipes = book.idsByName(name).flatMap((id) => book.recipesOf(id));
+      expect(recipes.length).toBeGreaterThan(0);
+      for (const recipe of recipes) {
+        const names = recipe.materials[0].ids.map((id) => book.itemName(id));
+        expect(names.filter((base) => base.includes('더스크바운드'))).toEqual([]);
+      }
+    }
   });
 });
