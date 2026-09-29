@@ -34,9 +34,7 @@ import {
 import { rankText, useRecipeBookQuery, type RecipeBook } from '@/features/crafting/recipes';
 import {
   MAX_BEADS,
-  adviseSubs,
   beadCraftsOf,
-  bestMade,
   expandCrafts,
   planWithInventory,
   rankCrafts,
@@ -565,16 +563,17 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
   const ranked = rankCrafts(
     crafts.map((craft) => valueCraft(craft, pricing.priceOf, pricing.npcUnitOf)),
   );
-  const advice = adviseSubs(
-    baseCrafts.map((craft) => valueCraft(craft, pricing.priceOf, pricing.npcUnitOf)),
-    subs,
-  );
   const pending = names.filter((name) => prices.get(name)?.status === 'loading').length;
   const failed = names.filter((name) => prices.get(name)?.status === 'error');
   const planned = (beads ?? 0) > 0 || heldKinds > 0;
-  const heldMap = new Map(Object.entries(inventory).map(([id, count]) => [Number(id), count]));
-  const fillBest = () => setMade(bestMade(baseCrafts, subs, beads ?? 0, pricing, heldMap));
-  const plan = planned ? planWithInventory(crafts, beads ?? 0, pricing, heldMap) : null;
+  const plan = planned
+    ? planWithInventory(
+        crafts,
+        beads ?? 0,
+        pricing,
+        new Map(Object.entries(inventory).map(([id, count]) => [Number(id), count])),
+      )
+    : null;
 
   // 추천 조합에 든 줄을 차익 합계가 큰 순으로 맨 위에 두고, 나머지는 구슬 1개당 가치 순서 그대로 둔다.
   const pickOf = new Map((plan?.picks ?? []).map((pick) => [pick.craft.itemId, pick]));
@@ -792,8 +791,13 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
         <Flex vertical gap={8}>
           <Flex gap={12} align="center" wrap>
             <Text strong>구슬로 직접 만들 하위 재료</Text>
-            <Button size="small" onClick={fillBest} disabled={!planned || pending > 0}>
-              최적으로 채우기
+            <Button
+              size="small"
+              type="link"
+              onClick={() => setMade(subs.map((sub) => sub.itemId))}
+              disabled={made.length === subs.length}
+            >
+              모두 선택
             </Button>
             <Button
               size="small"
@@ -804,41 +808,28 @@ function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin 
               선택 해제
             </Button>
           </Flex>
-          {subs.map((sub) => {
-            const tip = advice.get(sub.itemId);
-            return (
-              <Flex key={sub.itemId} align="center" wrap style={{ columnGap: 16, rowGap: 4 }}>
-                <Checkbox
-                  checked={made.includes(sub.itemId)}
-                  onChange={(event) =>
-                    setMade(
-                      event.target.checked
-                        ? [...made, sub.itemId]
-                        : made.filter((id) => id !== sub.itemId),
-                    )
-                  }
-                >
-                  <MaterialName
-                    itemId={sub.itemId}
-                    name={sub.name}
-                    book={book}
-                    categoryOf={categoryOf}
-                  />
-                </Checkbox>
-                {tip ? (
-                  <>
-                    <Tag color={tip.make ? 'processing' : 'default'} style={{ marginInlineEnd: 0 }}>
-                      {tip.make ? '구슬 추천' : '경매장 추천'}
-                    </Tag>
-                    <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-                      경매장 {formatGold(tip.sale)} / 구슬 {formatNumber(tip.beads)}개 +{' '}
-                      {formatGold(tip.materialCost)}
-                    </Text>
-                  </>
-                ) : null}
-              </Flex>
-            );
-          })}
+          <Flex wrap style={{ columnGap: 24, rowGap: 8 }}>
+            {subs.map((sub) => (
+              <Checkbox
+                key={sub.itemId}
+                checked={made.includes(sub.itemId)}
+                onChange={(event) =>
+                  setMade(
+                    event.target.checked
+                      ? [...made, sub.itemId]
+                      : made.filter((id) => id !== sub.itemId),
+                  )
+                }
+              >
+                <MaterialName
+                  itemId={sub.itemId}
+                  name={sub.name}
+                  book={book}
+                  categoryOf={categoryOf}
+                />
+              </Checkbox>
+            ))}
+          </Flex>
         </Flex>
       ) : null}
 

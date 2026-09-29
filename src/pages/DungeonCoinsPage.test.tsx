@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -226,23 +226,6 @@ describe('던전 코인 가치', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));
     expect(await screen.findAllByText(/1회 구슬 7개/, {}, SLOW)).not.toHaveLength(0);
-  });
-
-  it('하위 재료마다 경매장과 구슬 중 어느 쪽이 나은지 알려 주고, 최적으로 채운다', async () => {
-    stubRecipes(BRIE_NESTED_RECIPES);
-    renderPage('/dungeon-coins?dungeon=brie-lech&view=craft');
-
-    // 결정 매물이 한 개뿐이라 사서는 가공한 이빨을 만들 수 없다. 결정은 구슬로 만드는 쪽이 낫다.
-    expect(await screen.findByText('구슬 추천', {}, SLOW)).toBeInTheDocument();
-    expect(screen.getByText(/경매장 10,000 G \/ 구슬 3개 \+ 5,000 G/)).toBeInTheDocument();
-
-    const fill = screen.getByRole('button', { name: '최적으로 채우기' });
-    expect(fill).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('가진 구슬'), { target: { value: '30' } });
-    await waitFor(() => expect(fill).toBeEnabled(), SLOW);
-
-    fireEvent.click(fill);
-    expect(screen.getByRole('checkbox', { name: '순도 높은 결정' })).toBeChecked();
   });
 
   it('가공 계산기는 주소로 바로 열고, 계산기가 없는 던전에는 전환 단추가 없다', async () => {
