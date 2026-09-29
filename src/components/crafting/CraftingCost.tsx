@@ -31,7 +31,7 @@ import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
-import { coinPurchasesOf } from '@/features/dungeonCoins/exchanges';
+import { coinPurchasesOf, coinTotalsOf } from '@/features/dungeonCoins/exchanges';
 import { useMarketPrices } from '@/features/crafting/market';
 import {
   isWednesdayInKorea,
@@ -172,6 +172,9 @@ function RecipeCost({
   // 비교용. NPC 에서 하나도 사지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
   const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
   const auctionPlan = usesNpc ? planWith(false) : undefined;
+  const coinTotals = coinTotalsOf(
+    plan.shopping.map((row) => ({ name: book.itemName(row.itemId), required: row.required })),
+  );
   const missing = [
     ...new Set([...plan.needed, ...(auctionPlan?.needed ?? [])].map(book.itemName)),
   ].filter((name) => !requested.includes(name));
@@ -286,6 +289,20 @@ function RecipeCost({
                   }}
                 />
               ) : null}
+              {coinTotals.map(({ coin, total }) => (
+                <Statistic
+                  key={coin}
+                  title={`코인으로 산다면 (${coin})`}
+                  value={`${formatNumber(total)}개`}
+                  styles={{
+                    content: {
+                      fontVariantNumeric: 'tabular-nums',
+                      whiteSpace: 'nowrap',
+                      fontSize: 20,
+                    },
+                  }}
+                />
+              ))}
               {plan.total.pending > 0 ? (
                 <Flex gap={8} align="center">
                   <Spin size="small" />

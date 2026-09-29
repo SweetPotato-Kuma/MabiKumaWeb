@@ -186,3 +186,23 @@ export function coinPurchasesOf(name: string): CoinPurchase[] {
 export function dungeonCoinOf(key: string | null): DungeonCoin {
   return DUNGEON_COINS.find((entry) => entry.key === key) ?? DUNGEON_COINS[0];
 }
+
+export interface CoinTotal {
+  coin: string;
+  /** 코인으로 살 수 있는 재료를 모두 코인으로 샀을 때의 코인 개수. */
+  total: number;
+}
+
+/**
+ * 살 재료 목록에서 코인 상점에서 파는 것만 골라 코인별 개수를 합한다.
+ * 같은 이름이 여러 줄이면 개수를 더하고, 여러 코인으로 살 수 있는 재료는 코인마다 센다.
+ */
+export function coinTotalsOf(rows: readonly { name: string; required: number }[]): CoinTotal[] {
+  const totals = new Map<string, number>();
+  for (const { name, required } of rows) {
+    for (const { coin, cost } of coinPurchasesOf(name)) {
+      totals.set(coin, (totals.get(coin) ?? 0) + cost * required);
+    }
+  }
+  return [...totals].map(([coin, total]) => ({ coin, total }));
+}

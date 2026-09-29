@@ -128,6 +128,9 @@ describe('제작 비용', () => {
 
     expect(await screen.findByText('코인 구매 탈라 가흐 구슬 70개')).toBeInTheDocument();
     expect(screen.queryAllByText(/코인 구매/)).toHaveLength(1);
+    // 총합은 같은 계산을 코인별로 한 줄 더 보여 준다.
+    expect(screen.getByText('코인으로 산다면 (탈라 가흐 구슬)')).toBeInTheDocument();
+    expect(screen.getByText('70개')).toBeInTheDocument();
   });
 
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {
