@@ -177,6 +177,8 @@ function RecipeCost({
   const coinTotals = coinTotalsOf(
     plan.shopping.map((row) => ({ name: book.itemName(row.itemId), required: row.required })),
   ).filter((each) => each.coin === coin);
+  // 구슬로 만들기를 켜고 끌 때 합계 칸이 생겼다 사라지며 표가 밀리지 않도록, 코인이 있으면 0개여도 둔다.
+  const coinTotal = coin === undefined ? undefined : (coinTotals[0]?.total ?? 0);
   const missing = [
     ...new Set([...plan.needed, ...(auctionPlan?.needed ?? [])].map(book.itemName)),
   ].filter((name) => !requested.includes(name));
@@ -291,11 +293,10 @@ function RecipeCost({
                   }}
                 />
               ) : null}
-              {coinTotals.map(({ coin, total }) => (
+              {coin !== undefined && coinTotal !== undefined ? (
                 <Statistic
-                  key={coin}
                   title={`코인으로 산다면 (${coin})`}
-                  value={`${formatNumber(total)}개`}
+                  value={`${formatNumber(coinTotal)}개`}
                   styles={{
                     content: {
                       fontVariantNumeric: 'tabular-nums',
@@ -304,16 +305,21 @@ function RecipeCost({
                     },
                   }}
                 />
-              ))}
+              ) : null}
+            </Flex>
+            {/* 시세를 받는 동안만 나타나므로 자리를 비워 둔다. 나타날 때 아래 표가 밀리지 않게 한다. */}
+            <div
+              style={{ display: 'flex', gap: 8, alignItems: 'center', height: 22, marginTop: -8 }}
+            >
               {plan.total.pending > 0 ? (
-                <Flex gap={8} align="center">
+                <>
                   <Spin size="small" />
                   <Text type="secondary" style={{ fontSize: 13 }}>
                     시세 {formatNumber(plan.total.pending)}종을 받는 중입니다
                   </Text>
-                </Flex>
+                </>
               ) : null}
-            </Flex>
+            </div>
             {/* 세로로 쌓으면 체크박스가 줄 폭만큼 늘어나 빈 곳을 눌러도 켜진다. 글자 폭만큼만 둔다. */}
             <Flex vertical gap={8} align="flex-start">
               <Checkbox checked={useNpc} onChange={(event) => changeUseNpc(event.target.checked)}>
@@ -345,6 +351,7 @@ function RecipeCost({
             rowKey="key"
             size="small"
             pagination={false}
+            tableLayout="fixed"
             scroll={{ x: 'max-content' }}
             expandable={{
               expandedRowKeys: expanded,
@@ -574,6 +581,7 @@ function treeColumns(
     {
       title: '재료',
       key: 'name',
+      width: 280,
       render: (_value, { node }) => {
         const name = book.itemName(node.itemId);
         const category = categoryOf(name);
@@ -596,6 +604,7 @@ function treeColumns(
     {
       title: '필요 개수',
       key: 'required',
+      width: 100,
       align: 'right',
       render: (_value, { node }) => (
         <Flex vertical align="flex-end">
@@ -618,6 +627,7 @@ function treeColumns(
     {
       title: '구하는 방법',
       key: 'method',
+      width: 470,
       render: (_value, { node }) => {
         const npcSold = node.npcUnit !== undefined;
         const purchase = coinPurchasesOf(book.itemName(node.itemId)).find(
@@ -689,6 +699,7 @@ function treeColumns(
     {
       title: '매물',
       key: 'supply',
+      width: 90,
       align: 'right',
       render: (_value, { node }) =>
         node.price.status === 'npc' ? (
@@ -706,12 +717,14 @@ function treeColumns(
     {
       title: '개당 최저가',
       key: 'lowest',
+      width: 110,
       align: 'right',
       render: (_value, { node }) => <LowestPrice price={node.price} lowest={node.quote?.lowest} />,
     },
     {
       title: '금액',
       key: 'cost',
+      width: 130,
       align: 'right',
       render: (_value, { node }) => {
         const other = isBuying(node.method)

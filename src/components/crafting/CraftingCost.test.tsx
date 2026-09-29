@@ -167,7 +167,11 @@ describe('제작 비용', () => {
     // 한 코인으로만 센다. 추천이나 설명 줄은 두지 않는다.
     expect(screen.queryByText(/심연의 증표/)).not.toBeInTheDocument();
     expect(screen.queryByText(/추천|절약|대체/)).not.toBeInTheDocument();
-    expect(screen.queryByText('코인으로 산다면 (브리 레흐 구슬)')).not.toBeInTheDocument();
+    // 켜기 전에도 합계 칸은 0개로 자리를 잡고 있다.
+    const before = screen.getByText('코인으로 산다면 (브리 레흐 구슬)');
+    expect(
+      within(before.closest('.ant-statistic') as HTMLElement).getByText('0개'),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /로 만들기/ }));
 
