@@ -126,8 +126,6 @@ export interface PlanInput {
   npcPriceOf?: (itemId: number) => number | undefined;
   /** 따로 고르지 않은 재료를 NPC 가 팔면 NPC 에서 사는 것을 기본으로 할지. */
   preferNpc?: boolean;
-  /** 사는 방법을 골랐어도 하위 재료를 미리 계산해 둘 재료. 만들면 얼마나 싼지 비교하려는 것. */
-  precompute?: (itemId: number) => boolean;
 }
 
 const emptyCost = (): CostSum => ({ gold: 0, unpriced: [], short: [], pending: 0 });
@@ -155,7 +153,6 @@ export function buildPlan(input: PlanInput): CraftPlan {
     expanded,
     npcPriceOf,
     preferNpc = false,
-    precompute,
   } = input;
   const needed = new Set<number>();
 
@@ -308,8 +305,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
    */
   const expand = (node: PlanNode, ancestors: ReadonlySet<number>): void => {
     const crafting = !isBuying(node.method);
-    if (node.recipes.length === 0) return;
-    if (!crafting && !expanded.has(node.key) && !precompute?.(node.itemId)) return;
+    if (node.recipes.length === 0 || (!crafting && !expanded.has(node.key))) return;
 
     const target = crafting
       ? (node.recipes.find((each) => each.index === node.method) ?? node.recipes[0])

@@ -135,7 +135,7 @@ describe('제작 비용', () => {
     expect(screen.getByText('70개')).toBeInTheDocument();
   });
 
-  it('구슬로 만들 수 있는 하위 재료는 필요한 구슬과 추천을 보여 주고, 고르면 코인 합계에 넣는다', async () => {
+  it('구슬로 만들 수 있는 하위 재료는 한 코인의 개수만 보여 주고, 고르면 코인 합계에 넣는다', async () => {
     // 결정 1개 = 가죽 3개 + 정수 20개(거래 불가 판과 같은 재료). 정수는 브리 레흐 구슬 5개 또는 심연의 증표 10개.
     const beadBook = buildRecipeBook({
       updated: '2026-09-22',
@@ -163,20 +163,19 @@ describe('제작 비용', () => {
     });
     renderCost(beadBook);
 
-    expect(
-      await screen.findByText(/구슬로 만들기 브리 레흐 구슬 100개, 심연의 증표 200개/),
-    ).toBeInTheDocument();
-    // 사면 10,000 G, 가죽 3개 1,200 G 로 만들 수 있다.
-    expect(await screen.findByText('구슬 추천', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/8,800 G 절약/)).toBeInTheDocument();
-    expect(screen.queryByText(/대체/)).not.toBeInTheDocument();
+    expect(await screen.findByText('브리 레흐 구슬 100개로 만들기')).toBeInTheDocument();
+    // 한 코인으로만 센다. 추천이나 설명 줄은 두지 않는다.
+    expect(screen.queryByText(/심연의 증표/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/추천|절약|대체/)).not.toBeInTheDocument();
     expect(screen.queryByText('코인으로 산다면 (브리 레흐 구슬)')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /구슬로 만들기/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /로 만들기/ }));
 
-    expect(await screen.findByText('코인으로 산다면 (브리 레흐 구슬)')).toBeInTheDocument();
-    expect(screen.getByText('코인으로 산다면 (심연의 증표)')).toBeInTheDocument();
-    expect(screen.getByText('200개')).toBeInTheDocument();
+    const title = await screen.findByText('코인으로 산다면 (브리 레흐 구슬)');
+    expect(
+      within(title.closest('.ant-statistic') as HTMLElement).getByText('100개'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/코인으로 산다면 (심연의 증표)/)).not.toBeInTheDocument();
   });
 
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {

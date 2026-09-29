@@ -1,95 +1,103 @@
-import { isBuying, isComplete, MAX_DEPTH, type PlanNode } from '@/features/crafting/plan';
-import { DEFAULT_WORKS, hasWorks, type RecipeBook } from '@/features/crafting/recipes';
-import { coinPurchasesOf } from './exchanges';
+import { MAX_DEPTH } from '@/features/crafting/plan';
+import { DEFAULT_WORKS, hasWorks, type Recipe, type RecipeBook } from '@/features/crafting/recipes';
+import { coinPurchasesOf, DUNGEON_COINS, type CoinPurchase } from './exchanges';
 
-export interface CoinCount {
-  coin: string;
-  count: number;
+/**
+ * 제작법의 재료 칸마다 코인 상점 재료면 그 구매처를 알리고, 아니면 하위 제작법으로 내려간다.
+ * 거래 불가 판과 거래 가능 판은 같은 재료로 본다. amount 는 그 칸에 드는 개수.
+ */
+function walk(
+  book: RecipeBook,
+  recipe: Recipe,
+  need: number,
+  ancestors: ReadonlySet<number>,
+  depth: number,
+  onCoinItem: (purchases: CoinPurchase[], amount: number) => void,
+): void {
+  const crafts = Math.ceil(need / recipe.yield);
+  const next = new Set(ancestors).add(recipe.item);
+  const works = hasWorks(recipe) ? DEFAULT_WORKS : 1;
+  const slots = [
+    ...recipe.materials.map((slot) => ({ slot, times: works })),
+    ...recipe.finish.map((slot) => ({ slot, times: 1 })),
+  ];
+  for (const { slot, times } of slots) {
+    const amount = slot.count * crafts * times;
+    const purchases = [
+      ...new Map(
+        slot.ids
+          .flatMap((each) => coinPurchasesOf(book.itemName(each)))
+          .map((each) => [each.coin, each]),
+      ).values(),
+    ];
+    if (purchases.length > 0) {
+      onCoinItem(purchases, amount);
+      continue;
+    }
+    if (depth + 1 >= MAX_DEPTH) continue;
+    for (const each of slot.ids) {
+      const inner = book.subRecipesOf(each)[0];
+      if (inner && !next.has(each)) {
+        walk(book, inner, amount, next, depth + 1, onCoinItem);
+        break;
+      }
+    }
+  }
 }
 
 /**
- * 이 재료를 직접 만든다면 하위 재료까지 내려가며 코인 상점 재료를 코인으로 샀을 때의 코인 개수.
- * 코인 상점에서 파는 재료를 만나면 거기서 멈춘다. 거래 불가 판과 거래 가능 판은 같은 재료로 본다.
+ * 이 제작법으로 만드는 물건이 어느 던전 코인을 쓰는 물건인지. 재료 트리에서 그 코인으로 살 수 있는
+ * 재료가 가장 많은 코인이다. 같으면 코인이 덜 드는 쪽, 그래도 같으면 코인 표의 앞쪽.
+ * 코인으로 사는 재료가 없으면 undefined.
  */
-export function beadsToMake(book: RecipeBook, itemId: number, required: number): CoinCount[] {
-  const totals = new Map<string, number>();
-
-  const visit = (id: number, need: number, ancestors: ReadonlySet<number>, depth: number) => {
-    const recipe = depth < MAX_DEPTH ? book.subRecipesOf(id)[0] : undefined;
-    if (!recipe || ancestors.has(id)) return;
-    const crafts = Math.ceil(need / recipe.yield);
-    const next = new Set(ancestors).add(id);
-    const works = hasWorks(recipe) ? DEFAULT_WORKS : 1;
-    const slots = [
-      ...recipe.materials.map((slot) => ({ slot, times: works })),
-      ...recipe.finish.map((slot) => ({ slot, times: 1 })),
-    ];
-    for (const { slot, times } of slots) {
-      const amount = slot.count * crafts * times;
-      const purchases = slot.ids.flatMap((each) => coinPurchasesOf(book.itemName(each)));
-      if (purchases.length > 0) {
-        for (const { coin, cost } of new Map(purchases.map((each) => [each.coin, each])).values())
-          totals.set(coin, (totals.get(coin) ?? 0) + cost * amount);
-        continue;
-      }
-      const inner = slot.ids.find((each) => book.subRecipesOf(each).length > 0);
-      if (inner !== undefined) visit(inner, amount, next, depth + 1);
+export function mainCoinOf(book: RecipeBook, recipe: Recipe): string | undefined {
+  const stats = new Map<string, { items: number; cost: number }>();
+  walk(book, recipe, 1, new Set(), 0, (purchases, amount) => {
+    for (const { coin, cost } of purchases) {
+      const entry = stats.get(coin) ?? { items: 0, cost: 0 };
+      entry.items += 1;
+      entry.cost += cost * amount;
+      stats.set(coin, entry);
     }
-  };
-
-  visit(itemId, required, new Set(), 0);
-  return [...totals].map(([coin, count]) => ({ coin, count }));
+  });
+  const order = DUNGEON_COINS.map((entry) => entry.coin.name);
+  return [...stats]
+    .sort(
+      ([a, x], [b, y]) =>
+        y.items - x.items || x.cost - y.cost || order.indexOf(a) - order.indexOf(b),
+    )
+    .map(([coin]) => coin)[0];
 }
 
-const beadItems = new WeakMap<RecipeBook, Map<number, boolean>>();
+/** 이 재료를 직접 만든다면 필요한 그 코인의 개수. 코인 상점에서 파는 재료를 만나면 거기서 멈춘다. */
+export function beadsToMake(
+  book: RecipeBook,
+  coin: string,
+  itemId: number,
+  required: number,
+): number {
+  const recipe = book.subRecipesOf(itemId)[0];
+  if (!recipe) return 0;
+  let total = 0;
+  walk(book, recipe, required, new Set([itemId]), 0, (purchases, amount) => {
+    const purchase = purchases.find((each) => each.coin === coin);
+    if (purchase) total += purchase.cost * amount;
+  });
+  return total;
+}
 
-/** 코인 상점에 없으면서 만들 때 코인이 드는 재료인지. 구슬로 만들지 고를 수 있는 재료다. */
-export function makesFromBeads(book: RecipeBook, itemId: number): boolean {
+const beadItems = new WeakMap<RecipeBook, Map<string, boolean>>();
+
+/** 코인 상점에 없으면서 만들 때 그 코인이 드는 재료인지. 구슬로 만들지 고를 수 있는 재료다. */
+export function makesFromBeads(book: RecipeBook, coin: string, itemId: number): boolean {
   let cache = beadItems.get(book);
   if (!cache) beadItems.set(book, (cache = new Map()));
-  let known = cache.get(itemId);
+  const key = `${coin}:${itemId}`;
+  let known = cache.get(key);
   if (known === undefined) {
     known =
-      coinPurchasesOf(book.itemName(itemId)).length === 0 &&
-      beadsToMake(book, itemId, 1).length > 0;
-    cache.set(itemId, known);
+      coinPurchasesOf(book.itemName(itemId)).length === 0 && beadsToMake(book, coin, itemId, 1) > 0;
+    cache.set(key, known);
   }
   return known;
-}
-
-export interface BeadAdvice {
-  /** 만드는 데 드는 코인. */
-  beads: CoinCount[];
-  /** 경매장에서 사는 것보다 코인 재료를 뺀 골드로 만드는 쪽이 아끼는 골드. 값을 다 모르면 없다. */
-  saved?: number;
-}
-
-interface Gold {
-  gold: number;
-  known: boolean;
-}
-
-/**
- * 만들 때 코인 상점 재료를 뺀 골드가 경매장에서 사는 값보다 얼마나 싼지.
- * 사는 값이나 만드는 데 드는 값을 아직 모르면 saved 는 비워 둔다.
- */
-export function adviseBeads(book: RecipeBook, node: PlanNode): BeadAdvice {
-  const beads = beadsToMake(book, node.itemId, node.required);
-  const sum = (nodes: PlanNode[]): Gold =>
-    nodes.reduce<Gold>(
-      (total, each) => {
-        const part = goldOf(each);
-        return { gold: total.gold + part.gold, known: total.known && part.known };
-      },
-      { gold: 0, known: true },
-    );
-  const goldOf = (target: PlanNode): Gold => {
-    if (!isBuying(target.method) && target.children) return sum(target.children);
-    if (coinPurchasesOf(book.itemName(target.itemId)).length > 0) return { gold: 0, known: true };
-    return { gold: target.cost.gold, known: isComplete(target.cost) };
-  };
-
-  if (!node.children || !isComplete(node.buyCost)) return { beads };
-  const made = sum(node.children);
-  return made.known ? { beads, saved: node.buyCost.gold - made.gold } : { beads };
 }
