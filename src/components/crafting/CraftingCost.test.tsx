@@ -40,6 +40,8 @@ const LISTINGS: Record<string, [number, number][]> = {
   철괴: [[50, 10]],
   가죽: [[400, 5]],
   철광석: [[1, 100]],
+  '순도 높은 힘의 결정': [[10000, 5]],
+  '깨어난 힘의 정수': [[100, 100]],
 };
 
 function renderCost(target = book) {
@@ -131,6 +133,50 @@ describe('제작 비용', () => {
     // 총합은 같은 계산을 코인별로 한 줄 더 보여 준다.
     expect(screen.getByText('코인으로 산다면 (탈라 가흐 구슬)')).toBeInTheDocument();
     expect(screen.getByText('70개')).toBeInTheDocument();
+  });
+
+  it('구슬로 만들 수 있는 하위 재료는 필요한 구슬과 추천을 보여 주고, 고르면 코인 합계에 넣는다', async () => {
+    // 결정 1개 = 가죽 3개 + 정수 20개(거래 불가 판과 같은 재료). 정수는 브리 레흐 구슬 5개 또는 심연의 증표 10개.
+    const beadBook = buildRecipeBook({
+      updated: '2026-09-22',
+      skills: [{ id: 10013, name: '핸디크래프트', count: 1 }],
+      items: {
+        1: ['검', 1],
+        2: ['순도 높은 힘의 결정', 1],
+        3: ['가죽', 1],
+        4: ['깨어난 힘의 정수', 1],
+        5: ['깨어난 힘의 정수(거래 불가)', 0],
+      },
+      recipes: [
+        { item: 1, skill: 10013, rank: 7, yield: 1, materials: [[[2], 1]] },
+        {
+          item: 2,
+          skill: 10013,
+          rank: 1,
+          yield: 1,
+          materials: [
+            [[3], 3],
+            [[4, 5], 20],
+          ],
+        },
+      ],
+    });
+    renderCost(beadBook);
+
+    expect(
+      await screen.findByText(/구슬로 만들기 브리 레흐 구슬 100개, 심연의 증표 200개/),
+    ).toBeInTheDocument();
+    // 사면 10,000 G, 가죽 3개 1,200 G 로 만들 수 있다.
+    expect(await screen.findByText('구슬 추천', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText(/8,800 G 절약/)).toBeInTheDocument();
+    expect(screen.queryByText(/대체/)).not.toBeInTheDocument();
+    expect(screen.queryByText('코인으로 산다면 (브리 레흐 구슬)')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /구슬로 만들기/ }));
+
+    expect(await screen.findByText('코인으로 산다면 (브리 레흐 구슬)')).toBeInTheDocument();
+    expect(screen.getByText('코인으로 산다면 (심연의 증표)')).toBeInTheDocument();
+    expect(screen.getByText('200개')).toBeInTheDocument();
   });
 
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {

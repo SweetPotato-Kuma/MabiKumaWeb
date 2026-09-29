@@ -180,7 +180,7 @@ export function coinPurchasesOf(name: string): CoinPurchase[] {
       }
     }
   }
-  return purchasesByName.get(name) ?? [];
+  return purchasesByName.get(name.replace(/\s*\(거래 ?불가\)$/, '')) ?? [];
 }
 
 export function dungeonCoinOf(key: string | null): DungeonCoin {

@@ -18,7 +18,6 @@ import {
   Statistic,
   Table,
   Tag,
-  Tooltip,
   Typography,
   theme,
   type TableColumnsType,
@@ -32,6 +31,7 @@ import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { coinPurchasesOf, coinTotalsOf } from '@/features/dungeonCoins/exchanges';
+import { adviseBeads, makesFromBeads } from '@/features/dungeonCoins/subBeads';
 import { useMarketPrices } from '@/features/crafting/market';
 import {
   isWednesdayInKorea,
@@ -167,6 +167,7 @@ function RecipeCost({
       expanded: new Set(expanded),
       npcPriceOf: npc ? (id) => npcUnitPrice(book.itemName(id), wednesday) : undefined,
       preferNpc: useNpc,
+      precompute: (id) => makesFromBeads(book, id),
     });
   const plan = planWith(true);
   // 비교용. NPC 에서 하나도 사지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
@@ -585,13 +586,6 @@ function treeColumns(
             <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
               <ItemInfoLink name={name} category={category} />
               {node.finish && node.depth > 0 ? <Tag>마감</Tag> : null}
-              {node.alternatives.length > 0 ? (
-                <Tooltip
-                  title={`대신 쓸 수 있는 것: ${node.alternatives.map(book.itemName).join(', ')}`}
-                >
-                  <Tag tabIndex={0}>대체 {node.alternatives.length}</Tag>
-                </Tooltip>
-              ) : null}
             </Flex>
           </Flex>
         );
@@ -635,6 +629,56 @@ function treeColumns(
             코인 구매 {purchase.coin} {formatNumber(purchase.cost * node.required)}개
           </Text>
         ));
+        const beadOption =
+          node.recipes.length > 0 && makesFromBeads(book, node.itemId)
+            ? adviseBeads(book, node)
+            : undefined;
+        const crafting = !isBuying(node.method);
+        const buyMethod = node.tradable ? 'buy' : npcSold ? 'npc' : undefined;
+        const saved = beadOption?.saved;
+        const beadLine = beadOption ? (
+          <Flex vertical gap={2} align="flex-start">
+            <Checkbox
+              checked={crafting}
+              disabled={crafting && buyMethod === undefined}
+              onChange={(event) =>
+                setMethod(
+                  node.key,
+                  event.target.checked ? node.recipes[0].index : (buyMethod ?? 'buy'),
+                )
+              }
+            >
+              <Text className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                구슬로 만들기{' '}
+                {beadOption.beads
+                  .map(({ coin, count }) => `${coin} ${formatNumber(count)}개`)
+                  .join(', ')}
+              </Text>
+            </Checkbox>
+            {saved !== undefined && buyMethod !== undefined ? (
+              <Flex gap={6} align="center">
+                <Tag style={{ marginInlineEnd: 0 }} color={saved > 0 ? 'green' : undefined}>
+                  {saved > 0 ? '구슬 추천' : '경매장 추천'}
+                </Tag>
+                {saved > 0 ? (
+                  <Text
+                    type="secondary"
+                    className="tnum"
+                    style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                  >
+                    {formatGold(saved)} 절약,{' '}
+                    {beadOption.beads
+                      .map(
+                        ({ coin, count }) =>
+                          `${coin} 1개당 ${formatGold(Math.round(saved / count))}`,
+                      )
+                      .join(', ')}
+                  </Text>
+                ) : null}
+              </Flex>
+            ) : null}
+          </Flex>
+        ) : null;
         if (node.recipes.length === 0 && !npcSold)
           return (
             <Flex vertical>
@@ -666,6 +710,7 @@ function treeColumns(
               ]}
               style={{ minWidth: 150 }}
             />
+            {beadLine}
             {coinLines}
           </Flex>
         );

@@ -13,6 +13,12 @@ describe('코인으로 살 수 있는 곳', () => {
     ]);
   });
 
+  it('거래 불가 판은 같은 재료로 본다', () => {
+    expect(coinPurchasesOf('깨어난 힘의 정수(거래 불가)')).toEqual(
+      coinPurchasesOf('깨어난 힘의 정수'),
+    );
+  });
+
   it('코인으로 살 수 없으면 빈 배열이다', () => {
     expect(coinPurchasesOf('철괴')).toEqual([]);
   });
