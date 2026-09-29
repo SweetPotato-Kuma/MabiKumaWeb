@@ -142,6 +142,31 @@ describe('제작 비용', () => {
     expect(screen.getByText('탈라 가흐 구슬 개당 가치')).toBeInTheDocument();
   });
 
+  it('사기로 둔 재료를 펼쳐 그 아래 재료를 코인으로 고르면 윗줄이 제작으로 바뀌어 코인에 들어간다', async () => {
+    const nested = buildRecipeBook({
+      updated: '2026-09-22',
+      skills: [{ id: 10013, name: '핸디크래프트', count: 1 }],
+      items: { 1: ['검', 1], 2: ['철괴', 1], 3: ['빛바랜 에너지 회로', 1] },
+      recipes: [
+        { item: 1, skill: 10013, rank: 7, yield: 1, materials: [[[2], 3]] },
+        { item: 2, skill: 10013, rank: 1, yield: 1, materials: [[[3], 2]] },
+      ],
+    });
+    renderCost(nested);
+    await screen.findAllByText('150 G');
+
+    const tree = screen.getByText('제작 비용').closest('.ant-card') as HTMLElement;
+    fireEvent.click(within(tree).getAllByRole('button', { name: /펼치기|Expand row/i })[0]);
+    fireEvent.click(await within(tree).findByRole('checkbox', { name: /로 구매/ }));
+
+    const stat = () =>
+      screen.getByText('필요한 탈라 가흐 구슬').closest('.ant-statistic') as HTMLElement;
+    expect(await within(stat()).findByText('210개')).toBeInTheDocument();
+    expect(within(tree).getByText(/^제작:/)).toBeInTheDocument();
+    // 윗줄의 구슬로 만들기 체크 칸은 켜지지 않는다.
+    expect(within(tree).queryByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
+  });
+
   it('구슬로 만들 수 있는 하위 재료는 한 코인의 개수만 보여 주고, 고르면 코인 합계에 넣는다', async () => {
     // 결정 1개 = 가죽 3개 + 정수 20개(거래 불가 판과 같은 재료). 정수는 브리 레흐 구슬 5개 또는 심연의 증표 10개.
     const beadBook = buildRecipeBook({

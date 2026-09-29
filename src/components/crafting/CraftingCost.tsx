@@ -197,8 +197,23 @@ function RecipeCost({
   // 렌더 중에 상태를 고치는 React 의 "이전 렌더에서 파생" 방식. 새 이름이 있을 때만 바뀌므로 멈춘다.
   if (missing.length > 0) setRequested([...requested, ...missing]);
 
+  /** 사는 줄 아래에서 코인을 고르면 값에 들어가도록 그 윗줄들을 제작으로 바꾼다. 윗줄의 체크 칸은 건드리지 않는다. */
+  const craftingAbove = (key: string): Record<string, Method> => {
+    const found: Record<string, Method> = {};
+    const walk = (nodes: PlanNode[]) => {
+      for (const node of nodes) {
+        if (!key.startsWith(`${node.key}.`)) continue;
+        if (isBuying(node.method)) found[node.key] = node.recipes[0].index;
+        if (node.children) walk(node.children);
+      }
+    };
+    walk(plan.nodes);
+    return found;
+  };
+
   const setMethod = (key: string, method: Method) => {
-    setMethods((prev) => ({ ...prev, [key]: method }));
+    const above = method === 'coin' ? craftingAbove(key) : {};
+    setMethods((prev) => ({ ...prev, ...above, [key]: method }));
     setBeadChecked((prev) => prev.filter((each) => each !== key));
     // 제작으로 바꾸면 무엇이 들어가는지 바로 보이게 펼친다.
     if (!isBuying(method)) setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
@@ -210,11 +225,12 @@ function RecipeCost({
    */
   const setBeads = (key: string, on: boolean, offMethod: Method) => {
     const below = (each: string) => each.startsWith(`${key}.`);
+    const above = on ? craftingAbove(key) : {};
     setMethods((prev) => {
       const next = Object.fromEntries(
         Object.entries(prev).filter(([each]) => each !== key && !below(each)),
       );
-      return on ? next : { ...next, [key]: offMethod };
+      return on ? { ...next, ...above } : { ...next, [key]: offMethod };
     });
     setBeadChecked((prev) => {
       const rest = prev.filter((each) => each !== key && !below(each));
