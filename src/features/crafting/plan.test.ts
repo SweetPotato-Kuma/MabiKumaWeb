@@ -246,6 +246,64 @@ describe('buildPlan 의 NPC 판매가', () => {
   });
 });
 
+describe('buildPlan 의 코인(구슬) 구매', () => {
+  const base = {
+    book,
+    recipe: sword,
+    works: 1,
+    quantity: 1,
+    priceOf: (id: number) => (id === 2 ? market([50, 10]) : market([400, 5])),
+    expanded: new Set<string>(),
+  };
+  // 철괴(2)는 코인 30개에 판다고 친다.
+  const beads = { coinCostOf: (id: number) => (id === 2 ? 30 : undefined), craftable: () => false };
+
+  it('코인으로 사기로 한 재료는 경매장 값이 총액에서 빠지고 코인 개수로 센다', () => {
+    const auction = buildPlan({ ...base, beads, methods: {} });
+    expect(auction.total.gold).toBe(3 * 50 + 400);
+    expect(auction.beads).toBe(0);
+
+    const coin = buildPlan({ ...base, beads, methods: { m0: 'coin' } });
+    expect(coin.nodes[0].method).toBe('coin');
+    expect(coin.nodes[0].coinUnit).toBe(30);
+    expect(coin.nodes[0].buyCost.gold).toBe(150);
+    expect(coin.nodes[0].cost.gold).toBe(0);
+    expect(coin.total.gold).toBe(400);
+    expect(coin.beads).toBe(3 * 30);
+  });
+
+  it('코인을 쓰지 않는 계산에서는 코인 선택이 무효라 경매장으로 돌아간다', () => {
+    const result = buildPlan({ ...base, methods: { m0: 'coin' } });
+    expect(result.nodes[0].method).toBe('buy');
+    expect(result.total.gold).toBe(3 * 50 + 400);
+  });
+
+  it('구슬로 만들기로 고른 재료 아래에서는 코인으로 파는 재료를 기본으로 코인으로 산다', () => {
+    // 철광석(5)은 코인 4개, 철괴(2)는 직접 만드는 것을 구슬로 만들기로 고른다.
+    const inherit = {
+      ...base,
+      priceOf: () => market([10, 100]),
+      beads: {
+        coinCostOf: (id: number) => (id === 5 ? 4 : undefined),
+        craftable: (id: number) => id === 2,
+      },
+      methods: { m0: book.recipesOf(2)[0].index },
+      expanded: new Set(['m0']),
+    };
+    const result = buildPlan(inherit);
+    const ore = result.nodes[0].children?.[0];
+    expect(ore?.method).toBe('coin');
+    expect(result.beads).toBe(2 * 4);
+    expect(result.total.gold).toBe(10);
+
+    // 아래 줄에서 경매장을 직접 고르면 그것을 따른다.
+    const oreKey = ore?.key ?? '';
+    const override = buildPlan({ ...inherit, methods: { ...inherit.methods, [oreKey]: 'buy' } });
+    expect(override.nodes[0].children?.[0].method).toBe('buy');
+    expect(override.beads).toBe(0);
+  });
+});
+
 describe('공정', () => {
   /**
    * 장갑(1)은 천옷만들기. 공정마다 옷감(2) 2개, 마무리에 실(3) 1개. 기준 7공정.

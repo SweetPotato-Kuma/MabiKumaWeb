@@ -107,7 +107,7 @@ describe('제작 비용', () => {
     expect(await within(tree).findByText('제작 시 2 G')).toBeInTheDocument();
   });
 
-  it('코인 상점에서 파는 재료는 코인으로 사면 몇 개인지 보여 준다', async () => {
+  it('코인 상점에서 파는 재료는 코인으로 사기를 고르면 필요한 코인에 넣는다', async () => {
     // 빛바랜 에너지 회로는 탈라 가흐 구슬 35개, 철괴는 코인 상점에 없다.
     const coinBook = buildRecipeBook({
       updated: '2026-09-22',
@@ -128,11 +128,16 @@ describe('제작 비용', () => {
     });
     renderCost(coinBook);
 
-    expect(await screen.findByText('코인 구매 탈라 가흐 구슬 70개')).toBeInTheDocument();
-    expect(screen.queryAllByText(/코인 구매/)).toHaveLength(1);
-    // 총합은 같은 계산을 코인별로 한 줄 더 보여 준다.
-    expect(screen.getByText('코인으로 산다면 (탈라 가흐 구슬)')).toBeInTheDocument();
-    expect(screen.getByText('70개')).toBeInTheDocument();
+    const box = await screen.findByRole('checkbox', { name: '탈라 가흐 구슬 70개로 구매' });
+    expect(screen.getAllByRole('checkbox', { name: /로 구매/ })).toHaveLength(1);
+    const stat = () =>
+      screen.getByText('필요한 탈라 가흐 구슬').closest('.ant-statistic') as HTMLElement;
+    expect(within(stat()).getByText('0개')).toBeInTheDocument();
+
+    fireEvent.click(box);
+
+    expect(await within(stat()).findByText('70개')).toBeInTheDocument();
+    expect(screen.getByText('구슬 구매')).toBeInTheDocument();
   });
 
   it('구슬로 만들 수 있는 하위 재료는 한 코인의 개수만 보여 주고, 고르면 코인 합계에 넣는다', async () => {
@@ -168,18 +173,18 @@ describe('제작 비용', () => {
     expect(screen.queryByText(/심연의 증표/)).not.toBeInTheDocument();
     expect(screen.queryByText(/추천|절약|대체/)).not.toBeInTheDocument();
     // 켜기 전에도 합계 칸은 0개로 자리를 잡고 있다.
-    const before = screen.getByText('코인으로 산다면 (브리 레흐 구슬)');
+    const before = screen.getByText('필요한 브리 레흐 구슬');
     expect(
       within(before.closest('.ant-statistic') as HTMLElement).getByText('0개'),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /로 만들기/ }));
 
-    const title = await screen.findByText('코인으로 산다면 (브리 레흐 구슬)');
+    const title = await screen.findByText('필요한 브리 레흐 구슬');
     expect(
       within(title.closest('.ant-statistic') as HTMLElement).getByText('100개'),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/코인으로 산다면 (심연의 증표)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/필요한 심연의 증표/)).not.toBeInTheDocument();
   });
 
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {

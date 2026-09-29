@@ -71,7 +71,11 @@ export function collectItemPages(names, recipes) {
       .trim();
     const materials = [...recipe.materials, ...(recipe.finish ?? [])].map(slotText).filter(Boolean);
     const list = craftsOf.get(product) ?? [];
-    list.push({ skill: `${skill} ${rankText(recipe.rank)}`.trim(), materials, yield: recipe.yield });
+    list.push({
+      skill: `${skill} ${rankText(recipe.rank)}`.trim(),
+      materials,
+      yield: recipe.yield,
+    });
     craftsOf.set(product, list);
 
     for (const [ids] of [...recipe.materials, ...(recipe.finish ?? [])]) {
@@ -91,7 +95,9 @@ export function collectItemPages(names, recipes) {
     category: categories[0],
     categories,
     crafts: (craftsOf.get(name) ?? []).slice(0, MAX_RECIPES),
-    usedIn: [...(usedIn.get(name) ?? [])].filter((product) => product !== name).slice(0, MAX_USED_IN),
+    usedIn: [...(usedIn.get(name) ?? [])]
+      .filter((product) => product !== name)
+      .slice(0, MAX_USED_IN),
   }));
 }
 
@@ -106,7 +112,7 @@ export function renderItemBody(page, { siteName, itemPath, known }) {
   const categoryQuery = encodeURIComponent(page.category);
   const auctionHref = `/auction?keyword=${encodeURIComponent(page.name)}&category=${categoryQuery}`;
   const lines = [
-    `<main style="max-width:960px;margin:0 auto;padding:24px 16px;line-height:1.6">`,
+    `<main style="visibility:hidden;max-width:960px;margin:0 auto;padding:24px 16px;line-height:1.6">`,
     `<nav aria-label="위치"><a href="/">${escapeHtml(siteName)}</a> › <a href="/items">아이템 정보</a> › <a href="/items?category=${categoryQuery}">${escapeHtml(page.category)}</a></nav>`,
     `<h1>${escapeHtml(page.name)}</h1>`,
     `<p>마비노기 ${escapeHtml(page.categories.join(', '))} 아이템입니다. ${escapeHtml(siteName)}에서 ${escapeHtml(page.name)}의 경매장 최저가와 시세 기록, 그림과 설명을 볼 수 있습니다.</p>`,
@@ -117,16 +123,25 @@ export function renderItemBody(page, { siteName, itemPath, known }) {
     lines.push(`<h2>${escapeHtml(page.name)} 제작법</h2>`, '<ul>');
     for (const craft of page.crafts) {
       const made = craft.yield > 1 ? ` (한 번에 ${craft.yield}개)` : '';
-      lines.push(`<li>${escapeHtml(craft.skill)}${made}: ${escapeHtml(craft.materials.join(', '))}</li>`);
+      lines.push(
+        `<li>${escapeHtml(craft.skill)}${made}: ${escapeHtml(craft.materials.join(', '))}</li>`,
+      );
     }
     lines.push('</ul>');
   }
 
   if (page.usedIn.length) {
-    lines.push(`<h2>${escapeHtml(page.name)}${objectParticle(page.name)} 재료로 쓰는 아이템</h2>`, '<ul>');
+    lines.push(
+      `<h2>${escapeHtml(page.name)}${objectParticle(page.name)} 재료로 쓰는 아이템</h2>`,
+      '<ul>',
+    );
     for (const product of page.usedIn) {
       const label = escapeHtml(product);
-      lines.push(known.has(product) ? `<li><a href="${escapeHtml(itemPath(product))}">${label}</a></li>` : `<li>${label}</li>`);
+      lines.push(
+        known.has(product)
+          ? `<li><a href="${escapeHtml(itemPath(product))}">${label}</a></li>`
+          : `<li>${label}</li>`,
+      );
     }
     lines.push('</ul>');
   }

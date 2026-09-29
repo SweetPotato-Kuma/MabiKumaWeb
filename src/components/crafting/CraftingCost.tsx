@@ -31,7 +31,7 @@ import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
-import { coinPurchasesOf, coinTotalsOf } from '@/features/dungeonCoins/exchanges';
+import { coinPurchasesOf } from '@/features/dungeonCoins/exchanges';
 import { beadsToMake, mainCoinOf, makesFromBeads } from '@/features/dungeonCoins/subBeads';
 import { useMarketPrices } from '@/features/crafting/market';
 import {
@@ -157,6 +157,20 @@ function RecipeCost({
   const [todayIsWednesday] = useState(() => isWednesdayInKorea());
   const [wednesday, setWednesday] = useState(todayIsWednesday);
 
+  // 이 물건이 쓰는 코인. 그 코인으로 파는 재료를 코인으로 살지 고를 수 있다.
+  const coin = useMemo(() => mainCoinOf(book, recipe), [book, recipe]);
+  const beads = useMemo(
+    () =>
+      coin === undefined
+        ? undefined
+        : {
+            coinCostOf: (id: number) =>
+              coinPurchasesOf(book.itemName(id)).find((each) => each.coin === coin)?.cost,
+            craftable: (id: number) => makesFromBeads(book, coin, id),
+          },
+    [book, coin],
+  );
+
   const planWith = (npc: boolean) =>
     buildPlan({
       book,
@@ -168,17 +182,12 @@ function RecipeCost({
       expanded: new Set(expanded),
       npcPriceOf: npc ? (id) => npcUnitPrice(book.itemName(id), wednesday) : undefined,
       preferNpc: useNpc,
+      beads,
     });
   const plan = planWith(true);
   // 비교용. NPC 에서 하나도 사지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
   const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
   const auctionPlan = usesNpc ? planWith(false) : undefined;
-  const coin = useMemo(() => mainCoinOf(book, recipe), [book, recipe]);
-  const coinTotals = coinTotalsOf(
-    plan.shopping.map((row) => ({ name: book.itemName(row.itemId), required: row.required })),
-  ).filter((each) => each.coin === coin);
-  // 구슬로 만들기를 켜고 끌 때 합계 칸이 생겼다 사라지며 표가 밀리지 않도록, 코인이 있으면 0개여도 둔다.
-  const coinTotal = coin === undefined ? undefined : (coinTotals[0]?.total ?? 0);
   const missing = [
     ...new Set([...plan.needed, ...(auctionPlan?.needed ?? [])].map(book.itemName)),
   ].filter((name) => !requested.includes(name));
@@ -191,11 +200,13 @@ function RecipeCost({
     if (!isBuying(method)) setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
   };
 
-  /** 전체 기본값을 바꾸면 줄마다 고른 구매처는 지운다. 제작을 고른 것은 그대로 둔다. */
+  /** 전체 기본값을 바꾸면 줄마다 고른 구매처는 지운다. 제작과 코인으로 사기를 고른 것은 그대로 둔다. */
   const changeUseNpc = (next: boolean) => {
     setUseNpc(next);
     setMethods((prev) =>
-      Object.fromEntries(Object.entries(prev).filter(([, method]) => !isBuying(method))),
+      Object.fromEntries(
+        Object.entries(prev).filter(([, method]) => method === 'coin' || !isBuying(method)),
+      ),
     );
   };
 
@@ -293,10 +304,10 @@ function RecipeCost({
                   }}
                 />
               ) : null}
-              {coin !== undefined && coinTotal !== undefined ? (
+              {coin !== undefined ? (
                 <Statistic
-                  title={`코인으로 산다면 (${coin})`}
-                  value={`${formatNumber(coinTotal)}개`}
+                  title={`필요한 ${coin}`}
+                  value={`${formatNumber(plan.beads)}개`}
                   styles={{
                     content: {
                       fontVariantNumeric: 'tabular-nums',
@@ -564,6 +575,7 @@ function priceStatusText(price: NodePrice): string {
     case 'error':
       return '조회 실패';
     case 'npc':
+    case 'coin':
       return '';
     default:
       return price.price.offers.length === 0 ? '매물 없음' : '';
@@ -630,23 +642,32 @@ function treeColumns(
       width: 470,
       render: (_value, { node }) => {
         const npcSold = node.npcUnit !== undefined;
-        const purchase = coinPurchasesOf(book.itemName(node.itemId)).find(
-          (each) => each.coin === coin,
-        );
-        const coinText = purchase ? (
-          <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-            코인 구매 {purchase.coin} {formatNumber(purchase.cost * node.required)}개
-          </Text>
-        ) : null;
+        const buyMethod = node.tradable ? 'buy' : npcSold ? 'npc' : undefined;
+        const byCoin = node.method === 'coin';
+        const coinCheckbox =
+          node.coinUnit !== undefined ? (
+            <Checkbox
+              checked={byCoin}
+              disabled={byCoin && buyMethod === undefined}
+              onChange={(event) =>
+                setMethod(node.key, event.target.checked ? 'coin' : (buyMethod ?? 'buy'))
+              }
+            >
+              <Text className="tnum" style={{ fontSize: 12 }}>
+                {coin} {formatNumber(node.coinUnit * node.required)}개로 구매
+              </Text>
+            </Checkbox>
+          ) : null;
         if (node.recipes.length === 0 && !npcSold)
           return (
             <Flex gap={8} align="center" style={{ whiteSpace: 'nowrap' }}>
-              <Text type="secondary">{node.tradable ? '경매장 구매' : '거래 불가'}</Text>
-              {coinText}
+              <Text type="secondary">
+                {byCoin ? '구슬 구매' : node.tradable ? '경매장 구매' : '거래 불가'}
+              </Text>
+              {coinCheckbox}
             </Flex>
           );
         const crafting = !isBuying(node.method);
-        const buyMethod = node.tradable ? 'buy' : npcSold ? 'npc' : undefined;
         const beads =
           coin && node.recipes.length > 0 && makesFromBeads(book, coin, node.itemId)
             ? beadsToMake(book, coin, node.itemId, node.required)
@@ -667,6 +688,9 @@ function treeColumns(
                 },
                 ...(npcSold
                   ? [{ value: 'npc' as const, label: `NPC 구매 (${formatGold(node.npcUnit)})` }]
+                  : []),
+                ...(node.coinUnit !== undefined
+                  ? [{ value: 'coin' as const, label: '구슬 구매' }]
                   : []),
                 ...node.recipes.map((each) => ({
                   value: each.index,
@@ -691,7 +715,7 @@ function treeColumns(
                 </Text>
               </Checkbox>
             ) : null}
-            {coinText}
+            {coinCheckbox}
           </Flex>
         );
       },
@@ -727,13 +751,18 @@ function treeColumns(
       width: 130,
       align: 'right',
       render: (_value, { node }) => {
-        const other = isBuying(node.method)
-          ? node.craftCost && isComplete(node.craftCost)
-            ? `제작 시 ${formatGold(node.craftCost.gold)}`
-            : ''
-          : isComplete(node.buyCost)
-            ? `구매 시 ${formatGold(node.buyCost.gold)}`
-            : '';
+        const other =
+          node.method === 'coin'
+            ? isComplete(node.buyCost)
+              ? `경매장 ${formatGold(node.buyCost.gold)}`
+              : ''
+            : isBuying(node.method)
+              ? node.craftCost && isComplete(node.craftCost)
+                ? `제작 시 ${formatGold(node.craftCost.gold)}`
+                : ''
+              : isComplete(node.buyCost)
+                ? `구매 시 ${formatGold(node.buyCost.gold)}`
+                : '';
         return (
           <Flex vertical align="flex-end">
             <CostText cost={node.cost} />

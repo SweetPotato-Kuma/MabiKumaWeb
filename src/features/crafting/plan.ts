@@ -17,11 +17,15 @@ import { DEFAULT_WORKS, hasWorks, type Recipe, type RecipeBook, type RecipeSlot 
  * 하위 재료 시세를 모두 알아야 판단할 수 있어서, 자동으로 고르려면 결국 전부 물어야 한다.
  */
 
-/** 재료를 어떻게 구할지. 경매장 구매('buy'), NPC 구매('npc'), 제작법 순번(Recipe.index). */
-export type Method = 'buy' | 'npc' | number;
+/**
+ * 재료를 어떻게 구할지. 경매장 구매('buy'), NPC 구매('npc'), 던전 코인(구슬)으로 구매('coin'),
+ * 제작법 순번(Recipe.index).
+ */
+export type Method = 'buy' | 'npc' | 'coin' | number;
 
-/** 사는 쪽인지(경매장이든 NPC 든). 아니면 만드는 쪽이다. */
-export const isBuying = (method: Method): method is 'buy' | 'npc' => typeof method !== 'number';
+/** 사는 쪽인지(경매장, NPC, 코인 어느 쪽이든). 아니면 만드는 쪽이다. */
+export const isBuying = (method: Method): method is 'buy' | 'npc' | 'coin' =>
+  typeof method !== 'number';
 
 /** 재료가 이 깊이를 넘으면 더 풀지 않는다. 게임 제작법은 다섯 단계를 넘지 않는다. */
 export const MAX_DEPTH = 8;
@@ -31,9 +35,14 @@ const worksOf = (recipe: Recipe) => (hasWorks(recipe) ? DEFAULT_WORKS : 1);
 
 /**
  * 재료 값을 어디서 매기는지. 경매장 시세(PriceState), NPC 판매가('npc'), 거래 불가.
- * NPC 는 개수 제한 없이 같은 값에 판다고 본다.
+ * NPC 는 개수 제한 없이 같은 값에 판다고 본다. 'coin' 은 코인으로 사는 값(unit 은 개당 코인 개수)이라
+ * 골드는 들지 않는다.
  */
-export type NodePrice = PriceState | { status: 'untradable' } | { status: 'npc'; unit: number };
+export type NodePrice =
+  | PriceState
+  | { status: 'untradable' }
+  | { status: 'npc'; unit: number }
+  | { status: 'coin'; unit: number };
 
 export interface CostSum {
   gold: number;
@@ -67,6 +76,10 @@ export interface PlanNode {
   method: Method;
   /** 사용자가 고른 방법인지. 아니면 기본값이다. */
   chosen: boolean;
+  /** 코인으로 산다면 개당 코인 개수. 이 계획의 코인으로 파는 재료만. */
+  coinUnit?: number;
+  /** 구슬로 만드는 재료라 아래 재료 가운데 코인으로 살 수 있는 것을 기본으로 코인으로 채우는지. */
+  inheritsBeads: boolean;
   /** 공정마다 넣는 개수. 공정을 여러 번 하는 제작법의 작업 재료일 때만. */
   perWork?: number;
   /** 만든다면 몇 번 만들어야 하는지, 한 번에 몇 개 나오는지. */
@@ -95,8 +108,10 @@ export interface CraftPlan {
   nodes: PlanNode[];
   /** 살 것을 아이템별로 모은 것. 같은 재료가 트리 여러 곳에 나와도 한 줄이다. */
   shopping: ShoppingRow[];
-  /** 살 것 전부의 값. 같은 재료는 모은 개수로 싼 매물부터 채워 매긴다. */
+  /** 살 것 전부의 값. 같은 재료는 모은 개수로 싼 매물부터 채워 매긴다. 코인으로 사는 재료는 들어 있지 않다. */
   total: CostSum;
+  /** 코인으로 사기로 한 재료에 드는 코인 개수. */
+  beads: number;
   /**
    * 맨 위 재료 칸을 공정 재료와 마무리 재료로 나눠 매긴 값. 마무리 재료가 없는 제작법은 없다.
    * 두 구역에 같은 재료가 있으면 따로 사는 값이라 둘을 더하면 total 보다 조금 클 수 있다.
@@ -126,6 +141,15 @@ export interface PlanInput {
   npcPriceOf?: (itemId: number) => number | undefined;
   /** 따로 고르지 않은 재료를 NPC 가 팔면 NPC 에서 사는 것을 기본으로 할지. */
   preferNpc?: boolean;
+  /**
+   * 코인(구슬) 계산. 이 물건이 쓰는 코인 하나만 다룬다.
+   * coinCostOf 는 그 코인으로 파는 재료의 개당 코인 개수, craftable 은 만들 때 그 코인이 드는 재료인지.
+   * 구슬로 만들기로 고른 재료 아래에서는 코인으로 파는 재료를 고르지 않아도 코인으로 산다.
+   */
+  beads?: {
+    coinCostOf: (itemId: number) => number | undefined;
+    craftable: (itemId: number) => boolean;
+  };
 }
 
 const emptyCost = (): CostSum => ({ gold: 0, unpriced: [], short: [], pending: 0 });
@@ -153,6 +177,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
     expanded,
     npcPriceOf,
     preferNpc = false,
+    beads,
   } = input;
   const needed = new Set<number>();
 
@@ -170,15 +195,18 @@ export function buildPlan(input: PlanInput): CraftPlan {
   const defaultSource = (itemId: number): 'buy' | 'npc' =>
     preferNpc && npcPriceOf?.(itemId) !== undefined ? 'npc' : 'buy';
 
-  const priceFor = (itemId: number, source: 'buy' | 'npc'): NodePrice => {
+  const priceFor = (itemId: number, source: 'buy' | 'npc' | 'coin'): NodePrice => {
     const npc = npcPriceOf?.(itemId);
+    const coin = beads?.coinCostOf(itemId);
+    if (source === 'coin' && coin !== undefined) return { status: 'coin', unit: coin };
     return source === 'npc' && npc !== undefined
       ? { status: 'npc', unit: npc }
       : auctionPriceFor(itemId);
   };
 
-  /** 필요한 개수를 샀을 때. NPC 는 모자람 없이 같은 값이다. */
+  /** 필요한 개수를 샀을 때. NPC 는 모자람 없이 같은 값이다. 코인은 골드가 들지 않는다. */
   const quoteFor = (price: NodePrice, required: number): BuyQuote | undefined => {
+    if (price.status === 'coin') return { cost: 0, filled: required, lowest: 0 };
     if (price.status === 'npc')
       return { cost: price.unit * required, filled: required, lowest: price.unit };
     return price.status === 'ok' ? quoteBuy(price.price, required) : undefined;
@@ -247,11 +275,13 @@ export function buildPlan(input: PlanInput): CraftPlan {
     times: number,
     depth: number,
     ancestors: ReadonlySet<number>,
+    inheritBeads: boolean,
   ): PlanNode => {
     const required = slot.count * multiplier * times;
     const itemId = pickSlotItem(slot, required);
     const tradable = book.isTradable(itemId);
     const npcUnit = npcPriceOf?.(itemId);
+    const coinUnit = beads?.coinCostOf(itemId);
     const recipes = depth < MAX_DEPTH && !ancestors.has(itemId) ? book.subRecipesOf(itemId) : [];
 
     // 고른 방법이 지금도 가능한지. NPC 목록이 빠진 비교 계산에서는 NPC 구매를 고른 것이 무효가 된다.
@@ -262,17 +292,38 @@ export function buildPlan(input: PlanInput): CraftPlan {
       (choice === 'npc' && npcUnit !== undefined) || (choice === 'buy' && tradable)
         ? choice
         : undefined;
+    const chosenCoin = choice === 'coin' && coinUnit !== undefined;
 
     // 사는 값은 고른 곳에서, 고르지 않았으면 기본 구매처에서 매긴다. 만들기로 해도 "구매 시" 비교에 쓴다.
+    // 코인으로 사도 경매장 값은 그대로 매겨 둔다. 코인으로 사면 얼마를 아끼는지 보이게 하려는 것이다.
     const source = chosenSource ?? defaultSource(itemId);
     const price = priceFor(itemId, source);
     const quote = quoteFor(price, required);
     const buyCost = buyCostOf(itemId, price, required, quote);
 
     const buyable = price.status === 'loading' || (quote !== undefined && quote.filled >= required);
+    // 구슬로 만드는 재료 아래에서는 고르지 않은 재료가 코인이면 코인으로 사고, 구슬로 만드는 재료면 만든다.
+    const inheritsCoin = inheritBeads && !chosenSource && !chosenRecipe && coinUnit !== undefined;
+    const inheritsCraft =
+      inheritBeads &&
+      !chosenSource &&
+      !chosenCoin &&
+      !chosenRecipe &&
+      coinUnit === undefined &&
+      recipes.length > 0 &&
+      beads?.craftable(itemId) === true;
     let method: Method = source;
     if (chosenRecipe) method = chosenRecipe.index;
+    else if (chosenCoin || inheritsCoin) method = 'coin';
+    else if (inheritsCraft) method = recipes[0].index;
     else if (!chosenSource && !buyable && recipes.length > 0) method = recipes[0].index;
+
+    // 만들 수밖에 없는 재료는 사용자가 구슬로 만들기로 한 것과 같게 본다.
+    const forcedCraft = !tradable && npcUnit === undefined && !chosenRecipe;
+    const inheritsBeads =
+      typeof method === 'number' &&
+      beads?.craftable(itemId) === true &&
+      (chosenRecipe !== undefined || inheritsCraft || forcedCraft);
 
     const node: PlanNode = {
       key,
@@ -287,12 +338,14 @@ export function buildPlan(input: PlanInput): CraftPlan {
       tradable,
       npcUnit,
       method,
-      chosen: chosenSource !== undefined || chosenRecipe !== undefined,
+      chosen: chosenSource !== undefined || chosenCoin || chosenRecipe !== undefined,
+      ...(coinUnit !== undefined ? { coinUnit } : {}),
+      inheritsBeads,
       ...(times > 1 ? { perWork: slot.count * multiplier } : {}),
       crafts: 0,
       yieldCount: 1,
       buyCost,
-      cost: buyCost,
+      cost: method === 'coin' ? emptyCost() : buyCost,
     };
     return node;
   };
@@ -323,6 +376,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
         times,
         node.depth + 1,
         nextAncestors,
+        node.inheritsBeads,
       );
       expand(child, nextAncestors);
       return child;
@@ -337,7 +391,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
   const rootAncestors = new Set([recipe.item]);
   const rootWorks = hasWorks(recipe) && works !== undefined ? Math.max(1, works) : undefined;
   const nodes = slotsOf(recipe, rootWorks).map(({ slot, finish, id, times }) => {
-    const node = buildNode(slot, finish, id, crafts, times, 0, rootAncestors);
+    const node = buildNode(slot, finish, id, crafts, times, 0, rootAncestors, false);
     expand(node, rootAncestors);
     return node;
   });
@@ -346,14 +400,14 @@ export function buildPlan(input: PlanInput): CraftPlan {
   const buyAll = (roots: PlanNode[]) => {
     const requiredByKey = new Map<
       string,
-      { itemId: number; source: 'buy' | 'npc'; required: number }
+      { itemId: number; source: 'buy' | 'npc' | 'coin'; required: number }
     >();
     const collect = (node: PlanNode) => {
       if (!isBuying(node.method) && node.children) {
         node.children.forEach(collect);
         return;
       }
-      const source = node.price.status === 'npc' ? 'npc' : 'buy';
+      const source = node.method === 'coin' ? 'coin' : node.price.status === 'npc' ? 'npc' : 'buy';
       const key = `${source}:${node.itemId}`;
       const entry = requiredByKey.get(key);
       if (entry) entry.required += node.required;
@@ -362,18 +416,20 @@ export function buildPlan(input: PlanInput): CraftPlan {
     roots.forEach(collect);
 
     const total = emptyCost();
+    let coins = 0;
     const shopping = [...requiredByKey.values()].map(
       ({ itemId, source, required }): ShoppingRow => {
         const price = priceFor(itemId, source);
         const quote = quoteFor(price, required);
         addCost(total, buyCostOf(itemId, price, required, quote));
+        if (price.status === 'coin') coins += price.unit * required;
         return { itemId, required, price, quote };
       },
     );
-    return { shopping, total };
+    return { shopping, total, coins };
   };
 
-  const { shopping, total } = buyAll(nodes);
+  const { shopping, total, coins } = buyAll(nodes);
   const sections =
     recipe.finish.length > 0
       ? {
@@ -382,5 +438,13 @@ export function buildPlan(input: PlanInput): CraftPlan {
         }
       : undefined;
 
-  return { crafts, nodes, shopping, total, ...(sections ? { sections } : {}), needed: [...needed] };
+  return {
+    crafts,
+    nodes,
+    shopping,
+    total,
+    beads: coins,
+    ...(sections ? { sections } : {}),
+    needed: [...needed],
+  };
 }
