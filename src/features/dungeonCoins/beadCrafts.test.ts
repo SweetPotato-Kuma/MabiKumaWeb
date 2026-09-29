@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { PriceState } from '@/features/crafting/market';
 import { buildRecipeBook } from '@/features/crafting/recipes';
 import {
+  adviseSubs,
   beadCraftsOf,
+  bestMade,
   expandCrafts,
   inputCostOf,
   planBeads,
@@ -139,6 +141,50 @@ describe('하위 재료', () => {
   it('고른 것만 푼다', () => {
     const untouched = big(expandCrafts(crafts, new Set([999])));
     expect(untouched.buyInputs.map((input) => input.name)).toEqual(['가공한 이빨']);
+  });
+
+  /** 가공한 이빨(10) 매물의 모양을 바꿔 가며 본다. 큰 가공품은 한 개에 천만 골드다. */
+  const pricingWith = (subOffers: [number, number][]) => {
+    const states = new Map<string, PriceState>([
+      ['가공한 이빨', priced(...subOffers)],
+      ['큰 가공품', priced([10_000_000, 1])],
+      ['마력석', priced([10, 1000])],
+      ['이빨', priced([100, 1000])],
+    ]);
+    return { priceOf: (name: string) => states.get(name), npcUnitOf: () => undefined };
+  };
+  const valuedWith = (subOffers: [number, number][]) => {
+    const pricing = pricingWith(subOffers);
+    return crafts.map((craft) => valueCraft(craft, pricing.priceOf, pricing.npcUnitOf));
+  };
+
+  it('경매장에서 싸게 살 수 있으면 경매장을, 살 수 없을 만큼 비싸면 구슬로 만들기를 추천한다', () => {
+    const [sub] = subMaterialsOf(crafts);
+    const cheap = adviseSubs(valuedWith([[1000, 100]]), [sub]).get(10)!;
+    expect(cheap).toMatchObject({ sale: 2000, materialCost: 200, beads: 7, make: false });
+
+    // 다섯 개를 사려면 매물이 비싸게 올라가, 사는 값이 큰 가공품 값을 넘는다.
+    const dear = adviseSubs(
+      valuedWith([
+        [1000, 1],
+        [3_000_000, 100],
+      ]),
+      [sub],
+    ).get(10)!;
+    expect(dear.make).toBe(true);
+  });
+
+  it('구슬로는 가장 값나가는 쪽을 골라 골드를 아낀다', () => {
+    const [sub] = subMaterialsOf(crafts);
+    const none = new Map<number, number>();
+    const cheap = pricingWith([[1000, 100]]);
+    expect(bestMade(crafts, [sub], 24, cheap, none)).toEqual([]);
+
+    const dear = pricingWith([
+      [1000, 1],
+      [3_000_000, 100],
+    ]);
+    expect(bestMade(crafts, [sub], 24, dear, none)).toEqual([10]);
   });
 });
 
