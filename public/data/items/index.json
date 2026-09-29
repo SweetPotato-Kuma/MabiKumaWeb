@@ -1,6 +1,6 @@
 {
   "updated": "2026-09-29",
-  "total": 17295,
+  "total": 17325,
   "categories": [
     {
       "name": "개조석",
@@ -15,7 +15,7 @@
     {
       "name": "경갑옷",
       "file": "1c762e8c.json",
-      "count": 93
+      "count": 103
     },
     {
       "name": "기타",
@@ -100,7 +100,7 @@
     {
       "name": "로브",
       "file": "b2c6ea29.json",
-      "count": 104
+      "count": 105
     },
     {
       "name": "마기그래프",
@@ -150,7 +150,7 @@
     {
       "name": "모자/가발",
       "file": "008ae516.json",
-      "count": 1612
+      "count": 1614
     },
     {
       "name": "방패",
@@ -210,7 +210,7 @@
     {
       "name": "신발",
       "file": "514d3c6f.json",
-      "count": 1095
+      "count": 1101
     },
     {
       "name": "실린더",
@@ -310,7 +310,7 @@
     {
       "name": "장갑",
       "file": "bb003394.json",
-      "count": 748
+      "count": 751
     },
     {
       "name": "제련/블랙스미스",
@@ -330,7 +330,7 @@
     {
       "name": "중갑옷",
       "file": "24947707.json",
-      "count": 65
+      "count": 68
     },
     {
       "name": "책",
@@ -340,7 +340,7 @@
     {
       "name": "천옷",
       "file": "d18ae9d5.json",
-      "count": 2066
+      "count": 2071
     },
     {
       "name": "천옷/방직",
