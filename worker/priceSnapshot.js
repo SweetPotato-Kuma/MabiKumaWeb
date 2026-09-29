@@ -16,6 +16,7 @@
  * 받다가 실패한 이름은 지난번 값을 모은 시각과 함께 그대로 둔다.
  */
 import PRICE_NAMES from '../src/features/dungeonCoins/priceNames.json';
+import { isListingOf, listingNameOf } from '../src/features/crafting/listing';
 
 const NEXON_LIST_URL = 'https://open.api.nexon.com/mabinogi/v1/auction/list';
 
@@ -68,26 +69,36 @@ async function fetchPage(env, name, cursor) {
 }
 
 /**
- * 한 이름의 매물을 [개당 가격, 개수] 로 줄여 싼 순으로 돌려준다. complete 는 매물을 끝까지 받았고
- * 잘라 내지 않았는지다.
+ * 경매장에 item_name 으로 묻는 이름 하나의 매물을 모두 받는다. complete 는 끝까지 받았는지다.
+ * 옷본과 도면은 종류째 오므로 한 번 받은 것을 이름마다 나눠 쓴다.
  */
-async function collectName(env, name) {
-  const offers = [];
+async function fetchListing(env, listing) {
+  const items = [];
   let cursor = '';
   let complete = false;
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const body = await fetchPage(env, name, cursor);
-    for (const item of body?.auction_item ?? []) {
-      const price = Number(item?.auction_price_per_unit) || 0;
-      const count = Number(item?.item_count) || 0;
-      // 이름으로 물었으니 모두 같은 아이템이어야 하지만, 섞여 오면 값이 틀어지므로 거른다.
-      if (item?.item_name === name && price > 0 && count > 0) offers.push([price, count]);
-    }
+    const body = await fetchPage(env, listing, cursor);
+    items.push(...(body?.auction_item ?? []));
     if (!body?.next_cursor) {
       complete = true;
       break;
     }
     cursor = body.next_cursor;
+  }
+  return { items, complete };
+}
+
+/**
+ * 받아 둔 매물에서 한 이름의 것을 [개당 가격, 개수] 로 줄여 싼 순으로 돌려준다. complete 는 매물을
+ * 끝까지 받았고 잘라 내지 않았는지다.
+ */
+function offersOf({ items, complete }, name) {
+  const offers = [];
+  for (const item of items) {
+    const price = Number(item?.auction_price_per_unit) || 0;
+    const count = Number(item?.item_count) || 0;
+    // 이름으로 물었으니 모두 같은 아이템이어야 하지만, 섞여 오면 값이 틀어지므로 거른다.
+    if (isListingOf(item ?? {}, name) && price > 0 && count > 0) offers.push([price, count]);
   }
   offers.sort((a, b) => a[0] - b[0]);
   return {
@@ -114,17 +125,25 @@ export async function collectPrices(env, now = Date.now(), names = PRICE_NAMES) 
   const previous = await readPrices(env);
   const prices = {};
   const failed = [];
-  const queue = [...names];
+  const byListing = new Map();
+  for (const name of names) {
+    const listing = listingNameOf(name);
+    byListing.set(listing, [...(byListing.get(listing) ?? []), name]);
+  }
+  const queue = [...byListing];
   const work = async () => {
     while (queue.length > 0) {
-      const name = queue.shift();
+      const [listing, group] = queue.shift();
       const startedAt = Date.now();
       try {
-        prices[name] = { at: startedAt, ...(await collectName(env, name)) };
+        const received = await fetchListing(env, listing);
+        for (const name of group) prices[name] = { at: startedAt, ...offersOf(received, name) };
       } catch (caught) {
-        failed.push(`${name}: ${caught instanceof Error ? caught.message : String(caught)}`);
-        const kept = previous?.prices?.[name];
-        if (kept) prices[name] = kept;
+        for (const name of group) {
+          failed.push(`${name}: ${caught instanceof Error ? caught.message : String(caught)}`);
+          const kept = previous?.prices?.[name];
+          if (kept) prices[name] = kept;
+        }
       }
     }
   };

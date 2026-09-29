@@ -251,7 +251,7 @@ function DungeonCoinView({ entry }: { entry: DungeonCoin }) {
         <Table<ExchangeRow>
           columns={columns}
           dataSource={rows}
-          rowKey="id"
+          rowKey="name"
           size="small"
           pagination={false}
         />

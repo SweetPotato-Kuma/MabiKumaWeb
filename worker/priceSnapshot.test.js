@@ -81,9 +81,14 @@ describe('이름으로 묻는 시세 모으기', () => {
 
   it('이름마다 쪽을 끝까지 받아 싼 순으로 한 파일에 올린다', async () => {
     pagesByName = {
-      마력석: [[listing('마력석', 1_200, 10), listing('마력석', 900, 5)], [listing('마력석', 1_000, 3)]],
+      마력석: [
+        [listing('마력석', 1_200, 10), listing('마력석', 900, 5)],
+        [listing('마력석', 1_000, 3)],
+      ],
       // 이름으로 물었는데 다른 아이템이 섞여 오면 뺀다.
-      '브리 레흐의 정수': [[listing('브리 레흐의 정수', 39_000_000), listing('브리 레흐의 코어', 1)]],
+      '브리 레흐의 정수': [
+        [listing('브리 레흐의 정수', 39_000_000), listing('브리 레흐의 코어', 1)],
+      ],
     };
     const result = await collectPrices(env, Date.parse('2026-09-27T05:05:00Z'), [
       '마력석',
@@ -117,6 +122,28 @@ describe('이름으로 묻는 시세 모으기', () => {
     const file = saved();
     expect(file.prices['마력석'].offers).toEqual([[900, 1]]);
     expect(file.prices['어둠의 에르그 결정 (100)']).toMatchObject({ offers: [], complete: true });
+  });
+
+  it('옷본과 도면은 한 번 받은 목록을 표시 이름으로 나눠 가득 찬 것만 센다', async () => {
+    const pattern = (display, price, uses) => ({
+      ...listing('도면', price),
+      item_display_name: display,
+      item_option: [{ option_type: '남은 사용 횟수', option_value: uses }],
+    });
+    pagesByName = {
+      도면: [
+        [
+          pattern('도면 - 가', 900, '30'),
+          pattern('도면 - 가', 100, '4'),
+          pattern('도면 - 나', 700, '30'),
+        ],
+      ],
+    };
+    await collectPrices(env, 1, ['도면 - 가', '도면 - 나']);
+    expect(calls).toEqual(['도면']);
+    const file = saved();
+    expect(file.prices['도면 - 가'].offers).toEqual([[900, 1]]);
+    expect(file.prices['도면 - 나'].offers).toEqual([[700, 1]]);
   });
 
   it('지금 모으기는 운영자만 쓴다', async () => {

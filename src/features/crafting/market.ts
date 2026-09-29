@@ -2,6 +2,7 @@ import { useQueries } from '@tanstack/react-query';
 import { fetchAuctionList } from '@/features/auction/api';
 import type { AuctionItem } from '@/features/auction/types';
 import { NexonApiError } from '@/lib/nexonClient';
+import { isListingOf, listingNameOf } from './listing';
 
 /**
  * 재료 시세.
@@ -56,7 +57,7 @@ export function summarizeListings(
   const offers = items
     // 이름으로 물었으니 모두 같은 아이템이어야 하지만, 혹시 섞여 오면 값이 틀어지므로 거른다.
     .filter(
-      (item) => item.item_name === name && item.auction_price_per_unit > 0 && item.item_count > 0,
+      (item) => isListingOf(item, name) && item.auction_price_per_unit > 0 && item.item_count > 0,
     )
     .map((item) => ({ price: item.auction_price_per_unit, count: item.item_count }))
     .sort((a, b) => a.price - b.price);
@@ -93,11 +94,12 @@ async function limited<T>(task: () => Promise<T>): Promise<T> {
 
 export async function fetchMarketPrice(name: string, signal?: AbortSignal): Promise<MarketPrice> {
   const items: AuctionItem[] = [];
+  const listing = listingNameOf(name);
   let cursor: string | undefined;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     let response;
     try {
-      response = await limited(() => fetchAuctionList({ itemName: name, cursor }, signal));
+      response = await limited(() => fetchAuctionList({ itemName: listing, cursor }, signal));
     } catch (error) {
       // 경매장이 모르는 이름은 빈 목록이 아니라 파라미터 오류(OPENAPI00004)로 온다.
       // 거래는 되지만 경매장에 올릴 수 없는 아이템이 그렇다. 매물이 없는 것과 같다.
