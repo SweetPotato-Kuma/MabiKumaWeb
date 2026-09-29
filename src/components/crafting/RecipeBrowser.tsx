@@ -1,13 +1,11 @@
 import { useDeferredValue, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
   Card,
-  Col,
   Flex,
   Form,
   Grid,
   Input,
   Menu,
-  Row,
   Select,
   Skeleton,
   Table,
@@ -15,6 +13,7 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
+import { BrowseLayout, BrowseTitle } from '@/components/BrowseLayout';
 import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
@@ -34,7 +33,7 @@ import {
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /** 제작법 줄의 아이템 그림. 제작 비용 트리의 재료 그림과 같은 크기. */
 const ITEM_ICON = 32;
@@ -48,7 +47,7 @@ interface RecipeBrowserProps {
   onSkillChange: (skill: number | null) => void;
   /** 줄을 누르면. 아이템 정보 상세로 보낸다. */
   onOpen: (recipe: Recipe, book: RecipeBook) => void;
-  /** 제목 아래에 둘 "카테고리별 / 제작 스킬별" 전환. */
+  /** 제목 줄에 둘 "카테고리별 / 제작 스킬별" 전환. */
   viewSwitch: ReactNode;
 }
 
@@ -70,21 +69,22 @@ export function RecipeBrowser(props: RecipeBrowserProps) {
   const bookQuery = useRecipeBookQuery();
   const book = bookQuery.data;
 
+  // 받는 동안에도 제목 줄은 그려 둔다. 제목이 늦게 뜨면 그 높이만큼 본문이 내려앉는다.
   if (bookQuery.isPending) {
     return (
-      <Card aria-busy="true">
-        <Skeleton active paragraph={{ rows: 8 }} />
-      </Card>
+      <Flex vertical gap={16}>
+        <BrowseTitle title="아이템 정보" extra={props.viewSwitch} />
+        <Card aria-busy="true">
+          <Skeleton active paragraph={{ rows: 8 }} />
+        </Card>
+      </Flex>
     );
   }
 
   if (!book) {
     return (
-      <Flex vertical gap={20}>
-        <Title level={3} style={{ margin: 0 }}>
-          아이템 정보
-        </Title>
-        {props.viewSwitch}
+      <Flex vertical gap={16}>
+        <BrowseTitle title="아이템 정보" extra={props.viewSwitch} />
         <Card>
           <EmptyState description="제작법 목록이 아직 준비되지 않았습니다. 수집이 한 번 돌고 나면 채워집니다." />
         </Card>
@@ -210,109 +210,101 @@ function RecipeList({
   const scopeName = skill === null ? '전체' : book.skillName(skill);
 
   return (
-    <Flex vertical gap={20}>
-      <Title level={3} style={{ margin: 0 }}>
-        아이템 정보
-      </Title>
-      {viewSwitch}
-
-      {/* 2단 레이아웃. 768px 미만에서는 스킬 목록이 Select 로 바뀌며 한 단으로 떨어진다. */}
-      <Row gutter={[20, 16]}>
-        <Col xs={24} md={9} lg={8}>
-          <Card variant="outlined" size="small" title="제작 스킬">
-            {screens.md ? (
-              <Menu
-                mode="inline"
-                items={skillItems}
-                selectedKeys={skill === null ? [] : [String(skill)]}
-                onClick={({ key }) => onSkillChange(Number(key))}
-                style={{ borderInlineEnd: 'none' }}
-              />
-            ) : (
-              <Select
-                value={skill ?? undefined}
-                onChange={(value: number) => onSkillChange(value)}
-                options={book.skills.map((each) => ({
-                  value: each.id,
-                  label: `${each.name} (${formatNumber(each.count)})`,
-                }))}
-                placeholder="제작 스킬"
-                aria-label="제작 스킬"
-                style={{ width: '100%' }}
-              />
-            )}
-          </Card>
-        </Col>
-
-        <Col xs={24} md={15} lg={16}>
-          <Flex vertical gap={16}>
-            <Card variant="outlined" size="small">
-              <Flex vertical gap={10}>
-                <Form layout="vertical" style={{ marginBottom: 0 }}>
-                  <Form.Item
-                    label="만들 아이템 찾기"
-                    htmlFor="crafting-keyword"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Input
-                      id="crafting-keyword"
-                      value={keyword}
-                      onChange={(event) => setKeyword(event.target.value)}
-                      placeholder="예: 철괴, ㅊㄱ"
-                      allowClear
-                    />
-                  </Form.Item>
-                </Form>
-                <Flex gap={8} wrap align="center">
-                  {skill !== null ? (
-                    <Tag closable onClose={() => onSkillChange(null)}>
-                      {scopeName}
-                    </Tag>
-                  ) : null}
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {skill !== null
-                      ? `${scopeName} 제작법 안에서 찾습니다. 스킬을 지우면 전체에서 찾습니다.`
-                      : '전체 제작법에서 이름 일부나 초성으로 찾습니다. 스킬을 고르면 그 스킬만 봅니다.'}
-                  </Text>
-                </Flex>
-              </Flex>
-            </Card>
-
-            {skill === null && !hasKeyword ? (
-              <Card>
-                <EmptyState
-                  variant="search"
-                  description="제작 스킬을 고르거나 만들 아이템 이름을 입력하면 목록이 나옵니다."
-                />
-              </Card>
-            ) : (
-              <QueryState
-                isLoading={false}
-                error={null}
-                isEmpty={rows.length === 0}
-                emptyMessage={`${scopeName}에서 "${deferredKeyword.trim()}" 와 맞는 제작법이 없습니다. 글자를 줄이거나 스킬을 지워 보세요.`}
+    // 틀은 카테고리별 목록과 같다. 768px 미만에서는 스킬 목록이 Select 로 바뀌며 한 단으로 떨어진다.
+    <BrowseLayout
+      title="아이템 정보"
+      extra={viewSwitch}
+      sideTitle="제작 스킬"
+      side={
+        screens.md ? (
+          <Menu
+            mode="inline"
+            items={skillItems}
+            selectedKeys={skill === null ? [] : [String(skill)]}
+            onClick={({ key }) => onSkillChange(Number(key))}
+            style={{ borderInlineEnd: 'none' }}
+          />
+        ) : (
+          <Select
+            value={skill ?? undefined}
+            onChange={(value: number) => onSkillChange(value)}
+            options={book.skills.map((each) => ({
+              value: each.id,
+              label: `${each.name} (${formatNumber(each.count)})`,
+            }))}
+            placeholder="제작 스킬"
+            aria-label="제작 스킬"
+            style={{ width: '100%' }}
+          />
+        )
+      }
+    >
+      <Flex vertical gap={16}>
+        <Card variant="outlined" size="small">
+          <Flex vertical gap={10}>
+            <Form layout="vertical" style={{ marginBottom: 0 }}>
+              <Form.Item
+                label="만들 아이템 찾기"
+                htmlFor="crafting-keyword"
+                style={{ marginBottom: 0 }}
               >
-                <Flex vertical gap={10}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {scopeName} <span className="tnum">{formatNumber(scopeCount)}</span>개 가운데{' '}
-                    <span className="tnum">{formatNumber(rows.length)}</span>개를 보고 있습니다.
-                    줄을 누르면 아이템 상세에서 재료 트리와 비용이 열립니다.
-                  </Text>
-                  <Table<Recipe>
-                    columns={columns}
-                    dataSource={rows}
-                    rowKey="index"
-                    size="small"
-                    pagination={pagination}
-                    onRow={openRow}
-                  />
-                </Flex>
-              </QueryState>
-            )}
+                <Input
+                  id="crafting-keyword"
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  placeholder="예: 철괴, ㅊㄱ"
+                  allowClear
+                />
+              </Form.Item>
+            </Form>
+            <Flex gap={8} wrap align="center">
+              {skill !== null ? (
+                <Tag closable onClose={() => onSkillChange(null)}>
+                  {scopeName}
+                </Tag>
+              ) : null}
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {skill !== null
+                  ? `${scopeName} 제작법 안에서 찾습니다. 스킬을 지우면 전체에서 찾습니다.`
+                  : '전체 제작법에서 이름 일부나 초성으로 찾습니다. 스킬을 고르면 그 스킬만 봅니다.'}
+              </Text>
+            </Flex>
           </Flex>
-        </Col>
-      </Row>
-    </Flex>
+        </Card>
+
+        {skill === null && !hasKeyword ? (
+          <Card>
+            <EmptyState
+              variant="search"
+              description="제작 스킬을 고르거나 만들 아이템 이름을 입력하면 목록이 나옵니다."
+            />
+          </Card>
+        ) : (
+          <QueryState
+            isLoading={false}
+            error={null}
+            isEmpty={rows.length === 0}
+            emptyMessage={`${scopeName}에서 "${deferredKeyword.trim()}" 와 맞는 제작법이 없습니다. 글자를 줄이거나 스킬을 지워 보세요.`}
+          >
+            <Flex vertical gap={10}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {scopeName} <span className="tnum">{formatNumber(scopeCount)}</span>개 가운데{' '}
+                <span className="tnum">{formatNumber(rows.length)}</span>개를 보고 있습니다.
+                줄을 누르면 아이템 상세에서 재료 트리와 비용이 열립니다.
+              </Text>
+              <Table<Recipe>
+                columns={columns}
+                dataSource={rows}
+                rowKey="index"
+                size="small"
+                pagination={pagination}
+                onRow={openRow}
+              />
+            </Flex>
+          </QueryState>
+        )}
+      </Flex>
+    </BrowseLayout>
   );
 }
 

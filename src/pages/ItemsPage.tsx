@@ -12,11 +12,9 @@ import {
   Breadcrumb,
   Button,
   Card,
-  Col,
   Flex,
   Form,
   Input,
-  Row,
   Segmented,
   Skeleton,
   Table,
@@ -24,6 +22,7 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
+import { BrowseLayout, BrowseTitle } from '@/components/BrowseLayout';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { CraftingSection } from '@/components/crafting/CraftingSection';
 import { RecipeBrowser } from '@/components/crafting/RecipeBrowser';
@@ -157,7 +156,6 @@ export function ItemsPage() {
         { value: 'craft', label: '제작 스킬별' },
       ]}
       aria-label="목록 나누는 방법"
-      style={{ alignSelf: 'flex-start' }}
     />
   );
 
@@ -440,21 +438,22 @@ function ItemList({
     },
   ];
 
+  // 받는 동안에도 제목 줄은 그려 둔다. 제목이 늦게 뜨면 그 높이만큼 본문이 내려앉는다.
   if (nameIndexQuery.isPending) {
     return (
-      <Card aria-busy="true">
-        <Skeleton active paragraph={{ rows: 8 }} />
-      </Card>
+      <Flex vertical gap={16}>
+        <BrowseTitle title="아이템 정보" extra={viewSwitch} />
+        <Card aria-busy="true">
+          <Skeleton active paragraph={{ rows: 8 }} />
+        </Card>
+      </Flex>
     );
   }
 
   if (!index) {
     return (
-      <Flex vertical gap={20}>
-        <Title level={3} style={{ margin: 0 }}>
-          아이템 정보
-        </Title>
-        {viewSwitch}
+      <Flex vertical gap={16}>
+        <BrowseTitle title="아이템 정보" extra={viewSwitch} />
         <Card>
           <EmptyState description="아이템 목록이 아직 준비되지 않았습니다. 수집이 한 번 돌고 나면 채워집니다." />
         </Card>
@@ -465,112 +464,97 @@ function ItemList({
   const scopeCount = category ? (counts[category] ?? 0) : index.names.length;
 
   return (
-    <Flex vertical gap={20}>
-      <Title level={3} style={{ margin: 0 }}>
-        아이템 정보
-      </Title>
-      {viewSwitch}
+    <BrowseLayout
+      title="아이템 정보"
+      extra={viewSwitch}
+      sideTitle="카테고리"
+      side={
+        // 전체에서 찾는 일은 검색칸이 맡는다. 트리에는 고를 카테고리만 둔다.
+        <CategoryPicker value={category} onChange={setCategory} counts={counts} showAll={false} />
+      }
+    >
+      <Flex vertical gap={16}>
+        <Card variant="outlined" size="small">
+          <Flex vertical gap={10}>
+            <Form layout="vertical" style={{ marginBottom: 0 }}>
+              <Form.Item
+                label="이름으로 찾기"
+                htmlFor="items-keyword"
+                style={{ marginBottom: 0 }}
+              >
+                <AutoComplete
+                  id="items-keyword"
+                  value={keyword}
+                  options={suggestionOptions}
+                  onChange={(value: string) => setKeyword(value)}
+                  onSelect={selectSuggestion}
+                  style={{ width: '100%' }}
+                >
+                  <Input placeholder="예: 숏 소드, ㅅㅅㄷ" allowClear />
+                </AutoComplete>
+              </Form.Item>
+            </Form>
 
-      {/* 2단 레이아웃. 768px 미만에서는 카테고리 선택이 Select 로 바뀌며 한 단으로 떨어진다. */}
-      <Row gutter={[20, 16]}>
-        <Col xs={24} md={9} lg={8}>
-          {/* 카드 안에 스크롤을 두지 않는다. 까닭은 경매장 화면의 categoryPanel 주석에 있다. */}
-          <Card variant="outlined" size="small" title="카테고리">
-            {/* 전체에서 찾는 일은 검색칸이 맡는다. 트리에는 고를 카테고리만 둔다. */}
-            <CategoryPicker
-              value={category}
-              onChange={setCategory}
-              counts={counts}
-              showAll={false}
+            <Flex gap={8} wrap align="center">
+              {category ? (
+                <Tag closable onClose={() => setCategory('')}>
+                  {category}
+                </Tag>
+              ) : null}
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {category
+                  ? `${category} 안에서 찾습니다. 카테고리를 지우면 전체에서 찾습니다.`
+                  : '전체 카테고리에서 이름 일부나 초성으로 찾습니다. 카테고리를 고르면 그 안에서만 찾습니다.'}
+              </Text>
+            </Flex>
+          </Flex>
+        </Card>
+
+        {!category && !hasKeyword ? (
+          <Card>
+            <EmptyState
+              variant="search"
+              description="아이템 이름을 입력하거나 카테고리를 고르면 목록이 나옵니다."
             />
           </Card>
-        </Col>
-
-        <Col xs={24} md={15} lg={16}>
-          <Flex vertical gap={16}>
-            <Card variant="outlined" size="small">
-              <Flex vertical gap={10}>
-                <Form layout="vertical" style={{ marginBottom: 0 }}>
-                  <Form.Item
-                    label="이름으로 찾기"
-                    htmlFor="items-keyword"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <AutoComplete
-                      id="items-keyword"
-                      value={keyword}
-                      options={suggestionOptions}
-                      onChange={(value: string) => setKeyword(value)}
-                      onSelect={selectSuggestion}
-                      style={{ width: '100%' }}
-                    >
-                      <Input placeholder="예: 숏 소드, ㅅㅅㄷ" allowClear />
-                    </AutoComplete>
-                  </Form.Item>
-                </Form>
-
-                <Flex gap={8} wrap align="center">
-                  {category ? (
-                    <Tag closable onClose={() => setCategory('')}>
-                      {category}
-                    </Tag>
-                  ) : null}
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {category
-                      ? `${category} 안에서 찾습니다. 카테고리를 지우면 전체에서 찾습니다.`
-                      : '전체 카테고리에서 이름 일부나 초성으로 찾습니다. 카테고리를 고르면 그 안에서만 찾습니다.'}
-                  </Text>
-                </Flex>
-              </Flex>
-            </Card>
-
-            {!category && !hasKeyword ? (
-              <Card>
-                <EmptyState
-                  variant="search"
-                  description="아이템 이름을 입력하거나 카테고리를 고르면 목록이 나옵니다."
-                />
-              </Card>
-            ) : (
-              <QueryState
-                isLoading={false}
-                error={null}
-                isEmpty={rows.length === 0}
-                emptyMessage={
-                  hasKeyword
-                    ? `${category || '전체'}에서 "${deferredKeyword.trim()}" 와 맞는 이름이 없습니다. 글자를 줄이거나 카테고리를 지워 보세요.`
-                    : `${category} 카테고리에 모인 이름이 아직 없습니다.`
-                }
-              >
-                <Flex vertical gap={10}>
-                  {widened ? (
-                    <Text type="warning" style={{ fontSize: 12 }}>
-                      {category}에는 "{deferredKeyword.trim()}" 와 맞는 이름이 없어 전체
-                      카테고리에서 찾은 <span className="tnum">{formatNumber(rows.length)}</span>
-                      개를 보여 줍니다.
-                    </Text>
-                  ) : (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {category || '전체'} <span className="tnum">{formatNumber(scopeCount)}</span>
-                      개 가운데 <span className="tnum">{formatNumber(rows.length)}</span>개를 보고
-                      있습니다. 줄을 누르면 상세가 열리고, 장비는 개조, 세공, 인챈트를 골라 보는
-                      시뮬레이터가 열립니다.
-                    </Text>
-                  )}
-                  <Table<ItemRow>
-                    columns={columns}
-                    dataSource={rows}
-                    rowKey={(row) => `${row.category}\u0000${row.name}`}
-                    size="small"
-                    pagination={pagination}
-                    onRow={openRow}
-                  />
-                </Flex>
-              </QueryState>
-            )}
-          </Flex>
-        </Col>
-      </Row>
-    </Flex>
+        ) : (
+          <QueryState
+            isLoading={false}
+            error={null}
+            isEmpty={rows.length === 0}
+            emptyMessage={
+              hasKeyword
+                ? `${category || '전체'}에서 "${deferredKeyword.trim()}" 와 맞는 이름이 없습니다. 글자를 줄이거나 카테고리를 지워 보세요.`
+                : `${category} 카테고리에 모인 이름이 아직 없습니다.`
+            }
+          >
+            <Flex vertical gap={10}>
+              {widened ? (
+                <Text type="warning" style={{ fontSize: 12 }}>
+                  {category}에는 "{deferredKeyword.trim()}" 와 맞는 이름이 없어 전체
+                  카테고리에서 찾은 <span className="tnum">{formatNumber(rows.length)}</span>
+                  개를 보여 줍니다.
+                </Text>
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {category || '전체'} <span className="tnum">{formatNumber(scopeCount)}</span>
+                  개 가운데 <span className="tnum">{formatNumber(rows.length)}</span>개를 보고
+                  있습니다. 줄을 누르면 상세가 열리고, 장비는 개조, 세공, 인챈트를 골라 보는
+                  시뮬레이터가 열립니다.
+                </Text>
+              )}
+              <Table<ItemRow>
+                columns={columns}
+                dataSource={rows}
+                rowKey={(row) => `${row.category}\u0000${row.name}`}
+                size="small"
+                pagination={pagination}
+                onRow={openRow}
+              />
+            </Flex>
+          </QueryState>
+        )}
+      </Flex>
+    </BrowseLayout>
   );
 }

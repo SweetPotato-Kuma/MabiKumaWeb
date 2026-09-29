@@ -55,12 +55,8 @@ const NAV_ITEMS: NavItem[] = [
     key: 'simulator',
     icon: <DiceIcon />,
     label: '시뮬레이터',
+    // 순서는 게임에 먼저 나온 것부터. "무리아스의" 는 메뉴 폭에서 잘려 빼고, 화면 제목에만 둔다.
     children: [
-      {
-        key: '/relic-simulator',
-        icon: <MuseumIcon />,
-        label: <NavLink to="/relic-simulator">무리아스의 유물 복원</NavLink>,
-      },
       {
         key: '/reforge-simulator',
         icon: <HammerIcon />,
@@ -69,7 +65,12 @@ const NAV_ITEMS: NavItem[] = [
       {
         key: '/holy-water-simulator',
         icon: <WaterDropIcon />,
-        label: <NavLink to="/holy-water-simulator">무리아스의 성수</NavLink>,
+        label: <NavLink to="/holy-water-simulator">성수</NavLink>,
+      },
+      {
+        key: '/relic-simulator',
+        icon: <MuseumIcon />,
+        label: <NavLink to="/relic-simulator">유물 복원</NavLink>,
       },
     ],
   },

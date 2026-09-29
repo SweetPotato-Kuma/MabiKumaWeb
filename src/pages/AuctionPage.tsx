@@ -6,11 +6,9 @@ import {
   AutoComplete,
   Button,
   Card,
-  Col,
   Flex,
   Grid,
   Input,
-  Row,
   Skeleton,
   Spin,
   Table,
@@ -23,6 +21,7 @@ import { ApiKeyNotice } from '@/components/ApiKeyNotice';
 import { DetailSearchBar } from '@/components/AuctionOptionFilter';
 import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
+import { BrowseLayout } from '@/components/BrowseLayout';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
@@ -67,7 +66,7 @@ import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useListPagination } from '@/lib/useListPagination';
 import { RefreshIcon, SearchIcon } from '@/components/icons';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type Tab = 'items' | 'history';
 
@@ -493,13 +492,7 @@ export function AuctionPage() {
    * 스크롤을 두었더니, 그 값이 카드 바깥 높이와 어긋나 트리를 펼치면 카드와 페이지가 함께
    * 스크롤됐다. 1px 만 넘쳐도 페이지 스크롤바가 떠서 화면이 흔들려 보였다.
    */
-  const categoryPanel = isWide ? (
-    <Card variant="outlined" size="small" title="카테고리">
-      <CategoryPicker value={form.category} onChange={selectCategory} />
-    </Card>
-  ) : (
-    <CategoryPicker value={form.category} onChange={selectCategory} />
-  );
+  const categoryPanel = <CategoryPicker value={form.category} onChange={selectCategory} />;
 
   // 제네릭을 직접 적는다. useMemo 안에서는 배열 리터럴이 문맥 타입을 잃어
   // align: 'right' 같은 값이 string 으로 넓어진다.
@@ -824,135 +817,127 @@ export function AuctionPage() {
   ), [enabled, visibleHistory, historyColumns, historyLoaded, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   return (
-    <Flex vertical gap={16}>
-      <Title level={3} style={{ margin: 0 }}>
-        경매장 조회
-      </Title>
+    <>
+      <BrowseLayout
+        title="경매장 조회"
+        notice={<ApiKeyNotice />}
+        sideTitle="카테고리"
+        side={categoryPanel}
+      >
+        <Flex vertical gap={16}>
+          <Card variant="outlined" size="small">
+            <Flex vertical gap={10}>
+              <Flex gap={8} wrap align="center">
+                <AutoComplete
+                  value={form.keyword}
+                  options={suggestionOptions}
+                  onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
+                  onSelect={(keyword: string) => {
+                    // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
+                    const next = { ...form, keyword };
+                    setForm(next);
+                    void runSearch(next);
+                  }}
+                  style={{ flex: '1 1 260px', minWidth: 0 }}
+                >
+                  <Input
+                    placeholder="아이템명 검색"
+                    allowClear
+                    onPressEnter={() => void runSearch(form)}
+                  />
+                </AutoComplete>
 
-      <ApiKeyNotice />
-
-      {/* 좌측 카테고리, 우측 검색과 결과. 768px 미만에서는 위아래 한 단으로 떨어진다. */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={8} lg={6}>
-          {categoryPanel}
-        </Col>
-
-        <Col xs={24} md={16} lg={18}>
-          <Flex vertical gap={16}>
-            <Card variant="outlined" size="small">
-              <Flex vertical gap={10}>
-                <Flex gap={8} wrap align="center">
-                  <AutoComplete
-                    value={form.keyword}
-                    options={suggestionOptions}
-                    onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
-                    onSelect={(keyword: string) => {
-                      // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
-                      const next = { ...form, keyword };
-                      setForm(next);
-                      void runSearch(next);
-                    }}
-                    style={{ flex: '1 1 260px', minWidth: 0 }}
-                  >
-                    <Input
-                      placeholder="아이템명 검색"
-                      allowClear
-                      onPressEnter={() => void runSearch(form)}
-                    />
-                  </AutoComplete>
-
-                  <Button
-                    type="primary"
-                    icon={<SearchIcon />}
-                    loading={resolving}
-                    disabled={!canSubmit || !canQuery}
-                    onClick={() => void runSearch(form)}
-                  >
-                    찾기
-                  </Button>
-                  <Button
-                    icon={<RefreshIcon />}
-                    onClick={() => {
-                      setForm(EMPTY_INPUT);
-                      setSubmitted(null);
-                      setOptionFilter(EMPTY_OPTION_FILTER);
-                    }}
-                  >
-                    검색 초기화
-                  </Button>
-                </Flex>
-
-                <Flex gap={8} wrap align="center">
-                  {form.category ? (
-                    <Tag closable onClose={() => selectCategory(ALL_CATEGORIES)}>
-                      {form.category}
-                    </Tag>
-                  ) : null}
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {/*
-                      찾는 방식이 둘이라 그대로 알린다. 전체 검색은 사전으로 걸리는 이름을 골라
-                      keyword-search 를 나눠 부르고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
-                      걸리는 이름이 너무 많으면 다 부르지 못하니 그때만 알린다.
-                    */}
-                    {/* 모아 둔 매물은 그 사이 팔린 것이 섞일 수 있어 모은 시각을 함께 알린다. */}
-                    {scanning && snapshot.status === 'checking'
-                      ? '모아 둔 장비 매물을 받는 중입니다.'
-                      : scanning && snapshot.status === 'ready' && snapshot.at !== null
-                        ? !snapshot.data
-                          ? '모아 둔 장비 매물을 받는 중입니다.'
-                          : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물 ${formatNumber(itemsLoaded)}건에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
-                        : nameIndexQuery.isPending
-                      ? '아이템 이름을 불러오는 중입니다.'
-                      : form.category
-                        ? `${form.category} 매물에서 이름 일부로 찾습니다.`
-                        : submitted?.keywordsTruncated && !submitted.category
-                          ? '걸리는 이름이 많아 일부만 찾았습니다. 조금 더 길게 입력하거나 카테고리를 골라 주세요.'
-                          : submitted?.scan && !form.category && !form.keyword.trim()
-                            ? `상세 검색 조건이 붙을 수 있는 장비 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${
-                                scanProgress
-                                  ? ` 불러오기 마친 카테고리 ${formatNumber(scanProgress.scanned)}/${formatNumber(scanProgress.total)}곳.`
-                                  : ''
-                              }`
-                            : '이름 일부로 찾습니다. 띄어쓰기는 달라도 됩니다. 상세 검색 조건만 넣고 찾아도 됩니다.'}
-                  </Text>
-                </Flex>
-
-                <DetailSearchBar
-                  value={optionFilter}
-                  onChange={setOptionFilter}
-                  catalog={optionCatalog}
-                  names={optionNames}
-                  category={form.category}
-                />
+                <Button
+                  type="primary"
+                  icon={<SearchIcon />}
+                  loading={resolving}
+                  disabled={!canSubmit || !canQuery}
+                  onClick={() => void runSearch(form)}
+                >
+                  찾기
+                </Button>
+                <Button
+                  icon={<RefreshIcon />}
+                  onClick={() => {
+                    setForm(EMPTY_INPUT);
+                    setSubmitted(null);
+                    setOptionFilter(EMPTY_OPTION_FILTER);
+                  }}
+                >
+                  검색 초기화
+                </Button>
               </Flex>
-            </Card>
 
-            {submitted === null && resolving ? (
-              <Card variant="outlined">
-                <Skeleton active />
-              </Card>
-            ) : submitted === null ? (
-              <Card variant="outlined">
-                <EmptyState
-                  variant="search"
-                  description="카테고리를 고르거나, 아이템명이나 상세 검색 조건을 넣은 뒤 찾기를 누르세요."
-                />
-              </Card>
-            ) : (
-              <Tabs
-                activeKey={tab}
-                onChange={(key) => setTab(key as Tab)}
-                items={[
-                  { key: 'items', label: '판매 중 매물', children: itemsPanel },
-                  { key: 'history', label: '최근 1시간 거래 내역', children: historyPanel },
-                ]}
+              <Flex gap={8} wrap align="center">
+                {form.category ? (
+                  <Tag closable onClose={() => selectCategory(ALL_CATEGORIES)}>
+                    {form.category}
+                  </Tag>
+                ) : null}
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {/*
+                    찾는 방식이 둘이라 그대로 알린다. 전체 검색은 사전으로 걸리는 이름을 골라
+                    keyword-search 를 나눠 부르고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
+                    걸리는 이름이 너무 많으면 다 부르지 못하니 그때만 알린다.
+                  */}
+                  {/* 모아 둔 매물은 그 사이 팔린 것이 섞일 수 있어 모은 시각을 함께 알린다. */}
+                  {scanning && snapshot.status === 'checking'
+                    ? '모아 둔 장비 매물을 받는 중입니다.'
+                    : scanning && snapshot.status === 'ready' && snapshot.at !== null
+                      ? !snapshot.data
+                        ? '모아 둔 장비 매물을 받는 중입니다.'
+                        : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물 ${formatNumber(itemsLoaded)}건에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
+                      : nameIndexQuery.isPending
+                    ? '아이템 이름을 불러오는 중입니다.'
+                    : form.category
+                      ? `${form.category} 매물에서 이름 일부로 찾습니다.`
+                      : submitted?.keywordsTruncated && !submitted.category
+                        ? '걸리는 이름이 많아 일부만 찾았습니다. 조금 더 길게 입력하거나 카테고리를 골라 주세요.'
+                        : submitted?.scan && !form.category && !form.keyword.trim()
+                          ? `상세 검색 조건이 붙을 수 있는 장비 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${
+                              scanProgress
+                                ? ` 불러오기 마친 카테고리 ${formatNumber(scanProgress.scanned)}/${formatNumber(scanProgress.total)}곳.`
+                                : ''
+                            }`
+                          : '이름 일부로 찾습니다. 띄어쓰기는 달라도 됩니다. 상세 검색 조건만 넣고 찾아도 됩니다.'}
+                </Text>
+              </Flex>
+
+              <DetailSearchBar
+                value={optionFilter}
+                onChange={setOptionFilter}
+                catalog={optionCatalog}
+                names={optionNames}
+                category={form.category}
               />
-            )}
-          </Flex>
-        </Col>
-      </Row>
+            </Flex>
+          </Card>
+
+          {submitted === null && resolving ? (
+            <Card variant="outlined">
+              <Skeleton active />
+            </Card>
+          ) : submitted === null ? (
+            <Card variant="outlined">
+              <EmptyState
+                variant="search"
+                description="카테고리를 고르거나, 아이템명이나 상세 검색 조건을 넣은 뒤 찾기를 누르세요."
+              />
+            </Card>
+          ) : (
+            <Tabs
+              activeKey={tab}
+              onChange={(key) => setTab(key as Tab)}
+              items={[
+                { key: 'items', label: '판매 중 매물', children: itemsPanel },
+                { key: 'history', label: '최근 1시간 거래 내역', children: historyPanel },
+              ]}
+            />
+          )}
+        </Flex>
+      </BrowseLayout>
 
       <AuctionItemDetailModal detail={detail} onClose={() => setDetail(null)} />
-    </Flex>
+    </>
   );
 }
