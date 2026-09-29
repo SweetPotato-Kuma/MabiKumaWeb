@@ -65,8 +65,8 @@ describe('전체 검색', () => {
     expect(reforge).toBeGreaterThanOrEqual(0);
     expect(holyWater).toBeGreaterThan(reforge);
     expect(labels[holyWater]).toContain('시뮬레이터, 장비');
-    // 복원은 시뮬레이터의 유물 소제목 아래에 있고, 유물 시세는 따로 있다.
-    expect(labels.some((label) => label.startsWith('무리아스 복원') && label.includes('시뮬레이터, 유물'))).toBe(true);
+    // 복원은 시뮬레이터 아래에 있고, 유물 시세는 따로 있다.
+    expect(labels.some((label) => label.startsWith('유물 복원') && label.includes('시뮬레이터'))).toBe(true);
     expect(labels.some((label) => label.startsWith('유물 시세'))).toBe(true);
   });
 

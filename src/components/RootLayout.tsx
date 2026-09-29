@@ -57,11 +57,12 @@ function toMenuItem(entry: NavEntry): MenuItem {
     key: entry.key,
     icon: entry.icon,
     label: entry.label,
-    children: entry.sections.flatMap((section): MenuItem[] => {
+    children: entry.sections.flatMap((section, position): MenuItem[] => {
       const items = section.items.map(leafItem);
-      return section.title
+      const body: MenuItem[] = section.title
         ? [{ key: `${entry.key}:${section.title}`, type: 'group', label: section.title, children: items }]
         : items;
+      return position === 0 ? body : [{ key: `${entry.key}:divider:${position}`, type: 'divider' }, ...body];
     }),
   };
 }

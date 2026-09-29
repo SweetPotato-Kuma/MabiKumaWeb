@@ -16,9 +16,16 @@ describe('메뉴 구조', () => {
   it('시뮬레이터는 세공, 성수, 유물 복원 순이고 유물 시세는 시뮬레이터 밖에 있다', () => {
     const pages = navPages(entries);
     const simulators = pages.filter(({ trail }) => trail.startsWith('시뮬레이터')).map(({ leaf }) => leaf.label);
-    expect(simulators).toEqual(['세공', '성수', '무리아스 복원']);
-    expect(pages.find(({ leaf }) => leaf.path === '/relic-simulator')?.trail).toBe('시뮬레이터, 유물');
+    expect(simulators).toEqual(['세공', '성수', '유물 복원']);
+    expect(pages.find(({ leaf }) => leaf.path === '/relic-simulator')?.trail).toBe('시뮬레이터');
     expect(pages.find(({ leaf }) => leaf.path === '/relics')?.trail).toBe('');
+  });
+
+  it('던전 코인과 주머니, 통행증은 NPC 상점 아래에 있고 뿔피리는 따로 있다', () => {
+    const pages = navPages(entries);
+    const shops = pages.filter(({ trail }) => trail === 'NPC 상점').map(({ leaf }) => leaf.label);
+    expect(shops).toEqual(['던전 코인', '튼튼한 주머니', '마그 멜 통행증']);
+    expect(pages.find(({ leaf }) => leaf.path === '/horn')?.trail).toBe('');
   });
 
   it('아이템 상세를 보는 동안에도 아이템 정보 칸이 선택돼 있다', () => {

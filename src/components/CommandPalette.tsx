@@ -21,7 +21,7 @@ import {
 
 const { Text } = Typography;
 
-/** 페이지는 몇 개 안 되니 넉넉히, 아이템은 목록이 길어지지 않게 자른다. 더 찾는 일은 경매장과 아이템 정보가 맡는다. */
+/** 비워 두면 페이지는 자르지 않고 전부 보인다. 찾는 중에만 자르고, 아이템은 목록이 길어지지 않게 자른다. */
 const PAGE_LIMIT = 8;
 const ITEM_LIMIT = 8;
 
@@ -95,7 +95,7 @@ function PaletteBody({ entries, onClose }: { entries: NavEntry[]; onClose: () =>
         const haystack = normalizeForSearch(`${leaf.label} ${trail} ${leaf.keywords ?? ''}`);
         return (initialsOnly ? toInitials(haystack) : haystack).includes(needle);
       })
-      .slice(0, PAGE_LIMIT)
+      .slice(0, needle ? PAGE_LIMIT : undefined)
       .map(
         ({ leaf, trail }): PaletteRow => ({
           id: `page:${leaf.path}`,

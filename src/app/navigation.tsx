@@ -50,9 +50,10 @@ export type NavEntry = NavLeaf | NavGroup;
 export const isNavGroup = (entry: NavEntry): entry is NavGroup => 'sections' in entry;
 
 /**
- * 사용자가 직접 해 보는 것(세공, 성수, 유물 복원)은 시뮬레이터 아래로 모은다. 소제목은 무엇을 다루는지로 가르고,
- * 탈라 가흐 유물 복원이 나오면 "유물" 소제목에 한 칸 더한다. 순서는 게임에 먼저 나온 것부터다.
- * 유물 시세는 매물을 읽는 화면이라 경매장 곁에 둔다. 탈라 가흐 유물은 그 화면의 탭으로 들어간다.
+ * 사용자가 직접 해 보는 것(세공, 성수, 유물 복원)은 시뮬레이터 아래로 모은다. 유물 복원은 무리아스와 탈라 가흐를
+ * 그 화면 안의 탭으로 가르므로 메뉴에는 한 칸이다. 순서는 게임에 먼저 나온 것부터다.
+ * 유물 시세는 매물을 읽는 화면이라 경매장 곁에 두고, 탈라 가흐 유물도 그 화면의 탭으로 들어간다.
+ * 던전 코인은 코인으로 NPC 상점에서 살 수 있는 것의 값을 따지는 화면이라 NPC 상점 아래에 둔다.
  */
 export const NAV_TREE: NavEntry[] = [
   { path: '/auction', label: '경매장', icon: <AuctionIcon />, keywords: '시세 가격 매물' },
@@ -64,7 +65,21 @@ export const NAV_TREE: NavEntry[] = [
     keywords: '사전 제작 레시피 장비 도감',
   },
   { path: '/relics', label: '유물 시세', icon: <TrendingUpIcon />, keywords: '무리아스 이데아 탈라가흐' },
-  { path: '/dungeon-coins', label: '던전 코인', icon: <TollIcon />, keywords: '코인 가치 교환' },
+  {
+    key: 'npc-shop',
+    label: 'NPC 상점',
+    icon: <ShopIcon />,
+    sections: [
+      {
+        items: [
+          { path: '/dungeon-coins', label: '던전 코인', icon: <TollIcon />, keywords: '코인 가치 교환' },
+          { path: '/bags', label: '튼튼한 주머니', icon: <BagIcon />, keywords: '주머니 염색' },
+          { path: '/magmell-pass', label: '마그 멜 통행증', icon: <TicketIcon />, keywords: '통행증 마그멜' },
+        ],
+      },
+    ],
+  },
+  { path: '/horn', label: '뿔피리', icon: <HornIcon />, keywords: '거대한 외침 확성기 서버' },
   {
     key: 'simulator',
     label: '시뮬레이터',
@@ -78,28 +93,9 @@ export const NAV_TREE: NavEntry[] = [
         ],
       },
       {
-        title: '유물',
         items: [
-          { path: '/relic-simulator', label: '무리아스 복원', icon: <MuseumIcon />, keywords: '유물 복원 이데아 시뮬레이터' },
+          { path: '/relic-simulator', label: '유물 복원', icon: <MuseumIcon />, keywords: '무리아스 탈라가흐 이데아 시뮬레이터' },
         ],
-      },
-    ],
-  },
-  {
-    key: 'find',
-    label: '찾기',
-    icon: <ShopIcon />,
-    sections: [
-      {
-        title: 'NPC 상점',
-        items: [
-          { path: '/bags', label: '튼튼한 주머니', icon: <BagIcon />, keywords: '주머니 염색' },
-          { path: '/magmell-pass', label: '마그 멜 통행증', icon: <TicketIcon />, keywords: '통행증 마그멜' },
-        ],
-      },
-      {
-        title: '서버',
-        items: [{ path: '/horn', label: '뿔피리', icon: <HornIcon />, keywords: '거대한 외침 확성기' }],
       },
     ],
   },
