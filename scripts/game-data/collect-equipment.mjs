@@ -636,19 +636,46 @@ const ENCHANT_PARAMS = {
  * SetSetItemEffectOnEquip, 연금술 속성 대미지는 AddBonusOnAlchemy 로 적혀 있다. 하나만 보면 이것들이
  * 통째로 빠진다(미티어로이드의 피어싱 레벨이 그랬다).
  */
+/** 인챈트 조건이 가르는 장비 재질. 아이템 JSON 의 Category 경로 토큰에서 찾는다. */
+const ENCHANT_EQUIP_TAGS = new Set([
+  'helmet',
+  'headgear',
+  'heavyarmor',
+  'lightarmor',
+  'cloth',
+  'gauntlet',
+  'armorboots',
+  'glove',
+  'shoes',
+]);
+
+const equipTagsOf = (json) => [
+  ...new Set(
+    String(json?.Category ?? '')
+      .split('/')
+      .filter((token) => ENCHANT_EQUIP_TAGS.has(token)),
+  ),
+];
+
 const ENCHANT_EFFECT_CALL =
   /(?:SetParamOnEquip|SetItemOption|SetSetItemEffectOnEquip|AddBonusOnAlchemy)\((\w+),\s*([+-])\s*\(?\s*([\d.]+)\s*(?:~\s*([\d.]+))?\s*\)?\s*\)/gi;
 
 /**
  * 인챈트 효과 한 줄: "조건 : 조건 : SetParamOnEquip(AttMax, +(50~60));"
  * 앞 칸이 하나라도 차 있으면 조건이 붙은 효과다(스킬 랭크, 레벨, 타이틀 등). 조건의 뜻은 설명 문장에 있다.
- * → [능력치, 최소, 최대, 조건 여부(1)]
+ * 조건이 IsUsingEquip(a,b) 면 어느 재질의 장비에만 붙는 효과라서 그 목록을 다섯 번째 칸에 싣는다.
+ * → [능력치, 최소, 최대, 조건 여부(1), 재질 목록?]
  */
 function parseEnchantEffects(optionList, unknown) {
   const effects = [];
   for (const line of String(optionList ?? '').split('\n')) {
     const parts = line.split(':');
     const conditional = parts.slice(0, -1).some((part) => part.trim() !== '');
+    const equip = /IsUsingEquip(([^)]*))/i
+      .exec(line)?.[1]
+      .split(',')
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean);
     for (const match of line.matchAll(ENCHANT_EFFECT_CALL)) {
       const [, param, sign, low, high] = match;
       const stat = ENCHANT_PARAMS[param.toLowerCase()];
@@ -661,6 +688,7 @@ function parseEnchantEffects(optionList, unknown) {
       const [min, max] = sign === '-' ? [-b, -a] : [a, b];
       const effect = [stat, round(min), round(max)];
       if (conditional) effect.push(1);
+      if (equip?.length) effect.push(equip);
       effects.push(effect);
     }
   }
@@ -1027,6 +1055,9 @@ async function main() {
         record.reforge = { type: metalware.EquipType, races: racesOf(metalware) };
         usedTypes.add(metalware.EquipType);
       }
+
+      const equip = equipTagsOf(json);
+      if (equip.length) record.equip = equip;
 
       const special = specialUpgrade(xml);
       if (special) record.special = special;

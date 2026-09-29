@@ -234,6 +234,32 @@ describe('인챈트와 특별 개조', () => {
     expect(rows.find((row) => row.stat === 'life_max')?.total).toEqual([100, 100]);
   });
 
+  it('재질 조건이 붙은 효과는 그 재질의 장비에만 더한다', () => {
+    const enchant: EnchantDef = {
+      id: 1,
+      name: '과오의',
+      slot: 0,
+      level: 10,
+      desc: [],
+      effects: [
+        ['attack_max', 31, 35, 1, ['gauntlet', 'armorboots']],
+        ['attack_max', 23, 27, 1, ['glove', 'shoes']],
+        ['defense', 10, 10],
+      ],
+    };
+    const state = initialState(SWORD);
+    state.enchant = { prefix: 1, suffix: null };
+    const attack = (equip?: string[]) =>
+      computeStats({ ...SWORD, equip }, UPGRADES, state, [enchant]).find(
+        (row) => row.stat === 'attack_max',
+      )?.enchant;
+
+    expect(attack(['armorboots'])).toEqual([31, 35]);
+    expect(attack(['shoes'])).toEqual([23, 27]);
+    // 재질을 모르면 예전처럼 모두 더한다.
+    expect(attack()).toEqual([54, 62]);
+  });
+
   it('특별 개조 S 는 종류 번호의 표에서 단계 수치를 더한다', () => {
     const state = initialState(SWORD);
     state.special = { kind: 's', level: 7 };

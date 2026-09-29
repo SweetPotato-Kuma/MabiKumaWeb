@@ -32,6 +32,8 @@ export interface EquipmentRecord {
   enchants?: number;
   /** 에르그 무기 묶음 번호. 워커가 그 묶음의 효과표를 `EquipmentLookup.erg` 로 싣는다. */
   erg?: number;
+  /** 인챈트 조건이 가르는 장비 재질(heavyarmor, armorboots 등). 재질을 모르면 없다. */
+  equip?: string[];
 }
 
 export interface UpgradeDef {
@@ -97,7 +99,24 @@ export type LevelRow = [
 ];
 
 /** [능력치, 최소, 최대, 조건이 붙었으면 1] */
-export type EnchantEffect = [stat: string, min: number, max: number, conditional?: 1];
+/** equip 이 있으면 그 재질(EquipmentRecord.equip)의 장비에만 붙는 효과다. */
+export type EnchantEffect = [
+  stat: string,
+  min: number,
+  max: number,
+  conditional?: 1,
+  equip?: string[],
+];
+
+/** 이 재질의 장비에 붙는 효과인가. 재질 조건이 없거나 장비의 재질을 모르면 붙는 것으로 본다. */
+export function appliesToEquip(
+  effect: EnchantEffect,
+  equip: readonly string[] | undefined,
+): boolean {
+  const tags = effect[4];
+  if (!tags?.length || !equip?.length) return true;
+  return tags.some((tag) => equip.includes(tag));
+}
 
 export interface EnchantDef {
   id: number;

@@ -2,14 +2,15 @@ import { availableGrades, ergStats, ergSummary, maxErgLevel, type ErgPick } from
 import { REFORGE_MAX_OPTIONS, highestLevel, levelRange, type ReforgeRank } from './reforge';
 import { specialStep, type SpecialStep } from './specialUpgrade';
 import { NON_ADDITIVE_STATS, compareStats, roundStat } from './stats';
-import type {
-  AbilityDef,
-  EnchantDef,
-  EquipmentRecord,
-  ErgGrade,
-  ErgSet,
-  LevelRow,
-  UpgradeDef,
+import {
+  appliesToEquip,
+  type AbilityDef,
+  type EnchantDef,
+  type EquipmentRecord,
+  type ErgGrade,
+  type ErgSet,
+  type LevelRow,
+  type UpgradeDef,
 } from './types';
 
 /**
@@ -168,7 +169,9 @@ export function computeStats(
     }
   }
   for (const enchant of selectedEnchants(state.enchant, enchants)) {
-    for (const [stat, min, max] of enchant.effects) {
+    for (const effect of enchant.effects) {
+      if (!appliesToEquip(effect, item.equip)) continue;
+      const [stat, min, max] = effect;
       row(stat).enchant[0] += min;
       row(stat).enchant[1] += max;
     }
