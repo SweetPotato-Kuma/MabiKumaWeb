@@ -21,6 +21,7 @@ const LISTINGS: Record<string, number[]> = {
   '마력이 깃든 늑대의 이빨': [1_500_000],
   마력석: [1_000],
   '단단한 늑대의 이빨': [150_000],
+  '순도 높은 결정': [10_000],
 };
 
 /** 한 매물에 여러 개씩 올라오는 재료. 나머지는 한 매물에 하나다. */
@@ -52,18 +53,47 @@ const BRIE_RECIPES = {
   ],
 };
 
+/** 가공한 이빨이 사는 순도 높은 결정(101) 도 이빨(구슬 1개) 3 + 마력석 5 로 만든다. */
+const BRIE_NESTED_RECIPES = {
+  ...BRIE_RECIPES,
+  items: { ...BRIE_RECIPES.items, 101: ['순도 높은 결정', 1] },
+  recipes: [
+    {
+      item: 100,
+      skill: 10013,
+      rank: 13,
+      yield: 1,
+      materials: [
+        [[5100329, 5100360], 7],
+        [[101], 2],
+      ],
+    },
+    {
+      item: 101,
+      skill: 10013,
+      rank: 12,
+      yield: 1,
+      materials: [
+        [[5100329, 5100360], 3],
+        [[5100330], 5],
+      ],
+    },
+    { item: 200, skill: 10013, rank: 16, yield: 1, materials: [[[100], 24]] },
+  ],
+};
+
 /**
  * 제작법을 읽고 표를 다시 그리는 기다림. 전체 테스트를 한꺼번에 돌리면 기본 1초를 넘길 때가 있다.
  */
 const SLOW = { timeout: 5_000 };
 
 /** 제작법 파일만 돌려주고 나머지는 없는 것으로 둔다. */
-function stubRecipes() {
+function stubRecipes(recipes: object = BRIE_RECIPES) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) =>
       String(url).includes('recipes.json')
-        ? new Response(JSON.stringify(BRIE_RECIPES), { status: 200 })
+        ? new Response(JSON.stringify(recipes), { status: 200 })
         : new Response('', { status: 404 }),
     ),
   );
@@ -149,9 +179,7 @@ describe('던전 코인 가치', () => {
     renderPage('/dungeon-coins?dungeon=crom-bas');
 
     const link = await screen.findByRole('link', { name: '글라스 기브넨의 심장' });
-    expect(link.getAttribute('href')).toBe(
-      '/item/글라스_기브넨의_심장',
-    );
+    expect(link.getAttribute('href')).toBe('/item/글라스_기브넨의_심장');
   });
 
   it('브리 레흐 탭은 가진 구슬로 가공해 팔 때의 차익을 계산한다', async () => {
@@ -181,6 +209,25 @@ describe('던전 코인 가치', () => {
     expect(screen.queryByText(/가진 구슬 수를 입력하면/)).toBeNull();
   });
 
+  it('하위 재료는 골라서 구슬로 직접 만들 수 있고, 고르면 1회 구슬에 더해진다', async () => {
+    stubRecipes(BRIE_NESTED_RECIPES);
+    renderPage('/dungeon-coins?dungeon=brie-lech&view=craft');
+
+    expect(await screen.findByText('구슬로 직접 만들 하위 재료', {}, SLOW)).toBeInTheDocument();
+    const box = screen.getByRole('checkbox', { name: '순도 높은 결정' });
+    expect(box).not.toBeChecked();
+    // 결정을 사면 구슬은 이빨 7개뿐이다.
+    expect(await screen.findAllByText(/1회 구슬 7개/, {}, SLOW)).not.toHaveLength(0);
+
+    fireEvent.click(box);
+    // 결정 2개 = 이빨 6개가 더해져 13개.
+    expect(await screen.findAllByText(/1회 구슬 13개/, {}, SLOW)).not.toHaveLength(0);
+    expect(screen.queryByText(/1회 구슬 7개/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));
+    expect(await screen.findAllByText(/1회 구슬 7개/, {}, SLOW)).not.toHaveLength(0);
+  });
+
   it('가공 계산기는 주소로 바로 열고, 계산기가 없는 던전에는 전환 단추가 없다', async () => {
     renderPage('/dungeon-coins?dungeon=brie-lech&view=craft');
     expect(await screen.findByText('브리 레흐 구슬로 가공해 팔기')).toBeInTheDocument();
@@ -198,7 +245,11 @@ describe('던전 코인 가치', () => {
       prices: Object.fromEntries(
         ['빛바랜 에너지 회로', '고리아스 동력원'].map((name) => [
           name,
-          { at: now, offers: [[name === '고리아스 동력원' ? 257_000_000 : 46_790_000, 1]], complete: true },
+          {
+            at: now,
+            offers: [[name === '고리아스 동력원' ? 257_000_000 : 46_790_000, 1]],
+            complete: true,
+          },
         ]),
       ),
     };
@@ -247,12 +298,16 @@ describe('던전 코인 가치', () => {
     expect(await screen.findByText('추천대로 1번 만들 때 드는 재료')).toBeInTheDocument();
     expect(screen.getByText('가진 것 7개, 구슬 0개')).toBeInTheDocument();
     expect(screen.getByText('0 / 0개')).toBeInTheDocument();
-    expect(JSON.parse(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')!)).toEqual({
+    expect(
+      JSON.parse(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')!),
+    ).toEqual({
       5100329: 7,
     });
 
     fireEvent.click(screen.getByRole('button', { name: /가진 재료/ }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '초기화' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: '초기화' }),
+    );
     expect(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')).toBeNull();
     expect(await screen.findByText(/가진 구슬 수를 입력하면/)).toBeInTheDocument();
   }, 60_000); // 창을 열고 닫고 표를 여러 번 다시 그린다. 느린 기계에서 20초를 넘길 수 있다.
