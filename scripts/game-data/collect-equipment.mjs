@@ -671,7 +671,7 @@ function parseEnchantEffects(optionList, unknown) {
   for (const line of String(optionList ?? '').split('\n')) {
     const parts = line.split(':');
     const conditional = parts.slice(0, -1).some((part) => part.trim() !== '');
-    const equip = /IsUsingEquip(([^)]*))/i
+    const equip = /IsUsingEquip\(([^)]*)\)/i
       .exec(line)?.[1]
       .split(',')
       .map((tag) => tag.trim().toLowerCase())
