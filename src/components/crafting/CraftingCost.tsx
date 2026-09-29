@@ -236,7 +236,35 @@ function RecipeCost({
       const rest = prev.filter((each) => each !== key && !below(each));
       return on ? [...rest, key] : rest;
     });
-    if (on) setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
+  };
+
+  /** 맨 위 줄 가운데 코인으로 사거나 구슬로 만들 수 있는 것을 모두 켜거나 끈다. 트리는 펼치지 않는다. */
+  const beadOptions = plan.nodes.filter(
+    (node) => node.coinUnit !== undefined || node.beadCraftable,
+  );
+  const allBeadsOn =
+    beadOptions.length > 0 &&
+    beadOptions.every((node) =>
+      node.coinUnit !== undefined ? node.method === 'coin' : node.byBeads || node.beadsAll === true,
+    );
+  const setAllBeads = (on: boolean) => {
+    const keys = beadOptions.map((node) => node.key);
+    const under = (each: string) => keys.some((key) => each === key || each.startsWith(`${key}.`));
+    setMethods((prev) => {
+      const next = Object.fromEntries(Object.entries(prev).filter(([each]) => !under(each)));
+      if (on)
+        for (const node of beadOptions) if (node.coinUnit !== undefined) next[node.key] = 'coin';
+      return next;
+    });
+    setBeadChecked((prev) => {
+      const rest = prev.filter((each) => !under(each));
+      return on
+        ? [
+            ...rest,
+            ...beadOptions.filter((node) => node.coinUnit === undefined).map((node) => node.key),
+          ]
+        : rest;
+    });
   };
 
   /** 전체 기본값을 바꾸면 줄마다 고른 구매처는 지운다. 제작과 코인으로 사기를 고른 것은 그대로 둔다. */
@@ -392,6 +420,14 @@ function RecipeCost({
               <Checkbox checked={useNpc} onChange={(event) => changeUseNpc(event.target.checked)}>
                 NPC 판매 재료는 NPC 에서 사기
               </Checkbox>
+              {coin !== undefined && beadOptions.length > 0 ? (
+                <Checkbox
+                  checked={allBeadsOn}
+                  onChange={(event) => setAllBeads(event.target.checked)}
+                >
+                  {coin} 구매 전체 선택
+                </Checkbox>
+              ) : null}
               <Checkbox
                 checked={wednesday}
                 onChange={(event) => setWednesday(event.target.checked)}

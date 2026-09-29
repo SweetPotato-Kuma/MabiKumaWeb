@@ -266,6 +266,59 @@ describe('제작 비용', () => {
     expect(within(tree).getByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
   });
 
+  it('전체 선택으로 맨 위 줄의 코인 구매와 구슬로 만들기를 한 번에 켜고 끄며, 트리는 펼치지 않는다', async () => {
+    const mixed = buildRecipeBook({
+      updated: '2026-09-22',
+      skills: [{ id: 10013, name: '핸디크래프트', count: 1 }],
+      items: {
+        1: ['검', 1],
+        2: ['순도 높은 힘의 결정', 1],
+        3: ['가죽', 1],
+        4: ['깨어난 힘의 정수', 1],
+        6: ['철괴', 1],
+      },
+      recipes: [
+        {
+          item: 1,
+          skill: 10013,
+          rank: 7,
+          yield: 1,
+          materials: [
+            [[2], 1],
+            [[4], 2],
+            [[6], 1],
+          ],
+        },
+        {
+          item: 2,
+          skill: 10013,
+          rank: 1,
+          yield: 1,
+          materials: [
+            [[3], 3],
+            [[4], 20],
+          ],
+        },
+      ],
+    });
+    renderCost(mixed);
+    const all = await screen.findByRole('checkbox', { name: '브리 레흐 구슬 구매 전체 선택' });
+    expect(all).not.toBeChecked();
+
+    fireEvent.click(all);
+    const stat = () =>
+      screen.getByText('필요한 브리 레흐 구슬').closest('.ant-statistic') as HTMLElement;
+    // 정수 2개는 코인 10개, 결정 1개는 정수 20개를 구슬 100개로 만든다.
+    expect(await within(stat()).findByText('110개')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '브리 레흐 구슬 구매 전체 선택' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /로 만들기/ })).toBeChecked();
+    expect(screen.queryByText('가죽')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '브리 레흐 구슬 구매 전체 선택' }));
+    expect(await within(stat()).findByText('0개')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /로 만들기/ })).not.toBeChecked();
+  });
+
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {
     renderCost();
     await screen.findAllByText('550 G');
