@@ -184,7 +184,6 @@ function RecipeCost({
   /**
    * NPC 판매가. 체크박스는 NPC 가 파는 재료를 어디서 살지 기본값을 한꺼번에 정한다. 줄마다 "경매장 구매"
    * 와 "NPC 구매" 를 따로 고를 수도 있고, 체크박스를 바꾸면 줄마다 고른 구매처는 기본값으로 돌아간다.
-   * NPC 에서 사는 재료가 있으면 경매장만 썼을 때의 총액을 나란히 보여 준다.
    * 수요일 할인은 오늘이 수요일이면 켠 채로 시작한다.
    */
   const [useNpc, setUseNpc] = useState(true);
@@ -206,7 +205,7 @@ function RecipeCost({
     [book, coin, beadChecked],
   );
 
-  const planWith = (npc: boolean) =>
+  const planWith = (withBeads: boolean) =>
     buildPlan({
       book,
       recipe,
@@ -215,9 +214,9 @@ function RecipeCost({
       priceOf: (id) => prices.get(book.itemName(id)),
       methods,
       expanded: new Set(expanded),
-      npcPriceOf: npc ? (id) => npcUnitPrice(book.itemName(id), wednesday) : undefined,
+      npcPriceOf: (id) => npcUnitPrice(book.itemName(id), wednesday),
       preferNpc: useNpc,
-      beads,
+      beads: withBeads ? beads : undefined,
     });
   const plan = planWith(true);
 
@@ -228,17 +227,20 @@ function RecipeCost({
   const productTradable = book.isTradable(recipe.item);
   const productNames = useMemo(() => (productTradable ? [productName] : []), [productTradable, productName]);
   const productPrice = useMarketPrices(productNames).get(productName);
-  // 비교용. NPC 에서 하나도 사지 않았을 때의 총액. NPC 재료가 없으면 같은 계산이라 다시 돌리지 않는다.
-  const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
-  const auctionPlan = usesNpc ? planWith(false) : undefined;
+  /**
+   * 비교용. 구슬로 사거나 구슬로 만들기로 고른 재료를 모두 골드(경매장 구매, NPC 구매)로 샀을 때의 총액.
+   * 구슬을 고르지 않았으면 재료 예상 총액과 같고, 고른 만큼만 달라진다. 구슬을 쓰는 제작법에서만 센다.
+   * 예전에는 NPC 재료까지 경매장에서 산다고 쳤는데, NPC 가 50만 G 에 파는 재료가 경매장에 5억 G 로 하나
+   * 올라와 있으면 그 값이 들어가 뜻 없는 총액이 나왔다(2026-09, 마력이 깃든 융합제).
+   */
+  const goldPlan = coin !== undefined ? planWith(false) : undefined;
   /**
    * 손익은 재료 예상 총액(표의 합계)이 기준이다. 경매장 재료는 싼 매물부터 채운 값, NPC 가 파는 재료는
-   * NPC 값이다. "경매장에서만 산다면" 으로 매기면 NPC 가 50만 G 에 파는 재료가 경매장에 5억 G 로 하나
-   * 올라와 있을 때 그 값이 들어가 손익이 뜻을 잃었다(2026-09, 마력이 깃든 융합제).
+   * NPC 값, 구슬로 산 재료는 그 재료의 경매장 값이다(craftProfit).
    */
   const profit = craftProfit(plan, quantity, productPrice);
   const missing = [
-    ...new Set([...plan.needed, ...(auctionPlan?.needed ?? [])].map(book.itemName)),
+    ...new Set([...plan.needed, ...(goldPlan?.needed ?? [])].map(book.itemName)),
   ].filter((name) => !requested.includes(name));
   // 렌더 중에 상태를 고치는 React 의 "이전 렌더에서 파생" 방식. 새 이름이 있을 때만 바뀌므로 멈춘다.
   if (missing.length > 0) setRequested([...requested, ...missing]);
@@ -398,21 +400,19 @@ function RecipeCost({
                 ) : null}
               </Flex>
             </Form>
-            {/* 비용 묶음. 재료 예상 총액과 경매장에서만 샀을 때, 코인으로 산 몫을 나란히 본다. */}
+            {/* 비용 묶음. 재료 예상 총액과 구슬 없이 샀을 때, 구슬로 산 몫을 나란히 본다. */}
             <Flex gap={20} wrap align="flex-end">
               <Statistic
                 title="재료 예상 총액"
                 value={formatGold(plan.total.gold)}
                 styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
               />
-              {auctionPlan ? (
+              {goldPlan ? (
                 <Statistic
-                  title="경매장에서만 산다면"
-                  value={formatGold(auctionPlan.total.gold)}
+                  title={`${coin} 없이 산다면`}
+                  value={formatGold(goldPlan.total.gold)}
                   // 매물이 모자란 재료는 채운 만큼만 들어 있어 실제로는 이보다 비싸다.
-                  suffix={
-                    auctionPlan.total.pending === 0 && !isComplete(auctionPlan.total) ? '이상' : undefined
-                  }
+                  suffix={goldPlan.total.pending === 0 && !isComplete(goldPlan.total) ? '이상' : undefined}
                   styles={{ content: SMALL_STAT, suffix: { fontSize: 14 } }}
                 />
               ) : null}

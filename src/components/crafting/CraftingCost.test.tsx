@@ -46,6 +46,7 @@ const LISTINGS: Record<string, [number, number][]> = {
   '깨어난 힘의 정수': [[100, 100]],
   // NPC 가 50만 G 에 파는데 경매장에는 5억 G 짜리 하나만 올라와 있다(2026-09 실제로 본 모양).
   '마력이 깃든 융합제': [[500_000_000, 1]],
+  '빛바랜 에너지 회로': [[1_000, 10]],
   '퓨어 젬스톤': [[30_000_000, 5]],
 };
 
@@ -108,10 +109,17 @@ describe('제작 비용', () => {
       items: { 1: ['퓨어 젬스톤', 1], 2: ['마력이 깃든 융합제', 1] },
       recipes: [{ item: 1, skill: 10040, rank: 13, yield: 1, materials: [[[2], 5]] }],
     });
-    renderCost(npcBook);
+    // 수요일이면 상점 할인이 켜진 채로 시작한다. 할인 없는 값을 보려고 화요일로 둔다.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-29T03:00:00Z'));
+    try {
+      renderCost(npcBook);
 
-    expect(await screen.findByText('27,500,000 G 이득')).toBeInTheDocument();
-    expect(screen.queryByText(/손해/)).not.toBeInTheDocument();
+      expect(await screen.findByText('27,500,000 G 이득')).toBeInTheDocument();
+      expect(screen.queryByText(/손해/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('완성품 최저가에서 재료비를 빼 제작 시 손익을 보여 준다', async () => {
@@ -158,6 +166,12 @@ describe('제작 비용', () => {
 
     const box = await screen.findByRole('checkbox', { name: '탈라 가흐 구슬 70개로 구매' });
     expect(screen.getAllByRole('checkbox', { name: /로 구매/ })).toHaveLength(1);
+    // 구슬을 고르기 전에는 구슬 없이 산 총액이 재료 예상 총액과 같다. 철괴 150 + 회로 2,000
+    const goldOnly = () =>
+      screen.getByText('탈라 가흐 구슬 없이 산다면').closest('.ant-statistic') as HTMLElement;
+    const total = () => screen.getByText('재료 예상 총액').closest('.ant-statistic') as HTMLElement;
+    expect(await within(goldOnly()).findByText('2,150 G')).toBeInTheDocument();
+    expect(within(total()).getByText('2,150 G')).toBeInTheDocument();
     const stat = () =>
       screen.getByText('필요한 탈라 가흐 구슬').closest('.ant-statistic') as HTMLElement;
     expect(within(stat()).getByText('0개')).toBeInTheDocument();
@@ -166,6 +180,9 @@ describe('제작 비용', () => {
 
     expect(await within(stat()).findByText('70개')).toBeInTheDocument();
     expect(screen.getByText('코인 구매')).toBeInTheDocument();
+    // 구슬로 산 회로만큼 재료 예상 총액이 줄고, 구슬 없이 산 총액은 그대로다.
+    expect(within(total()).getByText('150 G')).toBeInTheDocument();
+    expect(within(goldOnly()).getByText('2,150 G')).toBeInTheDocument();
     // 코인으로 산 재료의 시세가 없으면 개당 가치는 계산하지 않는다.
     expect(screen.getByText('탈라 가흐 구슬 개당 가치')).toBeInTheDocument();
   });
