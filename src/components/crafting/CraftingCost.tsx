@@ -232,11 +232,11 @@ function RecipeCost({
   const usesNpc = plan.shopping.some((row) => row.price.status === 'npc');
   const auctionPlan = usesNpc ? planWith(false) : undefined;
   /**
-   * 손익은 재료를 경매장에서 사서 만들었을 때가 기준이다. NPC 에서 사는 재료가 있으면 그 값으로 매긴
-   * 손익을 옆에 따로 둔다. 재료 예상 총액(NPC 포함)으로만 내면 경매장에서만 산 총액과 어긋나 보였다.
+   * 손익은 재료 예상 총액(표의 합계)이 기준이다. 경매장 재료는 싼 매물부터 채운 값, NPC 가 파는 재료는
+   * NPC 값이다. "경매장에서만 산다면" 으로 매기면 NPC 가 50만 G 에 파는 재료가 경매장에 5억 G 로 하나
+   * 올라와 있을 때 그 값이 들어가 손익이 뜻을 잃었다(2026-09, 마력이 깃든 융합제).
    */
-  const profit = craftProfit(auctionPlan ?? plan, quantity, productPrice);
-  const npcProfit = auctionPlan ? craftProfit(plan, quantity, productPrice) : undefined;
+  const profit = craftProfit(plan, quantity, productPrice);
   const missing = [
     ...new Set([...plan.needed, ...(auctionPlan?.needed ?? [])].map(book.itemName)),
   ].filter((name) => !requested.includes(name));
@@ -437,12 +437,7 @@ function RecipeCost({
               {quantity > 1 ? (
                 <Statistic
                   title="개당 재료비"
-                  // 재료 예상 총액과 같은 기준(NPC 포함)이다. 손익은 경매장 재료 기준이라 따로 셈한다.
-                  value={
-                    (npcProfit ?? profit).unitCost === undefined
-                      ? '-'
-                      : formatGold((npcProfit ?? profit).unitCost as number)
-                  }
+                  value={profit.unitCost === undefined ? '-' : formatGold(profit.unitCost)}
                   styles={{ content: SMALL_STAT }}
                 />
               ) : null}
@@ -459,8 +454,7 @@ function RecipeCost({
                   value={profit.lowest === undefined ? '-' : formatGold(profit.lowest)}
                   styles={{ content: SMALL_STAT }}
                 />
-                <ProfitStat title="제작 시 손익 (경매장 재료 기준)" profit={profit} />
-                {npcProfit ? <ProfitStat title="NPC 구매 포함 손익" profit={npcProfit} /> : null}
+                <ProfitStat title="제작 시 손익 (재료 예상 총액 기준)" profit={profit} />
               </Flex>
             ) : null}
             {/* 시세를 받는 동안만 나타나므로 자리를 비워 둔다. 나타날 때 아래 표가 밀리지 않게 한다. */}

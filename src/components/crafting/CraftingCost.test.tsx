@@ -44,6 +44,9 @@ const LISTINGS: Record<string, [number, number][]> = {
   철광석: [[1, 100]],
   '순도 높은 힘의 결정': [[10000, 5]],
   '깨어난 힘의 정수': [[100, 100]],
+  // NPC 가 50만 G 에 파는데 경매장에는 5억 G 짜리 하나만 올라와 있다(2026-09 실제로 본 모양).
+  '마력이 깃든 융합제': [[500_000_000, 1]],
+  '퓨어 젬스톤': [[30_000_000, 5]],
 };
 
 function renderCost(target = book) {
@@ -97,12 +100,26 @@ describe('제작 비용', () => {
     expect(asked).toEqual(['가죽', '검', '철괴']);
   });
 
+  it('NPC 가 파는 재료는 경매장의 터무니없는 매물이 아니라 NPC 값으로 손익을 낸다', async () => {
+    // 퓨어 젬스톤(1) = 마력이 깃든 융합제(2) 5개. NPC 값이면 250만 G 로 3,000만 G 짜리를 만든다.
+    const npcBook = buildRecipeBook({
+      updated: '2026-09-29',
+      skills: [{ id: 10040, name: '힐웬 공학', count: 1 }],
+      items: { 1: ['퓨어 젬스톤', 1], 2: ['마력이 깃든 융합제', 1] },
+      recipes: [{ item: 1, skill: 10040, rank: 13, yield: 1, materials: [[[2], 5]] }],
+    });
+    renderCost(npcBook);
+
+    expect(await screen.findByText('27,500,000 G 이득')).toBeInTheDocument();
+    expect(screen.queryByText(/손해/)).not.toBeInTheDocument();
+  });
+
   it('완성품 최저가에서 재료비를 빼 제작 시 손익을 보여 준다', async () => {
     renderCost();
 
     // 검 최저가 700 - 재료비 550 = 150 이득
     expect(await screen.findByText('150 G 이득')).toBeInTheDocument();
-    expect(screen.getByText('제작 시 손익 (경매장 재료 기준)')).toBeInTheDocument();
+    expect(screen.getByText('제작 시 손익 (재료 예상 총액 기준)')).toBeInTheDocument();
     expect(screen.getByText('700 G')).toBeInTheDocument();
   });
 
