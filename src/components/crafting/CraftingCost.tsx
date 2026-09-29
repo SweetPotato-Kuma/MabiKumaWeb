@@ -31,6 +31,7 @@ import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
+import { coinPurchasesOf } from '@/features/dungeonCoins/exchanges';
 import { useMarketPrices } from '@/features/crafting/market';
 import {
   isWednesdayInKorea,
@@ -606,31 +607,50 @@ function treeColumns(
       key: 'method',
       render: (_value, { node }) => {
         const npcSold = node.npcUnit !== undefined;
+        const coinPurchases = coinPurchasesOf(book.itemName(node.itemId));
+        const coinLines = coinPurchases.map((purchase) => (
+          <Text
+            key={purchase.coin}
+            type="secondary"
+            className="tnum"
+            style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            코인 구매 {purchase.coin} {formatNumber(purchase.cost * node.required)}개
+          </Text>
+        ));
         if (node.recipes.length === 0 && !npcSold)
-          return <Text type="secondary">{node.tradable ? '경매장 구매' : '거래 불가'}</Text>;
+          return (
+            <Flex vertical>
+              <Text type="secondary">{node.tradable ? '경매장 구매' : '거래 불가'}</Text>
+              {coinLines}
+            </Flex>
+          );
         return (
-          <Select<Method>
-            size="small"
-            value={node.method}
-            onChange={(method) => setMethod(node.key, method)}
-            aria-label={`${book.itemName(node.itemId)} 구하는 방법`}
-            popupMatchSelectWidth={false}
-            options={[
-              {
-                value: 'buy',
-                label: node.tradable ? '경매장 구매' : '경매장 구매 (거래 불가)',
-                disabled: !node.tradable,
-              },
-              ...(npcSold
-                ? [{ value: 'npc' as const, label: `NPC 구매 (${formatGold(node.npcUnit)})` }]
-                : []),
-              ...node.recipes.map((each) => ({
-                value: each.index,
-                label: `제작: ${recipeTitle(book, each)}`,
-              })),
-            ]}
-            style={{ minWidth: 150 }}
-          />
+          <Flex vertical gap={2} align="flex-start">
+            <Select<Method>
+              size="small"
+              value={node.method}
+              onChange={(method) => setMethod(node.key, method)}
+              aria-label={`${book.itemName(node.itemId)} 구하는 방법`}
+              popupMatchSelectWidth={false}
+              options={[
+                {
+                  value: 'buy',
+                  label: node.tradable ? '경매장 구매' : '경매장 구매 (거래 불가)',
+                  disabled: !node.tradable,
+                },
+                ...(npcSold
+                  ? [{ value: 'npc' as const, label: `NPC 구매 (${formatGold(node.npcUnit)})` }]
+                  : []),
+                ...node.recipes.map((each) => ({
+                  value: each.index,
+                  label: `제작: ${recipeTitle(book, each)}`,
+                })),
+              ]}
+              style={{ minWidth: 150 }}
+            />
+            {coinLines}
+          </Flex>
         );
       },
     },

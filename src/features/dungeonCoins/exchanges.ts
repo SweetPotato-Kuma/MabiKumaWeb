@@ -92,8 +92,18 @@ export const DUNGEON_COINS: DungeonCoin[] = [
     exchanges: [
       { id: 5100074, name: '결정화된 겨울의 잔해', cost: 35, icon: '0e9fcafb6ddb12e6.png' },
       { id: 5100083, name: '잘려 나간 겨울의 꿈 결정', cost: 200, icon: 'e8163d4d886e62d2.png' },
-      { id: 2230000, name: '스페셜 포레스트 레인저 웨어(남성용)', cost: 150, icon: '5977d7c92be078ae.png' },
-      { id: 2230001, name: '스페셜 포레스트 레인저 웨어(여성용)', cost: 150, icon: '861382bfb1138c69.png' },
+      {
+        id: 2230000,
+        name: '스페셜 포레스트 레인저 웨어(남성용)',
+        cost: 150,
+        icon: '5977d7c92be078ae.png',
+      },
+      {
+        id: 2230001,
+        name: '스페셜 포레스트 레인저 웨어(여성용)',
+        cost: 150,
+        icon: '861382bfb1138c69.png',
+      },
       {
         id: 2230002,
         name: '스페셜 포레스트 레인저 머플러 웨어(남성용)',
@@ -106,8 +116,18 @@ export const DUNGEON_COINS: DungeonCoin[] = [
         cost: 150,
         icon: 'd0ef24c040d57215.png',
       },
-      { id: 2300005, name: '포레스트 레인저 글러브(남성용)', cost: 150, icon: '85f9502926a5ae4a.png' },
-      { id: 2300006, name: '포레스트 레인저 글러브(여성용)', cost: 150, icon: '15c410edff41e5f5.png' },
+      {
+        id: 2300005,
+        name: '포레스트 레인저 글러브(남성용)',
+        cost: 150,
+        icon: '85f9502926a5ae4a.png',
+      },
+      {
+        id: 2300006,
+        name: '포레스트 레인저 글러브(여성용)',
+        cost: 150,
+        icon: '15c410edff41e5f5.png',
+      },
       { id: 2400006, name: '포레스트 레인저 부츠(남성용)', cost: 150 },
       { id: 2400007, name: '포레스트 레인저 부츠(여성용)', cost: 150 },
     ],
@@ -138,6 +158,30 @@ export const DUNGEON_COINS: DungeonCoin[] = [
     ],
   },
 ];
+
+export interface CoinPurchase {
+  /** 내야 하는 코인 이름. */
+  coin: string;
+  /** 교환품 하나에 드는 코인 개수. */
+  cost: number;
+}
+
+let purchasesByName: Map<string, CoinPurchase[]> | undefined;
+
+/** 이 이름의 아이템을 코인으로 살 수 있는 곳. 여러 NPC 가 팔면 모두, 없으면 빈 배열. */
+export function coinPurchasesOf(name: string): CoinPurchase[] {
+  if (!purchasesByName) {
+    purchasesByName = new Map();
+    for (const { coin, exchanges } of DUNGEON_COINS) {
+      for (const exchange of exchanges) {
+        const list = purchasesByName.get(exchange.name) ?? [];
+        list.push({ coin: coin.name, cost: exchange.cost });
+        purchasesByName.set(exchange.name, list);
+      }
+    }
+  }
+  return purchasesByName.get(name) ?? [];
+}
 
 export function dungeonCoinOf(key: string | null): DungeonCoin {
   return DUNGEON_COINS.find((entry) => entry.key === key) ?? DUNGEON_COINS[0];

@@ -42,13 +42,13 @@ const LISTINGS: Record<string, [number, number][]> = {
   철광석: [[1, 100]],
 };
 
-function renderCost() {
+function renderCost(target = book) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <AppProviders>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
-          <CraftingCost book={book} recipes={book.recipesOf(1)} />
+          <CraftingCost book={target} recipes={target.recipesOf(1)} />
         </MemoryRouter>
       </QueryClientProvider>
     </AppProviders>,
@@ -103,6 +103,31 @@ describe('제작 비용', () => {
     // 철괴 3개 = 10개씩 한 번, 철광석 2개 x 1
     expect(await within(tree).findByText('철광석')).toBeInTheDocument();
     expect(await within(tree).findByText('제작 시 2 G')).toBeInTheDocument();
+  });
+
+  it('코인 상점에서 파는 재료는 코인으로 사면 몇 개인지 보여 준다', async () => {
+    // 빛바랜 에너지 회로는 탈라 가흐 구슬 35개, 철괴는 코인 상점에 없다.
+    const coinBook = buildRecipeBook({
+      updated: '2026-09-22',
+      skills: [{ id: 10013, name: '핸디크래프트', count: 1 }],
+      items: { 1: ['검', 1], 2: ['철괴', 1], 3: ['빛바랜 에너지 회로', 1] },
+      recipes: [
+        {
+          item: 1,
+          skill: 10013,
+          rank: 7,
+          yield: 1,
+          materials: [
+            [[2], 3],
+            [[3], 2],
+          ],
+        },
+      ],
+    });
+    renderCost(coinBook);
+
+    expect(await screen.findByText('코인 구매 탈라 가흐 구슬 70개')).toBeInTheDocument();
+    expect(screen.queryAllByText(/코인 구매/)).toHaveLength(1);
   });
 
   it('재료 이름은 그 재료의 아이템 정보로 가는 링크다', async () => {
