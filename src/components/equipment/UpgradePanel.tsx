@@ -15,12 +15,19 @@ interface UpgradePanelProps {
 }
 
 /** "네리스, 레이널드, 멜레스" 에 이름 모르는 NPC 수를 덧붙인다. */
-function npcText(def: UpgradeDef): string {
+function npcText(def: Pick<UpgradeDef, 'npcs' | 'npcUnknown'>): string {
   const names = def.npcs ?? [];
   const unknown = def.npcUnknown ?? 0;
   if (names.length === 0 && unknown === 0) return '';
   const extra = unknown ? `${names.length ? ' 외 ' : ''}${unknown}명(이름 미확인)` : '';
   return `${names.join(', ')}${extra}`;
+}
+
+/** 칸에서 할 수 있는 개조를 해 주는 NPC 를 한데 모은다. */
+function slotNpcText(defs: UpgradeDef[]): string {
+  const npcs = [...new Set(defs.flatMap((def) => def.npcs ?? []))];
+  const npcUnknown = Math.max(0, ...defs.map((def) => def.npcUnknown ?? 0));
+  return npcText({ npcs, npcUnknown });
 }
 
 /** 효과 한 줄. 능력치가 없는 개조(장인 개조, 글로만 적힌 효과)도 무엇인지 알 수 있게 한다. */
@@ -74,6 +81,7 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
       else onChange(next, gemSlots);
     };
     const summary = chosen ? `${effectText(chosen)} (${costText(chosen)})` : '';
+    const slotNpcs = slotNpcText(candidates.map(([, def]) => def));
 
     return (
       // 한 줄. 좁은 화면에서는 효과가 고르는 칸 아래로 떨어진다.
@@ -126,7 +134,7 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
           {chosen
             ? summary
             : candidates.length
-              ? `${candidates.length}가지 중에서 고를 수 있습니다`
+              ? slotNpcs && `NPC ${slotNpcs}`
               : '이 칸에 할 수 있는 개조가 없습니다'}
         </Text>
       </Flex>

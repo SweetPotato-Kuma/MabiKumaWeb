@@ -315,6 +315,13 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
     expect(screen.getByText('네리스, 퍼거스 외 1명(이름 미확인)')).toBeInTheDocument();
   });
 
+  it('고르지 않은 개조 칸에는 몇 가지 중 고르는지 대신 해 주는 NPC 를 적는다', async () => {
+    renderPage(SWORD_PATH);
+
+    expect((await screen.findAllByText('NPC 네리스, 퍼거스 외 1명(이름 미확인)')).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/가지 중에서/)).not.toBeInTheDocument();
+  });
+
   it('개조는 칸마다 한 줄에 고른 개조의 효과와 비용을 적는다', async () => {
     renderPage(`${SWORD_PATH}&up=52507.`);
 
