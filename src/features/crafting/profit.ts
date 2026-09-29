@@ -9,12 +9,14 @@ import { isComplete, type CraftPlan } from './plan';
  * 값을 더한다. 빼면 코인을 공짜로 친 이익이 나온다.
  */
 export interface CraftProfit {
-  /** 개당 재료비. 값을 모르는 재료나 받는 중인 시세가 있으면 없다. */
+  /** 개당 재료비. 받는 중인 시세가 있으면 없다. */
   unitCost?: number;
   /** 완성품의 경매장 최저가. 매물이 없거나 받는 중이면 없다. */
   lowest?: number;
   /** lowest - unitCost. 둘 중 하나라도 없으면 없다. */
   profit?: number;
+  /** 매물이 모자라거나 값을 모르는 재료가 있어 재료비가 실제보다 작게 잡혔는지. */
+  partial: boolean;
 }
 
 export function craftProfit(
@@ -23,9 +25,10 @@ export function craftProfit(
   product: PriceState | undefined,
 ): CraftProfit {
   const usesCoins = plan.beads > 0;
-  const costKnown = isComplete(plan.total) && (!usesCoins || isComplete(plan.beadsWorth));
+  const settled = plan.total.pending === 0 && (!usesCoins || plan.beadsWorth.pending === 0);
+  const partial = !isComplete(plan.total) || (usesCoins && !isComplete(plan.beadsWorth));
   const unitCost =
-    costKnown && quantity > 0
+    settled && quantity > 0
       ? Math.round((plan.total.gold + (usesCoins ? plan.beadsWorth.gold : 0)) / quantity)
       : undefined;
   const lowest = product?.status === 'ok' ? product.price.offers[0]?.price : undefined;
@@ -33,5 +36,6 @@ export function craftProfit(
     unitCost,
     lowest,
     profit: unitCost !== undefined && lowest !== undefined ? lowest - unitCost : undefined,
+    partial,
   };
 }

@@ -102,6 +102,7 @@ describe('제작 비용', () => {
 
     // 검 최저가 700 - 재료비 550 = 150 이득
     expect(await screen.findByText('150 G 이득')).toBeInTheDocument();
+    expect(screen.getByText('제작 시 손익 (경매장 재료 기준)')).toBeInTheDocument();
     expect(screen.getByText('700 G')).toBeInTheDocument();
   });
 
