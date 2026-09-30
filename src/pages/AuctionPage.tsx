@@ -64,6 +64,7 @@ import {
 } from '@/features/auction/optionFilter';
 import { serializeFilter } from '@/features/auction/filterUrl';
 import { matchTier, PARTIAL_TIER, type MatchTier } from '@/features/auction/matchTier';
+import { isSymbolItem, searchesSymbolItems } from '@/features/auction/symbolItems';
 import {
   readSearchState,
   readViewState,
@@ -84,6 +85,7 @@ import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useControlledPagination } from '@/lib/useListPagination';
+import { useUserSettings } from '@/lib/userSettings';
 import { RefreshIcon, SearchIcon } from '@/components/icons';
 
 const { Text } = Typography;
@@ -205,6 +207,31 @@ function LoadMoreStatus({
     <Text type="secondary" style={{ fontSize: 12 }}>
       마지막 쪽을 열면 다음 매물을 이어서 불러옵니다.
     </Text>
+  );
+}
+
+/**
+ * 심볼·도면·옷본을 숨겼다고 알린다. 숨긴 것이 없으면 아무것도 그리지 않는다. 표시 중일 때는 다시 숨길 수 있다.
+ */
+function SymbolNotice({
+  count,
+  showing,
+  onToggle,
+}: {
+  count: number;
+  showing: boolean;
+  onToggle: () => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <Flex gap={4} align="center" wrap role="status">
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        심볼·도면·옷본 {formatNumber(count)}건 {showing ? '표시 중' : '숨김'}
+      </Text>
+      <Button type="link" size="small" onClick={onToggle}>
+        {showing ? '숨기기' : '보기'}
+      </Button>
+    </Flex>
   );
 }
 
@@ -365,14 +392,40 @@ export function AuctionPage() {
     };
   }, [tierKeyword]);
   const exactOnly = exact && tierKeyword.trim() !== '';
-  const visibleItems = useMemo(() => {
+  const itemsMatching = useMemo(() => {
     const byOption = filtering ? items.filter((item) => matchesOptionFilter(item, deferredFilter)) : items;
     return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
   }, [filtering, items, deferredFilter, exactOnly, tierOf]);
-  const visibleHistory = useMemo(() => {
+  const historyMatching = useMemo(() => {
     const byOption = filtering ? history.filter((item) => matchesOptionFilter(item, deferredFilter)) : history;
     return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
   }, [filtering, history, deferredFilter, exactOnly, tierOf]);
+
+  /**
+   * 심볼, 도면, 옷본 제외(방문자 설정). 결과 위에 몇 건을 숨겼는지 알리고, 누르면 보인다. 새로 찾으면 다시
+   * 숨긴다. 검색어가 그 단어를 직접 말하면 숨기지 않는다. 찾는 것을 숨기면 결과가 텅 빈다.
+   */
+  const [userSettings] = useUserSettings();
+  const [showSymbols, setShowSymbols] = useState(false);
+  useEffect(() => setShowSymbols(false), [searchKey]);
+  const symbolRuleOn = userSettings.hideSymbols && !searchesSymbolItems(tierKeyword);
+  const itemsSymbolCount = useMemo(
+    () => (symbolRuleOn ? itemsMatching.filter((item) => isSymbolItem(item.item_name)).length : 0),
+    [symbolRuleOn, itemsMatching],
+  );
+  const historySymbolCount = useMemo(
+    () => (symbolRuleOn ? historyMatching.filter((item) => isSymbolItem(item.item_name)).length : 0),
+    [symbolRuleOn, historyMatching],
+  );
+  const hideSymbols = symbolRuleOn && !showSymbols;
+  const visibleItems = useMemo(
+    () => (hideSymbols ? itemsMatching.filter((item) => !isSymbolItem(item.item_name)) : itemsMatching),
+    [hideSymbols, itemsMatching],
+  );
+  const visibleHistory = useMemo(
+    () => (hideSymbols ? historyMatching.filter((item) => !isSymbolItem(item.item_name)) : historyMatching),
+    [hideSymbols, historyMatching],
+  );
   /**
    * 일부만 걸려 나온 줄에 라벨을 단다. 이름이 그대로 들어맞는 줄이 하나라도 있을 때만 그렇다. 전부 부분
    * 일치라면 구분할 것이 없어 라벨이 줄마다 붙으면 소음이다.
@@ -942,6 +995,7 @@ export function AuctionPage() {
    */
   const itemsPanel = useMemo(() => (
     <Flex vertical gap={16}>
+      <SymbolNotice count={itemsSymbolCount} showing={showSymbols} onToggle={() => setShowSymbols((prev) => !prev)} />
       {singleItem ? (
         <Card
           variant="outlined"
@@ -1008,9 +1062,11 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, changeSort, itemColumns, visibleItems, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
+    <Flex vertical gap={12}>
+      <SymbolNotice count={historySymbolCount} showing={showSymbols} onToggle={() => setShowSymbols((prev) => !prev)} />
     <QueryState
       isLoading={historyQuery.isPending && enabled}
       error={historyQuery.error}
@@ -1055,7 +1111,8 @@ export function AuctionPage() {
         />
       </Flex>
     </QueryState>
-  ), [enabled, changeSort, visibleHistory, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
+    </Flex>
+  ), [enabled, changeSort, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   return (
     <>

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
+import { resetSettingsForTest, updateSettings } from '@/lib/userSettings';
 import { AuctionPage } from '@/pages/AuctionPage';
 
 /** 판매 중 매물 25건. 1번이 가장 비싸고 25번이 가장 싸다. 조회는 이 목록을 그대로 돌려준다. */
@@ -33,12 +34,22 @@ const TIER_ITEMS = [
   date_auction_expire: new Date(Date.now() + 3_600_000).toISOString(),
 }));
 
+/** 심볼, 도면, 옷본이 섞인 매물. 검색어에 "전투" 가 들어 있으면 이 목록을 돌려준다. */
+const SYMBOL_ITEMS = ['전투 검', '전투 방패', '전투 심볼', '전투 도면'].map((name, index) => ({
+  item_name: name,
+  item_display_name: name,
+  item_count: 1,
+  auction_item_category: '검',
+  auction_price_per_unit: (index + 1) * 1000,
+  date_auction_expire: new Date(Date.now() + 3_600_000).toISOString(),
+}));
+
 vi.mock('@/features/auction/hooks', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useAuctionItemsQuery: (input: { keyword: string }, enabled: boolean) => ({
     data: enabled
       ? (() => {
-          const items = input.keyword === '소울 보우' ? TIER_ITEMS : FAKE_ITEMS;
+          const items = input.keyword === '소울 보우' ? TIER_ITEMS : input.keyword.includes('전투') ? SYMBOL_ITEMS : FAKE_ITEMS;
           return { items, loadedCount: items.length };
         })()
       : undefined,
@@ -97,6 +108,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.localStorage.clear();
+  resetSettingsForTest();
 });
 
 // 페이지 전체를 그리는 시험이라 다른 시험과 함께 돌면 기본 5초를 넘기기도 한다.
@@ -244,6 +257,47 @@ describe('경매장 검색 조건과 주소', () => {
       renderAt('/auction?keyword=소울 보우&exact=1');
 
       expect(await screen.findByRole('checkbox', { name: '정확히 일치' })).toBeChecked();
+    });
+  });
+
+  describe('심볼·도면·옷본 제외', () => {
+    it('설정을 켜지 않았으면 모두 보이고 안내도 없다', async () => {
+      renderAt('/auction?keyword=전투');
+
+      expect(await screen.findByText('전투 심볼')).toBeInTheDocument();
+      expect(screen.getByText('전투 도면')).toBeInTheDocument();
+      expect(screen.queryByText(/건 숨김/)).toBeNull();
+    });
+
+    it('설정을 켜면 결과에서 빠지고 몇 건을 숨겼는지 알린다', async () => {
+      updateSettings({ hideSymbols: true });
+      renderAt('/auction?keyword=전투');
+
+      expect(await screen.findByText('전투 검')).toBeInTheDocument();
+      expect(screen.queryByText('전투 심볼')).toBeNull();
+      expect(screen.queryByText('전투 도면')).toBeNull();
+      expect(screen.getByText('심볼·도면·옷본 2건 숨김')).toBeInTheDocument();
+    });
+
+    it('보기를 누르면 숨긴 것이 나타나고, 숨기기로 다시 숨긴다', async () => {
+      updateSettings({ hideSymbols: true });
+      renderAt('/auction?keyword=전투');
+      await screen.findByText('전투 검');
+
+      fireEvent.click(screen.getByRole('button', { name: '보기' }));
+      expect(await screen.findByText('전투 심볼')).toBeInTheDocument();
+      expect(screen.getByText('심볼·도면·옷본 2건 표시 중')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '숨기기' }));
+      await waitFor(() => expect(screen.queryByText('전투 심볼')).toBeNull());
+    });
+
+    it('검색어가 그 단어를 직접 말하면 숨기지 않는다', async () => {
+      updateSettings({ hideSymbols: true });
+      renderAt('/auction?keyword=전투 심볼');
+
+      expect(await screen.findByText('전투 심볼')).toBeInTheDocument();
+      expect(screen.queryByText(/건 숨김/)).toBeNull();
     });
   });
 });
