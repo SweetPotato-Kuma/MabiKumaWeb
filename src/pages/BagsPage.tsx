@@ -3,13 +3,10 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Col,
-  ColorPicker,
   Flex,
   Grid,
   Pagination,
-  Popover,
   Progress,
   Row,
   Segmented,
@@ -28,22 +25,10 @@ import {
 import { BagImage } from '@/components/BagImage';
 import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { canSearchBags } from '@/features/bags/api';
-import {
-  COLOR_CHANNEL_KEYS,
-  describeColorChannel,
-  emptyColorChannels,
-  hasColorChannels,
-} from '@/features/colorChannels';
-import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
+import { emptyColorChannels, hasColorChannels, type ColorChannels } from '@/features/colorChannels';
+import { BAG_NAMES } from '@/features/bags/constants';
 import { formatRgb } from '@/features/bags/color';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
-import {
-  isSavedColor,
-  removeSavedColor,
-  saveColor,
-  SAVED_COLORS_MAX,
-  useSavedColors,
-} from '@/features/bags/savedColors';
 import {
   bagCategory,
   bareName,
@@ -58,7 +43,6 @@ import {
   bagConditionParams,
   hasBagConditions,
   readBagConditions,
-  type PartTarget,
 } from '@/features/bags/searchParams';
 import { useBagSearch } from '@/features/bags/useBagSearch';
 import { useGridFit } from '@/features/bags/useGridFit';
@@ -67,7 +51,7 @@ import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 import { useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
-import { GridIcon, ListIcon, SearchIcon, StarFillIcon, StarIcon } from '@/components/icons';
+import { GridIcon, ListIcon, SearchIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
@@ -244,125 +228,37 @@ function toTreeData(nodes: readonly BagTreeNode[]): TreeDataNode[] {
 }
 
 /**
- * 파트 하나의 원하는 색. 검색 제외를 켜면 그 파트는 어떤 색이든 된다.
- *
- * 색 고르기 창 맨 위에 저장한 색을 두어 눌러 쓰게 하고, 창 아래에서 지금 색을 저장하거나 뺀다.
- * 저장한 색은 세 파트가 함께 쓴다(savedColors).
+ * 파트 하나의 색 조건. 경매장 상세 검색과 같은 R, G, B 채널 입력이다. 채널마다 범위이거나 유사도(기준값
+ * ± 오차%)이고, 아무 채널도 채우지 않은 파트는 어떤 색이든 찾는다.
  */
-function PartColorRow({
+function PartChannelsRow({
   part,
-  target,
+  channels,
   onChange,
 }: {
   part: number;
-  target: PartTarget;
-  onChange: (next: PartTarget) => void;
+  channels: ColorChannels;
+  onChange: (next: ColorChannels) => void;
 }) {
-  const savedColors = useSavedColors();
-  const saved = isSavedColor(target.color);
-  // 채널을 건 파트는 단추에 건 조건을 적는다. 검색 제외한 파트는 조건이 있어도 쓰이지 않는다.
-  const narrowed = hasColorChannels(target.channels);
-  const summary = COLOR_CHANNEL_KEYS.map((key) => describeColorChannel(key, target.channels[key]))
-    .filter(Boolean)
-    .join(' ');
-  const presets = [
-    ...(savedColors.length > 0
-      ? [
-          {
-            label: `저장한 색 ${savedColors.length}/${SAVED_COLORS_MAX}`,
-            colors: savedColors,
-            defaultOpen: true,
-          },
-        ]
-      : []),
-    { label: '기본 색', colors: COLOR_PRESETS, defaultOpen: savedColors.length === 0 },
-  ];
-
   return (
-    <Flex align="center" gap={10} wrap>
-      <Text style={{ width: 44, flex: '0 0 44px' }}>{PART_LABELS[part]}</Text>
-      <ColorPicker
-        value={target.color}
-        disabled={target.excluded}
-        onChange={(value) => onChange({ ...target, color: value.toHexString() })}
-        presets={presets}
-        panelRender={(panel) => (
-          <Flex vertical gap={8}>
-            {panel}
-            <Flex justify="space-between" align="center" gap={8}>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {saved ? '저장한 색입니다' : '자주 찾는 색을 저장해 두세요'}
-              </Text>
-              {saved ? (
-                <Button
-                  size="small"
-                  icon={<StarFillIcon />}
-                  onClick={() => removeSavedColor(target.color)}
-                >
-                  저장에서 빼기
-                </Button>
-              ) : (
-                <Button size="small" icon={<StarIcon />} onClick={() => saveColor(target.color)}>
-                  이 색 저장
-                </Button>
-              )}
-            </Flex>
-          </Flex>
-        )}
-        // 마비노기는 색을 RGB 로 보여 주고 찾는다. 고르는 창도 RGB 입력으로 열고, 주머니 색에는
-        // 투명도가 없으므로 투명도 입력은 뺀다.
-        defaultFormat="rgb"
-        disabledAlpha
-        showText={(color) => {
-          const { r, g, b } = color.toRgb();
-          return <span className="tnum">{`R:${r} G:${g} B:${b}`}</span>;
-        }}
-        aria-label={`${PART_LABELS[part]} 원하는 색`}
+    <Flex vertical gap={6}>
+      <Flex justify="space-between" align="center" gap={8}>
+        <Text strong>{PART_LABELS[part]}</Text>
+        {hasColorChannels(channels) ? (
+          <Button
+            type="link"
+            size="small"
+            aria-label={`${PART_LABELS[part]} 조건 지우기`}
+            onClick={() => onChange(emptyColorChannels())}
+          >
+            지우기
+          </Button>
+        ) : null}
+      </Flex>
+      <ColorChannelFields
+        channels={channels}
+        onChange={(key, channel) => onChange({ ...channels, [key]: channel })}
       />
-      <Checkbox
-        checked={target.excluded}
-        onChange={(event) => onChange({ ...target, excluded: event.target.checked })}
-      >
-        검색 제외
-      </Checkbox>
-      <Popover
-        trigger="click"
-        placement="bottomLeft"
-        title={`${PART_LABELS[part]} 색상`}
-        content={
-          <Flex vertical gap={12} style={{ width: 300, maxWidth: 'calc(100vw - 56px)' }}>
-            <ColorChannelFields
-              channels={target.channels}
-              onChange={(key, channel) =>
-                onChange({ ...target, channels: { ...target.channels, [key]: channel } })
-              }
-            />
-            <Flex justify="flex-end">
-              <Button
-                size="small"
-                disabled={!narrowed}
-                onClick={() => onChange({ ...target, channels: emptyColorChannels() })}
-              >
-                지우기
-              </Button>
-            </Flex>
-          </Flex>
-        }
-      >
-        <Button
-          size="small"
-          variant="outlined"
-          color={narrowed && !target.excluded ? 'primary' : 'default'}
-          disabled={target.excluded}
-          title={summary || undefined}
-          aria-label={`${PART_LABELS[part]} 유사도 검색`}
-          style={{ maxWidth: '100%' }}
-        >
-          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {summary || '유사도'}
-          </span>
-        </Button>
-      </Popover>
     </Flex>
   );
 }
@@ -385,14 +281,14 @@ export function BagsPage() {
   const [server, setServer] = useState<string>(initial.conditions.server);
   /** 트리에서 체크한 칸들. 비어 있으면 모든 주머니. */
   const [selectedBags, setSelectedBags] = useState<string[]>(initial.conditions.bags);
-  const [targets, setTargets] = useState<PartTarget[]>(initial.conditions.targets);
+  const [parts, setParts] = useState<ColorChannels[]>(initial.conditions.parts);
   useEffect(() => {
     const timer = setTimeout(
-      () => updateParams(bagConditionParams({ server, bags: selectedBags, targets })),
+      () => updateParams(bagConditionParams({ server, bags: selectedBags, parts })),
       URL_WRITE_DELAY_MS,
     );
     return () => clearTimeout(timer);
-  }, [server, selectedBags, targets, updateParams]);
+  }, [server, selectedBags, parts, updateParams]);
   // 조건이 실린 링크로 들어왔으면 찾기를 누른 것처럼 바로 받는다. 받은 결과는 조건과 상관없이 쓴다.
   useEffect(() => {
     if (available && initial.shared) void search(initial.conditions.server);
@@ -416,23 +312,9 @@ export function BagsPage() {
   );
   const treeData = useMemo(() => toTreeData(bagTree), [bagTree]);
   const bagNames = useMemo(() => namesOfSelection(bagTree, selectedBags), [bagTree, selectedBags]);
-  const searchTargets = useMemo(
-    () => targets.map((target) => (target.excluded ? null : target.color)),
-    [targets],
-  );
-
-  // 검색에서 뺀 파트는 채널 조건이 있어도 쓰지 않는다.
-  const searchChannels = useMemo(
-    () =>
-      targets.map((target) =>
-        target.excluded || !hasColorChannels(target.channels) ? null : target.channels,
-      ),
-    [targets],
-  );
-
   const listings = useMemo(
-    () => buildListings(state.channels, { bagNames, targets: searchTargets, channels: searchChannels }),
-    [state.channels, bagNames, searchTargets, searchChannels],
+    () => buildListings(state.channels, { bagNames, parts }),
+    [state.channels, bagNames, parts],
   );
 
   /**
@@ -472,7 +354,7 @@ export function BagsPage() {
   const percent = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
   const failed = state.failedChannels.length > 0 && !loading;
 
-  const resetKey = `${state.server}|${selectedBags.join(',')}|${searchTargets.join(',')}|${JSON.stringify(searchChannels)}|${currentTab}`;
+  const resetKey = `${state.server}|${selectedBags.join(',')}|${JSON.stringify(parts)}|${currentTab}`;
   const tablePaging = useListPagination(resetKey, { defaultPageSize: TABLE_PAGE_SIZE });
 
   // 그림 보기는 화면에 맞춘 개수씩 넘긴다. 위쪽 안내가 생기거나 없어지면 격자가 움직이므로 다시 잰다.
@@ -558,21 +440,18 @@ export function BagsPage() {
           <Text>서버</Text>
           <Select aria-label="서버" value={server} onChange={setServer} options={SERVER_OPTIONS} />
         </Flex>
-        <Flex vertical gap={8}>
+        <Flex vertical gap={12}>
           <Text>원하는 색</Text>
-          {targets.map((target, part) => (
-            <PartColorRow
+          {parts.map((channels, part) => (
+            <PartChannelsRow
               key={part}
               part={part}
-              target={target}
+              channels={channels}
               onChange={(next) =>
-                setTargets((prev) => prev.map((entry, index) => (index === part ? next : entry)))
+                setParts((prev) => prev.map((entry, index) => (index === part ? next : entry)))
               }
             />
           ))}
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            검색 제외한 파트는 어떤 색이든 찾습니다. 모두 제외하면 채널 순으로 보여 줍니다.
-          </Text>
         </Flex>
         <Button
           type="primary"
@@ -646,7 +525,7 @@ export function BagsPage() {
       </Card>
     ) : listings.length === 0 ? (
       <Card>
-        <EmptyState description="조건에 맞는 주머니가 없습니다. 주머니 선택을 비우거나, 없는 파트(파트 C 등)를 검색 제외해 보세요." />
+        <EmptyState description="조건에 맞는 주머니가 없습니다. 색 조건을 넓히거나, 없는 파트(파트 C 등)의 조건을 지워 보세요." />
       </Card>
     ) : view === 'grid' ? (
       <>
@@ -685,7 +564,7 @@ export function BagsPage() {
           튼튼한 주머니 찾기
         </Title>
         <Text type="secondary">
-          고른 서버의 모든 채널, NPC 17명의 주머니를 원하는 색에 가까운 순으로 보여 줍니다. 상점은
+          고른 서버의 모든 채널, NPC 17명의 주머니를 조건에 맞는 것만 원하는 값에 가까운 순으로 보여 줍니다. 상점은
           에린 하루(현실 36분)마다 바뀝니다.
         </Text>
       </Flex>

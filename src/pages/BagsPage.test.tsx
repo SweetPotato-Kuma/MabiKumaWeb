@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -21,42 +21,49 @@ function renderPage(url = '/bags') {
   );
 }
 
-describe('튼튼한 주머니 파트별 유사도 검색', () => {
-  it('파트마다 유사도 단추가 있고, 채널 범위를 넣으면 단추에 건 조건이 보인다', async () => {
+describe('튼튼한 주머니 파트별 색 조건', () => {
+  it('세 파트 모두 R, G, B 채널 입력이 열려 있고 값은 비어 있다', () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '파트 A 유사도 검색' }));
-    const popover = await screen.findByRole('tooltip');
-    fireEvent.change(within(popover).getByLabelText('R 최소'), { target: { value: '200' } });
-    fireEvent.change(within(popover).getByLabelText('R 최대'), { target: { value: '255' } });
-
-    expect(screen.getByRole('button', { name: '파트 A 유사도 검색' })).toHaveTextContent('R 200~255');
+    for (const channel of ['R', 'G', 'B']) {
+      // 파트마다 채널 입력이 하나씩이라 세 파트에 걸쳐 셋씩 있다.
+      expect(screen.getAllByLabelText(`${channel} 최소`)).toHaveLength(3);
+      expect(screen.getAllByLabelText(`${channel} 최대`)).toHaveLength(3);
+      expect(screen.getAllByLabelText(`${channel} 유사도`)).toHaveLength(3);
+    }
+    for (const input of screen.getAllByLabelText('R 최소')) expect(input).toHaveValue('');
+    expect(screen.queryByRole('button', { name: /조건 지우기/ })).toBeNull();
   });
 
-  it('유사도를 켜면 기준값과 오차, 받아들이는 범위를 보여 준다', async () => {
+  it('범위를 넣은 파트에만 지우기 단추가 나타나고, 누르면 비운다', () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '파트 A 유사도 검색' }));
-    const popover = await screen.findByRole('tooltip');
-    fireEvent.click(within(popover).getByLabelText('G 유사도'));
-    fireEvent.change(within(popover).getByLabelText('G 기준값'), { target: { value: '120' } });
+    fireEvent.change(screen.getAllByLabelText('R 최소')[0], { target: { value: '200' } });
+    const clear = screen.getByRole('button', { name: '파트 A 조건 지우기' });
+    expect(screen.queryByRole('button', { name: '파트 B 조건 지우기' })).toBeNull();
 
-    expect(await within(popover).findByText('94.5~145.5')).toBeInTheDocument();
+    fireEvent.click(clear);
+
+    expect(screen.getAllByLabelText('R 최소')[0]).toHaveValue('');
+    expect(screen.queryByRole('button', { name: /조건 지우기/ })).toBeNull();
   });
 
-  it('주소의 채널 조건이 단추에 나타난다', () => {
-    renderPage('/bags?af=r100-200,g120p10');
-
-    expect(screen.getByRole('button', { name: '파트 A 유사도 검색' })).toHaveTextContent(
-      'R 100~200 G 120 ±10%',
-    );
-  });
-
-  it('검색에서 뺀 파트는 유사도 단추도 쓸 수 없다', () => {
+  it('유사도를 켜면 기준값과 오차, 받아들이는 범위를 보여 준다', () => {
     renderPage();
 
-    // 기본으로 파트 B, C 는 검색에서 빠져 있다.
-    expect(screen.getByRole('button', { name: '파트 B 유사도 검색' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '파트 A 유사도 검색' })).toBeEnabled();
+    fireEvent.click(screen.getAllByLabelText('G 유사도')[1]);
+    fireEvent.change(screen.getByLabelText('G 기준값'), { target: { value: '120' } });
+
+    // 오차는 처음에 10% 라 120 ± 25.5 다.
+    expect(screen.getByText('94.5~145.5')).toBeInTheDocument();
+  });
+
+  it('주소의 채널 조건이 입력칸에 채워진다', () => {
+    renderPage('/bags?a=r100-200,g120p10');
+
+    expect(screen.getAllByLabelText('R 최소')[0]).toHaveValue('100');
+    expect(screen.getAllByLabelText('R 최대')[0]).toHaveValue('200');
+    expect(screen.getByLabelText('G 기준값')).toHaveValue('120');
+    expect(screen.getByLabelText('G 오차')).toHaveValue('10');
   });
 });

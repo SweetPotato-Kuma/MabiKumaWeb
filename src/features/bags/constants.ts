@@ -50,5 +50,3 @@ export const BAG_NAMES = [
   '튼튼한 화이트 허브 주머니',
 ] as const;
 
-/** 색 고르기의 바로가기. 흰색과 검정 주머니를 가장 많이 찾는다. */
-export const COLOR_PRESETS = ['#ffffff', '#000000', '#ff0000', '#ffff00', '#00ff00', '#0000ff'];

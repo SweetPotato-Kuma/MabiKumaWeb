@@ -84,3 +84,24 @@ export function describeColorRange(channel: ColorChannel): string {
   const bounds = colorChannelBounds(channel);
   return bounds ? `${formatBound(bounds.low)}~${formatBound(bounds.high)}` : '';
 }
+
+/** 채널이 가장 바라는 값. 유사도는 기준값, 범위는 가운데이고, 한쪽만 걸었으면 그 끝이다. */
+function channelCenter(channel: ColorChannel): number | null {
+  if (channel.similar) return channel.base;
+  if (channel.min !== null && channel.max !== null) return (channel.min + channel.max) / 2;
+  return channel.min ?? channel.max;
+}
+
+/**
+ * 색이 채널 조건의 바라는 값에 얼마나 가까운지(0~100). 건 채널마다 차이를 채널 전체 폭(255)에 대한
+ * 비율로 재어 평균을 낸다. 건 채널이 없으면 null. 조건에 든 것끼리 줄을 세우는 데 쓴다.
+ */
+export function channelsCloseness(channels: ColorChannels, rgb: Rgb): number | null {
+  const gaps = COLOR_CHANNEL_KEYS.flatMap((key) => {
+    const center = colorChannelBounds(channels[key]) === null ? null : channelCenter(channels[key]);
+    return center === null ? [] : [Math.abs(rgb[key] - center) / COLOR_CHANNEL_MAX];
+  });
+  if (gaps.length === 0) return null;
+  const mean = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+  return Math.round((1 - mean) * 1000) / 10;
+}
