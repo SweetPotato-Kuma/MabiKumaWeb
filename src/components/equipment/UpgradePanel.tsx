@@ -97,6 +97,7 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
             >
               <span
                 tabIndex={0}
+                role="img"
                 aria-label={`개조 NPC: ${slotNpcs}`}
                 style={{ display: 'inline-flex', fontSize: 14, cursor: 'help' }}
               >

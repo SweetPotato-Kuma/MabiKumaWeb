@@ -11,6 +11,9 @@ import { EmptyState } from '@/components/EmptyState';
  * 한 화면에는 하나의 테마만 있다. 섹션마다 테마를 뒤집지 않는다.
  * 여기가 유일한 ConfigProvider 이고, 개별 화면이 테마를 덮어쓰지 않는다.
  */
+/** 글줄임의 펼침 단추에 보이는 글자("더 보기")와 스크린리더가 읽는 이름을 맞춘다. */
+const locale = { ...koKR, Text: { ...koKR.Text, expand: '더 보기' } };
+
 /**
  * 표와 목록이 비었을 때도 곰 그림을 쓴다. 고르기 상자의 드롭다운은 좁아서 그림이 짐이 되므로
  * null 을 돌려 antd 기본값에 맡긴다.
@@ -40,7 +43,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }, [mode]);
 
   return (
-    <ConfigProvider theme={themeConfig} locale={koKR} renderEmpty={renderEmpty}>
+    <ConfigProvider theme={themeConfig} locale={locale} renderEmpty={renderEmpty}>
       {/* 화면 높이를 #root 에서 Layout 으로 넘겨 준다. 까닭은 styles/index.css 의 body 주석에 있다. */}
       <AntdApp style={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column' }}>{children}</AntdApp>
     </ConfigProvider>

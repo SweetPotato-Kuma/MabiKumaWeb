@@ -192,7 +192,7 @@ export function ItemsPage() {
           </Flex>
           {/* 다른 아이템으로 넘어가면 받아 둔 것과 고른 것을 새로 시작한다. */}
           {resolvingCategory ? (
-            <Card aria-busy="true">
+            <Card aria-busy="true" style={{ minHeight: '100vh' }}>
               <Skeleton active paragraph={{ rows: 6 }} />
             </Card>
           ) : isEquipmentCategory(category) ? (

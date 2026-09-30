@@ -351,21 +351,24 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
         </Flex>
       </Card>
 
-      <QueryState
-        isLoading={query.isLoading}
-        error={query.error}
-        isEmpty={query.isSuccess && item === null}
-        emptyMessage="이 아이템은 장비 정보가 없습니다. 장비가 아니거나 아직 모으지 못한 아이템입니다."
-      >
-        {lookup && item ? (
-          <Simulator
-            lookup={{ ...lookup, item }}
-            card={card}
-            params={params}
-            onParamsChange={setParams}
-          />
-        ) : null}
-      </QueryState>
+      {/* 받는 동안 한 화면을 채워 두어, 아래 카드들이 화면 안에 보이다가 내용이 들어오며 밀려나지 않게 한다. */}
+      <div style={{ minHeight: query.isLoading ? '100vh' : undefined }}>
+        <QueryState
+          isLoading={query.isLoading}
+          error={query.error}
+          isEmpty={query.isSuccess && item === null}
+          emptyMessage="이 아이템은 장비 정보가 없습니다. 장비가 아니거나 아직 모으지 못한 아이템입니다."
+        >
+          {lookup && item ? (
+            <Simulator
+              lookup={{ ...lookup, item }}
+              card={card}
+              params={params}
+              onParamsChange={setParams}
+            />
+          ) : null}
+        </QueryState>
+      </div>
     </Flex>
   );
 }

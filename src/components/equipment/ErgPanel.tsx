@@ -101,7 +101,7 @@ export function ErgPanel({
         {grade ? (
           <Flex align="center" gap={8} style={{ flex: '1 1 220px', minWidth: 0 }}>
             <Slider
-              aria-label="에르그 레벨"
+              ariaLabelForHandle="에르그 레벨"
               min={1}
               max={max}
               value={pick.level}

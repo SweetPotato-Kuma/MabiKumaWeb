@@ -70,7 +70,7 @@ function VariableStat({
           formatter: (value) => (value === undefined ? '' : formatStatValue(stat, value)),
         }}
         style={{ flex: '1 1 80px', minWidth: 60, marginBlock: 0 }}
-        aria-label={`${statLabel(stat)} 값`}
+        ariaLabelForHandle={`${statLabel(stat)} 값`}
       />
       <InputNumber
         id={id}

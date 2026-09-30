@@ -28,6 +28,7 @@ import type { ColumnType } from 'antd/es/table';
 import { CookingGuide } from '@/components/crafting/CookingGuide';
 import { RecipeInfo } from '@/components/crafting/RecipeInfo';
 import { ItemIcon } from '@/components/ItemIcon';
+import { useResolvedThemeMode } from '@/lib/themePreference';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
@@ -93,6 +94,10 @@ const SMALL_STAT = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', f
  */
 function ProfitStat({ title, profit }: { title: string; profit: CraftProfit | undefined }) {
   const { token } = theme.useToken();
+  // 밝은 배경에서 기본 초록과 빨강은 글자 대비가 모자라(2.2, 3.2) 더 진한 색을 쓴다.
+  const light = useResolvedThemeMode() === 'light';
+  const gain = light ? '#237804' : token.colorSuccess;
+  const loss = light ? '#cf1322' : token.colorError;
   const value = profit?.profit;
   const text =
     value === undefined
@@ -107,7 +112,7 @@ function ProfitStat({ title, profit }: { title: string; profit: CraftProfit | un
       styles={{
         content: {
           ...SMALL_STAT,
-          color: value === undefined ? undefined : value >= 0 ? token.colorSuccess : token.colorError,
+          color: value === undefined ? undefined : value >= 0 ? gain : loss,
         },
       }}
     />

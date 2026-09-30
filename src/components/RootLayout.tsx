@@ -91,7 +91,7 @@ function SearchButton({ onOpen, showShortcut }: { onOpen: () => void; showShortc
     return <Button type="text" aria-label="전체 검색 열기" icon={<SearchIcon />} onClick={onOpen} />;
   }
   return (
-    <Button aria-label="전체 검색 열기" icon={<SearchIcon />} onClick={onOpen}>
+    <Button icon={<SearchIcon />} onClick={onOpen}>
       검색
       <Text keyboard style={{ marginInlineStart: 8, fontSize: 12 }}>
         {searchShortcutLabel()}

@@ -132,6 +132,7 @@ export function CategoryPicker({
         showSearch
         optionFilterProp="label"
         placeholder="카테고리"
+        aria-label="카테고리"
         style={{ width: '100%' }}
       />
     );

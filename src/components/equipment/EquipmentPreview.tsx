@@ -159,7 +159,7 @@ export function EquipmentPreview({
       <Flex gap={10} align="center">
         <ItemIcon card={card} size={48} />
         <Flex vertical gap={4} style={{ minWidth: 0 }}>
-          <Title level={5} style={{ margin: 0 }}>
+          <Title level={4} style={{ margin: 0, fontSize: 16, lineHeight: 1.5 }}>
             {fullName}
           </Title>
           <Flex gap={4} wrap>
