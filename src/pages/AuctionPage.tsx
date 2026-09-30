@@ -1,4 +1,12 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -35,6 +43,7 @@ import {
   useAuctionItemsQuery,
   useAuctionScanQuery,
   useAuctionSnapshotQuery,
+  useRecentTradesPreview,
   prefetchAuctionSnapshot,
 } from '@/features/auction/hooks';
 import { canUseSnapshot, isSnapshotCategory, snapshotAgeLabel } from '@/features/auction/snapshot';
@@ -194,6 +203,21 @@ function LoadMoreStatus({
   );
 }
 
+/** 거래 내역 한 줄을 상세 모달이 받는 모양으로. 거래 내역 탭과 첫 화면 미리보기가 같이 쓴다. */
+function historyItemDetail(record: AuctionHistoryItem): AuctionItemDetail {
+  return {
+    displayName: record.item_display_name,
+    rawName: record.item_name,
+    category: record.auction_item_category,
+    count: record.item_count,
+    pricePerUnit: record.auction_price_per_unit,
+    options: record.item_option,
+    timeLabel: '거래 시각',
+    timeValue: record.date_auction_buy,
+    showRemaining: false,
+  };
+}
+
 export function AuctionPage() {
   const canQuery = useCanQuery();
   const { message } = App.useApp();
@@ -235,6 +259,30 @@ export function AuctionPage() {
   const itemsQuery = !scanning ? keywordItemsQuery : liveScan ? scanQuery : snapshot;
   const scanProgress = scanning && liveScan ? scanQuery.data : undefined;
   const historyQuery = useAuctionHistoryQuery(query, nameIndexQuery.data, enabled && tab === 'history');
+
+  /**
+   * 첫 화면 미리보기(issue #8). 아직 아무것도 찾지 않았을 때만 서버 전체의 최근 거래를 받는다.
+   * 거래 내역 탭은 이 목록을 그대로 보여주고, 판매 중 매물 탭은 가장 흔한 카테고리를 아래
+   * 효과(autoSelectedRef)에서 한 번 자동으로 골라 채운다.
+   */
+  const preview = useRecentTradesPreview(canQuery && submitted === null);
+  const previewTopCategory = useMemo(() => {
+    const trades = preview.data;
+    if (!trades || trades.length === 0) return null;
+    const counts = new Map<string, number>();
+    for (const trade of trades) {
+      counts.set(trade.auction_item_category, (counts.get(trade.auction_item_category) ?? 0) + 1);
+    }
+    let top: string | null = null;
+    let max = 0;
+    for (const [category, count] of counts) {
+      if (count > max) {
+        top = category;
+        max = count;
+      }
+    }
+    return top;
+  }, [preview.data]);
 
   // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
@@ -481,6 +529,24 @@ export function AuctionPage() {
     setForm(next);
     if (isAuctionSearchReady(next)) void runSearch(next);
   }
+
+  /**
+   * 첫 화면 미리보기(issue #8). 아직 아무것도 찾지 않았으면(주소로 온 조건도 없으면) 최근 거래에서
+   * 가장 흔한 카테고리를 한 번만 골라 판매 중 매물 탭을 채운다. "검색 초기화"로 되돌아갔을 때
+   * 다시 끼어들지 않게 한 번 하고 나면 다시 하지 않는다(autoSelectedRef).
+   */
+  const autoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (autoSelectedRef.current) return;
+    if (submitted !== null || isAuctionSearchReady(initialInput)) {
+      autoSelectedRef.current = true;
+      return;
+    }
+    if (!previewTopCategory) return;
+    autoSelectedRef.current = true;
+    selectCategory(previewTopCategory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewTopCategory, submitted]);
 
   /**
    * 트리는 CategoryPicker 하나만 쓴다.
@@ -793,19 +859,7 @@ export function AuctionPage() {
         <Table<AuctionHistoryItem>
           columns={historyColumns}
           dataSource={visibleHistory}
-          onRow={(record) =>
-            rowInteraction(() => ({
-              displayName: record.item_display_name,
-              rawName: record.item_name,
-              category: record.auction_item_category,
-              count: record.item_count,
-              pricePerUnit: record.auction_price_per_unit,
-              options: record.item_option,
-              timeLabel: '거래 시각',
-              timeValue: record.date_auction_buy,
-              showRemaining: false,
-            }))
-          }
+          onRow={(record) => rowInteraction(() => historyItemDetail(record))}
           rowKey={(record) => record.auction_buy_id}
           size="small"
           pagination={historyPaging.pagination}
@@ -922,6 +976,24 @@ export function AuctionPage() {
           {submitted === null && resolving ? (
             <Card variant="outlined">
               <Skeleton active />
+            </Card>
+          ) : submitted === null && preview.data && preview.data.length > 0 ? (
+            <Card variant="outlined" size="small" title="최근 거래">
+              <Flex vertical gap={12}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  아직 검색하지 않아 서버 전체의 최근 거래를 보여주고 있습니다. 카테고리를 고르거나
+                  검색하면 조건에 맞는 결과로 바뀝니다.
+                </Text>
+                <Table<AuctionHistoryItem>
+                  columns={historyColumns}
+                  dataSource={preview.data}
+                  onRow={(record) => rowInteraction(() => historyItemDetail(record))}
+                  rowKey={(record) => record.auction_buy_id}
+                  size="small"
+                  pagination={false}
+                  scroll={isWide ? { x: 640 } : undefined}
+                />
+              </Flex>
             </Card>
           ) : submitted === null ? (
             <Card variant="outlined">

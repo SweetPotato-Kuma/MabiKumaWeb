@@ -656,6 +656,10 @@ function parseNameList(raw, max) {
  *
  * 거래 내역 API 는 최근 1시간만 주지만, 여기는 워커가 10분마다 쌓아 둔 원본(trades, RAW_DAYS)을
  * 그대로 읽으므로 그보다 훨씬 길게 볼 수 있다.
+ *
+ * 카테고리도 이름도 안 주면 서버 전체에서 새것부터 준다. WHERE 절 없이 ts 색인 하나로 끝나는
+ * 조회라(buildHistoryQuery) 카테고리/이름 필터만큼 걱정할 게 없다. 경매장 첫 화면이 아직 아무
+ * 것도 찾지 않은 채로 "요즘 거래" 미리보기를 보여줄 때 쓴다.
  */
 export async function marketHistory(request, url, env, cors) {
   if (!env.MARKET)
@@ -663,9 +667,6 @@ export async function marketHistory(request, url, env, cors) {
 
   const categories = parseNameList(url.searchParams.get('category'), HISTORY_MAX_CATEGORIES);
   const names = parseNameList(url.searchParams.get('name'), RECENT_MAX_NAMES);
-  if (categories.length === 0 && names.length === 0) {
-    return marketError('MARKET_CONDITION_REQUIRED', '카테고리나 아이템 이름이 필요합니다.', 400, cors);
-  }
   const cursor = parseHistoryCursor(url.searchParams.get('cursor'));
   const requestedLimit = Number(url.searchParams.get('limit'));
   const limit =

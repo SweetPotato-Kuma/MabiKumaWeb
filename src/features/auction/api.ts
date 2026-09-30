@@ -57,13 +57,14 @@ export function fetchAuctionHistory(
  * 여러 카테고리를 훑는다), 이름은 사전에서 검색어와 맞는 실제 이름들(matchingNames)이다.
  */
 export function fetchTradeHistory(
-  params: { categories?: string[]; names?: string[]; cursor?: string },
+  params: { categories?: string[]; names?: string[]; cursor?: string; limit?: number },
   signal?: AbortSignal,
 ): Promise<TradeHistoryResponse> {
   const url = new URL(`${getProxyUrl()}/market/history`);
   if (params.categories?.length) url.searchParams.set('category', params.categories.join(','));
   if (params.names?.length) url.searchParams.set('name', params.names.join(','));
   if (params.cursor) url.searchParams.set('cursor', params.cursor);
+  if (params.limit) url.searchParams.set('limit', String(params.limit));
 
   return fetch(url, { headers: { accept: 'application/json' }, signal }).then(async (response) => {
     if (response.status === 429) throw new Error('조회가 잠시 몰렸습니다. 1분쯤 뒤에 다시 시도해 주세요.');

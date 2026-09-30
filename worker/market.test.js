@@ -468,8 +468,11 @@ describe('시세 경로', () => {
     expect(second.auction_history.map((row) => row.auction_buy_id)).toEqual(['2']);
   });
 
-  it('카테고리도 이름도 없으면 거절한다', async () => {
-    expect((await call('/market/history')).status).toBe(400);
+  it('카테고리도 이름도 없으면 서버 전체에서 새것부터 준다', async () => {
+    // 1번과 4번은 같은 시각(60초 전)이라 id 가 큰 4번이 먼저다.
+    const body = await (await call('/market/history?limit=2')).json();
+    expect(body.auction_history.map((row) => row.auction_buy_id)).toEqual(['4', '1']);
+    expect(body.next_cursor).not.toBeNull();
   });
 
   it('옵션이 있던 거래는 그대로 되펴 돌려준다', async () => {

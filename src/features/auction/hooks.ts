@@ -191,6 +191,25 @@ export function useAuctionHistoryQuery(
   return useStored ? stored : live;
 }
 
+/** 첫 화면 미리보기로 보여줄 거래 수. 표 한 화면에 담기는 정도로 적게 둔다. */
+const PREVIEW_TRADE_LIMIT = 20;
+
+/**
+ * 아직 아무것도 찾지 않았을 때 보여줄 서버 전체의 최근 거래. 워커가 있을 때만 쓸 수 있다
+ * (canLookupMarket). 경매장 화면이 첫 렌더에서 "요즘 거래" 미리보기와, 거기서 가장 흔한
+ * 카테고리로 판매 중 매물 탭을 자동으로 채우는 데 쓴다(issue #8).
+ */
+export function useRecentTradesPreview(enabled: boolean) {
+  return useQuery({
+    queryKey: ['auction', 'history', 'preview'],
+    queryFn: ({ signal }) => fetchTradeHistory({ limit: PREVIEW_TRADE_LIMIT }, signal),
+    select: (data) => data.auction_history,
+    enabled: enabled && canLookupMarket(),
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
+}
+
 /** 카테고리를 훑을 때 한 번에 부르는 카테고리 수. 넥슨 API 호출량 제한을 넘지 않게 나눈다. */
 const SCAN_BATCH = 4;
 
