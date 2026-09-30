@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { AutoComplete, Button, ColorPicker, Flex, Grid, Popover, Select, Slider, Typography } from 'antd';
+import { AutoComplete, Button, Flex, Grid, Popover, Select, Typography } from 'antd';
+import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { AddIcon, ArrowDownIcon, DeleteIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import {
@@ -685,46 +686,21 @@ function ConditionEditor({
         </Flex>
       );
     case 'color':
+      // 처음 열었을 때 값이 들어 있으면 안 된다. 채널마다 사용자가 채운 것만 조건이 된다.
       return (
-        <Flex vertical gap={8}>
-          <Flex gap={6} wrap align="center">
-            <ColorPicker
-              value={condition.hex}
-              onChange={(color) => onChange({ hex: color.toHexString() })}
-              // 마비노기는 색을 RGB 로 보여 준다. 주머니 찾기와 같은 입력 방식을 쓴다.
-              defaultFormat="rgb"
-              disabledAlpha
-              showText={(color) => {
-                const { r, g, b } = color.toRgb();
-                return <span className="tnum">{`R:${r} G:${g} B:${b}`}</span>;
-              }}
-              aria-label="찾을 색"
-              getPopupContainer={inPopover}
-            />
-            <Select
-              value={condition.part}
-              onChange={(part) => onChange({ part })}
-              options={PART_OPTIONS}
-              aria-label="색을 볼 파트"
-              getPopupContainer={inPopover}
-              style={{ width: 110 }}
-            />
-          </Flex>
-          <Flex gap={8} align="center">
-            <Text style={{ whiteSpace: 'nowrap' }}>비슷함</Text>
-            <Slider
-              value={condition.minSimilarity}
-              onChange={(minSimilarity) => onChange({ minSimilarity })}
-              min={80}
-              max={100}
-              step={0.5}
-              aria-label="색이 비슷한 정도"
-              style={{ flex: '1 1 auto' }}
-            />
-            <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-              {condition.minSimilarity}% 이상
-            </Text>
-          </Flex>
+        <Flex vertical gap={10}>
+          <Select
+            value={condition.part}
+            onChange={(part) => onChange({ part })}
+            options={PART_OPTIONS}
+            aria-label="색을 볼 파트"
+            getPopupContainer={inPopover}
+            style={{ width: 110 }}
+          />
+          <ColorChannelFields
+            channels={condition}
+            onChange={(key, channel) => onChange({ [key]: channel })}
+          />
         </Flex>
       );
     case 'relic': {

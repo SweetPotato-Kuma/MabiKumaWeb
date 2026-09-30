@@ -61,3 +61,42 @@ describe('무리아스 유물 상세 검색', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('색상 상세 검색', () => {
+  it('색상을 눌러도 고르기 전에는 값이 들어가지 않는다', async () => {
+    render(<Harness category="검" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /색상/ }));
+    const popover = await screen.findByRole('tooltip');
+
+    // 아무 채널도 채우지 않았으니 조건이 아니다. 단추는 그대로 "색상" 이고 지우기 단추도 없다.
+    expect(within(popover).getByLabelText('R 최소')).toHaveValue('');
+    expect(within(popover).getByLabelText('G 최대')).toHaveValue('');
+    expect(screen.getByRole('button', { name: '색상' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /조건 모두 지우기/ })).toBeNull();
+  });
+
+  it('채널마다 범위를 넣으면 그 채널만 조건이 되어 단추에 보인다', async () => {
+    render(<Harness category="검" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /색상/ }));
+    const popover = await screen.findByRole('tooltip');
+    fireEvent.change(within(popover).getByLabelText('R 최소'), { target: { value: '100' } });
+    fireEvent.change(within(popover).getByLabelText('R 최대'), { target: { value: '200' } });
+
+    expect(screen.getByRole('button', { name: /색상 R 100~200/ })).toBeInTheDocument();
+  });
+
+  it('유사도를 켜면 기준값과 오차를 넣고, 받아들이는 범위를 숫자로 보여 준다', async () => {
+    render(<Harness category="검" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /색상/ }));
+    const popover = await screen.findByRole('tooltip');
+    fireEvent.click(within(popover).getByLabelText('G 유사도'));
+    fireEvent.change(within(popover).getByLabelText('G 기준값'), { target: { value: '120' } });
+
+    // 오차는 처음에 10% 라 120 ± 25.5 다.
+    expect(await within(popover).findByText('94.5~145.5')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /색상 G 120 ±10%/ })).toBeInTheDocument();
+  });
+});

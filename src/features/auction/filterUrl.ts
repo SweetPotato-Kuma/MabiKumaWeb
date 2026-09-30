@@ -1,8 +1,12 @@
-import { hexToRgb } from '@/features/bags/color';
 import {
+  COLOR_CHANNEL_MAX,
+  colorChannelBounds,
+  DEFAULT_COLOR_PERCENT,
+  emptyColorChannel,
   EMPTY_OPTION_FILTER,
   isConditionActive,
   nextConditionId,
+  type ColorChannel,
   type Condition,
   type OptionFilter,
 } from './optionFilter';
@@ -27,10 +31,25 @@ const omitNull = (_key: string, value: unknown) => (value === null ? undefined :
  * 글자가 같으면 같은 조건이라, 화면 상태와 주소를 견주는 데도 쓴다.
  */
 export function serializeFilter(filter: OptionFilter): string {
-  const conditions = filter.conditions
-    .filter(isConditionActive)
-    .map(({ id: _id, ...rest }) => rest);
+  const conditions = filter.conditions.filter(isConditionActive).map(compact);
   return conditions.length > 0 ? JSON.stringify(conditions, omitNull) : '';
+}
+
+/** 색 채널은 건 것만, 쓰는 방식에 맞는 칸만 싣는다. `r:{min,max}` 또는 `r:{base,percent}`. */
+function compactChannel(channel: ColorChannel): object | undefined {
+  if (colorChannelBounds(channel) === null) return undefined;
+  return channel.similar
+    ? { base: channel.base, percent: channel.percent }
+    : { min: channel.min, max: channel.max };
+}
+
+function compact(condition: Condition): object {
+  if (condition.kind === 'color') {
+    const { r, g, b, part } = condition;
+    return { kind: 'color', part, r: compactChannel(r), g: compactChannel(g), b: compactChannel(b) };
+  }
+  const { id: _id, ...rest } = condition;
+  return rest;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -42,6 +61,32 @@ const text = (value: unknown): string =>
 /** 유한한 숫자만. 문자열이나 NaN 은 값 없음이다. */
 const numberOrNull = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+
+/** 채널 하나. `base` 가 있으면 유사도, 아니면 범위. 범위를 벗어난 값은 끝으로 당기고, 엇갈린 범위는 바로잡는다. */
+function parseChannel(raw: unknown): ColorChannel {
+  if (!isRecord(raw)) return emptyColorChannel();
+  const channelValue = (value: unknown) => {
+    const number = numberOrNull(value);
+    return number === null ? null : Math.round(clamp(number, 0, COLOR_CHANNEL_MAX));
+  };
+  const base = channelValue(raw.base);
+  if (base !== null) {
+    const percent = numberOrNull(raw.percent);
+    return {
+      ...emptyColorChannel(),
+      similar: true,
+      base,
+      percent: percent === null ? DEFAULT_COLOR_PERCENT : clamp(percent, 0, 100),
+    };
+  }
+  const min = channelValue(raw.min);
+  const max = channelValue(raw.max);
+  return min !== null && max !== null && min > max
+    ? { ...emptyColorChannel(), min: max, max: min }
+    : { ...emptyColorChannel(), min, max };
+}
 
 function parseCondition(raw: unknown): Condition | null {
   if (!isRecord(raw)) return null;
@@ -56,18 +101,15 @@ function parseCondition(raw: unknown): Condition | null {
     }
     case 'erg':
       return { id: nextConditionId(), kind: 'erg', grade: text(raw.grade), minLevel: numberOrNull(raw.minLevel) };
-    case 'color': {
-      const hex = text(raw.hex).toLowerCase();
-      if (!/^#[0-9a-f]{6}$/.test(hex) || hexToRgb(hex) === null) return null;
-      const similarity = numberOrNull(raw.minSimilarity);
+    case 'color':
       return {
         id: nextConditionId(),
         kind: 'color',
-        hex,
         part: text(raw.part),
-        minSimilarity: similarity !== null && similarity >= 0 && similarity <= 100 ? similarity : 95,
+        r: parseChannel(raw.r),
+        g: parseChannel(raw.g),
+        b: parseChannel(raw.b),
       };
-    }
     case 'relic':
       return {
         id: nextConditionId(),

@@ -21,7 +21,13 @@ describe('상세 검색 조건과 주소', () => {
       { kind: 'enchant', prefix: '울프헌터', suffix: '' },
       { kind: 'special', type: 'R', minStep: 3 },
       { kind: 'erg', grade: 'S', minLevel: null },
-      { kind: 'color', hex: '#aabbcc', part: 'A', minSimilarity: 90 },
+      {
+        kind: 'color',
+        part: 'A',
+        r: { similar: false, min: 100, max: 200, base: null, percent: 10 },
+        g: { similar: true, min: null, max: null, base: 120, percent: 15 },
+        b: { similar: false, min: null, max: null, base: null, percent: 10 },
+      },
       { kind: 'relic', name: '블래스트', minLevel: 1, maxLevel: 10 },
       { kind: 'number', optionType: '크리티컬', min: 30 },
       { kind: 'text', optionType: '세트 효과', text: '수호' },
@@ -70,7 +76,7 @@ describe('상세 검색 조건과 주소', () => {
       JSON.stringify([
         { kind: 'nothing', name: 'x' },
         'text',
-        { kind: 'color', hex: 'red' },
+        { kind: 'color', r: 'red', g: null },
         { kind: 'number', optionType: '', min: 3 },
         { kind: 'reforge', name: '스매시 대미지', minLevel: '5' },
       ]),
@@ -87,14 +93,40 @@ describe('상세 검색 조건과 주소', () => {
       JSON.stringify([
         { kind: 'reforge', name: '', minLevel: null },
         { kind: 'special', type: 'X', minStep: 2 },
-        { kind: 'color', hex: '#ABCDEF', minSimilarity: 500 },
+        { kind: 'color', r: { min: -50, max: 900 }, g: { base: 300, percent: 500 } },
+        { kind: 'color', b: { min: 200, max: 100 } },
       ]),
     );
 
     expect(back.conditions).toMatchObject([
       { kind: 'special', type: '', minStep: 2 },
-      { kind: 'color', hex: '#abcdef', minSimilarity: 95 },
+      {
+        kind: 'color',
+        r: { similar: false, min: 0, max: 255 },
+        g: { similar: true, base: 255, percent: 100 },
+      },
+      { kind: 'color', b: { similar: false, min: 100, max: 200 } },
     ]);
+  });
+
+  it('색은 건 채널만, 쓰는 방식에 맞는 칸만 싣는다', () => {
+    const text = serializeFilter(
+      filterOf({
+        kind: 'color',
+        part: '',
+        r: { similar: false, min: 100, max: null, base: null, percent: 10 },
+        g: { similar: true, min: null, max: null, base: 120, percent: 15 },
+        b: { similar: false, min: null, max: null, base: null, percent: 10 },
+      }),
+    );
+
+    expect(text).toBe('[{"kind":"color","part":"","r":{"min":100},"g":{"base":120,"percent":15}}]');
+  });
+
+  it('예전 색 조건(기준 색과 비슷함 점수)은 채널이 없어 버린다', () => {
+    const back = parseFilter(JSON.stringify([{ kind: 'color', hex: '#aabbcc', part: 'A', minSimilarity: 90 }]));
+
+    expect(back.conditions).toEqual([]);
   });
 
   it('조건이 너무 많으면 앞에서부터 자른다', () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeConditionCount,
+  describeColorRange,
+  isConditionActive,
   buildOptionCatalog,
   describeMatch,
   EMPTY_OPTION_FILTER,
@@ -11,6 +13,7 @@ import {
   parseReforge,
   summarizeCondition,
   thresholdSuggestions,
+  type ColorChannel,
   type Condition,
   type OptionFilter,
 } from './optionFilter';
@@ -40,6 +43,22 @@ const sword = {
     option('세트 효과', '파이널 히트 강화', '1', '10'),
   ],
 };
+
+const range = (min: number | null, max: number | null): ColorChannel => ({
+  similar: false,
+  min,
+  max,
+  base: null,
+  percent: 10,
+});
+const near = (base: number, percent: number): ColorChannel => ({
+  similar: true,
+  min: null,
+  max: null,
+  base,
+  percent,
+});
+const none = () => range(null, null);
 
 const ampoule = { item_option: [option('색상', '132,192,122')] };
 
@@ -111,15 +130,63 @@ describe('matchesOptionFilter', () => {
     expect(match({ kind: 'text', optionType: '세트 효과', text: '윈드밀' })).toBe(false);
   });
 
-  it('색은 비슷함 점수로, 파트를 고르면 그 파트만 본다', () => {
-    const cream = { kind: 'color' as const, hex: '#c6c1bc', part: '', minSimilarity: 95 };
-    expect(matchesOptionFilter(sword, only(cream))).toBe(true);
-    expect(matchesOptionFilter(sword, only({ ...cream, part: 'B' }))).toBe(false);
-    expect(matchesOptionFilter(sword, only({ ...cream, part: 'A' }))).toBe(true);
-    // 염색 앰플은 파트가 없어 파트를 골라도 본다.
-    const green = { kind: 'color' as const, hex: '#84c07a', part: 'A', minSimilarity: 95 };
-    expect(matchesOptionFilter(ampoule, only(green))).toBe(true);
-    expect(matchesOptionFilter(ampoule, only({ ...green, hex: '#ff0000' }))).toBe(false);
+  it('색은 R, G, B 채널마다 범위로 걸고, 건 채널이 모두 맞아야 한다', () => {
+    const color = (r: ColorChannel, g: ColorChannel, b: ColorChannel, part = '') =>
+      ({ kind: 'color' as const, part, r, g, b });
+    // 검의 파트 A 는 198,193,188 이다.
+    expect(matchesOptionFilter(sword, only(color(range(190, 200), none(), none())))).toBe(true);
+    expect(matchesOptionFilter(sword, only(color(range(190, 197), none(), none())))).toBe(false);
+    expect(matchesOptionFilter(sword, only(color(range(190, 200), range(190, 195), range(180, 190))))).toBe(true);
+    // 한 채널이라도 벗어나면 맞지 않는다.
+    expect(matchesOptionFilter(sword, only(color(range(190, 200), range(0, 100), none())))).toBe(false);
+    // 한쪽 끝만 건 범위는 그쪽이 끝없다.
+    expect(matchesOptionFilter(sword, only(color(range(198, null), none(), none())))).toBe(true);
+    expect(matchesOptionFilter(sword, only(color(range(null, 197), none(), none())))).toBe(false);
+  });
+
+  it('유사도를 켠 채널은 기준값에서 채널 폭(255)의 N% 안이면 맞다', () => {
+    const color = (r: ColorChannel, part = '') =>
+      ({ kind: 'color' as const, part, r, g: none(), b: none() });
+    // 10% 는 ±25.5. 198 은 175 에서 23 떨어져 있어 맞고, 170 에서는 28 이라 벗어난다.
+    expect(matchesOptionFilter(sword, only(color(near(175, 10))))).toBe(true);
+    expect(matchesOptionFilter(sword, only(color(near(170, 10))))).toBe(false);
+    // 파트 B 의 R 은 247 이다. 222 ± 10% 는 196.5~247.5 라 들어가고, 9% 는 199.05~244.95 라 벗어난다.
+    expect(matchesOptionFilter(sword, only(color(near(222, 10), 'B')))).toBe(true);
+    expect(matchesOptionFilter(sword, only(color(near(222, 9), 'B')))).toBe(false);
+  });
+
+  it('파트를 고르면 그 파트만 보고, 염색 앰플은 파트를 골라도 본다', () => {
+    const color = (part: string, r: ColorChannel) => ({ kind: 'color' as const, part, r, g: none(), b: none() });
+    // 198 은 파트 A 의 값이고, 파트 B 는 247 이다.
+    expect(matchesOptionFilter(sword, only(color('A', range(190, 200))))).toBe(true);
+    expect(matchesOptionFilter(sword, only(color('B', range(190, 200))))).toBe(false);
+    expect(matchesOptionFilter(sword, only(color('', range(190, 200))))).toBe(true);
+    expect(matchesOptionFilter(ampoule, only(color('A', range(130, 135))))).toBe(true);
+    expect(matchesOptionFilter(ampoule, only(color('A', range(0, 10))))).toBe(false);
+  });
+
+  it('채널을 하나도 걸지 않은 색 조건은 조건이 아니다', () => {
+    const empty = newCondition({ kind: 'color', optionType: '색상' });
+
+    expect(isConditionActive(empty)).toBe(false);
+    expect(activeConditionCount({ conditions: [empty] })).toBe(0);
+    expect(summarizeCondition(empty)).toBe('');
+  });
+
+  it('색 조건은 건 채널만 한 줄로 적는다', () => {
+    const summary = (r: ColorChannel, g: ColorChannel, part = '') =>
+      summarizeCondition({ id: 1, kind: 'color', part, r, g, b: none() });
+
+    expect(summary(range(100, 200), none())).toBe('색상 R 100~200');
+    expect(summary(range(null, 50), near(120, 10), 'A')).toBe('색상 파트 A R 50 이하 G 120 ±10%');
+    expect(summary(range(30, null), none())).toBe('색상 R 30 이상');
+  });
+
+  it('유사도로 받아들이는 범위를 숫자로 보여 준다', () => {
+    expect(describeColorRange(near(120, 10))).toBe('94.5~145.5');
+    // 0 과 255 를 넘는 쪽은 잘라 낸다.
+    expect(describeColorRange(near(10, 10))).toBe('0~35.5');
+    expect(describeColorRange(range(null, null))).toBe('');
   });
 });
 
