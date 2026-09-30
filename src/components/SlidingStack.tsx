@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { Flex } from 'antd';
 
 /** 카드가 새 자리로 미끄러지는 시간. 제작 비용 표의 줄과 같은 값이라 함께 움직여 보인다. */
@@ -31,7 +31,15 @@ function currentShiftY(element: HTMLElement): number {
  * transform 만 움직이고, 움직임 줄이기 설정을 따른다. 화면 규칙상 CSS 파일에 컴포넌트 스타일을
  * 두지 않아 Web Animations API 로 건다.
  */
-export function SlidingStack({ gap, children }: { gap: number; children: ReactNode }) {
+export function SlidingStack({
+  gap,
+  minHeight,
+  children,
+}: {
+  gap: number;
+  minHeight?: CSSProperties['minHeight'];
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {
@@ -79,7 +87,7 @@ export function SlidingStack({ gap, children }: { gap: number; children: ReactNo
   }, []);
 
   return (
-    <Flex vertical gap={gap} ref={ref}>
+    <Flex vertical gap={gap} ref={ref} style={{ minHeight }}>
       {children}
     </Flex>
   );

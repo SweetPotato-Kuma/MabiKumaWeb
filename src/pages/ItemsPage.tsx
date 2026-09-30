@@ -176,7 +176,8 @@ export function ItemsPage() {
     <>
       {detailName ? (
         // 제작 비용 표를 펼쳐 높이가 바뀌면 아래 시세 기록 카드도 미끄러져 내려오게 한다.
-        <SlidingStack gap={20}>
+        // 한 화면 높이를 미리 채워 두어, 불러오는 동안 화면 안에 보이던 푸터가 내용이 들어오며 밀려나지 않게 한다.
+        <SlidingStack gap={20} minHeight="100vh">
           <Flex vertical gap={6}>
             <Title level={3} style={{ margin: 0 }}>
               아이템 정보
