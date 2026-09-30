@@ -11,7 +11,6 @@ import {
   Progress,
   Row,
   Segmented,
-  Select,
   Skeleton,
   Table,
   Tabs,
@@ -53,7 +52,8 @@ import {
 } from '@/features/bags/searchParams';
 import { useBagSearch } from '@/features/bags/useBagSearch';
 import { useGridFit } from '@/features/bags/useGridFit';
-import { SERVER_NAMES } from '@/features/servers/constants';
+import { ServerSelect } from '@/components/ServerSelect';
+import { useServerParam } from '@/lib/useServerParam';
 import { formatNumber } from '@/lib/format';
 import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useListPagination } from '@/lib/useListPagination';
@@ -64,8 +64,6 @@ import { ArrowDownIcon, GridIcon, ListIcon, SearchIcon } from '@/components/icon
 const { Title, Text } = Typography;
 
 const PART_LABELS = ['파트 A', '파트 B', '파트 C'];
-
-const SERVER_OPTIONS = SERVER_NAMES.map((server) => ({ value: server, label: server }));
 
 type ViewMode = 'grid' | 'table';
 
@@ -336,7 +334,7 @@ export function BagsPage() {
    */
   const [params, updateParams] = useQueryParams();
   const [initial] = useState(() => ({ conditions: readBagConditions(params), shared: hasBagConditions(params) }));
-  const [server, setServer] = useState<string>(initial.conditions.server);
+  const [server, setServer] = useServerParam();
   /** 트리에서 체크한 칸들. 비어 있으면 모든 주머니. */
   const [selectedBags, setSelectedBags] = useState<string[]>(initial.conditions.bags);
   const [parts, setParts] = useState<PartCondition[]>(initial.conditions.parts);
@@ -346,14 +344,14 @@ export function BagsPage() {
   );
   useEffect(() => {
     const timer = setTimeout(
-      () => updateParams(bagConditionParams({ server, bags: selectedBags, parts })),
+      () => updateParams(bagConditionParams({ bags: selectedBags, parts })),
       URL_WRITE_DELAY_MS,
     );
     return () => clearTimeout(timer);
-  }, [server, selectedBags, parts, updateParams]);
+  }, [selectedBags, parts, updateParams]);
   // 조건이 실린 링크로 들어왔으면 찾기를 누른 것처럼 바로 받는다. 받은 결과는 조건과 상관없이 쓴다.
   useEffect(() => {
-    if (available && initial.shared) void search(initial.conditions.server);
+    if (available && initial.shared) void search(server);
     // 처음 열 때 한 번만 부른다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -510,7 +508,7 @@ export function BagsPage() {
       <Flex vertical gap={14}>
         <Flex vertical gap={6}>
           <Text>서버</Text>
-          <Select aria-label="서버" value={server} onChange={setServer} options={SERVER_OPTIONS} />
+          <ServerSelect block value={server} onChange={setServer} />
         </Flex>
         <Flex vertical gap={12}>
           <Text>원하는 색</Text>

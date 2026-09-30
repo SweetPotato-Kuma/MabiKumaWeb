@@ -9,7 +9,6 @@ import {
   Grid,
   Progress,
   Row,
-  Segmented,
   Select,
   Skeleton,
   Statistic,
@@ -27,21 +26,17 @@ import {
   type PassListing,
 } from '@/features/magmell/ranking';
 import { usePassSearch } from '@/features/magmell/usePassSearch';
-import { SERVER_NAMES } from '@/features/servers/constants';
+import { ServerSelect } from '@/components/ServerSelect';
+import { ALL_SERVERS, useServerParam } from '@/lib/useServerParam';
 import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useListPagination } from '@/lib/useListPagination';
-import { readOneOf, useQueryParams } from '@/lib/useQueryParams';
+import { useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
 import { RefreshIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
 const ALL = '';
-
-const SERVER_OPTIONS = [
-  { value: ALL, label: '모든 서버' },
-  ...SERVER_NAMES.map((server) => ({ value: server, label: server })),
-];
 
 /** 최저가 요약에 채널을 몇 개까지 늘어놓을지. 넘치면 "외 N곳" 으로 줄인다. */
 const SUMMARY_CHANNEL_LIMIT = 8;
@@ -112,8 +107,8 @@ export function MagmellPassPage() {
 
   // 서버와 통행증은 주소에 담는다. 링크를 나누거나 새로고침해도 같은 조건으로 본다.
   const [params, updateParams] = useQueryParams();
-  const server = readOneOf<string>(params.get('server'), SERVER_OPTIONS.map((option) => option.value), ALL);
-  const setServer = (value: string) => updateParams({ server: value || null });
+  const [server, setServer] = useServerParam({ allowAll: true });
+  const allServers = server === ALL_SERVERS;
   const setPassName = (value: string) => updateParams({ pass: value || null });
   const passNames = useMemo(() => passNamesOf(state.results), [state.results]);
   const passParam = params.get('pass') ?? ALL;
@@ -133,8 +128,8 @@ export function MagmellPassPage() {
   }, []);
 
   const listings = useMemo(
-    () => buildPassRanking(state.results, { server: server || null, passName: passName || null }),
-    [state.results, server, passName],
+    () => buildPassRanking(state.results, { server: allServers ? null : server, passName: passName || null }),
+    [state.results, allServers, server, passName],
   );
 
   const passOptions = useMemo(
@@ -149,13 +144,13 @@ export function MagmellPassPage() {
   const loadedChannels = useMemo(
     () =>
       state.results
-        .filter((result) => !server || result.server === server)
+        .filter((result) => allServers || result.server === server)
         .reduce(
           (sum, result) =>
             sum + result.channels.filter((entry) => entry.error === undefined).length,
           0,
         ),
-    [state.results, server],
+    [state.results, allServers, server],
   );
 
   const { pagination } = useListPagination(`${server}|${passName}|${state.status}`);
@@ -267,30 +262,12 @@ export function MagmellPassPage() {
           {/* 세 칸. 768px 미만에서는 한 단으로 떨어진다. */}
           <Row gutter={[16, 16]} align="bottom">
             <Col xs={24} md={11}>
-              {/*
-                576px 미만에서는 다섯 칸이 한 줄에 다 들지 않아 끝 서버가 잘렸다. 그때는 고르기 상자다.
-              */}
               <Form.Item
                 label="서버"
                 htmlFor={screens.sm === false ? 'pass-server' : undefined}
                 style={{ marginBottom: 0 }}
               >
-                {screens.sm === false ? (
-                  <Select
-                    id="pass-server"
-                    value={server}
-                    onChange={(value: string) => setServer(value)}
-                    options={SERVER_OPTIONS}
-                  />
-                ) : (
-                  <Segmented
-                    aria-label="서버"
-                    value={server}
-                    onChange={(value) => setServer(String(value))}
-                    options={SERVER_OPTIONS}
-                    style={{ maxWidth: '100%', overflowX: 'auto' }}
-                  />
-                )}
+                <ServerSelect id="pass-server" allowAll value={server} onChange={setServer} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>

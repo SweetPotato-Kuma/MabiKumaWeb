@@ -35,24 +35,24 @@ function toQuery(written: Record<string, string | string[] | null>) {
 
 describe('주머니 찾기 주소', () => {
   it('아무것도 없으면 기본 조건이고, 값이 미리 들어 있지 않다', () => {
-    expect(readBagConditions(params(''))).toEqual({ server: '류트', bags: [], parts: defaultParts() });
+    expect(readBagConditions(params(''))).toEqual({ bags: [], parts: defaultParts() });
     expect(hasBagConditions(params(''))).toBe(false);
   });
 
-  it('서버와 주머니를 읽는다', () => {
-    const conditions = readBagConditions(params('server=하프&bag=group:herb&bag=튼튼한 골드 허브 주머니'));
+  it('고른 주머니를 읽는다', () => {
+    const conditions = readBagConditions(params('bag=group:herb&bag=튼튼한 골드 허브 주머니'));
 
-    expect(conditions.server).toBe('하프');
     expect(conditions.bags).toEqual(['group:herb', '튼튼한 골드 허브 주머니']);
+    expect(hasBagConditions(params('bag=group:herb'))).toBe(true);
+    // 서버만 실린 링크도 나눠 받은 것으로 본다. 서버 자체는 useServerParam 이 읽는다.
     expect(hasBagConditions(params('server=하프'))).toBe(true);
   });
 
   it('낯선 값은 기본으로 돌린다', () => {
     const conditions = readBagConditions(
-      params('server=없는서버&bag=group:nothing&bag=' + 'x'.repeat(100)),
+      params('bag=group:nothing&bag=' + 'x'.repeat(100)),
     );
 
-    expect(conditions.server).toBe('류트');
     expect(conditions.bags).toEqual([]);
   });
 
@@ -61,8 +61,7 @@ describe('주머니 찾기 주소', () => {
   });
 
   it('기본 조건이면 주소에 아무것도 쓰지 않는다', () => {
-    expect(bagConditionParams({ server: '류트', bags: [], parts: defaultParts() })).toEqual({
-      server: null,
+    expect(bagConditionParams({ bags: [], parts: defaultParts() })).toEqual({
       bag: [],
       a: null,
       b: null,
@@ -70,10 +69,10 @@ describe('주머니 찾기 주소', () => {
     });
   });
 
-  it('바뀐 서버와 주머니만 주소에 쓰고, 읽으면 그대로 돌아온다', () => {
-    const conditions = { server: '울프', bags: ['group:leather'], parts: defaultParts() };
+  it('고른 주머니만 주소에 쓰고, 읽으면 그대로 돌아온다', () => {
+    const conditions = { bags: ['group:leather'], parts: defaultParts() };
 
-    expect(bagConditionParams(conditions)).toMatchObject({ server: '울프', bag: ['group:leather'] });
+    expect(bagConditionParams(conditions)).toMatchObject({ bag: ['group:leather'] });
     expect(readBagConditions(toQuery(bagConditionParams(conditions)))).toEqual(conditions);
   });
 
@@ -110,7 +109,7 @@ describe('주머니 찾기 주소', () => {
         { enabled: false, channels: emptyColorChannels() },
         { enabled: true, channels: { ...emptyColorChannels(), b: range(null, 50) } },
       ];
-      const written = bagConditionParams({ server: '류트', bags: [], parts });
+      const written = bagConditionParams({ bags: [], parts });
 
       expect(written.a).toBe('r100-200,g120p15');
       expect(written.b).toBeNull();
@@ -139,7 +138,6 @@ describe('주머니 찾기 주소', () => {
 
     it('기본과 다른 켜짐만 주소에 쓴다', () => {
       const written = bagConditionParams({
-        server: '류트',
         bags: [],
         parts: [
           { enabled: false, channels: emptyColorChannels() },
@@ -153,7 +151,6 @@ describe('주머니 찾기 주소', () => {
 
     it('끈 파트의 채널 값은 주소에 싣지 않는다', () => {
       const written = bagConditionParams({
-        server: '류트',
         bags: [],
         parts: [
           { enabled: false, channels: { ...emptyColorChannels(), r: range(100, 200) } },
@@ -171,7 +168,7 @@ describe('주머니 찾기 주소', () => {
         { enabled: false, channels: emptyColorChannels() },
       ];
 
-      expect(readBagConditions(toQuery(bagConditionParams({ server: '류트', bags: [], parts }))).parts).toEqual(parts);
+      expect(readBagConditions(toQuery(bagConditionParams({ bags: [], parts }))).parts).toEqual(parts);
     });
   });
 });

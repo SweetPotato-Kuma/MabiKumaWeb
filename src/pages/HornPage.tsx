@@ -40,7 +40,9 @@ import {
   splitHighlight,
 } from '@/features/horn/terms';
 import { canNotify, requestNotifyPermission, useHornAlerts } from '@/features/horn/useHornAlerts';
-import { SERVER_NAMES, type ServerName } from '@/features/servers/constants';
+import { ServerSelect } from '@/components/ServerSelect';
+import { type ServerName } from '@/features/servers/constants';
+import { useServerParam } from '@/lib/useServerParam';
 
 const { Title, Text } = Typography;
 
@@ -66,10 +68,6 @@ const TYPING_DELAY_MS = 350;
 
 /** 워커가 서버를 이만큼 못 받았으면 알린다. 크론이 5분마다라 두 번 넘게 빠진 것이다. */
 const STALE_MS = 12 * 60 * 1000;
-
-function readServer(value: string | null): ServerName {
-  return (SERVER_NAMES as readonly string[]).includes(value ?? '') ? (value as ServerName) : SERVER_NAMES[0];
-}
 
 function readDays(value: string | null): HornDays {
   const days = Number(value);
@@ -190,7 +188,9 @@ export function HornPage() {
   const wide = screens.md ?? true;
 
   const [params, setParams] = useSearchParams();
-  const server = readServer(params.get('server'));
+  // 서버는 주소 → 방문자의 기본 서버 순으로 정하고, 고르면 기본 서버도 따라 바뀐다.
+  const [serverChoice, setServer] = useServerParam();
+  const server = serverChoice as ServerName;
   const days = readDays(params.get('days'));
   const kind = readKind(params.get('kind'));
   const character = (params.get('char') ?? '').trim();
@@ -375,13 +375,7 @@ export function HornPage() {
           <Flex vertical gap={16}>
             <Flex vertical={!wide} wrap gap={wide ? 24 : 16}>
               <Form.Item label="서버" style={{ marginBottom: 0 }}>
-                <Segmented
-                  aria-label="서버"
-                  block={!wide}
-                  value={server}
-                  onChange={(value) => update({ server: value === SERVER_NAMES[0] ? null : String(value) })}
-                  options={[...SERVER_NAMES]}
-                />
+                <ServerSelect block={!wide} value={server} onChange={setServer} />
               </Form.Item>
               <Form.Item label="기간" style={{ marginBottom: 0 }}>
                 <Segmented

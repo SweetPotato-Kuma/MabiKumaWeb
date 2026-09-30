@@ -9,15 +9,13 @@ import {
   type ColorChannel,
   type ColorChannels,
 } from '@/features/colorChannels';
-import { SERVER_NAMES } from '@/features/servers/constants';
-import { readOneOf } from '@/lib/useQueryParams';
 import { BAG_NAMES } from './constants';
 import { buildBagTree, type BagTreeNode } from './groups';
 
 /**
  * 튼튼한 주머니 찾기의 검색 조건을 주소 쿼리스트링으로 옮기고 되돌린다.
  *
- * 서버는 `server`, 고른 주머니는 `bag` 여러 개다. 파트 A, B, C 의 색 조건은 `a`, `b`, `c` 다.
+ * 고른 주머니는 `bag` 여러 개다. 서버(`server`)는 서버를 고르는 모든 화면이 함께 쓰므로 useServerParam 이 맡는다. 파트 A, B, C 의 색 조건은 `a`, `b`, `c` 다.
  * 채널마다 `r100-200`(범위, 한쪽만 적어도 된다) 이나 `g120p10`(120 에서 10% 이내) 을 쉼표로 이어
  * 쓴다. 검색 여부는 기본값(파트 A 만 켜짐)과 다를 때만 싣는다. 끈 파트는 `-`, 채널 없이 켠 파트는 `on`
  * 이다. 조건을 건 파트는 켜진 것이라 채널 글자만 있으면 된다. 끈 파트의 채널 값은 싣지 않는다.
@@ -32,7 +30,6 @@ export interface PartCondition {
 }
 
 export interface BagSearchConditions {
-  server: string;
   /** 트리에서 체크한 칸들. 비어 있으면 모든 주머니. */
   bags: string[];
   /** 파트 A, B, C 의 조건. */
@@ -53,7 +50,6 @@ const DEFAULT_ENABLED = [true, false, false] as const;
 const DISABLED = '-';
 const ENABLED_EMPTY = 'on';
 
-const DEFAULT_SERVER = SERVER_NAMES[0];
 const PART_KEYS = ['a', 'b', 'c'] as const;
 
 /** 주머니 하나의 이름이 이 길이를 넘을 수는 없다. 낯선 값이 끝없이 길어지지 않게 자른다. */
@@ -113,8 +109,6 @@ function channelsFromParam(value: string | null): ColorChannels {
 
 /** 주소의 검색 조건. 낯선 값은 기본값으로 돌린다. */
 export function readBagConditions(params: URLSearchParams): BagSearchConditions {
-  const server = readOneOf<string>(params.get('server'), SERVER_NAMES, DEFAULT_SERVER);
-
   // 새로 나온 주머니는 알려진 목록에 없을 수 있어 이름은 그대로 받고, 묶음 칸만 아는 것으로 거른다.
   const bags = [...new Set(params.getAll('bag'))]
     .filter((key) => key.length > 0 && key.length <= MAX_BAG_KEY)
@@ -132,7 +126,7 @@ export function readBagConditions(params: URLSearchParams): BagSearchConditions 
       : { enabled: DEFAULT_ENABLED[part], channels };
   });
 
-  return { server, bags, parts };
+  return { bags, parts };
 }
 
 /** 검색 조건을 주소에 쓸 값으로. 기본값과 같으면 null 이라 주소에서 빠진다. */
@@ -148,13 +142,12 @@ export function bagConditionParams(
   );
 
   return {
-    server: conditions.server === DEFAULT_SERVER ? null : conditions.server,
     bag: conditions.bags,
     ...parts,
   };
 }
 
-/** 주소에 검색 조건이 하나라도 실려 있는지. 나눠 받은 링크로 들어왔는지 가르는 데 쓴다. */
+/** 주소에 검색 조건이 하나라도 실려 있는지(서버 포함). 나눠 받은 링크로 들어왔는지 가르는 데 쓴다. */
 export function hasBagConditions(params: URLSearchParams): boolean {
   return ['server', 'bag', ...PART_KEYS].some((key) => params.has(key));
 }
