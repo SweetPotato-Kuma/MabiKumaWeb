@@ -1,8 +1,10 @@
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
@@ -141,6 +143,16 @@ function PaletteBody({ entries, onClose }: { entries: NavEntry[]; onClose: () =>
   // 결과가 바뀌면 맨 위로 돌아간다. 이전 목록의 자리를 들고 있으면 엉뚱한 줄이 골라진다.
   useEffect(() => setActive(0), [rows]);
 
+  // 목록이 잘리는지. 아래에 더 있을 때만 끝을 흐리게 한다(위 ul 의 마스크).
+  const listRef = useRef<HTMLUListElement>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const updateMore = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    setHasMore(list.scrollHeight - list.scrollTop - list.clientHeight > 4);
+  }, []);
+  useEffect(updateMore, [rows, updateMore]);
+
   useEffect(() => {
     document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' });
   }, [active, listId]);
@@ -189,7 +201,18 @@ function PaletteBody({ entries, onClose }: { entries: NavEntry[]; onClose: () =>
         id={listId}
         role="listbox"
         aria-label="검색 결과"
-        style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, maxHeight: 380, overflowY: 'auto' }}
+        ref={listRef}
+        onScroll={updateMore}
+        style={{
+          listStyle: 'none',
+          margin: '12px 0 0',
+          padding: 0,
+          maxHeight: 'min(520px, 60dvh)',
+          overflowY: 'auto',
+          // 아래에 더 있으면 끝을 흐리게 지워서 목록이 잘린 줄 알게 한다. 끝까지 내리면 걷힌다.
+          maskImage: hasMore ? 'linear-gradient(to bottom, black calc(100% - 32px), transparent)' : undefined,
+          WebkitMaskImage: hasMore ? 'linear-gradient(to bottom, black calc(100% - 32px), transparent)' : undefined,
+        }}
       >
         {rows.map((row, position) => {
           const showHeading = position === 0 || rows[position - 1].kind !== row.kind;

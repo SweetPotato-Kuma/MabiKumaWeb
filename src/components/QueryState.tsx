@@ -9,7 +9,7 @@ interface QueryStateProps {
   isLoading: boolean;
   error: unknown;
   isEmpty: boolean;
-  emptyMessage?: string;
+  emptyMessage?: ReactNode;
   /** 이 에러에서 사용자가 바로 할 수 있는 다음 행동. 화면 쪽에서 상황에 맞춰 넘긴다. */
   errorAction?: ReactNode;
   children: ReactNode;

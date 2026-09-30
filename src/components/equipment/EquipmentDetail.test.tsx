@@ -172,13 +172,22 @@ describe('아이템 정보 목록', () => {
     expect(screen.getByText(/포션에는 "ㅅㅇㄹㅂ" 와 맞는 이름이 없어 전체/)).toBeInTheDocument();
   });
 
-  it('자동완성에서 고르면 그 아이템 상세로 바로 간다', async () => {
+  it('이름을 치면 결과 목록만 갱신되고 자동완성 드롭다운은 뜨지 않는다', async () => {
     renderPage('/items');
 
     fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: '소울' } });
-    const matches = await screen.findAllByText('소울 리버레이트 소드');
-    const option = matches.map((element) => element.closest('.ant-select-item-option')).find(Boolean);
-    fireEvent.click(option as HTMLElement);
+
+    // 결과 목록에 바로 나온다. 같은 내용을 담은 드롭다운이 목록 윗부분을 덮으면 안 된다.
+    expect(await findListRow('소울 리버레이트 소드')).toBeInTheDocument();
+    expect(document.querySelector('.ant-select-dropdown')).toBeNull();
+    expect(document.querySelector('.ant-select-item-option')).toBeNull();
+  });
+
+  it('결과 목록의 줄을 눌러 그 아이템 상세로 간다', async () => {
+    renderPage('/items');
+
+    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: '소울' } });
+    fireEvent.click(await findListRow('소울 리버레이트 소드'));
 
     expect(screen.getByTestId('url')).toHaveTextContent('/item/소울_리버레이트_소드?category=검');
     expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();

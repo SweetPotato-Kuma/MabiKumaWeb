@@ -60,6 +60,16 @@ vi.mock('@/features/auction/hooks', async (importOriginal) => ({
     isFetchingNextPage: false,
     fetchNextPage: async () => undefined,
   }),
+  // 거래 내역은 비어 있는 것으로 답한다.
+  useAuctionHistoryQuery: (_input: unknown, _index: unknown, enabled: boolean) => ({
+    data: enabled ? { items: [], loadedCount: 0, since: null } : undefined,
+    isPending: !enabled,
+    error: null,
+    hasNextPage: false,
+    isFetching: false,
+    isFetchingNextPage: false,
+    fetchNextPage: async () => undefined,
+  }),
 }));
 
 vi.mock('@/lib/settings', async (importOriginal) => ({
@@ -298,6 +308,23 @@ describe('경매장 검색 조건과 주소', () => {
 
       expect(await screen.findByText('전투 심볼')).toBeInTheDocument();
       expect(screen.queryByText(/건 숨김/)).toBeNull();
+    });
+  });
+
+  describe('거래 내역이 비었을 때', () => {
+    it('기간으로 안내하고, 조회 한도(건수)는 드러내지 않는다', async () => {
+      renderAt('/auction?keyword=소울 보우&tab=history');
+
+      expect(await screen.findByText(/최근 1시간 동안 이 조건으로 거래된 기록이 없습니다./)).toBeInTheDocument();
+      expect(screen.queryByText(/건 중/)).toBeNull();
+      expect(screen.queryByText(/검색어를 줄여 보세요/)).toBeNull();
+    });
+
+    it('더 긴 기간을 볼 수 있는 아이템 정보로 잇는다', async () => {
+      renderAt('/auction?keyword=소울 보우&tab=history');
+
+      const link = await screen.findByRole('link', { name: '더 긴 기간의 시세 기록 보기' });
+      expect(link).toHaveAttribute('href', '/items');
     });
   });
 });

@@ -8,7 +8,6 @@ import {
 } from 'react';
 import { Link, Navigate, useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AutoComplete,
   Breadcrumb,
   Button,
   Card,
@@ -32,7 +31,6 @@ import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
 import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
-import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
 import {
   ITEM_PATH_PREFIX,
@@ -63,11 +61,8 @@ const { Title, Text } = Typography;
  */
 const ICON_BOX = 48;
 
-/** 목록은 맞는 것 전부를 보여 준다. 자동완성처럼 개수를 자르지 않는다. */
+/** 목록은 맞는 것 전부를 보여 준다. 개수를 자르지 않는다. */
 const NO_LIMIT = Number.POSITIVE_INFINITY;
-
-/** 자동완성에 보여 줄 개수. 경매장과 같다. */
-const SUGGESTION_LIMIT = 20;
 
 interface ItemRow {
   name: string;
@@ -307,22 +302,6 @@ function ItemList({
     return { rows: everywhere, widened: everywhere.length > 0 };
   }, [index, category, hasKeyword, deferredKeyword]);
 
-  /** 자동완성도 목록과 같이, 고른 카테고리에 없으면 전체에서 찾는다. */
-  const { suggestionOptions, suggestionsWidened } = useMemo(() => {
-    if (!index || !hasKeyword) return { suggestionOptions: [], suggestionsWidened: false };
-    const scoped = searchNames(index, deferredKeyword, { category, limit: SUGGESTION_LIMIT });
-    const wide = Boolean(category) && scoped.length === 0;
-    const items = wide ? searchNames(index, deferredKeyword, { limit: SUGGESTION_LIMIT }) : scoped;
-    return {
-      suggestionOptions: items.map((item) => ({
-        value: item.name,
-        label: <NameSuggestionLabel item={item} showCategory={!category || wide} />,
-        item,
-      })),
-      suggestionsWidened: wide && items.length > 0,
-    };
-  }, [index, hasKeyword, deferredKeyword, category]);
-
   /**
    * 쪽을 넘기는 일을 antd 에 맡기지 않고 직접 들고 있는 이유는 카드 때문이다.
    * 카드는 "지금 보이는 이름"만 물어서 받아 오므로, 무엇이 보이는지를 화면이 알아야 한다.
@@ -365,19 +344,6 @@ function ItemList({
   const open = (row: ItemRow) => {
     window.scrollTo({ top: 0 });
     navigate(itemInfoPath(row.category, row.name));
-  };
-
-  /**
-   * 자동완성에서 고르면 그 아이템으로 바로 간다. 목록에서 한 번 더 누를 이유가 없다.
-   * 같은 이름이 여러 카테고리에 있으면 어느 것인지 모르므로 목록에 줄을 펼쳐 고르게 한다.
-   */
-  const selectSuggestion = (name: string) => {
-    setKeyword(name);
-    const picked = suggestionOptions.find((option) => option.value === name)?.item;
-    // 전체로 넓혀 찾은 것이면 고른 카테고리가 아니라 그 아이템의 카테고리로 연다.
-    const scope = suggestionsWidened ? '' : category;
-    const target = scope || (picked?.categories.length === 1 ? picked.categories[0] : '');
-    if (target) open({ name, category: target });
   };
 
   /** 키보드로도 닿아야 하므로 줄에 초점을 주고 Enter 와 Space 를 받는다. */
@@ -492,16 +458,17 @@ function ItemList({
                 htmlFor="items-keyword"
                 style={{ marginBottom: 0 }}
               >
-                <AutoComplete
+                {/*
+                  이 화면은 아래 결과 목록이 치는 대로 바뀐다. 자동완성 드롭다운을 함께 두면 같은 내용이 둘이 되고
+                  드롭다운이 결과 목록 윗부분을 덮는다. 자동완성은 헤더 검색과 Ctrl K 팔레트에 있다.
+                */}
+                <Input
                   id="items-keyword"
                   value={keyword}
-                  options={suggestionOptions}
-                  onChange={(value: string) => setKeyword(value)}
-                  onSelect={selectSuggestion}
-                  style={{ width: '100%' }}
-                >
-                  <Input placeholder="예: 숏 소드, ㅅㅅㄷ" allowClear />
-                </AutoComplete>
+                  onChange={(event) => setKeyword(event.target.value)}
+                  placeholder="예: 숏 소드, ㅅㅅㄷ"
+                  allowClear
+                />
               </Form.Item>
             </Form>
 

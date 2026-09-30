@@ -1072,13 +1072,20 @@ export function AuctionPage() {
       error={historyQuery.error}
       isEmpty={visibleHistory.length === 0}
       emptyMessage={
-        historyLoaded > 0
-          ? historyQuery.hasNextPage && !historyMore.paused
-            ? `거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 아직 없어 더 찾고 있습니다.`
-            : `거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 없습니다. 검색어를 줄여 보세요.`
-          : historySince
-            ? `${historySince}부터 거래된 내역이 없습니다.`
-            : '최근 1시간 안에 거래된 내역이 없습니다.'
+        // 내부 조회 한도(몇 건을 받았는지)는 사용자에게 뜻이 없다. 없는 까닭은 대부분 기간이라 기간으로 말하고,
+        // 더 긴 기간을 볼 수 있는 아이템 정보의 시세 기록으로 잇는다.
+        historyLoaded > 0 && historyQuery.hasNextPage && !historyMore.paused ? (
+          '조건에 맞는 거래를 더 찾고 있습니다.'
+        ) : (
+          <Flex vertical gap={4} align="center">
+            <span>
+              {historySince ? `${historySince}부터` : '최근 1시간 동안'} 이 조건으로 거래된 기록이 없습니다.
+            </span>
+            <Link to={singleItem ? itemInfoPath(singleItem.auction_item_category, canonicalItemName(singleItem.item_name)) : '/items'}>
+              더 긴 기간의 시세 기록 보기
+            </Link>
+          </Flex>
+        )
       }
     >
       <Flex vertical gap={12}>
@@ -1112,7 +1119,7 @@ export function AuctionPage() {
       </Flex>
     </QueryState>
     </Flex>
-  ), [enabled, changeSort, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
+  ), [enabled, changeSort, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   return (
     <>

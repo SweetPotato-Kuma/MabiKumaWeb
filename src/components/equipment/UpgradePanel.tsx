@@ -156,10 +156,18 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
     );
   };
 
+  // 칸마다 할 수 있는 개조가 하나도 없으면 그 묶음은 보여 줄 것이 없다. 다섯 칸이 모두 "할 수 있는 개조 없음" 으로
+  // 반복되던 것을 없앤다. 일반 칸만 안 되거나 보석 칸만 안 되면 되는 쪽만 남긴다.
+  const normalPossible = slots.some((_, slot) => upgradesForSlot(item, upgrades, slot, false).length > 0);
+  const gemPossible = gemSlots.some((_, slot) => upgradesForSlot(item, upgrades, slot, true).length > 0);
+  if (!normalPossible && !gemPossible) {
+    return <Text type="secondary">이 아이템은 개조할 수 없습니다.</Text>;
+  }
+
   return (
     <Flex vertical gap={10}>
-      {slots.map((_, slot) => slotRow(slot, false))}
-      {gemSlots.map((_, slot) => slotRow(slot, true))}
+      {normalPossible ? slots.map((_, slot) => slotRow(slot, false)) : null}
+      {gemPossible ? gemSlots.map((_, slot) => slotRow(slot, true)) : null}
 
       <Descriptions
         size="small"

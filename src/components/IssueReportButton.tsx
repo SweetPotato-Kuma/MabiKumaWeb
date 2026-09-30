@@ -1,10 +1,32 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Alert, App, Button, FloatButton, Form, Grid, Input, Modal, Radio, Typography } from 'antd';
+import { Alert, App, Button, Form, Input, Modal, Radio, Tooltip, Typography } from 'antd';
 import { canReportIssue, submitIssueReport, type IssueCategory } from '@/features/report/api';
 import { BugIcon, ChatIcon } from '@/components/icons';
 
 const { Text } = Typography;
+
+/**
+ * 제보 창이 열려 있는지. 열고 닫는 단추가 헤더, 서랍, 푸터에 흩어져 있어서 창은 한 번만 두고
+ * 열림 상태를 모듈에서 들고 있는다.
+ */
+let reportOpen = false;
+const reportListeners = new Set<() => void>();
+
+function setReportOpen(next: boolean) {
+  if (reportOpen === next) return;
+  reportOpen = next;
+  for (const listener of reportListeners) listener();
+}
+
+function subscribeReport(listener: () => void) {
+  reportListeners.add(listener);
+  return () => {
+    reportListeners.delete(listener);
+  };
+}
+
+const getReportOpen = () => reportOpen;
 
 interface FormValues {
   category: IssueCategory;
@@ -28,18 +50,17 @@ const BODY_PLACEHOLDER = `무엇이 어떻게 되었는지 적어 주세요.
 4. 실제 결과: 아무것도 나오지 않음`;
 
 /**
- * 오른쪽 아래 이슈 제보 버튼.
+ * 의견 보내기 창. RootLayout 이 한 번만 둔다. 여는 단추는 IssueReportTrigger 다.
  *
  * 방문자 대부분은 GitHub 계정이 없다. 그래서 여기서 쓴 글을 워커가 대신 이슈로
  * 올린다. 토큰은 워커에만 있고 브라우저로 내려가지 않는다.
  */
-export function IssueReportButton() {
+export function IssueReportModal() {
   const location = useLocation();
   const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
-  const screens = Grid.useBreakpoint();
-
-  const [open, setOpen] = useState(false);
+  const open = useSyncExternalStore(subscribeReport, getReportOpen, getReportOpen);
+  const setOpen = setReportOpen;
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState('');
 
@@ -78,28 +99,6 @@ export function IssueReportButton() {
 
   return (
     <>
-      {/*
-        아이콘만 있는 동그란 버튼은 아무도 누르지 않는다. 무엇을 하는 버튼인지 글자로
-        말해 주고, 액센트 색을 입혀 본문과 분리한다. 색은 토큰에서 나오므로 화면마다
-        다른 색이 되지 않는다.
-        휴대폰 폭에서는 80px 칸이 표의 가격 열을 가렸다. 칸을 줄이고 글자도 두 자로 줄인다.
-        푸터 고지가 가려지지 않게 RootLayout 이 그만큼 푸터 아래를 비운다.
-      */}
-      <FloatButton
-        type="primary"
-        shape="square"
-        icon={<ChatIcon />}
-        description={screens.md ? '의견 보내기' : '의견'}
-        tooltip={screens.md ? '버그 신고나 기능 요청을 보냅니다' : undefined}
-        aria-label="의견 보내기. 버그 신고나 기능 요청을 보냅니다"
-        style={
-          screens.md
-            ? { width: 80, height: 80, insetInlineEnd: 24, insetBlockEnd: 24 }
-            : { width: 52, height: 52, insetInlineEnd: 12, insetBlockEnd: 12 }
-        }
-        onClick={() => setOpen(true)}
-      />
-
       <Modal
         open={open}
         onCancel={close}
@@ -178,5 +177,40 @@ export function IssueReportButton() {
         </Form>
       </Modal>
     </>
+  );
+}
+
+/**
+ * 의견 보내기를 여는 단추. 화면 위의 헤더에는 아이콘, 서랍과 맨 아래 푸터에는 글자로 둔다.
+ *
+ * 예전에는 오른쪽 아래에 떠 있는 버튼이었다. 표의 마지막 열(가격, 남은 시간)이 바로 그 자리에 놓여서
+ * 스크롤할 때마다 가렸다. 뜬 채로 따라다니는 이상 크기를 줄여도 겹침을 없앨 수 없어서 자리를 옮겼다.
+ * 제보를 받을 곳이 없으면 그리지 않는다.
+ */
+export function IssueReportTrigger({ variant }: { variant: 'icon' | 'text' | 'link' }) {
+  if (!canReportIssue()) return null;
+  if (variant === 'icon') {
+    return (
+      <Tooltip title="의견 보내기">
+        <Button
+          type="text"
+          aria-label="의견 보내기"
+          icon={<ChatIcon />}
+          onClick={() => setReportOpen(true)}
+        />
+      </Tooltip>
+    );
+  }
+  if (variant === 'text') {
+    return (
+      <Button type="default" icon={<ChatIcon />} onClick={() => setReportOpen(true)}>
+        의견 보내기
+      </Button>
+    );
+  }
+  return (
+    <Typography.Link style={{ fontSize: 11 }} onClick={() => setReportOpen(true)}>
+      의견 보내기
+    </Typography.Link>
   );
 }

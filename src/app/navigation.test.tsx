@@ -17,7 +17,7 @@ describe('메뉴 구조', () => {
     const pages = navPages(entries);
     const simulators = pages.filter(({ trail }) => trail.startsWith('시뮬레이터')).map(({ leaf }) => leaf.label);
     expect(simulators).toEqual(['세공', '성수', '유물 복원']);
-    expect(pages.find(({ leaf }) => leaf.path === '/relic-simulator')?.trail).toBe('시뮬레이터');
+    expect(pages.find(({ leaf }) => leaf.path === '/relic-simulator')?.trail).toBe('시뮬레이터, 유물');
     expect(pages.find(({ leaf }) => leaf.path === '/relics')?.trail).toBe('');
   });
 
@@ -33,5 +33,10 @@ describe('메뉴 구조', () => {
     expect(selectedPathFor('/item/숏-소드', entries)).toBe('/items');
     expect(selectedPathFor('/relic-simulator', entries)).toBe('/relic-simulator');
     expect(selectedPathFor('/', entries)).toBe('/auction');
+  });
+
+  it('어느 칸에도 맞지 않는 주소(404)에서는 선택된 칸이 없다', () => {
+    expect(selectedPathFor('/nonexistent-page', entries)).toBe('');
+    expect(selectedPathFor('/auctionx', entries)).not.toBe('');
   });
 });

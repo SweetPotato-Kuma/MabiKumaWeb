@@ -70,7 +70,7 @@ export function PrivacyPage() {
 
           <Title level={5}>문의</Title>
           <Paragraph>
-            문의와 요청은 화면 오른쪽 아래의 <Text strong>의견</Text> 단추로 보내 주세요. 방침이 바뀌면 이 페이지의
+            문의와 요청은 화면 위나 맨 아래의 <Text strong>의견 보내기</Text> 로 보내 주세요. 방침이 바뀌면 이 페이지의
             시행일을 고쳐 알립니다.
           </Paragraph>
         </Typography>

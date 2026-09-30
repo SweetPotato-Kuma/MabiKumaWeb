@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -30,7 +30,7 @@ import logoMark from '@/assets/logo-mark.png';
 import wordmarkDark from '@/assets/wordmark-dark.png';
 import wordmark from '@/assets/wordmark.png';
 import { CommandPalette } from '@/components/CommandPalette';
-import { IssueReportButton } from '@/components/IssueReportButton';
+import { IssueReportModal, IssueReportTrigger } from '@/components/IssueReportButton';
 import { SettingsButton, SettingsPanel } from '@/components/SettingsPanel';
 import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
@@ -76,14 +76,42 @@ function leafItem(leaf: NavLeaf): MenuItem {
   };
 }
 
+/** 서랍 메뉴의 소제목. 항목과 글씨 크기와 색으로 갈라 한눈에 제목인 줄 알게 한다. */
+function drawerHeading(text: string): ReactNode {
+  return (
+    <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.2 }}>{text}</span>
+  );
+}
+
 /**
- * 서랍 메뉴에서는 묶음을 접지 않고 제목(group)으로 펼쳐 둔다. 항목이 열 개 남짓이니
- * 한 번 더 눌러 펼치게 할 까닭이 없다.
+ * 서랍 메뉴. 묶음을 접지 않고 펼쳐 두되, 안쪽 구분마다 제목 하나만 단다. "시뮬레이터" 제목 바로 아래에 "장비"
+ * 제목이 또 나오면 두 줄이 연달아 서서 무엇이 무엇의 제목인지 알 수 없었다. 그래서 "시뮬레이터 · 장비" 처럼
+ * 위 분류를 제목에 붙이고 하나로 세운다. 묶음마다 앞뒤를 가르는 선을 두어 뒤따르는 최상위 칸(뿔피리)이 앞 묶음의
+ * 항목처럼 보이지 않게 한다.
  */
-function toDrawerItem(entry: NavEntry): MenuItem {
-  const item = toMenuItem(entry);
-  if (!isNavGroup(entry) || !item || !('children' in item)) return item;
-  return { key: entry.key, type: 'group', label: entry.label, children: item.children };
+function toDrawerItems(entries: NavEntry[]): MenuItem[] {
+  const items: MenuItem[] = [];
+  const divider = (key: string): MenuItem => ({ key, type: 'divider' });
+  entries.forEach((entry, position) => {
+    if (!isNavGroup(entry)) {
+      // 묶음 뒤에 오는 최상위 칸은 선으로 갈라 묶음의 마지막 항목처럼 보이지 않게 한다.
+      if (position > 0 && isNavGroup(entries[position - 1])) items.push(divider(`divider:after:${entry.path}`));
+      items.push(leafItem(entry));
+      return;
+    }
+    if (items.length > 0) items.push(divider(`divider:before:${entry.key}`));
+    entry.sections.forEach((section, index) => {
+      const title = [entry.label, section.title].filter(Boolean).join(' · ');
+      if (index > 0) items.push(divider(`divider:${entry.key}:${index}`));
+      items.push({
+        key: `${entry.key}:${section.title ?? index}`,
+        type: 'group',
+        label: drawerHeading(title),
+        children: section.items.map(leafItem),
+      });
+    });
+  });
+  return items;
 }
 
 /** 헤더의 검색 단추. 넓은 화면에서는 단축키를 함께 알린다. */
@@ -163,7 +191,8 @@ export function RootLayout() {
 
   const navEntries: NavEntry[] = hasAdminKey ? [...NAV_TREE, ADMIN_NAV_ITEM] : NAV_TREE;
   const navItems = navEntries.map(toMenuItem);
-  const selectedKeys = [selectedPathFor(location.pathname, [...NAV_TREE, ADMIN_NAV_ITEM])];
+  const selectedPath = selectedPathFor(location.pathname, [...NAV_TREE, ADMIN_NAV_ITEM]);
+  const selectedKeys = selectedPath ? [selectedPath] : [];
   // 1200px 미만은 가로 메뉴가 한 줄에 다 들어가지 않는다. 서랍으로 옮긴다.
   const compactNav = !hasFullNav(screens);
   const headerHeight = headerHeightFor(screens);
@@ -263,6 +292,7 @@ export function RootLayout() {
             <ThemeToggle />
             {/* 좁은 화면은 헤더가 좁아 설정을 메뉴 서랍 안에 둔다. */}
             {compactNav ? null : <SettingsButton />}
+            {compactNav ? null : <IssueReportTrigger variant="icon" />}
             {compactNav ? (
               <Button
                 type="text"
@@ -288,7 +318,7 @@ export function RootLayout() {
           <nav aria-label="주요 메뉴">
             <Menu
               mode="inline"
-              items={navEntries.map(toDrawerItem)}
+              items={toDrawerItems(navEntries)}
               selectedKeys={selectedKeys}
               onClick={handleMenuClick}
               style={{ borderInlineEnd: 'none', background: 'transparent' }}
@@ -299,6 +329,7 @@ export function RootLayout() {
               설정
             </Text>
             <SettingsPanel />
+            <IssueReportTrigger variant="text" />
           </Flex>
           {/* 좁은 화면은 헤더에 조회 상태 배지를 둘 자리가 없다. 서랍 아래에 옮겨 둔다. */}
           {screens.sm ? null : (
@@ -327,8 +358,7 @@ export function RootLayout() {
           borderTop: `1px solid ${token.colorBorderSecondary}`,
           textAlign: 'center',
           paddingBlockStart: 12,
-          // 휴대폰에서는 의견 단추(52px, 아래 여백 12px)가 고지 끝줄을 덮지 않게 비운다.
-          paddingBlockEnd: screens.md ? 12 : 72,
+          paddingBlockEnd: 12,
           paddingInline: 16,
         }}
       >
@@ -347,11 +377,13 @@ export function RootLayout() {
           <Link to="/privacy" style={{ fontSize: 11, color: token.colorLink }}>
             개인정보처리방침
           </Link>
+          {' · '}
+          <IssueReportTrigger variant="link" />
         </Text>
       </Footer>
 
-      {/* 어느 화면에서든 제보할 수 있어야 한다. 화면마다 붙이지 않고 여기 한 번만 둔다. */}
-      <IssueReportButton />
+      {/* 어느 화면에서든 제보할 수 있어야 한다. 창은 여기 한 번만 두고, 여는 단추는 헤더와 푸터에 있다. */}
+      <IssueReportModal />
     </Layout>
   );
 }

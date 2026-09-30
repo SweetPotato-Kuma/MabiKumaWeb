@@ -591,7 +591,7 @@ export function BagsPage() {
         type="error"
         showIcon
         message="주머니를 받지 못했습니다"
-        description="잠시 후 다시 찾아 주세요. 계속 안 되면 오른쪽 아래 의견 단추로 알려 주세요."
+        description="잠시 후 다시 찾아 주세요. 계속 안 되면 화면 위나 맨 아래의 의견 보내기로 알려 주세요."
       />
     ) : listings.length === 0 && loading ? (
       <Card aria-busy="true">
