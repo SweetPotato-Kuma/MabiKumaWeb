@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 /**
  * 카테고리별 그림 목록. `이름 -> 그림 파일, 부제` 만 담긴 작은 파일이다.
@@ -77,6 +77,25 @@ function iconMapQueryOptions(category: string) {
     gcTime: Infinity,
     retry: 1,
   };
+}
+
+/** 한 번에 미리 받는 그림 목록 수. 카테고리를 많이 훑는 검색이 목록 수십 개를 한꺼번에 받지 않게 한다. */
+const PREFETCH_LIMIT = 6;
+
+/**
+ * 매물 목록을 부르는 그 순간에 그림 목록도 같이 받는다. 행이 그려진 뒤에야 받으면 "목록 응답, 그림 목록,
+ * 그림 파일" 이 차례로 이어져 글자가 뜬 뒤 그림이 0.5초 넘게 늦게 채워진다. 목록 응답을 기다리는 동안 받아
+ * 두면 행이 그려질 때 그림 목록이 이미 와 있다.
+ */
+export function usePrefetchIconMaps(categories: readonly string[]): void {
+  const queryClient = useQueryClient();
+  const key = categories.join('\u0000');
+  useEffect(() => {
+    if (!isIconMapConfigured()) return;
+    for (const category of key.split('\u0000').filter(Boolean).slice(0, PREFETCH_LIMIT)) {
+      void queryClient.prefetchQuery(iconMapQueryOptions(category));
+    }
+  }, [queryClient, key]);
 }
 
 /**

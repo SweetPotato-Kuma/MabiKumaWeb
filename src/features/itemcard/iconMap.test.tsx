@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { iconMapUrl, parseIconMap, useIconMaps, useItemBrief } from './iconMap';
+import { iconMapUrl, parseIconMap, useIconMaps, useItemBrief, usePrefetchIconMaps } from './iconMap';
 
 const BASE = 'https://icons.example';
 
@@ -108,5 +108,32 @@ describe('useIconMaps', () => {
     // 실패하면 한 번 더 받아 본 뒤(1초 뒤) 포기한다.
     await waitFor(() => expect(result.current.needsLookup('활')).toBe(true), { timeout: 4000 });
     expect(result.current.needsLookup('검')).toBe(false);
+  });
+});
+
+describe('usePrefetchIconMaps', () => {
+  it('목록을 받아 두어, 나중에 그림을 찾을 때 다시 받지 않는다', async () => {
+    const maps = stubMaps({ 검: { '롱 소드': ['a.png'] }, 활: { '숏 보우': ['b.png'] } });
+    await maps.register('검', '활');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    renderHook(() => usePrefetchIconMaps(['검', '활', '검', '']), { wrapper: shared });
+    await waitFor(() => expect(maps.fetchMock).toHaveBeenCalledTimes(2));
+
+    const { result } = renderHook(() => useItemBrief('활', '숏 보우'), { wrapper: shared });
+    await waitFor(() => expect(result.current?.icon).toBe('b.png'));
+    expect(maps.fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('그림 도메인이 없는 빌드에서는 받지 않는다', () => {
+    vi.stubEnv('VITE_ICON_BASE_URL', '');
+    const maps = stubMaps({});
+
+    renderHook(() => usePrefetchIconMaps(['검']), { wrapper });
+
+    expect(maps.fetchMock).not.toHaveBeenCalled();
   });
 });

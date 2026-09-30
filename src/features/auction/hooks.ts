@@ -9,6 +9,7 @@ import {
 import { fetchAuctionHistory, fetchAuctionKeywordSearch, fetchAuctionList, fetchTradeHistory } from './api';
 import { normalizeForSearch } from './dictionary';
 import { canLookupMarket, RECENT_MAX_NAMES } from '@/features/market/api';
+import { usePrefetchIconMaps } from '@/features/itemcard/iconMap';
 import {
   isInitialsOnly,
   matchingNames,
@@ -78,6 +79,7 @@ export function useAuctionItemsQuery(input: AuctionSearchInput, enabled: boolean
   const category = input.category.trim();
   const terms = splitTerms(keyword);
   const keywords = category ? [''] : input.keywords?.length ? input.keywords : [keyword];
+  usePrefetchIconMaps(enabled && category ? [category] : []);
 
   return useInfiniteQuery({
     queryKey: ['auction', 'items', category, keyword, keywords],
@@ -240,6 +242,7 @@ interface ScanPage {
  */
 export function useAuctionScanQuery(categories: readonly string[] | undefined, enabled: boolean) {
   const list = categories ?? [];
+  usePrefetchIconMaps(enabled ? list : []);
   return useInfiniteQuery({
     queryKey: ['auction', 'scan', list],
     initialPageParam: {
@@ -348,6 +351,7 @@ export async function prefetchAuctionSnapshot(queryClient: QueryClient, categori
  */
 export function useAuctionSnapshotQuery(categories: readonly string[] | undefined, enabled: boolean) {
   const wanted = enabled && canUseSnapshot() && (categories?.length ?? 0) > 0;
+  usePrefetchIconMaps(wanted ? (categories ?? []) : []);
   const manifest = useQuery({ ...snapshotManifestQuery, enabled: wanted });
   const files = useMemo(
     () => (manifest.data ? snapshotFilesFor(manifest.data, categories ?? []) : null),
