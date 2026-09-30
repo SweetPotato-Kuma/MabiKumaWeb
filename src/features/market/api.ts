@@ -141,16 +141,23 @@ export function useMarketRecentQuery(names: readonly string[], enabled = true) {
  * 묶음별 결과를 하나로 합친다. 모듈 수준 함수라 react-query 가 결과가 바뀔 때만 다시 부른다.
  * 그래서 받은 값이 그대로면 같은 객체가 나가고 표도 다시 그려지지 않는다.
  */
-function mergeRecent(results: { data?: MarketRecentResponse; isLoading: boolean }[]): {
+function mergeRecent(results: { data?: MarketRecentResponse; isLoading: boolean; isError: boolean }[]): {
   items: Record<string, RecentSummary>;
   isLoading: boolean;
+  /** 받지 못한 묶음이 있는지. 거래가 없던 것과 갈라 볼 수 있게 한다. */
+  failed: boolean;
+  /** 워커가 거래 기록을 마지막으로 받은 시각(ISO). 묶음이 여럿이면 가장 오래된 것이다. 모르면 null. */
+  updated: string | null;
 } {
+  const updates = results.flatMap((result) => (result.data?.updated ? [result.data.updated] : []));
   return {
     items: Object.assign({}, ...results.map((result) => result.data?.items ?? {})) as Record<
       string,
       RecentSummary
     >,
     isLoading: results.some((result) => result.isLoading),
+    failed: results.some((result) => result.isError),
+    updated: updates.length > 0 ? updates.reduce((oldest, each) => (each < oldest ? each : oldest)) : null,
   };
 }
 

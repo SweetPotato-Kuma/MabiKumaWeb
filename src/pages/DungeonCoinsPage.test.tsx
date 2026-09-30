@@ -9,6 +9,17 @@ import { DungeonCoinsPage } from '@/pages/DungeonCoinsPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
+/** 최근 24시간 거래 통계. 시험마다 바꾼다. 조회할 수 없는 상태(프록시 없음)도 흉내 낸다. */
+const market = vi.hoisted(() => ({
+  available: true,
+  state: { items: {} as Record<string, unknown>, isLoading: false, failed: false, updated: null as string | null },
+}));
+vi.mock('@/features/market/api', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  canLookupMarket: () => market.available,
+  useMarketRecentQuery: () => market.state,
+}));
+
 /** antd 표와 탭을 여러 번 다시 그린다. 느린 기계에서 기본 제한 5초를 넘길 수 있다. */
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -256,4 +267,173 @@ describe('던전 코인 가치', () => {
     expect(window.localStorage.getItem('mabikuma:dungeonCoins:inventory:brie-lech')).toBeNull();
     expect(await screen.findByText(/가진 구슬 수를 입력하면/)).toBeInTheDocument();
   }, 60_000); // 창을 열고 닫고 표를 여러 번 다시 그린다. 느린 기계에서 20초를 넘길 수 있다.
+});
+
+describe('던전 코인 거래가와 거래량', () => {
+  /** 회로 46,790,000 / 35 = 1,336,857(최저가). 동력원 257,000,000 / 200 = 1,285,000. */
+  const recent = (mid: number, qty: number) => ({ n: 4, qty, lo: mid, hi: mid, mid, avg: mid, last: '2026-10-01T00:00:00Z' });
+
+  /** 넓은 화면(표가 열로 늘어선다)으로 그린다. jsdom 기본은 좁은 화면이다. */
+  function wideScreen() {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetInventoryCache();
+    market.available = true;
+    market.state = {
+      items: {
+        // 거래가 기준 35,000,000 / 35 = 1,000,000. 24시간에 5개뿐이라 거래 적음이다.
+        '빛바랜 에너지 회로': recent(35_000_000, 5),
+        // 240,000,000 / 200 = 1,200,000. 300개 거래됐다.
+        '고리아스 동력원': recent(240_000_000, 300),
+      },
+      isLoading: false,
+      failed: false,
+      updated: new Date(Date.now() - 8 * 60_000).toISOString(),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    vi.mocked(fetchAuctionList).mockImplementation(async ({ itemName }) => ({
+      auction_item: (LISTINGS[itemName ?? ''] ?? []).map((price) => ({
+        item_name: itemName ?? '',
+        item_display_name: itemName ?? '',
+        item_count: 1,
+        auction_item_category: '기타 재료',
+        auction_price_per_unit: price,
+        date_auction_expire: '',
+      })),
+      next_cursor: null,
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(fetchAuctionList).mockReset();
+  });
+
+  const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr') as HTMLElement;
+
+  it('모든 교환품에 거래가 기준 코인당 가치와 24시간 거래량 열이 있다', async () => {
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    expect(screen.getByRole('columnheader', { name: '최저가 기준 코인당 가치' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '거래가 기준 코인당 가치' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '24시간 거래량' })).toBeInTheDocument();
+    expect(within(rowOf('고리아스 동력원')).getByText('1,200,000 G')).toBeInTheDocument();
+    expect(within(rowOf('고리아스 동력원')).getByText('300개')).toBeInTheDocument();
+    // 거래가 없었던 교환품은 그렇게 적는다.
+    // 거래가 기준 열과 거래량 열 둘 다 그렇게 적는다.
+    expect(within(rowOf('순도 높은 실리엔 섬유 다발')).getAllByText('거래 없음')).toHaveLength(2);
+  });
+
+  it('24시간 거래량이 20개 미만인 교환품에 거래 적음 배지가 붙는다', async () => {
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    expect(within(rowOf('빛바랜 에너지 회로')).getByText('거래 적음')).toBeInTheDocument();
+    expect(within(rowOf('고리아스 동력원')).queryByText('거래 적음')).toBeNull();
+  });
+
+  it('기본은 최저가 기준이고, 거래가 기준으로 바꾸면 줄 순서와 가장 이득이 바뀐다', async () => {
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    expect(within(screen.getAllByRole('row')[1]).getByRole('link').textContent).toBe('빛바랜 에너지 회로');
+    expect(within(rowOf('빛바랜 에너지 회로')).getByText('가장 이득')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: '거래가 기준' }));
+
+    await screen.findAllByText('1,200,000 G');
+    expect(within(screen.getAllByRole('row')[1]).getByRole('link').textContent).toBe('고리아스 동력원');
+    expect(within(rowOf('고리아스 동력원')).getByText('가장 이득')).toBeInTheDocument();
+    expect(within(rowOf('빛바랜 에너지 회로')).queryByText('가장 이득')).toBeNull();
+  });
+
+  it('거래 적음 제외를 켜면 가장 이득이 거래 적음이 아닌 줄로 넘어간다', async () => {
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /거래 적음\(20개 미만\)은 가장 이득에서 제외/ }));
+
+    expect(within(rowOf('고리아스 동력원')).getByText('가장 이득')).toBeInTheDocument();
+    expect(within(rowOf('빛바랜 에너지 회로')).queryByText('가장 이득')).toBeNull();
+    // 줄 순서는 그대로다.
+    expect(within(screen.getAllByRole('row')[1]).getByRole('link').textContent).toBe('빛바랜 에너지 회로');
+  });
+
+  it('보유 코인을 넣으면 교환품마다 몇 개를 살 수 있는지와 예상 판매액을 보여 준다', async () => {
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    fireEvent.change(screen.getByLabelText('보유 코인'), { target: { value: '400' } });
+
+    // 회로 35개 → 11개(385), 예상 46,790,000 x 11. 동력원 200개 → 2개, 257,000,000 x 2.
+    expect(within(rowOf('빛바랜 에너지 회로')).getByText('11개 교환')).toBeInTheDocument();
+    expect(within(rowOf('빛바랜 에너지 회로')).getByText('예상 514,690,000 G')).toBeInTheDocument();
+    expect(within(rowOf('고리아스 동력원')).getByText('2개 교환')).toBeInTheDocument();
+    expect(within(rowOf('고리아스 동력원')).getByText('예상 514,000,000 G')).toBeInTheDocument();
+  });
+
+  it('보유 코인으로 모자라면 코인 부족이라고 적는다', async () => {
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    fireEvent.change(screen.getByLabelText('보유 코인'), { target: { value: '10' } });
+
+    expect(within(rowOf('빛바랜 에너지 회로')).getByText('코인 부족')).toBeInTheDocument();
+  });
+
+  it('표 아래에 거래가의 기준 기간과 갱신 시각을 적는다', async () => {
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    expect(screen.getByText(/거래가는 최근 24시간 기준, 8분 전에 갱신\./)).toBeInTheDocument();
+  });
+
+  it('좁은 화면에서는 열을 늘리지 않고 이름 아래 줄에 거래가와 거래량을 적는다', async () => {
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    expect(screen.queryByRole('columnheader', { name: '24시간 거래량' })).toBeNull();
+    expect(within(rowOf('고리아스 동력원')).getByText('거래가 기준 1,200,000 G · 24시간 300개')).toBeInTheDocument();
+  });
+
+  it('거래 기록을 조회할 수 없으면 거래 적음으로 치지 않고 모른다고 둔다', async () => {
+    market.available = false;
+    market.state = { items: {}, isLoading: false, failed: false, updated: null };
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    expect(screen.queryByText('거래 적음')).toBeNull();
+    expect(screen.queryByText('거래 없음')).toBeNull();
+    expect(screen.queryByText(/거래가는 최근 24시간 기준/)).toBeNull();
+  });
+
+  it('거래 기록을 받지 못해도 거래 적음으로 치지 않는다', async () => {
+    market.state = { items: {}, isLoading: false, failed: true, updated: null };
+    wideScreen();
+    renderPage();
+    await screen.findAllByText('1,336,857 G');
+
+    expect(screen.queryByText('거래 적음')).toBeNull();
+    expect(screen.queryByText('거래 없음')).toBeNull();
+  });
 });

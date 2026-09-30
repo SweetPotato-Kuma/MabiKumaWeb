@@ -100,6 +100,15 @@ export const KIND_BADGE_COLORS = {
   },
 } as const satisfies Record<'light' | 'dark', Record<'party' | 'buy' | 'sell', { text: string; background: string }>>;
 
+/**
+ * 주의를 끄는 배지의 색("거래 적음" 등). 주황 계열이라 분류 배지의 팝니다와 같은 쌍을 쓰고, 그 쌍이 4.5:1 을
+ * 넘는 것은 theme.test.ts 가 지킨다. 뜻이 다른 곳에서 쓰므로 이름을 따로 둔다.
+ */
+export const CAUTION_BADGE_COLORS = {
+  light: KIND_BADGE_COLORS.light.sell,
+  dark: KIND_BADGE_COLORS.dark.sell,
+} as const;
+
 /** 반경 스케일은 하나. antd 가 여기서 파생시키는 값을 그대로 쓴다. */
 const BORDER_RADIUS = 10;
 
