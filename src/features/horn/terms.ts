@@ -79,8 +79,11 @@ export function formatHornTime(seconds: number, now = Date.now()): string {
   return `${monthDayFormatter.format(date)} ${time}`;
 }
 
-/** 몇 번 외쳤는지와 언제부터인지. 한 번뿐이면 빈 글자. */
+/**
+ * 언제부터 몇 번 외쳤는지. "14:52부터 6번 외침". 한 번뿐이면 빈 글자.
+ * 같은 문구를 되풀이해 외친 것을 한 줄로 묶어 두었다는 뜻이 문장으로 읽히게 쓴다.
+ */
 export function formatRepeats(times: number, first: number, now = Date.now()): string {
   if (times <= 1) return '';
-  return `${times.toLocaleString('ko-KR')}번 · ${formatHornTime(first, now)}부터`;
+  return `${formatHornTime(first, now)}부터 ${times.toLocaleString('ko-KR')}번 외침`;
 }

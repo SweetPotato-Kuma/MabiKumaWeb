@@ -30,15 +30,24 @@ describe('parseSettings', () => {
   it('낯선 값은 그 항목만 기본으로 돌리고 나머지는 살린다', () => {
     expect(
       parseSettings({ server: '없는서버', priceStyle: 'korean', omitSmall: 'yes', hideSymbols: true }),
-    ).toEqual({ server: '류트', priceStyle: 'korean', omitSmall: false, hideSymbols: true });
+    ).toEqual({
+      server: '류트',
+      priceStyle: 'korean',
+      omitSmall: false,
+      hideSymbols: true,
+      hornLatestOnly: false,
+    });
   });
 
   it('알려진 값은 그대로 받는다', () => {
-    expect(parseSettings({ server: '하프', priceStyle: 'number', omitSmall: true, hideSymbols: false })).toEqual({
+    expect(
+      parseSettings({ server: '하프', priceStyle: 'number', omitSmall: true, hideSymbols: false, hornLatestOnly: true }),
+    ).toEqual({
       server: '하프',
       priceStyle: 'number',
       omitSmall: true,
       hideSymbols: false,
+      hornLatestOnly: true,
     });
   });
 });

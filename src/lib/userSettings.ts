@@ -8,6 +8,7 @@ import { SERVER_NAMES, type ServerName } from '@/features/servers/constants';
  * - priceStyle: 가격을 `1,149,000,000 G`(number) 로 쓸지 `11억 4,900만 G`(korean) 로 쓸지.
  * - omitSmall: 한글 표기에서 1만 미만 끝자리를 뺀다(`11억 4,900만 1,234 G` → `11억 4,900만 G`).
  * - hideSymbols: 경매장 결과에서 이름에 심볼, 도면, 옷본이 든 매물을 기본으로 숨긴다.
+ * - hornLatestOnly: 뿔피리에서 같은 캐릭터의 글은 가장 최근 것만 보인다(화면에서 고른 값을 기억한다).
  */
 export type PriceStyle = 'number' | 'korean';
 
@@ -16,6 +17,7 @@ export interface UserSettings {
   priceStyle: PriceStyle;
   omitSmall: boolean;
   hideSymbols: boolean;
+  hornLatestOnly: boolean;
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -23,6 +25,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   priceStyle: 'number',
   omitSmall: false,
   hideSymbols: false,
+  hornLatestOnly: false,
 };
 
 const STORAGE_KEY = 'mabikuma:userSettings';
@@ -35,6 +38,7 @@ export function parseSettings(raw: unknown): UserSettings {
     priceStyle: value.priceStyle === 'korean' ? 'korean' : DEFAULT_SETTINGS.priceStyle,
     omitSmall: value.omitSmall === true,
     hideSymbols: value.hideSymbols === true,
+    hornLatestOnly: value.hornLatestOnly === true,
   };
 }
 

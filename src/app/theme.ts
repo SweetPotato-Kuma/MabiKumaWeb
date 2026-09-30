@@ -82,6 +82,24 @@ export const SERIES_COLORS = {
   dark: ['#5584d4', '#c7772c', '#22997f', '#a8901c', '#d0566b'],
 } as const satisfies Record<'light' | 'dark', readonly string[]>;
 
+/**
+ * 분류 배지(뿔피리의 파티, 삽니다, 팝니다)의 색. 액센트와 따로 "어느 분류인가" 를 가르는 색이다.
+ * 글자와 배경은 한 쌍으로 검증했다(theme.test.ts). 라이트 5.7:1 이상, 다크 7.5:1 이상이라 4.5:1 을 넉넉히 넘는다.
+ * 색만으로 구분하지 않도록 쓰는 곳은 분류 이름을 글자로도 적는다.
+ */
+export const KIND_BADGE_COLORS = {
+  light: {
+    party: { text: '#1d4f91', background: '#e6effa' },
+    buy: { text: '#1e6b3c', background: '#e5f4ea' },
+    sell: { text: '#8a4a0a', background: '#fbeedc' },
+  },
+  dark: {
+    party: { text: '#9ec3f5', background: '#1d2b40' },
+    buy: { text: '#8fd3a5', background: '#1c3325' },
+    sell: { text: '#f0b676', background: '#3d2a14' },
+  },
+} as const satisfies Record<'light' | 'dark', Record<'party' | 'buy' | 'sell', { text: string; background: string }>>;
+
 /** 반경 스케일은 하나. antd 가 여기서 파생시키는 값을 그대로 쓴다. */
 const BORDER_RADIUS = 10;
 

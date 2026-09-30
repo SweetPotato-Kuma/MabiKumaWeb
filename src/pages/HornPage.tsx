@@ -19,6 +19,7 @@ import {
   theme,
   type TableColumnsType,
 } from 'antd';
+import { KIND_BADGE_COLORS } from '@/app/theme';
 import { QueryState } from '@/components/QueryState';
 import { CloseIcon, CopyIcon, RefreshIcon, SearchIcon } from '@/components/icons';
 import {
@@ -42,7 +43,9 @@ import {
 import { canNotify, requestNotifyPermission, useHornAlerts } from '@/features/horn/useHornAlerts';
 import { ServerSelect } from '@/components/ServerSelect';
 import { type ServerName } from '@/features/servers/constants';
+import { useResolvedThemeMode } from '@/lib/themePreference';
 import { useServerParam } from '@/lib/useServerParam';
+import { updateSettings, useUserSettings } from '@/lib/userSettings';
 
 const { Title, Text } = Typography;
 
@@ -60,6 +63,42 @@ const KIND_LABELS: Record<HornKind, string | null> = {
   sell: '팝니다',
   chat: null,
 };
+
+/** 표의 한 줄. 같은 캐릭터의 글을 하나로 묶었을 때 나머지가 others 에 든다. */
+interface HornRow {
+  post: HornPost;
+  others: HornPost[];
+}
+
+/**
+ * 캐릭터마다 가장 최근 글 하나만 남기고 나머지는 others 로 모은다. 같은 캐릭터가 문구를 조금씩 바꿔 가며
+ * 계속 외치면 완전히 같은 문구 묶기(times)로는 잡히지 않아 목록이 그 캐릭터로 채워졌다.
+ * 순서는 각 캐릭터의 가장 최근 글이 처음 나온 자리를 따른다.
+ */
+function groupByCharacter(posts: HornPost[]): HornRow[] {
+  const rows = new Map<string, HornRow>();
+  for (const post of posts) {
+    const row = rows.get(post.character);
+    if (!row) {
+      rows.set(post.character, { post, others: [] });
+    } else if (post.last > row.post.last) {
+      row.others.push(row.post);
+      row.post = post;
+    } else {
+      row.others.push(post);
+    }
+  }
+  return [...rows.values()].map((row) => ({
+    post: row.post,
+    others: row.others.sort((a, b) => b.last - a.last),
+  }));
+}
+
+/** 인원이 가득 찬 파티인지. "4/4" 처럼 온다. */
+function isFull(members: string | null): boolean {
+  const match = /^(\d+)\s*\/\s*(\d+)$/.exec(members ?? '');
+  return match !== null && Number(match[2]) > 0 && Number(match[1]) >= Number(match[2]);
+}
 
 const DAY_OPTIONS = HORN_DAYS.map((days) => ({ value: days, label: `${days}일` }));
 
@@ -124,12 +163,14 @@ interface NameCellProps {
   pattern: RegExp | null;
   onPick: (name: string) => void;
   onCopy: (name: string) => void;
+  /** 같은 캐릭터의 다른 글. 있으면 "외 N건" 으로 펼치거나 접는다. */
+  more?: { count: number; open: boolean; onToggle: () => void };
 }
 
 /** 이름을 누르면 그 캐릭터의 뿔피리만 본다. 옆 단추는 귓속말에 쓸 이름을 복사한다. */
-function NameCell({ post, pattern, onPick, onCopy }: NameCellProps) {
+function NameCell({ post, pattern, onPick, onCopy, more }: NameCellProps) {
   return (
-    <Flex align="center" gap={2} style={{ minWidth: 0 }}>
+    <Flex align="center" gap={2} style={{ minWidth: 0 }} wrap>
       <Button
         type="link"
         size="small"
@@ -147,18 +188,40 @@ function NameCell({ post, pattern, onPick, onCopy }: NameCellProps) {
           onClick={() => onCopy(post.character)}
         />
       </Tooltip>
+      {more ? (
+        <Button
+          type="link"
+          size="small"
+          aria-expanded={more.open}
+          aria-label={`${post.character} 다른 글 ${more.count}건 ${more.open ? '접기' : '펼치기'}`}
+          onClick={more.onToggle}
+          style={{ paddingInline: 4 }}
+        >
+          외 {more.count}건 {more.open ? '접기' : '보기'}
+        </Button>
+      ) : null}
     </Flex>
   );
 }
 
 function BodyCell({ post, pattern, now }: { post: HornPost; pattern: RegExp | null; now: number }) {
+  const mode = useResolvedThemeMode();
   const kindLabel = KIND_LABELS[post.kind];
+  const kindColors = post.kind === 'chat' ? null : KIND_BADGE_COLORS[mode][post.kind];
   const repeats = formatRepeats(post.times, post.first, now);
   const tagStyle = { marginInlineEnd: 6 } as const;
   return (
-    <Flex vertical gap={2}>
+    // 인원이 다 찬 파티는 들어갈 수 없으니 흐리게 둔다.
+    <Flex vertical gap={2} style={{ opacity: post.kind === 'party' && isFull(post.members) ? 0.55 : undefined }}>
       <div>
-        {kindLabel ? <Tag style={tagStyle}>{kindLabel}</Tag> : null}
+        {kindLabel ? (
+          <Tag
+            variant="filled"
+            style={{ ...tagStyle, background: kindColors?.background, color: kindColors?.text }}
+          >
+            {kindLabel}
+          </Tag>
+        ) : null}
         {post.channel !== null ? (
           <Tag className="tnum" style={tagStyle}>
             {post.channel}채널
@@ -235,6 +298,20 @@ export function HornPage() {
   const [shown, setShown] = useState({ key: filterKey, limit: HORN_PAGE });
   const limit = shown.key === filterKey ? shown.limit : HORN_PAGE;
 
+  // 캐릭터당 최신 1건만. 주소가 있으면 그것이, 없으면 마지막에 고른 값(설정)이 처음 값이다.
+  const [userSettings] = useUserSettings();
+  const latestParam = params.get('latest');
+  const latestOnly = latestParam === null ? userSettings.hornLatestOnly : latestParam === '1';
+  const setLatestOnly = (next: boolean) => {
+    update({ latest: next ? '1' : '0' });
+    updateSettings({ hornLatestOnly: next });
+  };
+  const [expanded, setExpanded] = useState<string[]>([]);
+  const toggleExpanded = useCallback(
+    (name: string) => setExpanded((prev) => (prev.includes(name) ? prev.filter((each) => each !== name) : [...prev, name])),
+    [],
+  );
+
   const [live, setLive] = useState(true);
   const [alerts, setAlerts] = useState(false);
 
@@ -244,6 +321,10 @@ export function HornPage() {
   );
   const data = query.data;
   const posts = useMemo(() => data?.posts ?? [], [data]);
+  const rows = useMemo<HornRow[]>(
+    () => (latestOnly ? groupByCharacter(posts) : posts.map((post) => ({ post, others: [] }))),
+    [latestOnly, posts],
+  );
 
   useHornAlerts({
     enabled: alerts,
@@ -278,9 +359,22 @@ export function HornPage() {
 
   // 시각 표시의 "오늘" 은 받은 때를 기준으로 가른다. 렌더마다 시계를 읽으면 표를 매번 다시 만든다.
   const now = query.dataUpdatedAt;
-  const columns = useMemo<TableColumnsType<HornPost>>(
-    () =>
-      wide
+  const columns = useMemo<TableColumnsType<HornRow>>(
+    () => {
+      const nameOf = ({ post, others }: HornRow) => (
+        <NameCell
+          post={post}
+          pattern={pattern}
+          onPick={pickName}
+          onCopy={copyName}
+          more={
+            others.length > 0
+              ? { count: others.length, open: expanded.includes(post.character), onToggle: () => toggleExpanded(post.character) }
+              : undefined
+          }
+        />
+      );
+      return wide
         ? [
             {
               title: '시각',
@@ -288,21 +382,19 @@ export function HornPage() {
               width: 116,
               className: 'tnum',
               onCell: () => ({ style: { whiteSpace: 'nowrap', verticalAlign: 'top' } }),
-              render: (_value, post) => formatHornTime(post.last, now),
+              render: (_value, row) => formatHornTime(row.post.last, now),
             },
             {
               title: '캐릭터',
               key: 'character',
-              width: 190,
+              width: 210,
               onCell: () => ({ style: { verticalAlign: 'top' } }),
-              render: (_value, post) => (
-                <NameCell post={post} pattern={pattern} onPick={pickName} onCopy={copyName} />
-              ),
+              render: (_value, row) => nameOf(row),
             },
             {
               title: '내용',
               key: 'body',
-              render: (_value, post) => <BodyCell post={post} pattern={pattern} now={now} />,
+              render: (_value, row) => <BodyCell post={row.post} pattern={pattern} now={now} />,
             },
           ]
         : [
@@ -310,20 +402,35 @@ export function HornPage() {
               // 768px 미만에서는 칸을 합친다. 이름과 시각을 한 줄에, 내용을 그 아래에 둔다.
               title: '뿔피리',
               key: 'post',
-              render: (_value, post) => (
+              render: (_value, row) => (
                 <Flex vertical gap={2}>
                   <Flex justify="space-between" align="center" gap={8}>
-                    <NameCell post={post} pattern={pattern} onPick={pickName} onCopy={copyName} />
+                    {nameOf(row)}
                     <Text type="secondary" className="tnum" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                      {formatHornTime(post.last, now)}
+                      {formatHornTime(row.post.last, now)}
                     </Text>
                   </Flex>
-                  <BodyCell post={post} pattern={pattern} now={now} />
+                  <BodyCell post={row.post} pattern={pattern} now={now} />
                 </Flex>
               ),
             },
-          ],
-    [wide, pattern, pickName, copyName, now],
+          ];
+    },
+    [wide, pattern, pickName, copyName, now, expanded, toggleExpanded],
+  );
+
+  /** 펼친 캐릭터의 다른 글. 시각과 내용을 줄마다 적는다. */
+  const otherPosts = (row: HornRow) => (
+    <Flex vertical gap={8} style={{ paddingInlineStart: wide ? 116 + 16 : 0 }}>
+      {row.others.map((post) => (
+        <Flex key={post.id} gap={12} align="flex-start">
+          <Text type="secondary" className="tnum" style={{ fontSize: 13, whiteSpace: 'nowrap', minWidth: 48 }}>
+            {formatHornTime(post.last, now)}
+          </Text>
+          <BodyCell post={post} pattern={pattern} now={now} />
+        </Flex>
+      ))}
+    </Flex>
   );
 
   const updatedAt = data?.updated ? Date.parse(data.updated) : null;
@@ -423,7 +530,7 @@ export function HornPage() {
                   onPressEnter={flushTyping}
                 />
               </Form.Item>
-              <Form.Item label="뺄 말" htmlFor="horn-not" style={{ marginBottom: 0, width: wide ? 220 : undefined }}>
+              <Form.Item label="제외 단어" htmlFor="horn-not" style={{ marginBottom: 0, width: wide ? 220 : undefined }}>
                 <Input
                   id="horn-not"
                   allowClear
@@ -438,6 +545,10 @@ export function HornPage() {
                 <Flex component="label" align="center" gap={8} style={{ cursor: 'pointer' }}>
                   <Switch size="small" checked={live || alerts} disabled={alerts} onChange={setLive} />
                   <span>1분마다 새로 받기</span>
+                </Flex>
+                <Flex component="label" align="center" gap={8} style={{ cursor: 'pointer' }}>
+                  <Switch size="small" checked={latestOnly} onChange={setLatestOnly} />
+                  <span>캐릭터당 최신 1건만</span>
                 </Flex>
                 {canNotify() ? (
                   <Flex component="label" align="center" gap={8} style={{ cursor: 'pointer' }}>
@@ -476,7 +587,11 @@ export function HornPage() {
             ) : null}
             {data ? (
               <Text className="tnum">
-                {posts.length.toLocaleString('ko-KR')}개{data.more ? ' 이상' : ''}
+                {/* 전체 건수를 알 수 없으면(더 있음) 지금 보여 주는 범위만 말한다. */}
+                {data.more
+                  ? `최근 ${posts.length.toLocaleString('ko-KR')}건 표시 중`
+                  : `${posts.length.toLocaleString('ko-KR')}건`}
+                {latestOnly && rows.length < posts.length ? ` · 캐릭터 ${rows.length.toLocaleString('ko-KR')}명` : ''}
               </Text>
             ) : null}
             {partialRange && sinceAt !== null ? (
@@ -521,10 +636,16 @@ export function HornPage() {
             </Button>
           }
         >
-          <Table<HornPost>
+          <Table<HornRow>
             columns={columns}
-            dataSource={posts}
-            rowKey="id"
+            dataSource={rows}
+            rowKey={(row) => row.post.id}
+            expandable={{
+              expandedRowKeys: rows.filter((row) => expanded.includes(row.post.character)).map((row) => row.post.id),
+              expandedRowRender: otherPosts,
+              rowExpandable: (row) => row.others.length > 0,
+              showExpandColumn: false,
+            }}
             size="small"
             pagination={false}
             style={{ opacity: query.isPlaceholderData ? 0.6 : 1 }}
