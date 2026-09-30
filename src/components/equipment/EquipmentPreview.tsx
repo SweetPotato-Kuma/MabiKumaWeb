@@ -19,6 +19,8 @@ const { Text, Title } = Typography;
 
 export interface EquipmentPreviewProps {
   name: string;
+  /** 그림을 카테고리별 그림 목록(CDN)에서 바로 찾는 데 쓴다. 없으면 카드가 오길 기다린다. */
+  category?: string;
   card: ItemCard | null | undefined;
   rows: StatRow[];
   enchants: EnchantDef[];
@@ -101,6 +103,7 @@ function EnchantLine({ line }: { line: string }) {
  */
 export function EquipmentPreview({
   name,
+  category,
   card,
   rows,
   enchants,
@@ -157,7 +160,7 @@ export function EquipmentPreview({
   return (
     <Flex vertical gap={10}>
       <Flex gap={10} align="center">
-        <ItemIcon card={card} size={48} />
+        <ItemIcon card={card} category={category} name={category ? name : undefined} size={48} />
         <Flex vertical gap={4} style={{ minWidth: 0 }}>
           <Title level={4} style={{ margin: 0, fontSize: 16, lineHeight: 1.5 }}>
             {fullName}

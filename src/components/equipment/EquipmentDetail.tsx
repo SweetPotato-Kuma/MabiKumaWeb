@@ -57,13 +57,14 @@ function Section({
 }
 
 interface SimulatorProps {
+  category: string;
   lookup: EquipmentLookup & { item: EquipmentRecord };
   card: ItemCard | null | undefined;
   params: SimulationParams;
   onParamsChange: (params: SimulationParams) => void;
 }
 
-function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
+function Simulator({ category, lookup, card, params, onParamsChange }: SimulatorProps) {
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const { item } = lookup;
@@ -165,6 +166,7 @@ function Simulator({ lookup, card, params, onParamsChange }: SimulatorProps) {
           >
             <EquipmentPreview
               name={item.name}
+              category={category}
               card={card}
               rows={rows}
               enchants={selectedEnchants(state.enchant, enchants)}
@@ -361,6 +363,7 @@ export function EquipmentDetail({ category, name }: { category: string; name: st
         >
           {lookup && item ? (
             <Simulator
+              category={category}
               lookup={{ ...lookup, item }}
               card={card}
               params={params}

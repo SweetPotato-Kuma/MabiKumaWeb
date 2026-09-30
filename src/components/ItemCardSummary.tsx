@@ -15,6 +15,8 @@ interface ItemCardSummaryProps {
   /** 큰 제목. 경매장에서는 인챈트가 붙은 표시 이름, 사전에서는 아이템 이름이다. */
   title: string;
   category: string;
+  /** 사전 이름이면 그림을 카테고리별 그림 목록(CDN)에서 바로 찾는다. 인챈트가 붙은 표시 이름은 넘기지 않는다. */
+  iconName?: string;
 }
 
 /**
@@ -23,11 +25,16 @@ interface ItemCardSummaryProps {
  * 경매장 매물 상세와 사전 상세가 같은 모양이어야 한다. 한쪽에서 본 창을 다른 쪽에서
  * 다르게 읽을 이유가 없다. 그래서 두 창이 이 조각을 같이 쓴다.
  */
-export function ItemCardSummary({ card, title, category }: ItemCardSummaryProps) {
+export function ItemCardSummary({ card, title, category, iconName }: ItemCardSummaryProps) {
   return (
     <>
       <Flex align="flex-start" gap={16}>
-        <ItemIcon card={card} size={SUMMARY_ICON_BOX} />
+        <ItemIcon
+          card={card}
+          category={iconName ? category : undefined}
+          name={iconName}
+          size={SUMMARY_ICON_BOX}
+        />
         <Flex vertical gap={4} style={{ minWidth: 0 }}>
           <Title level={4} style={{ margin: 0 }}>
             {title}

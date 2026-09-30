@@ -49,7 +49,7 @@ import {
 import type { Recipe, RecipeBook } from '@/features/crafting/recipes';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { iconSrcOf, preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
-import { iconFileUrl, useIconMaps } from '@/features/itemcard/iconMap';
+import { iconFileUrl, useIconMaps, useItemBrief } from '@/features/itemcard/iconMap';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 import { EmptyState } from '@/components/EmptyState';
@@ -117,6 +117,15 @@ export function ItemsPage() {
     categoryParam ||
     (detailName ? (nameIndex?.categoriesByName.get(detailName)?.[0] ?? '') : '');
   const resolvingCategory = detailName !== '' && !categoryParam && nameIndexQuery.isPending;
+
+  /**
+   * 상세의 그림은 장비 정보와 카드를 다 받은 뒤에야 그려지는 자리에 있어서, 그림 목록을 거기서 받기
+   * 시작하면 늦다. 카테고리가 정해지는 즉시 목록을 받고 그림도 미리 받아 둔다.
+   */
+  const detailBrief = useItemBrief(category, detailName);
+  useEffect(() => {
+    if (detailBrief?.icon) preloadItemIcons([iconFileUrl(detailBrief.icon)]);
+  }, [detailBrief]);
 
   /**
    * 목록이 보던 조건(카테고리, 보기, 스킬). 전체에서 찾다가 상세를 열면 주소의 카테고리가 그 아이템

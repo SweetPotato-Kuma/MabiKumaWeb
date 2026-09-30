@@ -29,7 +29,7 @@ export function ItemInfoDetail({ category, name }: { category: string; name: str
   return (
     <Card>
       <Flex vertical gap={20}>
-        <ItemCardSummary card={card} title={name} category={category} />
+        <ItemCardSummary card={card} title={name} category={category} iconName={name} />
 
         {loading ? <Skeleton active title={false} paragraph={{ rows: 3 }} /> : null}
 
