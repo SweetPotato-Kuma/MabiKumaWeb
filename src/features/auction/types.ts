@@ -41,6 +41,15 @@ export interface AuctionHistoryResponse {
 }
 
 /**
+ * 워커가 D1 에 쌓아 둔 거래 목록(worker/market.js 의 /market/history). 넥슨 API 와 같은 모양에
+ * 수집 정보가 더 붙는다. 최근 1시간이 아니라 워커가 쌓기 시작한 날(since)부터 볼 수 있다.
+ */
+export interface TradeHistoryResponse extends AuctionHistoryResponse {
+  since: string | null;
+  updated: string | null;
+}
+
+/**
  * 매물 검색 조건.
  *
  * 이름으로 찾을 때는 keyword-search 만 쓴다. auction/list 의 item_name 은 정확한

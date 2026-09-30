@@ -183,6 +183,34 @@ export function searchNames(index: NameIndex, keyword: string, options: SearchOp
   return result;
 }
 
+/**
+ * 검색어 낱말이 모두 들어간 실제 아이템 이름을 전부 고른다(순서 없음, limit 까지).
+ * 카테고리를 주면 그 카테고리만 본다.
+ *
+ * planKeywordSearch 가 만드는 것은 넥슨 keyword-search 에 보낼 검색어(searchKeyOf, 이름의
+ * 일부)이고, 여기는 워커가 D1 에 쌓아 둔 거래 원본을 정확한 이름으로 찾는 자리(거래 내역
+ * 목록, /market/history)에 쓰므로 이름 그 자체가 필요하다.
+ */
+export function matchingNames(index: NameIndex, terms: string[], options: SearchOptions = {}): string[] {
+  if (terms.length === 0) return [];
+  const limit = options.limit ?? Infinity;
+  const categoryIndex = options.category ? index.categories.indexOf(options.category) : -1;
+  const restrict = Boolean(options.category);
+  if (restrict && categoryIndex < 0) return [];
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < index.names.length && names.length < limit; i += 1) {
+    if (restrict && index.categoryOf[i] !== categoryIndex) continue;
+    const name = index.names[i];
+    if (seen.has(name)) continue;
+    if (!terms.every((term) => index.normalized[i].includes(term))) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
 /** 자음으로만 된 입력인지. 초성 검색 여부를 가를 때 쓴다. */
 export function isInitialsOnly(text: string): boolean {
   return ONLY_CONSONANTS.test(text);

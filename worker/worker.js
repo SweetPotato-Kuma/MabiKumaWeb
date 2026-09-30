@@ -47,11 +47,13 @@ import {
   MARKET_ITEM_PATH,
   MARKET_RECENT_PATH,
   MARKET_OPTION_TRADES_PATH,
+  MARKET_HISTORY_PATH,
   collectTrades,
   marketCollect,
   marketItem,
   marketRecent,
   marketOptionTrades,
+  marketHistory,
 } from './market.js';
 import { PRICE_COLLECT_PATH, PRICE_CRON, collectPrices, pricesCollect } from './priceSnapshot.js';
 import { SERVER_CHANNELS } from './servers.js';
@@ -1333,6 +1335,12 @@ export default {
         return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
       }
       return marketOptionTrades(request, url, env, cors);
+    }
+    if (url.pathname === MARKET_HISTORY_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return marketHistory(request, url, env, cors);
     }
 
     // 뿔피리 찾기. 서버 하나, 기간 하나에서 검색어로 거른다.

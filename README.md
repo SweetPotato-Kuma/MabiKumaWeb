@@ -14,7 +14,7 @@ React + TypeScript + Vite 로 만들고, UI 는 antd 하나로 통일했습니�
 | --- | --- |
 | 경매장 매물 검색 (카테고리 / 이름) | `GET /mabinogi/v1/auction/list` |
 | 경매장 키워드 검색 | `GET /mabinogi/v1/auction/keyword-search` |
-| 최근 1시간 거래 내역 | `GET /mabinogi/v1/auction/history` |
+| 거래 내역 목록 | 워커 `/market/history` (워커가 쌓아 둔 거래 원본을 훑음, 없으면 `GET /mabinogi/v1/auction/history`) |
 | 튼튼한 주머니 찾기 | 워커 `/npcshop/bags` (워커가 `GET /mabinogi/v1/npcshop/list` 를 모아 부름) |
 | 마그 멜 통행증 찾기 | 워커 `/npcshop/magmell-pass` (워커가 한 서버의 모든 채널에서 피오나트를 모아 부름) |
 | 던전 코인 가치 | `GET /mabinogi/v1/auction/list` (교환품마다 이름으로 최저가를 받음) |
@@ -208,6 +208,7 @@ worker/            키와 카드를 들고 있는 Cloudflare Worker (배포 대�
 ## 참고
 
 - 게임 데이터는 API 기준으로 평균 10분 지연됩니다.
-- 거래 내역은 최근 1시간 분량만 제공됩니다.
+- 거래 내역은 워커가 설정된 환경에서는 워커가 쌓아 둔 기록(최대 90일)을 목록으로 볼 수 있고,
+  그렇지 않으면 넥슨 API 가 주는 최근 1시간 분량만 보입니다.
 - 경매장 조회는 커서 기반으로 1회 최대 500건입니다. 화면의 `더 불러오기` 로 이어집니다.
 - 이 프로젝트는 개인이 만든 비공식 도구이며 넥슨과 무관합니다.

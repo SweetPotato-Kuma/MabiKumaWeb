@@ -7,6 +7,7 @@ import {
   collectTrades,
   compactOptions,
   dailySeries,
+  expandOptions,
   hourlySeries,
   kstDay,
   lastTradesByOption,
@@ -21,7 +22,7 @@ import {
  */
 function fakeD1() {
   const sqlite = new DatabaseSync(':memory:');
-  for (const file of ['0001_market.sql', '0002_horn.sql']) {
+  for (const file of ['0001_market.sql', '0002_horn.sql', '0003_trades_category_index.sql']) {
     sqlite.exec(readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'));
   }
 
@@ -127,6 +128,14 @@ describe('거래 한 건 정리', () => {
       ]),
     ).toBe('[["아이템 색상","파트 A","25,25,25"]]');
     expect(compactOptions(null)).toBeNull();
+  });
+
+  it('압축한 옵션을 되펴면 원래 객체로 돌아온다', () => {
+    expect(expandOptions('[["아이템 색상","파트 A","25,25,25"]]')).toEqual([
+      { option_type: '아이템 색상', option_sub_type: '파트 A', option_value: '25,25,25' },
+    ]);
+    expect(expandOptions(null)).toBeUndefined();
+    expect(expandOptions('[]')).toBeUndefined();
   });
 
   it('표시 이름은 원래 이름과 다를 때만 남긴다', () => {
@@ -426,6 +435,52 @@ describe('시세 경로', () => {
     expect((await call('/market/recent', { method: 'POST', body: { names: many } })).status).toBe(
       400,
     );
+  });
+
+  it('카테고리로 거래 목록을 새것부터 준다', async () => {
+    const body = await (await call(`/market/history?category=${encodeURIComponent('기타')}`)).json();
+    expect(body.auction_history.map((row) => row.auction_buy_id)).toEqual(['1', '2', '3']);
+    expect(body.next_cursor).toBeNull();
+  });
+
+  it('이름으로 거를 수 있다', async () => {
+    const body = await (await call(`/market/history?name=${encodeURIComponent('가죽')}`)).json();
+    expect(body.auction_history).toHaveLength(1);
+    expect(body.auction_history[0]).toMatchObject({
+      item_name: '가죽',
+      auction_item_category: '재료',
+      auction_price_per_unit: 20,
+    });
+  });
+
+  it('쪽을 나누고 커서로 이어 받는다', async () => {
+    const first = await (
+      await call(`/market/history?category=${encodeURIComponent('기타')}&limit=1`)
+    ).json();
+    expect(first.auction_history.map((row) => row.auction_buy_id)).toEqual(['1']);
+    expect(first.next_cursor).not.toBeNull();
+
+    const second = await (
+      await call(
+        `/market/history?category=${encodeURIComponent('기타')}&limit=1&cursor=${first.next_cursor}`,
+      )
+    ).json();
+    expect(second.auction_history.map((row) => row.auction_buy_id)).toEqual(['2']);
+  });
+
+  it('카테고리도 이름도 없으면 거절한다', async () => {
+    expect((await call('/market/history')).status).toBe(400);
+  });
+
+  it('옵션이 있던 거래는 그대로 되펴 돌려준다', async () => {
+    pages = [[trade(9, 10, { price: 999, options: [{ option_type: '품질', option_value: '5' }] })]];
+    stubHistory();
+    await collectTrades(env, NOW);
+
+    const body = await (
+      await call(`/market/history?name=${encodeURIComponent('싱싱한 풀')}&limit=1`)
+    ).json();
+    expect(body.auction_history[0].item_option).toEqual([{ option_type: '품질', option_value: '5' }]);
   });
 
   it('조회 횟수 제한에 걸리면 429 다', async () => {

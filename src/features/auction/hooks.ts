@@ -6,9 +6,17 @@ import {
   type QueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import { fetchAuctionHistory, fetchAuctionKeywordSearch, fetchAuctionList } from './api';
+import { fetchAuctionHistory, fetchAuctionKeywordSearch, fetchAuctionList, fetchTradeHistory } from './api';
 import { normalizeForSearch } from './dictionary';
-import { isInitialsOnly, searchKeyOf, splitTerms, toInitials } from './nameIndex';
+import { canLookupMarket, RECENT_MAX_NAMES } from '@/features/market/api';
+import {
+  isInitialsOnly,
+  matchingNames,
+  searchKeyOf,
+  splitTerms,
+  toInitials,
+  type NameIndex,
+} from './nameIndex';
 import { canUseSnapshot, fetchSnapshotFile, fetchSnapshotManifest, snapshotFilesFor } from './snapshot';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from './types';
 
@@ -120,28 +128,67 @@ function ownedBy(item: AuctionItem, streamKeyword: string, keywords: string[], t
 }
 
 /**
- * 최근 1시간 거래 내역. 카테고리는 API 가 받아 주지만 검색어는 받지 않으므로
- * 받아온 목록에서 단어로 거른다.
+ * 거래 내역. 워커가 있으면(canLookupMarket) 10분마다 D1 에 쌓아 둔 원본을 훑어 최근 1시간
+ * 너머까지 보여준다. 카테고리(상세 검색 스캔이면 여럿)나, 사전에서 검색어와 맞는 실제 이름들
+ * (matchingNames)로 좁혀 찾는다 — 둘 다 없으면 워커를 쓸 수 없다.
+ *
+ * 워커가 없으면 넥슨 API가 주는 최근 1시간만 본다. 카테고리는 API 가 받아 주지만 검색어는
+ * 받지 않으므로 두 경로 모두 받아온 목록에서 단어로 한 번 더 거른다.
  */
-export function useAuctionHistoryQuery(input: AuctionSearchInput, enabled: boolean) {
+export function useAuctionHistoryQuery(
+  input: AuctionSearchInput,
+  nameIndex: NameIndex | null | undefined,
+  enabled: boolean,
+) {
   const keyword = input.keyword.trim();
   const category = input.category.trim();
   const terms = splitTerms(keyword);
 
-  return useInfiniteQuery({
-    queryKey: ['auction', 'history', category, keyword],
+  const categories = category ? [category] : (input.scan ?? []);
+  const names =
+    !category && keyword && nameIndex
+      ? matchingNames(nameIndex, terms, { limit: RECENT_MAX_NAMES })
+      : [];
+  const useStored = canLookupMarket() && (categories.length > 0 || names.length > 0);
+
+  const stored = useInfiniteQuery({
+    queryKey: ['auction', 'history', 'stored', categories, names],
+    initialPageParam: '',
+    queryFn: ({ pageParam, signal }) => fetchTradeHistory({ categories, names, cursor: pageParam }, signal),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    select: (data) => {
+      const loaded = data.pages.flatMap((page) => page.auction_history ?? []) as AuctionHistoryItem[];
+      return {
+        items: loaded.filter((item) => matchesKeyword(item, terms)),
+        loadedCount: loaded.length,
+        since: data.pages[0]?.since ?? null,
+      };
+    },
+    enabled: enabled && useStored,
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
+
+  const live = useInfiniteQuery({
+    queryKey: ['auction', 'history', 'live', category, keyword],
     initialPageParam: '',
     queryFn: ({ pageParam, signal }) =>
       fetchAuctionHistory({ category: category || undefined, cursor: pageParam }, signal),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     select: (data) => {
       const loaded = data.pages.flatMap((page) => page.auction_history ?? []) as AuctionHistoryItem[];
-      return { items: loaded.filter((item) => matchesKeyword(item, terms)), loadedCount: loaded.length };
+      return {
+        items: loaded.filter((item) => matchesKeyword(item, terms)),
+        loadedCount: loaded.length,
+        since: null as string | null,
+      };
     },
-    enabled,
+    enabled: enabled && !useStored,
     staleTime: FIVE_MINUTES,
     retry: false,
   });
+
+  return useStored ? stored : live;
 }
 
 /** 카테고리를 훑을 때 한 번에 부르는 카테고리 수. 넥슨 API 호출량 제한을 넘지 않게 나눈다. */

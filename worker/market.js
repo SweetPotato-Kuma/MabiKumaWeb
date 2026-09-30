@@ -20,6 +20,7 @@ const NEXON_HISTORY_URL = 'https://open.api.nexon.com/mabinogi/v1/auction/histor
 export const MARKET_ITEM_PATH = '/market/item';
 export const MARKET_RECENT_PATH = '/market/recent';
 export const MARKET_OPTION_TRADES_PATH = '/market/option-trades';
+export const MARKET_HISTORY_PATH = '/market/history';
 export const MARKET_COLLECT_PATH = '/market/collect';
 
 const KST_OFFSET_SECONDS = 9 * 3600;
@@ -45,6 +46,14 @@ const PURGE_LIMIT = 5000;
 
 /** 한 번에 물을 수 있는 아이템 수. 경매장 한 쪽의 줄 수보다 조금 넉넉하게 둔다. */
 export const RECENT_MAX_NAMES = 60;
+
+/** 거래 내역 목록(/market/history)에서 한 번에 훑을 수 있는 카테고리 수. 상세 검색 조건만으로
+ * 훑는 스캔이 부르는 카테고리 수보다 넉넉히 둔다. */
+const HISTORY_MAX_CATEGORIES = 40;
+
+/** 거래 내역 목록 한 쪽의 줄 수 상한과 기본값. */
+const HISTORY_MAX_LIMIT = 500;
+const HISTORY_DEFAULT_LIMIT = 200;
 
 /** 그래프 기본 날 수와 상한. */
 const SERIES_DAYS = 30;
@@ -115,6 +124,26 @@ export function compactOptions(options) {
     return row;
   });
   return JSON.stringify(rows);
+}
+
+/** 압축 저장한 옵션을 [{option_type, ...}] 로 되편다. compactOptions 의 역함수. */
+export function expandOptions(compact) {
+  if (!compact) return undefined;
+  let rows;
+  try {
+    rows = JSON.parse(compact);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(rows) || rows.length === 0) return undefined;
+  const keys = ['option_type', 'option_sub_type', 'option_value', 'option_value2', 'option_desc'];
+  return rows.map((row) => {
+    const option = {};
+    row.forEach((value, index) => {
+      if (value !== null && value !== undefined) option[keys[index]] = value;
+    });
+    return option;
+  });
 }
 
 /** 거래 한 건을 표의 한 줄로. 읽을 수 없는 것은 null. */
@@ -354,6 +383,70 @@ export async function hourlySeries(db, name, hours = HOURLY_HOURS, now = Date.no
   }));
 }
 
+/** "123_456" 모양의 커서를 { ts, id } 로. 못 읽으면 null(맨 처음부터). */
+function parseHistoryCursor(raw) {
+  const match = /^(\d+)_(\d+)$/.exec(String(raw ?? ''));
+  if (!match) return null;
+  return { ts: Number(match[1]), id: Number(match[2]) };
+}
+
+/** 거래 원본 한 줄을 화면의 거래 내역 한 줄 모양으로(AuctionHistoryItem 과 같다). */
+function toHistoryItem(row) {
+  return {
+    item_name: row.name,
+    item_display_name: row.display ?? row.name,
+    item_count: row.count,
+    auction_item_category: row.category,
+    auction_price_per_unit: row.price,
+    date_auction_buy: new Date(row.ts * 1000).toISOString(),
+    auction_buy_id: String(row.id),
+    item_option: expandOptions(row.options),
+  };
+}
+
+/**
+ * 거래 목록 조회 조건을 SQL 로. 카테고리나 이름 가운데 하나는 있어야 한다(부르는 쪽이 확인).
+ * 커서는 (ts, id) 내림차순 자리를 가리킨다. 값은 모두 바인딩으로 넘긴다.
+ */
+export function buildHistoryQuery({ categories, names, cursor, limit }) {
+  const where = [];
+  const params = [];
+  const bind = (value) => {
+    params.push(value);
+    return `?${params.length}`;
+  };
+  if (categories.length > 0) where.push(`category IN (${categories.map(bind).join(', ')})`);
+  if (names.length > 0) where.push(`name IN (${names.map(bind).join(', ')})`);
+  if (cursor) {
+    const ts = bind(cursor.ts);
+    const id = bind(cursor.id);
+    where.push(`(ts < ${ts} OR (ts = ${ts} AND id < ${id}))`);
+  }
+  const sql = `SELECT id, ts, name, display, category, count, price, options FROM trades
+${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+ORDER BY ts DESC, id DESC LIMIT ${bind(limit + 1)}`;
+  return { sql, params };
+}
+
+/**
+ * 카테고리나 아이템 이름으로 거래 목록을 훑는다. 개별 거래를 새것부터 커서로 이어 준다.
+ * 상세 검색 조건의 "다음 쪽"과 같은 모양(next_cursor)으로 돌려준다.
+ */
+export async function historyTrades(db, { categories, names, cursor, limit }) {
+  const { sql, params } = buildHistoryQuery({ categories, names, cursor, limit });
+  const { results } = await db
+    .prepare(sql)
+    .bind(...params)
+    .all();
+  const rows = results ?? [];
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  return {
+    items: page.map(toHistoryItem),
+    nextCursor: rows.length > limit && last ? `${last.ts}_${last.id}` : null,
+  };
+}
+
 async function collectionInfo(db) {
   const { results } = await db
     .prepare("SELECT key, value FROM meta WHERE key IN ('started', 'collected_at')")
@@ -541,6 +634,61 @@ export async function marketOptionTrades(request, url, env, cors) {
       collectionInfo(env.MARKET),
     ]);
     return { name, type, trades, ...info };
+  });
+  return new Response(body, {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': `public, max-age=${CACHE_SECONDS}`,
+      'x-market-cache': hit ? 'hit' : 'miss',
+    },
+  });
+}
+
+/** 쉼표로 이은 목록을 정리한다. 빈 값과 중복을 뺀 뒤 max 개까지만 남긴다. */
+function parseNameList(raw, max) {
+  return [...new Set(String(raw ?? '').split(',').map(cleanName).filter(Boolean))].slice(0, max);
+}
+
+/**
+ * GET /market/history?category=&name=&cursor=&limit= → 카테고리나 아이템 이름(둘 다 쉼표로
+ * 여러 개)으로 거래 목록을 새것부터 훑는다. 경매장 화면의 "거래 내역" 탭이 쓴다.
+ *
+ * 거래 내역 API 는 최근 1시간만 주지만, 여기는 워커가 10분마다 쌓아 둔 원본(trades, RAW_DAYS)을
+ * 그대로 읽으므로 그보다 훨씬 길게 볼 수 있다.
+ */
+export async function marketHistory(request, url, env, cors) {
+  if (!env.MARKET)
+    return marketError('MARKET_NOT_CONFIGURED', '시세 기록이 아직 없습니다.', 503, cors);
+
+  const categories = parseNameList(url.searchParams.get('category'), HISTORY_MAX_CATEGORIES);
+  const names = parseNameList(url.searchParams.get('name'), RECENT_MAX_NAMES);
+  if (categories.length === 0 && names.length === 0) {
+    return marketError('MARKET_CONDITION_REQUIRED', '카테고리나 아이템 이름이 필요합니다.', 400, cors);
+  }
+  const cursor = parseHistoryCursor(url.searchParams.get('cursor'));
+  const requestedLimit = Number(url.searchParams.get('limit'));
+  const limit =
+    Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, HISTORY_MAX_LIMIT)
+      : HISTORY_DEFAULT_LIMIT;
+
+  if (await rateLimited(request, env)) {
+    return marketError('MARKET_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
+  }
+
+  const cacheKey = new URL(`https://market.cache${MARKET_HISTORY_PATH}`);
+  cacheKey.searchParams.set('category', categories.join(','));
+  cacheKey.searchParams.set('name', names.join(','));
+  cacheKey.searchParams.set('cursor', url.searchParams.get('cursor') ?? '');
+  cacheKey.searchParams.set('limit', String(limit));
+
+  const { body, hit } = await withEdgeCache(cacheKey.toString(), async () => {
+    const [{ items, nextCursor }, info] = await Promise.all([
+      historyTrades(env.MARKET, { categories, names, cursor, limit }),
+      collectionInfo(env.MARKET),
+    ]);
+    return { auction_history: items, next_cursor: nextCursor, ...info };
   });
   return new Response(body, {
     headers: {

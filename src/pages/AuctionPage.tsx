@@ -218,6 +218,12 @@ export function AuctionPage() {
   const scanning = (query.scan?.length ?? 0) > 0;
   const enabled = canQuery && submitted !== null && (isAuctionSearchReady(query) || scanning);
 
+  /**
+   * 전체 이름 인덱스 한 파일. 자동완성뿐 아니라 거래 내역 탭이 카테고리 없이 검색어만으로
+   * 찾을 때 실제 이름을 골라내는 데도 쓴다(matchingNames, useAuctionHistoryQuery).
+   */
+  const nameIndexQuery = useItemNameIndexQuery();
+
   const keywordItemsQuery = useAuctionItemsQuery(query, enabled && !scanning && tab === 'items');
   /**
    * 상세 검색은 워커가 10분마다 모아 둔 장비 매물에서 찾는다. 실시간으로는 카테고리 하나에 몇 초씩
@@ -228,7 +234,7 @@ export function AuctionPage() {
   const scanQuery = useAuctionScanQuery(query.scan, enabled && scanning && liveScan && tab === 'items');
   const itemsQuery = !scanning ? keywordItemsQuery : liveScan ? scanQuery : snapshot;
   const scanProgress = scanning && liveScan ? scanQuery.data : undefined;
-  const historyQuery = useAuctionHistoryQuery(query, enabled && tab === 'history');
+  const historyQuery = useAuctionHistoryQuery(query, nameIndexQuery.data, enabled && tab === 'history');
 
   // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
@@ -283,6 +289,8 @@ export function AuctionPage() {
 
   const itemsLoaded = itemsQuery.data?.loadedCount ?? 0;
   const historyLoaded = historyQuery.data?.loadedCount ?? 0;
+  /** 워커가 쌓아 둔 기록으로 찾을 때만 있다. 최근 1시간짜리 라이브 조회에는 없다. */
+  const historySince = historyQuery.data?.since ?? null;
 
   /**
    * 지금 보고 있는 탭의 그림을 준비한다.
@@ -336,14 +344,6 @@ export function AuctionPage() {
     resetKey: submitted,
   });
 
-  /**
-   * 자동완성은 전체 이름 인덱스 한 파일로 한다. 카테고리를 골랐으면 그 안에서만 고른다.
-   *
-   * 목록 계산은 useDeferredValue 로 입력칸 뒤로 미룬다. 고정 지연(디바운스)과 달리
-   * 기다리는 시간이 없고, 입력칸이 늘 먼저 그려진다. 계산 자체는 받을 때 전처리를
-   * 끝내 두어서 15,000개를 훑어도 1ms 안쪽이다.
-   */
-  const nameIndexQuery = useItemNameIndexQuery();
   const queryClient = useQueryClient();
 
   /**
@@ -772,16 +772,22 @@ export function AuctionPage() {
       emptyMessage={
         historyLoaded > 0
           ? historyQuery.hasNextPage && !historyMore.paused
-            ? `최근 1시간 거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 아직 없어 더 찾고 있습니다.`
-            : `최근 1시간 거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 없습니다. 검색어를 줄여 보세요.`
-          : '최근 1시간 안에 거래된 내역이 없습니다.'
+            ? `거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 아직 없어 더 찾고 있습니다.`
+            : `거래 ${formatNumber(historyLoaded)}건 중 조건에 맞는 것이 없습니다. 검색어를 줄여 보세요.`
+          : historySince
+            ? `${historySince}부터 거래된 내역이 없습니다.`
+            : '최근 1시간 안에 거래된 내역이 없습니다.'
       }
     >
       <Flex vertical gap={12}>
+        {historySince ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            거래 기록은 {historySince}부터 모았습니다.
+          </Text>
+        ) : null}
         {visibleHistory.length !== historyLoaded ? (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            최근 1시간 거래 {formatNumber(historyLoaded)}건 가운데 {formatNumber(visibleHistory.length)}건이 조건과
-            맞습니다.
+            거래 {formatNumber(historyLoaded)}건 가운데 {formatNumber(visibleHistory.length)}건이 조건과 맞습니다.
           </Text>
         ) : null}
         <Table<AuctionHistoryItem>
@@ -814,7 +820,7 @@ export function AuctionPage() {
         />
       </Flex>
     </QueryState>
-  ), [enabled, visibleHistory, historyColumns, historyLoaded, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
+  ), [enabled, visibleHistory, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   return (
     <>
@@ -930,7 +936,7 @@ export function AuctionPage() {
               onChange={(key) => setTab(key as Tab)}
               items={[
                 { key: 'items', label: '판매 중 매물', children: itemsPanel },
-                { key: 'history', label: '최근 1시간 거래 내역', children: historyPanel },
+                { key: 'history', label: '거래 내역', children: historyPanel },
               ]}
             />
           )}

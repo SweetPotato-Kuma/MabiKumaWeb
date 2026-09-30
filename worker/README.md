@@ -314,6 +314,7 @@ curl -X DELETE "https://<워커주소>/item-card?name=<이름>&category=<카테�
 | --- | --- | --- |
 | `GET /market/item?name=&days=30` | 공개 | 아이템 하나의 최근 1일 통계와 날짜별 요약 |
 | `POST /market/recent` `{ names }` | 공개 | 이름 여럿(60개까지)의 최근 1일 통계 |
+| `GET /market/history?category=&name=&cursor=&limit=` | 공개 | 카테고리나 이름(쉼표로 여럿)으로 거래 목록을 새것부터 훑기. 경매장 화면의 "거래 내역" 탭이 씀 |
 | `POST /market/collect` | 운영자 | 크론을 기다리지 않고 지금 한 번 받기 |
 
 - 거래 원본(`trades`)은 90일만 두고 10분마다 조금씩 지웁니다. 하루 요약(`daily`)은 지우지 않습니다.
