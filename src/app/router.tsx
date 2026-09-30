@@ -2,6 +2,7 @@ import { lazy, type ComponentType } from 'react';
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 import pageMeta from '@/app/pageMeta.json';
 import { ITEM_PATH_PREFIX } from '@/features/auction/dictionary';
+import { CALCULATORS, calculatorPath } from '@/features/calculators/registry';
 import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
@@ -25,6 +26,9 @@ const RelicsPage = lazyPage(() => import('@/pages/RelicsPage'), 'RelicsPage');
 const RelicSimulatorPage = lazyPage(() => import('@/pages/RelicSimulatorPage'), 'RelicSimulatorPage');
 const ReforgeSimulatorPage = lazyPage(() => import('@/pages/ReforgeSimulatorPage'), 'ReforgeSimulatorPage');
 const HolyWaterSimulatorPage = lazyPage(() => import('@/pages/HolyWaterSimulatorPage'), 'HolyWaterSimulatorPage');
+const CalculatorListPage = lazyPage(() => import('@/pages/CalculatorPages'), 'CalculatorListPage');
+// 계산기 화면은 id 를 받으므로 lazyPage(속성 없는 화면)를 쓰지 않는다.
+const CalculatorPage = lazy(async () => ({ default: (await import('@/pages/CalculatorPages')).CalculatorPage }));
 const ItemCardPage = lazyPage(() => import('@/pages/ItemCardPage'), 'ItemCardPage');
 const NotFoundPage = lazyPage(() => import('@/pages/NotFoundPage'), 'NotFoundPage');
 const PrivacyPage = lazyPage(() => import('@/pages/PrivacyPage'), 'PrivacyPage');
@@ -69,6 +73,12 @@ export const router = createBrowserRouter(
         { path: 'horn', element: <HornPage /> },
         { path: 'dungeon-coins', element: <DungeonCoinsPage /> },
         { path: 'relics', element: <RelicsPage /> },
+        { path: 'calculators', element: <CalculatorListPage /> },
+        // 계산기마다 자기 경로가 있다(빌드가 경로마다 HTML 을 굽는다). 계산기를 더하면 이 줄이 저절로 늘어난다.
+        ...CALCULATORS.map((calculator) => ({
+          path: calculatorPath(calculator.id).slice(1),
+          element: <CalculatorPage id={calculator.id} />,
+        })),
         { path: 'relic-simulator', element: <RelicSimulatorPage /> },
         { path: 'reforge-simulator', element: <ReforgeSimulatorPage /> },
         { path: 'holy-water-simulator', element: <HolyWaterSimulatorPage /> },

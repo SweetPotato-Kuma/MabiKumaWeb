@@ -232,6 +232,11 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             />
           </Flex>
 
+          {/* 이 가격에 팔면 수령액이 얼마인지 수수료 계산기로 잇는다. 판매 대금은 묶음 전체 값이다. */}
+          <Link to={`/fee-calculator?price=${price.total}`} onClick={onClose} style={{ alignSelf: 'flex-start' }}>
+            이 가격에 팔면 수령액은? 수수료 계산기에서 보기
+          </Link>
+
           <Descriptions
             column={1}
             size="small"

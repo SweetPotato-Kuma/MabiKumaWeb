@@ -48,6 +48,12 @@ describe('매물 상세 모달', () => {
     expect(screen.getByText('검')).toBeInTheDocument();
   });
 
+  it('이 가격에 팔면 수령액을 볼 수 있게 수수료 계산기로 잇는다. 묶음이면 전체 값을 넘긴다', () => {
+    renderModal({ ...DETAIL, count: 15, pricePerUnit: 1200 });
+
+    expect(screen.getByRole('link', { name: /수수료 계산기에서 보기/ })).toHaveAttribute('href', '/fee-calculator?price=18000');
+  });
+
   it('옵션을 잘라내지 않고 전부 보여 준다', () => {
     renderModal(DETAIL);
 
