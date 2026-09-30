@@ -66,6 +66,21 @@ jobs:
           VITE_ICON_BASE_URL: https://icons.spkuma.com
         run: npm run build
 
+      # 지금 올라가 있는 사이트와 비교해 새로 생기거나 바뀐 주소를 뽑아 둔다. 배포가 끝나면
+      # 비교할 옛 판이 사라지므로 배포 전에 한다. 알리는 일은 배포를 막지 않는다.
+      - name: List changed URLs for IndexNow
+        continue-on-error: true
+        run: node scripts/indexnow.mjs prepare indexnow-urls.txt
+
+      - name: Upload IndexNow list
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: indexnow-urls
+          path: indexnow-urls.txt
+          if-no-files-found: ignore
+          retention-days: 1
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -82,3 +97,20 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # 새 쪽과 키 파일이 올라간 뒤에 알려야 검색엔진이 와서 확인할 수 있다.
+      - name: Checkout scripts
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+
+      - name: Download IndexNow list
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: indexnow-urls
+
+      - name: Notify IndexNow
+        continue-on-error: true
+        run: node scripts/indexnow.mjs submit indexnow-urls.txt

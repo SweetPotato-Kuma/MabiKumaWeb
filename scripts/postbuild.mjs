@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { itemSlug } from '../src/features/auction/itemSlug.mjs';
+import { INDEXNOW_KEY, MANIFEST_FILE, fingerprint } from './lib/indexnow.mjs';
 import { collectItemPages, escapeHtml, renderItemBody } from './lib/item-pages.mjs';
 
 const distDir = resolve(process.cwd(), 'dist');
@@ -72,7 +73,11 @@ if (rootHead.length) {
  * 경로 하나의 HTML. index.html 의 제목과 설명을 그 경로 것으로 바꾸고, 본문이 있으면 #root 안에 넣는다.
  * 본문은 앱이 뜨면 앱 화면으로 바뀐다.
  */
+/** 구운 쪽마다 지문. 다음 배포 때 무엇이 바뀌었는지 IndexNow 로 알리는 데 쓴다(scripts/indexnow.mjs). */
+const fingerprints = {};
+
 function renderHtml({ path, title, description, head = [], body = '' }) {
+  fingerprints[path] = fingerprint(title, description, body);
   const url = origin ? `${origin}${encodeURI(path)}` : '';
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
@@ -252,6 +257,10 @@ if (origin) {
       .join('\n')}\n</sitemapindex>\n`,
   );
   await writeFile(resolve(distDir, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n`);
+
+  // IndexNow 키 파일과 쪽별 지문. 키 파일은 검색엔진이 알림을 보낸 곳이 이 사이트인지 확인하는 데 쓴다.
+  await writeFile(resolve(distDir, `${INDEXNOW_KEY}.txt`), INDEXNOW_KEY);
+  await writeFile(resolve(distDir, MANIFEST_FILE), JSON.stringify({ origin, pages: fingerprints }));
 }
 
 console.log(
