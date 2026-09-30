@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -303,7 +303,10 @@ export function RootLayout() {
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} entries={navEntries} />
 
       <Content style={{ ...containerStyle, paddingBlock: screens.md ? 32 : 20 }}>
-        <Outlet />
+        {/* 나눠 받는 화면을 받는 동안 푸터가 화면 안으로 올라오지 않게 한 화면 높이를 비워 둔다. */}
+        <Suspense fallback={<div style={{ minHeight: '100vh' }} />}>
+          <Outlet />
+        </Suspense>
       </Content>
 
       {/*

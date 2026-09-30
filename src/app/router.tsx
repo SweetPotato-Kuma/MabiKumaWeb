@@ -1,3 +1,4 @@
+import { lazy, type ComponentType } from 'react';
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 import pageMeta from '@/app/pageMeta.json';
 import { ITEM_PATH_PREFIX } from '@/features/auction/dictionary';
@@ -6,17 +7,27 @@ import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionRoute } from '@/pages/AuctionRoute';
 import { ItemsPage } from '@/pages/ItemsPage';
 import { LegacyRedirect } from '@/pages/LegacyRedirect';
-import { BagsPage } from '@/pages/BagsPage';
-import { MagmellPassPage } from '@/pages/MagmellPassPage';
-import { HornPage } from '@/pages/HornPage';
-import { DungeonCoinsPage } from '@/pages/DungeonCoinsPage';
-import { RelicsPage } from '@/pages/RelicsPage';
-import { RelicSimulatorPage } from '@/pages/RelicSimulatorPage';
-import { ReforgeSimulatorPage } from '@/pages/ReforgeSimulatorPage';
-import { HolyWaterSimulatorPage } from '@/pages/HolyWaterSimulatorPage';
-import { ItemCardPage } from '@/pages/ItemCardPage';
-import { NotFoundPage } from '@/pages/NotFoundPage';
-import { PrivacyPage } from '@/pages/PrivacyPage';
+
+/**
+ * 검색으로 바로 들어오는 경매장과 아이템 정보는 첫 번들에 두고, 나머지 화면은 열 때 받는다.
+ * 첫 방문자가 쓰지 않는 화면의 코드를 같이 받지 않게 하려는 것이다. 받는 동안은 RootLayout 의 Suspense 가 받는다.
+ */
+const lazyPage = <Name extends string>(
+  load: () => Promise<Record<Name, ComponentType>>,
+  name: Name,
+) => lazy(async () => ({ default: (await load())[name] }));
+
+const BagsPage = lazyPage(() => import('@/pages/BagsPage'), 'BagsPage');
+const MagmellPassPage = lazyPage(() => import('@/pages/MagmellPassPage'), 'MagmellPassPage');
+const HornPage = lazyPage(() => import('@/pages/HornPage'), 'HornPage');
+const DungeonCoinsPage = lazyPage(() => import('@/pages/DungeonCoinsPage'), 'DungeonCoinsPage');
+const RelicsPage = lazyPage(() => import('@/pages/RelicsPage'), 'RelicsPage');
+const RelicSimulatorPage = lazyPage(() => import('@/pages/RelicSimulatorPage'), 'RelicSimulatorPage');
+const ReforgeSimulatorPage = lazyPage(() => import('@/pages/ReforgeSimulatorPage'), 'ReforgeSimulatorPage');
+const HolyWaterSimulatorPage = lazyPage(() => import('@/pages/HolyWaterSimulatorPage'), 'HolyWaterSimulatorPage');
+const ItemCardPage = lazyPage(() => import('@/pages/ItemCardPage'), 'ItemCardPage');
+const NotFoundPage = lazyPage(() => import('@/pages/NotFoundPage'), 'NotFoundPage');
+const PrivacyPage = lazyPage(() => import('@/pages/PrivacyPage'), 'PrivacyPage');
 
 /**
  * 아이템 카드 만들기는 운영자 작업 화면이지만 배포본에도 올라간다. 게임을 하는 컴퓨터에서
