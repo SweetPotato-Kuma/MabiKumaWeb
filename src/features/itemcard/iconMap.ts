@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 /**
@@ -96,6 +96,20 @@ export function usePrefetchIconMaps(categories: readonly string[]): void {
       void queryClient.prefetchQuery(iconMapQueryOptions(category));
     }
   }, [queryClient, key]);
+}
+
+/**
+ * 카테고리를 누르기 전에 그림 목록을 받아 두는 함수. 마우스를 올린 순간부터 누를 때까지의 짧은 틈에
+ * 받아 두면, 누른 화면의 행이 그려질 때 그림 목록이 이미 와 있다.
+ */
+export function usePrefetchIconMap(): (category: string) => void {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (category: string) => {
+      if (isIconMapConfigured() && category) void queryClient.prefetchQuery(iconMapQueryOptions(category));
+    },
+    [queryClient],
+  );
 }
 
 /**

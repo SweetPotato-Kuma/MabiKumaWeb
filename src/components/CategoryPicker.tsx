@@ -8,6 +8,7 @@ import {
   groupKeyOf,
   isGroupKey,
 } from '@/features/auction/categoryTree';
+import { usePrefetchIconMap } from '@/features/itemcard/iconMap';
 import { formatNumber } from '@/lib/format';
 
 const { Text } = Typography;
@@ -96,6 +97,7 @@ export function CategoryPicker({
   allLabel = '전체',
   showAll = true,
 }: CategoryPickerProps) {
+  const prefetchIconMap = usePrefetchIconMap();
   const screens = Grid.useBreakpoint();
   const isWide = Boolean(screens.md);
 
@@ -145,6 +147,9 @@ export function CategoryPicker({
       selectedKeys={[value]}
       expandedKeys={expandedKeys}
       onExpand={setExpandedKeys}
+      onMouseEnter={({ node }) => {
+        if (!isGroupKey(String(node.key))) prefetchIconMap(String(node.key));
+      }}
       onClick={(_event, node) => {
         // 묶음 행은 선택 대상이 아니라 onSelect 가 불리지 않는다. 여기서 펼침을 맡는다.
         if (isGroupKey(String(node.key))) toggleGroup(node.key);

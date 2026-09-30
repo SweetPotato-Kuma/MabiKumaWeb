@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -34,7 +35,9 @@ afterEach(() => {
 function renderPicker(onChange = () => {}) {
   return render(
     <AppProviders>
-      <CategoryPicker value="" onChange={onChange} />
+      <QueryClientProvider client={new QueryClient()}>
+        <CategoryPicker value="" onChange={onChange} />
+      </QueryClientProvider>
     </AppProviders>,
   );
 }

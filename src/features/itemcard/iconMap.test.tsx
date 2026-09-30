@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { iconMapUrl, parseIconMap, useIconMaps, useItemBrief, usePrefetchIconMaps } from './iconMap';
+import { iconMapUrl, parseIconMap, useIconMaps, useItemBrief, usePrefetchIconMap, usePrefetchIconMaps } from './iconMap';
 
 const BASE = 'https://icons.example';
 
@@ -135,5 +135,22 @@ describe('usePrefetchIconMaps', () => {
     renderHook(() => usePrefetchIconMaps(['검']), { wrapper });
 
     expect(maps.fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('usePrefetchIconMap', () => {
+  it('부른 카테고리의 목록을 받아 두고, 빈 이름과 그림 도메인이 없을 때는 받지 않는다', async () => {
+    const maps = stubMaps({ 검: { '롱 소드': ['a.png'] } });
+    await maps.register('검');
+
+    const { result } = renderHook(() => usePrefetchIconMap(), { wrapper });
+    result.current('');
+    expect(maps.fetchMock).not.toHaveBeenCalled();
+    result.current('검');
+    await waitFor(() => expect(maps.fetchMock).toHaveBeenCalledTimes(1));
+
+    vi.stubEnv('VITE_ICON_BASE_URL', '');
+    result.current('활');
+    expect(maps.fetchMock).toHaveBeenCalledTimes(1);
   });
 });
