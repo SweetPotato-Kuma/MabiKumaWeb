@@ -28,6 +28,7 @@ import {
   StarFillIcon,
   WaterDropIcon,
 } from '@/components/icons';
+import { HolyWaterOdds } from '@/components/holyWater/HolyWaterOdds';
 import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import { useMarketPrices, type PriceState } from '@/features/crafting/market';
 import {
@@ -36,7 +37,6 @@ import {
   HOLY_WATER_EFFECTS,
   HOLY_WATER_SCROLLS,
   HOLY_WATER_TIERS,
-  tierChance,
   TOP_TIER,
   topShare,
   tierOf,
@@ -490,33 +490,6 @@ function BatchSummary({ draws }: { draws: ShownDraw[] }) {
   );
 }
 
-/** 아직 바르지 않았을 때. 한 번 바를 때 등급마다 나올 확률을 둔다. */
-function TierOdds() {
-  return (
-    <Flex vertical gap={8}>
-      <Text type="secondary" style={{ fontSize: 13 }}>
-        아직 바르지 않았습니다.
-      </Text>
-      {HOLY_WATER_TIERS.map((tier) => {
-        const chance = TIER_CHANCES.get(tier) ?? 0;
-        return (
-          <Flex key={tier} gap={8} align="center">
-            <span style={{ width: 88 }}>
-              <TierTag tier={tier} />
-            </span>
-            <Text strong className="tnum">
-              {formatChance(chance)}
-            </Text>
-            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-              평균 {formatNumber(Math.round(1 / chance))}번에 한 번
-            </Text>
-          </Flex>
-        );
-      })}
-    </Flex>
-  );
-}
-
 /** 여러 번 발랐을 때 방금 나온 것들. 한 줄에 하나, 먼저 나온 것이 아래다. */
 function ResultList({ draws }: { draws: ShownDraw[] }) {
   const { token } = theme.useToken();
@@ -624,9 +597,6 @@ const EFFECT_OPTIONS = HOLY_WATER_EFFECTS.map((effect, index) => ({
   label: effect.name,
 }));
 
-/** 등급마다 한 번 발라 그 등급 이상이 나올 확률. 늘 같아 한 번만 센다. */
-const TIER_CHANCES = new Map(HOLY_WATER_TIERS.map((tier) => [tier, tierChance(tier)]));
-
 /** 노리는 효과. 이 효과가 이 수치 이상으로 붙기를 바란다. effect 는 HOLY_WATER_EFFECTS 의 순번이다. */
 interface EffectTarget {
   effect: number;
@@ -646,7 +616,10 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
 
   const priceNames = useMemo(() => [HOLY_WATER_NAME], []);
   const priceState = useMarketPrices(priceNames).get(HOLY_WATER_NAME);
-  const price = lowestOf(priceState);
+  const auctionPrice = lowestOf(priceState);
+  // 성수 가격은 경매장 최저가에서 시작한다. 직접 만들어 쓰는 사람은 제작비를 넣는다. 고친 값은 이 화면의 모든 비용이 쓴다.
+  const [priceOverride, setPriceOverride] = useState<number | null>(null);
+  const price = priceOverride ?? auctionPrice;
   const priceLoading = priceState?.status === 'loading';
 
   const shown = useMemo(() => simulator.draws.map(showDraw), [simulator.draws]);
@@ -913,7 +886,9 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
                 {simulator.lastBatch > 1 ? ` ${formatNumber(simulator.lastBatch)}개` : ''}
               </Text>
               {last === null ? (
-                <TierOdds />
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  아직 바르지 않았습니다.
+                </Text>
               ) : (
                 <div
                   key={reveal ?? 'still'}
@@ -976,13 +951,23 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
             <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
               {priceLoading
                 ? '성수 시세를 받는 중입니다.'
-                : price === null
-                  ? '성수 시세가 없습니다.'
-                  : `성수 최저가 ${formatGold(price)}. 게임 데이터는 평균 10분 지연됩니다.`}
+                : priceOverride !== null
+                  ? `직접 정한 성수 가격 ${formatGold(priceOverride)}으로 셉니다.`
+                  : price === null
+                    ? '성수 시세가 없습니다.'
+                    : `성수 최저가 ${formatGold(price)}. 게임 데이터는 평균 10분 지연됩니다.`}
             </Text>
           </Flex>
         </Flex>
       </Card>
+
+      <HolyWaterOdds
+        price={price}
+        auctionPrice={auctionPrice}
+        priceLoading={priceLoading}
+        priceOverridden={priceOverride !== null}
+        onPriceChange={setPriceOverride}
+      />
 
       <Collapse
         items={[

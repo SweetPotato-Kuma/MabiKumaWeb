@@ -4,6 +4,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { fetchAuctionList } from '@/features/auction/api';
+import { oddsCounts } from '@/features/holyWater/odds';
+import { chanceAbovePercent, tierChance } from '@/features/holyWater/simulator';
+import { formatChance } from '@/features/simulator/trials';
 import { HolyWaterSimulatorPage } from '@/pages/HolyWaterSimulatorPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
@@ -174,5 +177,160 @@ describe('무리아스의 성수 시뮬레이터', () => {
     await waitFor(() =>
       expect(screen.queryByRole('region', { name: '바르기 횟수별 확률' })).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe('성수 확률과 비용', () => {
+  const PRICE = 2_500_000;
+
+  function stubMarket(price: number | null) {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    vi.mocked(fetchAuctionList).mockImplementation(async ({ itemName }) => ({
+      auction_item:
+        itemName === '무리아스의 성수' && price !== null
+          ? [
+              {
+                item_name: itemName,
+                item_display_name: itemName,
+                item_count: 3,
+                auction_item_category: '포션',
+                auction_price_per_unit: price,
+                date_auction_expire: '2026-09-30T00:00:00Z',
+              },
+            ]
+          : [],
+      next_cursor: null,
+    }));
+  }
+
+  beforeEach(() => stubMarket(PRICE));
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(fetchAuctionList).mockReset();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  const odds = () => screen.getByRole('region', { name: '확률과 비용' });
+  const won = (n: number) => `${n.toLocaleString('ko-KR')} G`;
+
+  it('제목 옆에 추정치 배지가 있고, 올리면 확률의 출처와 계산 방식을 알려 준다', async () => {
+    renderPage();
+
+    const badge = within(odds()).getByLabelText('추정치, 확률의 출처와 계산 방식');
+    expect(badge).toHaveTextContent('추정치');
+    fireEvent.mouseEnter(badge);
+
+    expect(await screen.findByText(/공식 확률이 아닙니다/)).toBeInTheDocument();
+    expect(screen.getByText(/102장을 같은 확률로 고르고/)).toBeInTheDocument();
+  });
+
+  it('구간마다 평균, 절반, 90% 확률 횟수와 그 횟수의 비용이 보인다', async () => {
+    renderPage();
+    await screen.findByText(/성수 최저가 2,500,000/);
+
+    const chance = tierChance(98);
+    const counts = oddsCounts(chance)!;
+    const group = within(odds()).getByRole('group', { name: '98% 이상' });
+
+    expect(group).toHaveTextContent(`확률 ${formatChance(chance)}`);
+    expect(group).toHaveTextContent(`${counts.mean}번에 한 번`);
+    expect(group).toHaveTextContent(won(counts.mean * PRICE));
+    expect(group).toHaveTextContent(`${counts.half}번 안`);
+    expect(group).toHaveTextContent(won(counts.half * PRICE));
+    expect(group).toHaveTextContent(`${counts.ninety}번 안`);
+    expect(group).toHaveTextContent(won(counts.ninety * PRICE));
+  });
+
+  it('네 구간이 모두 있다', async () => {
+    renderPage();
+
+    for (const tier of [50, 90, 95, 98]) {
+      expect(within(odds()).getByRole('group', { name: `${tier}% 이상` })).toBeInTheDocument();
+    }
+  });
+
+  it('현재 수치를 넣으면 그보다 높게 나올 확률과 횟수, 비용이 계산된다', async () => {
+    renderPage();
+    await screen.findByText(/성수 최저가 2,500,000/);
+
+    fireEvent.change(within(odds()).getByLabelText('현재 내 수치'), { target: { value: '97.5' } });
+
+    const chance = chanceAbovePercent(97.5);
+    const counts = oddsCounts(chance)!;
+    const group = await within(odds()).findByRole('group', { name: '내 수치 97.5% 초과' });
+    expect(group).toHaveTextContent(`확률 ${formatChance(chance)}`);
+    expect(group).toHaveTextContent(`${counts.mean}번에 한 번`);
+    expect(group).toHaveTextContent(won(counts.ninety * PRICE));
+  });
+
+  it('더 높은 수치가 없으면 그렇게 알린다', async () => {
+    renderPage();
+
+    fireEvent.change(within(odds()).getByLabelText('현재 내 수치'), { target: { value: '100' } });
+
+    const group = await within(odds()).findByRole('group', { name: '내 수치 100% 초과' });
+    expect(group).toHaveTextContent('이 수치보다 높게는 나오지 않습니다.');
+  });
+
+  it('성수 가격을 직접 바꾸면 모든 비용이 다시 계산된다', async () => {
+    renderPage();
+    await screen.findByText(/성수 최저가 2,500,000/);
+    expect(within(odds()).getByLabelText('성수 가격')).toHaveValue('2,500,000');
+
+    fireEvent.change(within(odds()).getByLabelText('성수 가격'), { target: { value: '1000000' } });
+
+    const counts = oddsCounts(tierChance(98))!;
+    const group = within(odds()).getByRole('group', { name: '98% 이상' });
+    expect(group).toHaveTextContent(won(counts.mean * 1_000_000));
+    expect(group).toHaveTextContent(won(counts.ninety * 1_000_000));
+    // 쓴 골드와 안내 줄도 같은 값을 쓴다.
+    expect(screen.getByText(/직접 정한 성수 가격 1,000,000 G으로 셉니다\./)).toBeInTheDocument();
+  });
+
+  it('직접 바꾼 값은 경매장 최저가로 되돌릴 수 있다', async () => {
+    renderPage();
+    await screen.findByText(/성수 최저가 2,500,000/);
+    fireEvent.change(within(odds()).getByLabelText('성수 가격'), { target: { value: '1000000' } });
+
+    fireEvent.click(await within(odds()).findByRole('button', { name: /경매장 최저가 2,500,000 G로/ }));
+
+    const counts = oddsCounts(tierChance(98))!;
+    expect(within(odds()).getByRole('group', { name: '98% 이상' })).toHaveTextContent(won(counts.mean * PRICE));
+    expect(screen.getByText(/성수 최저가 2,500,000/)).toBeInTheDocument();
+  });
+
+  it('성수 시세가 없으면 횟수만 보이고 비용은 비어 있다가, 가격을 넣으면 채워진다', async () => {
+    stubMarket(null);
+    renderPage();
+    await screen.findByText('성수 시세가 없습니다.');
+
+    const group = within(odds()).getByRole('group', { name: '98% 이상' });
+    expect(group).not.toHaveTextContent(/\d G/);
+    const counts = oddsCounts(tierChance(98))!;
+
+    fireEvent.change(within(odds()).getByLabelText('성수 가격'), { target: { value: '500000' } });
+
+    expect(within(odds()).getByRole('group', { name: '98% 이상' })).toHaveTextContent(won(counts.mean * 500_000));
+  });
+
+  it('넓은 화면에서는 표로 그린다', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    renderPage();
+
+    for (const name of ['구간', '확률', '평균', '절반 확률로', '90% 확률로']) {
+      expect(within(odds()).getByRole('columnheader', { name })).toBeInTheDocument();
+    }
+    expect(within(odds()).getAllByRole('row')).toHaveLength(5);
   });
 });
