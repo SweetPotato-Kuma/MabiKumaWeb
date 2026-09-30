@@ -5,6 +5,7 @@ import {
   DEFAULT_COLOR_PERCENT,
   emptyColorChannel,
   emptyColorChannels,
+  hasColorChannels,
   type ColorChannel,
   type ColorChannels,
 } from '@/features/colorChannels';
@@ -16,25 +17,41 @@ import { buildBagTree, type BagTreeNode } from './groups';
 /**
  * 튼튼한 주머니 찾기의 검색 조건을 주소 쿼리스트링으로 옮기고 되돌린다.
  *
- * 서버는 `server`, 고른 주머니는 `bag` 여러 개다. 파트 A, B, C 의 채널별 색 조건은 `a`, `b`, `c` 다.
+ * 서버는 `server`, 고른 주머니는 `bag` 여러 개다. 파트 A, B, C 의 색 조건은 `a`, `b`, `c` 다.
  * 채널마다 `r100-200`(범위, 한쪽만 적어도 된다) 이나 `g120p10`(120 에서 10% 이내) 을 쉼표로 이어
- * 쓴다. 조건을 걸지 않은 것은 주소에서 뺀다.
+ * 쓴다. 검색 여부는 기본값(파트 A 만 켜짐)과 다를 때만 싣는다. 끈 파트는 `-`, 채널 없이 켠 파트는 `on`
+ * 이다. 조건을 건 파트는 켜진 것이라 채널 글자만 있으면 된다. 끈 파트의 채널 값은 싣지 않는다.
  */
+
+/** 파트 하나의 색 조건. 끈 파트는 채널 값이 있어도 쓰지 않는다. */
+export interface PartCondition {
+  /** 이 파트의 색으로 검색할지. */
+  enabled: boolean;
+  /** 채널을 하나도 걸지 않았으면 켜 두어도 어떤 색이든 찾는다. */
+  channels: ColorChannels;
+}
 
 export interface BagSearchConditions {
   server: string;
   /** 트리에서 체크한 칸들. 비어 있으면 모든 주머니. */
   bags: string[];
-  /** 파트 A, B, C 의 채널 조건. 채널을 하나도 걸지 않은 파트는 어떤 색이든 찾는다. */
-  parts: ColorChannels[];
+  /** 파트 A, B, C 의 조건. */
+  parts: PartCondition[];
 }
 
-/** 처음에는 아무 조건도 걸지 않는다. 사용자가 채우기 전에 값이 들어 있으면 안 된다. */
-export const emptyParts = (): ColorChannels[] => [
-  emptyColorChannels(),
-  emptyColorChannels(),
-  emptyColorChannels(),
+/**
+ * 처음에는 파트 A 만 켜 둔다. 다만 채널은 모두 비어 있다. 사용자가 채우기 전에 값이 들어 있으면 안 된다.
+ * 파트 B, C 는 없는 주머니도 많아서 꺼 둔다.
+ */
+export const defaultParts = (): PartCondition[] => [
+  { enabled: true, channels: emptyColorChannels() },
+  { enabled: false, channels: emptyColorChannels() },
+  { enabled: false, channels: emptyColorChannels() },
 ];
+
+const DEFAULT_ENABLED = [true, false, false] as const;
+const DISABLED = '-';
+const ENABLED_EMPTY = 'on';
 
 const DEFAULT_SERVER = SERVER_NAMES[0];
 const PART_KEYS = ['a', 'b', 'c'] as const;
@@ -104,7 +121,16 @@ export function readBagConditions(params: URLSearchParams): BagSearchConditions 
     .filter((key) => !key.startsWith('group:') || KNOWN_GROUPS.has(key))
     .slice(0, MAX_BAGS);
 
-  const parts = PART_KEYS.map((key) => channelsFromParam(params.get(key)));
+  const parts = PART_KEYS.map((key, part): PartCondition => {
+    const value = params.get(key);
+    if (value === DISABLED) return { enabled: false, channels: emptyColorChannels() };
+    if (value === ENABLED_EMPTY) return { enabled: true, channels: emptyColorChannels() };
+    const channels = channelsFromParam(value);
+    // 채널 글자가 있으면 켠 파트다. 알아볼 수 없는 글자는 기본 상태로 돌린다.
+    return hasColorChannels(channels)
+      ? { enabled: true, channels }
+      : { enabled: DEFAULT_ENABLED[part], channels };
+  });
 
   return { server, bags, parts };
 }
@@ -114,7 +140,11 @@ export function bagConditionParams(
   conditions: BagSearchConditions,
 ): Record<string, string | string[] | null> {
   const parts = Object.fromEntries(
-    PART_KEYS.map((key, part) => [key, channelsToParam(conditions.parts[part] ?? emptyColorChannels())]),
+    PART_KEYS.map((key, part) => {
+      const { enabled, channels } = conditions.parts[part] ?? defaultParts()[part];
+      if (!enabled) return [key, DEFAULT_ENABLED[part] ? DISABLED : null];
+      return [key, channelsToParam(channels) ?? (DEFAULT_ENABLED[part] ? null : ENABLED_EMPTY)];
+    }),
   );
 
   return {

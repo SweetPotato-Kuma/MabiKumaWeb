@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
   Flex,
   Grid,
@@ -25,7 +26,12 @@ import {
 import { BagImage } from '@/components/BagImage';
 import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { canSearchBags } from '@/features/bags/api';
-import { emptyColorChannels, hasColorChannels, type ColorChannels } from '@/features/colorChannels';
+import {
+  COLOR_CHANNEL_KEYS,
+  describeColorChannel,
+  emptyColorChannels,
+  hasColorChannels,
+} from '@/features/colorChannels';
 import { BAG_NAMES } from '@/features/bags/constants';
 import { formatRgb } from '@/features/bags/color';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
@@ -43,6 +49,7 @@ import {
   bagConditionParams,
   hasBagConditions,
   readBagConditions,
+  type PartCondition,
 } from '@/features/bags/searchParams';
 import { useBagSearch } from '@/features/bags/useBagSearch';
 import { useGridFit } from '@/features/bags/useGridFit';
@@ -51,7 +58,7 @@ import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
 import { useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
-import { GridIcon, ListIcon, SearchIcon } from '@/components/icons';
+import { ArrowDownIcon, GridIcon, ListIcon, SearchIcon } from '@/components/icons';
 
 const { Title, Text } = Typography;
 
@@ -230,35 +237,87 @@ function toTreeData(nodes: readonly BagTreeNode[]): TreeDataNode[] {
 /**
  * 파트 하나의 색 조건. 경매장 상세 검색과 같은 R, G, B 채널 입력이다. 채널마다 범위이거나 유사도(기준값
  * ± 오차%)이고, 아무 채널도 채우지 않은 파트는 어떤 색이든 찾는다.
+ *
+ * 파트마다 검색 여부를 고르고 접을 수 있다. 세 파트를 다 펼치면 아래의 주머니 분류가 화면 밖으로 밀려나서,
+ * 처음에는 파트 A 만 펼쳐 둔다. 접어도 건 조건은 머리줄에 적어 무엇을 걸었는지 보인다.
  */
 function PartChannelsRow({
   part,
-  channels,
+  condition,
+  open,
+  onOpenChange,
   onChange,
 }: {
   part: number;
-  channels: ColorChannels;
-  onChange: (next: ColorChannels) => void;
+  condition: PartCondition;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: (next: PartCondition) => void;
 }) {
+  const label = PART_LABELS[part];
+  const narrowed = hasColorChannels(condition.channels);
+  const summary = COLOR_CHANNEL_KEYS.map((key) => describeColorChannel(key, condition.channels[key]))
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <Flex vertical gap={6}>
       <Flex justify="space-between" align="center" gap={8}>
-        <Text strong>{PART_LABELS[part]}</Text>
-        {hasColorChannels(channels) ? (
+        <Checkbox
+          checked={condition.enabled}
+          onChange={(event) => {
+            onChange({ ...condition, enabled: event.target.checked });
+            // 켜면 바로 채울 수 있게 펼치고, 끄면 접는다.
+            onOpenChange(event.target.checked);
+          }}
+        >
+          <Text strong>{label}</Text>
+        </Checkbox>
+        <Flex align="center" gap={2} style={{ minWidth: 0 }}>
+          {!open && condition.enabled && summary ? (
+            <Text
+              type="secondary"
+              className="tnum"
+              ellipsis
+              style={{ fontSize: 12, minWidth: 0, maxWidth: 160 }}
+              title={summary}
+            >
+              {summary}
+            </Text>
+          ) : null}
+          {open && narrowed ? (
+            <Button
+              type="link"
+              size="small"
+              aria-label={`${label} 조건 지우기`}
+              onClick={() => onChange({ ...condition, channels: emptyColorChannels() })}
+            >
+              지우기
+            </Button>
+          ) : null}
           <Button
-            type="link"
+            type="text"
             size="small"
-            aria-label={`${PART_LABELS[part]} 조건 지우기`}
-            onClick={() => onChange(emptyColorChannels())}
-          >
-            지우기
-          </Button>
-        ) : null}
+            aria-expanded={open}
+            aria-label={`${label} 조건 ${open ? '접기' : '펼치기'}`}
+            icon={
+              <ArrowDownIcon
+                style={{ transform: open ? undefined : 'rotate(-90deg)', transition: 'transform 0.15s' }}
+              />
+            }
+            onClick={() => onOpenChange(!open)}
+          />
+        </Flex>
       </Flex>
-      <ColorChannelFields
-        channels={channels}
-        onChange={(key, channel) => onChange({ ...channels, [key]: channel })}
-      />
+      {open ? (
+        <ColorChannelFields
+          channels={condition.channels}
+          disabled={!condition.enabled}
+          onChange={(key, channel) =>
+            onChange({ ...condition, channels: { ...condition.channels, [key]: channel } })
+          }
+        />
+      ) : null}
     </Flex>
   );
 }
@@ -281,7 +340,11 @@ export function BagsPage() {
   const [server, setServer] = useState<string>(initial.conditions.server);
   /** 트리에서 체크한 칸들. 비어 있으면 모든 주머니. */
   const [selectedBags, setSelectedBags] = useState<string[]>(initial.conditions.bags);
-  const [parts, setParts] = useState<ColorChannels[]>(initial.conditions.parts);
+  const [parts, setParts] = useState<PartCondition[]>(initial.conditions.parts);
+  // 처음에는 켜 둔 파트만 펼친다. 조건이 실린 링크로 들어왔으면 건 파트가 보인다.
+  const [openParts, setOpenParts] = useState<boolean[]>(() =>
+    initial.conditions.parts.map((part) => part.enabled),
+  );
   useEffect(() => {
     const timer = setTimeout(
       () => updateParams(bagConditionParams({ server, bags: selectedBags, parts })),
@@ -312,9 +375,15 @@ export function BagsPage() {
   );
   const treeData = useMemo(() => toTreeData(bagTree), [bagTree]);
   const bagNames = useMemo(() => namesOfSelection(bagTree, selectedBags), [bagTree, selectedBags]);
+  // 끈 파트는 채널 값이 있어도 쓰지 않는다.
+  const searchParts = useMemo(
+    () => parts.map((part) => (part.enabled ? part.channels : null)),
+    [parts],
+  );
+
   const listings = useMemo(
-    () => buildListings(state.channels, { bagNames, parts }),
-    [state.channels, bagNames, parts],
+    () => buildListings(state.channels, { bagNames, parts: searchParts }),
+    [state.channels, bagNames, searchParts],
   );
 
   /**
@@ -354,7 +423,7 @@ export function BagsPage() {
   const percent = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
   const failed = state.failedChannels.length > 0 && !loading;
 
-  const resetKey = `${state.server}|${selectedBags.join(',')}|${JSON.stringify(parts)}|${currentTab}`;
+  const resetKey = `${state.server}|${selectedBags.join(',')}|${JSON.stringify(searchParts)}|${currentTab}`;
   const tablePaging = useListPagination(resetKey, { defaultPageSize: TABLE_PAGE_SIZE });
 
   // 그림 보기는 화면에 맞춘 개수씩 넘긴다. 위쪽 안내가 생기거나 없어지면 격자가 움직이므로 다시 잰다.
@@ -442,11 +511,15 @@ export function BagsPage() {
         </Flex>
         <Flex vertical gap={12}>
           <Text>원하는 색</Text>
-          {parts.map((channels, part) => (
+          {parts.map((condition, part) => (
             <PartChannelsRow
               key={part}
               part={part}
-              channels={channels}
+              condition={condition}
+              open={openParts[part]}
+              onOpenChange={(open) =>
+                setOpenParts((prev) => prev.map((entry, index) => (index === part ? open : entry)))
+              }
               onChange={(next) =>
                 setParts((prev) => prev.map((entry, index) => (index === part ? next : entry)))
               }

@@ -42,9 +42,12 @@ function switchMode(channel: ColorChannel, similar: boolean): ColorChannel {
 export function ColorChannelFields({
   channels,
   onChange,
+  disabled = false,
 }: {
   channels: ColorChannels;
   onChange: (key: ColorChannelKey, next: ColorChannel) => void;
+  /** 쓰지 않는 조건이라 고칠 수 없게 둔다. 값은 그대로 남는다. */
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -76,6 +79,7 @@ export function ColorChannelFields({
                     controls={false}
                     placeholder="기준값"
                     aria-label={`${name} 기준값`}
+                    disabled={disabled}
                     style={FIELD_STYLE}
                   />
                   <span aria-hidden>±</span>
@@ -88,6 +92,7 @@ export function ColorChannelFields({
                     controls={false}
                     suffix="%"
                     aria-label={`${name} 오차`}
+                    disabled={disabled}
                     style={FIELD_STYLE}
                   />
                 </Flex>
@@ -102,6 +107,7 @@ export function ColorChannelFields({
                     controls={false}
                     placeholder="최소"
                     aria-label={`${name} 최소`}
+                    disabled={disabled}
                     style={FIELD_STYLE}
                   />
                   <span aria-hidden>~</span>
@@ -114,6 +120,7 @@ export function ColorChannelFields({
                     controls={false}
                     placeholder="최대"
                     aria-label={`${name} 최대`}
+                    disabled={disabled}
                     style={FIELD_STYLE}
                   />
                 </Flex>
@@ -123,6 +130,7 @@ export function ColorChannelFields({
               <Checkbox
                 checked={channel.similar}
                 onChange={(event) => onChange(key, switchMode(channel, event.target.checked))}
+                disabled={disabled}
                 aria-label={`${name} 유사도`}
               >
                 유사도

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { emptyColorChannels, type ColorChannel } from '@/features/colorChannels';
-import { bagConditionParams, emptyParts, hasBagConditions, readBagConditions } from './searchParams';
+import {
+  bagConditionParams,
+  defaultParts,
+  hasBagConditions,
+  readBagConditions,
+} from './searchParams';
 
 const params = (query: string) => new URLSearchParams(query);
 
@@ -30,7 +35,7 @@ function toQuery(written: Record<string, string | string[] | null>) {
 
 describe('주머니 찾기 주소', () => {
   it('아무것도 없으면 기본 조건이고, 값이 미리 들어 있지 않다', () => {
-    expect(readBagConditions(params(''))).toEqual({ server: '류트', bags: [], parts: emptyParts() });
+    expect(readBagConditions(params(''))).toEqual({ server: '류트', bags: [], parts: defaultParts() });
     expect(hasBagConditions(params(''))).toBe(false);
   });
 
@@ -56,7 +61,7 @@ describe('주머니 찾기 주소', () => {
   });
 
   it('기본 조건이면 주소에 아무것도 쓰지 않는다', () => {
-    expect(bagConditionParams({ server: '류트', bags: [], parts: emptyParts() })).toEqual({
+    expect(bagConditionParams({ server: '류트', bags: [], parts: defaultParts() })).toEqual({
       server: null,
       bag: [],
       a: null,
@@ -66,7 +71,7 @@ describe('주머니 찾기 주소', () => {
   });
 
   it('바뀐 서버와 주머니만 주소에 쓰고, 읽으면 그대로 돌아온다', () => {
-    const conditions = { server: '울프', bags: ['group:leather'], parts: emptyParts() };
+    const conditions = { server: '울프', bags: ['group:leather'], parts: defaultParts() };
 
     expect(bagConditionParams(conditions)).toMatchObject({ server: '울프', bag: ['group:leather'] });
     expect(readBagConditions(toQuery(bagConditionParams(conditions)))).toEqual(conditions);
@@ -76,34 +81,34 @@ describe('주머니 찾기 주소', () => {
     it('범위와 유사도를 읽는다', () => {
       const { parts } = readBagConditions(params('a=r100-200,g120p15,b-50&c=r-'));
 
-      expect(parts[0].r).toEqual(range(100, 200));
-      expect(parts[0].g).toEqual(near(120, 15));
-      expect(parts[0].b).toEqual(range(null, 50));
+      expect(parts[0].channels.r).toEqual(range(100, 200));
+      expect(parts[0].channels.g).toEqual(near(120, 15));
+      expect(parts[0].channels.b).toEqual(range(null, 50));
       // 양쪽이 빈 범위는 건 것이 아니다.
-      expect(parts[2].r).toEqual(range(null, null));
+      expect(parts[2].channels.r).toEqual(range(null, null));
       expect(hasBagConditions(params('b=r10-20'))).toBe(true);
     });
 
     it('범위를 벗어나거나 엇갈린 값은 바로잡고, 알아볼 수 없는 조각은 버린다', () => {
       const { parts } = readBagConditions(params('a=r5p200,g200-100,bxyz&c=r300-999'));
 
-      expect(parts[0].r).toEqual(near(5, 100));
-      expect(parts[0].g).toEqual(range(100, 200));
-      expect(parts[0].b).toEqual(range(null, null));
-      expect(parts[2].r).toEqual(range(255, 255));
+      expect(parts[0].channels.r).toEqual(near(5, 100));
+      expect(parts[0].channels.g).toEqual(range(100, 200));
+      expect(parts[0].channels.b).toEqual(range(null, null));
+      expect(parts[2].channels.r).toEqual(range(255, 255));
     });
 
     it('예전 링크의 색 글자(16진수)는 조건으로 읽지 않는다', () => {
       const { parts } = readBagConditions(params('a=ff0000&b=-'));
 
-      expect(parts).toEqual(emptyParts());
+      expect(parts).toEqual(defaultParts());
     });
 
     it('건 채널만 주소에 쓰고, 읽으면 그대로 돌아온다', () => {
       const parts = [
-        { ...emptyColorChannels(), r: range(100, 200), g: near(120, 15) },
-        emptyColorChannels(),
-        { ...emptyColorChannels(), b: range(null, 50) },
+        { enabled: true, channels: { ...emptyColorChannels(), r: range(100, 200), g: near(120, 15) } },
+        { enabled: false, channels: emptyColorChannels() },
+        { enabled: true, channels: { ...emptyColorChannels(), b: range(null, 50) } },
       ];
       const written = bagConditionParams({ server: '류트', bags: [], parts });
 
@@ -111,6 +116,62 @@ describe('주머니 찾기 주소', () => {
       expect(written.b).toBeNull();
       expect(written.c).toBe('b-50');
       expect(readBagConditions(toQuery(written)).parts).toEqual(parts);
+    });
+  });
+
+  describe('파트별 검색 여부', () => {
+    it('처음에는 파트 A 만 켜져 있다', () => {
+      expect(readBagConditions(params('')).parts.map((part) => part.enabled)).toEqual([true, false, false]);
+    });
+
+    it('끈 파트는 -, 채널 없이 켠 파트는 on, 채널을 건 파트는 켜진 것으로 읽는다', () => {
+      const { parts } = readBagConditions(params('a=-&b=on&c=r10-20'));
+
+      expect(parts.map((part) => part.enabled)).toEqual([false, true, true]);
+      expect(parts[2].channels.r).toEqual(range(10, 20));
+    });
+
+    it('알아볼 수 없는 글자는 기본 상태로 돌린다', () => {
+      const { parts } = readBagConditions(params('a=zzz&b=zzz'));
+
+      expect(parts.map((part) => part.enabled)).toEqual([true, false, false]);
+    });
+
+    it('기본과 다른 켜짐만 주소에 쓴다', () => {
+      const written = bagConditionParams({
+        server: '류트',
+        bags: [],
+        parts: [
+          { enabled: false, channels: emptyColorChannels() },
+          { enabled: true, channels: emptyColorChannels() },
+          { enabled: false, channels: emptyColorChannels() },
+        ],
+      });
+
+      expect(written).toMatchObject({ a: '-', b: 'on', c: null });
+    });
+
+    it('끈 파트의 채널 값은 주소에 싣지 않는다', () => {
+      const written = bagConditionParams({
+        server: '류트',
+        bags: [],
+        parts: [
+          { enabled: false, channels: { ...emptyColorChannels(), r: range(100, 200) } },
+          ...defaultParts().slice(1),
+        ],
+      });
+
+      expect(written.a).toBe('-');
+    });
+
+    it('켠 파트의 채널 조건은 그대로 돌아온다', () => {
+      const parts = [
+        { enabled: true, channels: emptyColorChannels() },
+        { enabled: true, channels: { ...emptyColorChannels(), g: near(50, 5) } },
+        { enabled: false, channels: emptyColorChannels() },
+      ];
+
+      expect(readBagConditions(toQuery(bagConditionParams({ server: '류트', bags: [], parts }))).parts).toEqual(parts);
     });
   });
 });
