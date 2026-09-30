@@ -14,6 +14,7 @@ import {
   AutoComplete,
   Button,
   Card,
+  Checkbox,
   Flex,
   Grid,
   Input,
@@ -62,6 +63,7 @@ import {
   type OptionFilter,
 } from '@/features/auction/optionFilter';
 import { serializeFilter } from '@/features/auction/filterUrl';
+import { matchTier, PARTIAL_TIER, type MatchTier } from '@/features/auction/matchTier';
 import {
   readSearchState,
   readViewState,
@@ -128,12 +130,24 @@ function ItemIconCell({ rawName, category }: { rawName: string; category: string
  * 세부 옵션으로 거르는 중이면 걸린 옵션을 아래에 적는다. 표에는 옵션 칸이 없어 누르지 않고는
  * 왜 걸렸는지 보이지 않는다.
  */
-function ItemNameCell({ displayName, notes }: { displayName: string; notes?: string[] }) {
+function ItemNameCell({
+  displayName,
+  notes,
+  partial,
+}: {
+  displayName: string;
+  notes?: string[];
+  /** 검색어가 이름에 그대로 들어맞지 않고 일부만 걸려 나온 줄. */
+  partial?: boolean;
+}) {
   return (
     <Flex vertical gap={2}>
-      <Text strong style={{ fontSize: 14 }}>
-        {displayName}
-      </Text>
+      <Flex gap={6} align="center" wrap>
+        <Text strong style={{ fontSize: 14 }}>
+          {displayName}
+        </Text>
+        {partial ? <Tag style={{ margin: 0 }}>부분 일치</Tag> : null}
+      </Flex>
       {notes?.map((note) => (
         <Text key={note} type="secondary" style={{ fontSize: 12 }}>
           {note}
@@ -226,7 +240,7 @@ export function AuctionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlSearch = useMemo(() => readSearchState(searchParams), [searchParams]);
   const view = useMemo(() => readViewState(searchParams), [searchParams]);
-  const { tab, sort } = view;
+  const { tab, sort, exact } = view;
   const searchKey = JSON.stringify([urlSearch.category, urlSearch.keyword, urlSearch.filterKey]);
 
   /**
@@ -330,14 +344,65 @@ export function AuctionPage() {
     () => buildOptionCatalog(tab === 'items' ? items : history),
     [tab, items, history],
   );
-  const visibleItems = useMemo(
-    () => (filtering ? items.filter((item) => matchesOptionFilter(item, deferredFilter)) : items),
-    [filtering, items, deferredFilter],
+  /**
+   * 검색어가 이름에 얼마나 바로 들어맞는지(matchTier). 정렬은 늘 이 등급이 먼저고, 그 안에서 열 기준으로 간다.
+   * 넥슨은 검색어를 단어로 쪼개 맞춰서 "소울리버레이트 보우" 로 찾으면 "소울 리버레이트 크로스보우" 도 온다.
+   * 진짜 이름이 뒤로 밀리지 않게 하고, 정확히 일치만 남기는 것도 이 등급으로 한다.
+   */
+  const tierKeyword = submitted?.keyword ?? '';
+  // 정렬은 같은 줄을 여러 번 견주므로 등급은 줄마다 한 번만 센다. 검색어가 바뀌면 캐시도 새로 만든다.
+  const tierOf = useMemo(() => {
+    const cache = new WeakMap<object, MatchTier>();
+    return (row: { item_name: string }): MatchTier => {
+      let tier = cache.get(row);
+      if (tier === undefined) {
+        tier = matchTier(canonicalItemName(row.item_name), tierKeyword);
+        cache.set(row, tier);
+      }
+      return tier;
+    };
+  }, [tierKeyword]);
+  const exactOnly = exact && tierKeyword.trim() !== '';
+  const visibleItems = useMemo(() => {
+    const byOption = filtering ? items.filter((item) => matchesOptionFilter(item, deferredFilter)) : items;
+    return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
+  }, [filtering, items, deferredFilter, exactOnly, tierOf]);
+  const visibleHistory = useMemo(() => {
+    const byOption = filtering ? history.filter((item) => matchesOptionFilter(item, deferredFilter)) : history;
+    return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
+  }, [filtering, history, deferredFilter, exactOnly, tierOf]);
+  /**
+   * 일부만 걸려 나온 줄에 라벨을 단다. 이름이 그대로 들어맞는 줄이 하나라도 있을 때만 그렇다. 전부 부분
+   * 일치라면 구분할 것이 없어 라벨이 줄마다 붙으면 소음이다.
+   */
+  const itemsHaveClose = useMemo(
+    () => tierKeyword.trim() !== '' && visibleItems.some((item) => tierOf(item) < PARTIAL_TIER),
+    [tierKeyword, visibleItems, tierOf],
   );
-  const visibleHistory = useMemo(
-    () =>
-      filtering ? history.filter((item) => matchesOptionFilter(item, deferredFilter)) : history,
-    [filtering, history, deferredFilter],
+  const historyHaveClose = useMemo(
+    () => tierKeyword.trim() !== '' && visibleHistory.some((item) => tierOf(item) < PARTIAL_TIER),
+    [tierKeyword, visibleHistory, tierOf],
+  );
+  const itemIsPartial = useCallback(
+    (row: { item_name: string }) => itemsHaveClose && tierOf(row) >= PARTIAL_TIER,
+    [itemsHaveClose, tierOf],
+  );
+  const historyIsPartial = useCallback(
+    (row: { item_name: string }) => historyHaveClose && tierOf(row) >= PARTIAL_TIER,
+    [historyHaveClose, tierOf],
+  );
+  /**
+   * 열 정렬에 등급을 앞세운다. antd 는 내림차순일 때 비교 결과를 뒤집으므로 그때는 등급도 뒤집어 두어야
+   * 결과적으로 등급이 늘 앞이다.
+   */
+  const tiered = useCallback(
+    <T extends { item_name: string }>(compare: (a: T, b: T) => number) =>
+      (a: T, b: T, order?: AuctionSort['order'] | null) => {
+        const byTier = tierOf(a) - tierOf(b);
+        if (byTier !== 0) return order === 'descend' ? -byTier : byTier;
+        return compare(a, b);
+      },
+    [tierOf],
   );
   const draftFilterKey = useMemo(() => serializeFilter(deferredFilter), [deferredFilter]);
   /**
@@ -599,13 +664,16 @@ export function AuctionPage() {
    * 찾기. 입력칸의 초안을 주소에 쓴다. 검색은 주소가 바뀌면 위 효과가 한다.
    * 주소가 그대로면(같은 조건으로 다시 누름) 바뀔 것이 없어 아무 일도 하지 않는다.
    */
-  function commitSearch(next: AuctionSearchInput, replace = false) {
+  function commitSearch(next: AuctionSearchInput, replace = false, options: { exact?: boolean } = {}) {
     const filterKey = serializeFilter(optionFilter);
     if (!isAuctionSearchReady(next) && filterKey === '') return;
-    navigate(
-      searchParamsFor(paramsRef.current, { category: next.category, keyword: next.keyword, filterKey }),
-      replace,
-    );
+    const params = searchParamsFor(paramsRef.current, {
+      category: next.category,
+      keyword: next.keyword,
+      filterKey,
+    });
+    if (options.exact) writeViewState(params, { exact: true });
+    navigate(params, replace);
   }
 
   /** 카테고리를 고르는 것 자체가 둘러보기 행동이라 바로 조회한다. */
@@ -671,6 +739,7 @@ export function AuctionPage() {
       render: (_value, record) => (
         <ItemNameCell
           displayName={record.item_display_name}
+          partial={itemIsPartial(record)}
           notes={filtering ? describeMatch(record, deferredFilter) : undefined}
         />
       ),
@@ -681,7 +750,7 @@ export function AuctionPage() {
       dataIndex: 'item_count',
       width: 80,
       align: 'right',
-      sorter: (a, b) => a.item_count - b.item_count,
+      sorter: tiered<AuctionItem>((a, b) => a.item_count - b.item_count),
       sortOrder: sortOrderOf('count'),
       render: (value: number) => <span className="tnum">{formatNumber(value)}</span>,
     },
@@ -712,7 +781,7 @@ export function AuctionPage() {
       align: 'right',
       sortOrder: sortOrderOf('price'),
       // 매물끼리 견주는 기준은 개당 가격이다. 묶음 크기가 달라도 이쪽이 비교가 된다.
-      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      sorter: tiered<AuctionItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
@@ -723,7 +792,7 @@ export function AuctionPage() {
       dataIndex: 'date_auction_expire',
       width: 160,
       sortOrder: sortOrderOf('expire'),
-      sorter: (a, b) => Date.parse(a.date_auction_expire) - Date.parse(b.date_auction_expire),
+      sorter: tiered<AuctionItem>((a, b) => Date.parse(a.date_auction_expire) - Date.parse(b.date_auction_expire)),
       render: (value: string) => (
         <Flex vertical gap={0}>
           <Text className="tnum" style={{ fontSize: 14 }}>
@@ -753,6 +822,7 @@ export function AuctionPage() {
         return (
           <ItemNameCell
             displayName={record.item_display_name}
+            partial={itemIsPartial(record)}
             notes={[
               `${formatNumber(record.item_count)}개, ${remaining === '만료' ? remaining : `${remaining} 남음`}`,
               ...(summary ? [`1일 중위 ${formatGold(summary.mid)}`] : []),
@@ -768,13 +838,13 @@ export function AuctionPage() {
       dataIndex: 'auction_price_per_unit',
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      sorter: tiered<AuctionItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf]);
+  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf, tiered, itemIsPartial]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => isWide ? [
@@ -790,6 +860,7 @@ export function AuctionPage() {
       render: (_value, record) => (
         <ItemNameCell
           displayName={record.item_display_name}
+          partial={historyIsPartial(record)}
           notes={filtering ? describeMatch(record, deferredFilter) : undefined}
         />
       ),
@@ -800,7 +871,7 @@ export function AuctionPage() {
       dataIndex: 'item_count',
       width: 80,
       align: 'right',
-      sorter: (a, b) => a.item_count - b.item_count,
+      sorter: tiered<AuctionHistoryItem>((a, b) => a.item_count - b.item_count),
       sortOrder: sortOrderOf('count'),
       render: (value: number) => <span className="tnum">{formatNumber(value)}</span>,
     },
@@ -811,7 +882,7 @@ export function AuctionPage() {
       width: 170,
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      sorter: tiered<AuctionHistoryItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
@@ -822,7 +893,7 @@ export function AuctionPage() {
       dataIndex: 'date_auction_buy',
       width: 170,
       sortOrder: sortOrderOf('time'),
-      sorter: (a, b) => Date.parse(a.date_auction_buy) - Date.parse(b.date_auction_buy),
+      sorter: tiered<AuctionHistoryItem>((a, b) => Date.parse(a.date_auction_buy) - Date.parse(b.date_auction_buy)),
       render: (value: string) => <span className="tnum">{formatDateTime(value)}</span>,
     },
   ] : [
@@ -839,6 +910,7 @@ export function AuctionPage() {
       render: (_value, record) => (
         <ItemNameCell
           displayName={record.item_display_name}
+          partial={historyIsPartial(record)}
           notes={[
             `${formatNumber(record.item_count)}개, ${formatDateTime(record.date_auction_buy)}`,
             ...(filtering ? describeMatch(record, deferredFilter) : []),
@@ -852,13 +924,13 @@ export function AuctionPage() {
       dataIndex: 'auction_price_per_unit',
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
+      sorter: tiered<AuctionHistoryItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, filtering, deferredFilter, sortOrderOf]);
+  ], [isWide, filtering, deferredFilter, sortOrderOf, tiered, historyIsPartial]);
 
   /**
    * 결과 영역은 검색어 타이핑과 분리한다.
@@ -1001,9 +1073,10 @@ export function AuctionPage() {
                   onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
                   onSelect={(keyword: string) => {
                     // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
+                    // 자동완성에서 고른 것은 그 아이템을 찾겠다는 뜻이라 이름이 정확히 같은 것만 보인다.
                     const next = { ...form, keyword };
                     setForm(next);
-                    commitSearch(next);
+                    commitSearch(next, false, { exact: true });
                   }}
                   style={{ flex: '1 1 260px', minWidth: 0 }}
                 >
@@ -1023,6 +1096,17 @@ export function AuctionPage() {
                 >
                   찾기
                 </Button>
+                <Checkbox
+                  checked={exact}
+                  onChange={(event) =>
+                    mutateParams((params) => {
+                      writeViewState(params, { exact: event.target.checked });
+                      params.delete('page');
+                    }, true)
+                  }
+                >
+                  정확히 일치
+                </Checkbox>
                 <Button
                   icon={<RefreshIcon />}
                   onClick={() => {

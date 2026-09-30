@@ -15,10 +15,33 @@ const FAKE_ITEMS = Array.from({ length: 25 }, (_, index) => ({
   date_auction_expire: new Date(Date.now() + (index + 1) * 3_600_000).toISOString(),
 }));
 
+/**
+ * 이름이 검색어에 들어맞는 정도가 제각각인 매물. 검색어 "소울 보우" 에서 가격은 뒤집힌 순서다.
+ * 가장 싼 것이 단어만 걸린 크로스보우라, 가격순으로만 세우면 진짜 이름이 맨 아래로 간다.
+ */
+const TIER_ITEMS = [
+  ['창백한 명사수 소울 크로스보우', 1000],
+  ['창백한 소울 보우', 2000],
+  ['소울 보우 강화형', 3000],
+  ['소울 보우', 5000],
+].map(([name, price]) => ({
+  item_name: name as string,
+  item_display_name: name as string,
+  item_count: 1,
+  auction_item_category: '활',
+  auction_price_per_unit: price as number,
+  date_auction_expire: new Date(Date.now() + 3_600_000).toISOString(),
+}));
+
 vi.mock('@/features/auction/hooks', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  useAuctionItemsQuery: (_input: unknown, enabled: boolean) => ({
-    data: enabled ? { items: FAKE_ITEMS, loadedCount: FAKE_ITEMS.length } : undefined,
+  useAuctionItemsQuery: (input: { keyword: string }, enabled: boolean) => ({
+    data: enabled
+      ? (() => {
+          const items = input.keyword === '소울 보우' ? TIER_ITEMS : FAKE_ITEMS;
+          return { items, loadedCount: items.length };
+        })()
+      : undefined,
     isPending: !enabled,
     error: null,
     hasNextPage: false,
@@ -164,6 +187,63 @@ describe('경매장 검색 조건과 주소', () => {
 
       fireEvent.click(screen.getByTitle('1'));
       await waitFor(() => expect(router.search()).not.toContain('page='));
+    });
+  });
+
+  describe('이름이 들어맞는 정도', () => {
+    const shownNames = () =>
+      screen
+        .getAllByText(/소울/)
+        .map((node) => node.textContent)
+        .filter((text): text is string => Boolean(text) && !text!.includes('일치'));
+
+    it('정확히 일치가 가격과 상관없이 맨 위로 오고, 단어만 걸린 것은 맨 아래로 간다', async () => {
+      renderAt('/auction?keyword=소울 보우');
+
+      await screen.findByText('소울 보우 강화형');
+
+      expect(shownNames()).toEqual([
+        '소울 보우',
+        '소울 보우 강화형',
+        '창백한 소울 보우',
+        '창백한 명사수 소울 크로스보우',
+      ]);
+    });
+
+    it('이름이 그대로 들어맞는 줄이 있으면 나머지에 부분 일치 라벨을 단다', async () => {
+      renderAt('/auction?keyword=소울 보우');
+      await screen.findByText('소울 보우 강화형');
+
+      // 앞부분 일치까지는 라벨이 없고, 그 밖의 둘에 붙는다.
+      expect(screen.getAllByText('부분 일치')).toHaveLength(2);
+    });
+
+    it('전부 부분 일치이면 라벨을 달지 않는다', async () => {
+      renderAt('/auction?keyword=시험');
+      await screen.findByText('시험 검 25');
+
+      expect(screen.queryByText('부분 일치')).toBeNull();
+    });
+
+    it('정확히 일치만 보기를 켜면 이름이 같은 것만 남고 주소에 실린다', async () => {
+      const router = renderAt('/auction?keyword=소울 보우');
+      await screen.findByText('소울 보우 강화형');
+
+      fireEvent.click(screen.getByRole('checkbox', { name: '정확히 일치' }));
+
+      await waitFor(() => expect(router.search()).toContain('exact=1'));
+      expect(shownNames()).toEqual(['소울 보우']);
+      expect(screen.queryByText('소울 보우 강화형')).toBeNull();
+
+      fireEvent.click(screen.getByRole('checkbox', { name: '정확히 일치' }));
+      await waitFor(() => expect(router.search()).not.toContain('exact'));
+      expect(await screen.findByText('소울 보우 강화형')).toBeInTheDocument();
+    });
+
+    it('주소의 정확히 일치가 토글에 나타난다', async () => {
+      renderAt('/auction?keyword=소울 보우&exact=1');
+
+      expect(await screen.findByRole('checkbox', { name: '정확히 일치' })).toBeChecked();
     });
   });
 });

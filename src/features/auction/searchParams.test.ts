@@ -17,6 +17,7 @@ describe('경매장 주소 읽기', () => {
       sort: { key: 'price', order: 'ascend' },
       page: 1,
       size: 10,
+      exact: false,
     });
   });
 
@@ -42,6 +43,7 @@ describe('경매장 주소 읽기', () => {
       sort: { key: 'price', order: 'ascend' },
       page: 1,
       size: 10,
+      exact: false,
     });
     expect(readViewState(params('page=abc')).page).toBe(1);
     expect(readViewState(params('page=1.5')).page).toBe(1);
@@ -52,6 +54,12 @@ describe('경매장 주소 읽기', () => {
     // 만료는 판매 중 매물에만, 거래 시각은 거래 내역에만 있다.
     expect(readViewState(params('tab=history&sort=expire')).sort.key).toBe('time');
     expect(readViewState(params('sort=time')).sort.key).toBe('price');
+  });
+
+  it('정확히 일치는 exact=1 일 때만 켜진다', () => {
+    expect(readViewState(params('exact=1')).exact).toBe(true);
+    expect(readViewState(params('exact=0')).exact).toBe(false);
+    expect(readViewState(params('exact=yes')).exact).toBe(false);
   });
 
   it('쪽 번호와 크기를 읽는다', () => {
@@ -133,6 +141,26 @@ describe('경매장 주소 쓰기', () => {
 
     writeViewState(next, { sort: { key: 'price', order: 'descend' } });
     expect(next.get('sort')).toBe('-price');
+  });
+
+  it('정확히 일치를 쓰고, 끄면 주소에서 뺀다', () => {
+    const next = params('keyword=소드');
+    writeViewState(next, { exact: true });
+    expect(next.get('exact')).toBe('1');
+
+    writeViewState(next, { exact: false });
+    expect(next.has('exact')).toBe(false);
+  });
+
+  it('새로 찾아도 탭을 바꿔도 정확히 일치는 그대로다', () => {
+    const searched = searchParamsFor(params('keyword=옛것&exact=1'), {
+      category: '',
+      keyword: '소드',
+      filterKey: '',
+    });
+
+    expect(searched.get('exact')).toBe('1');
+    expect(tabParamsFor(searched, 'history').get('exact')).toBe('1');
   });
 
   it('탭을 바꾸면 정렬과 쪽은 처음으로 돌아간다', () => {

@@ -46,6 +46,8 @@ export interface AuctionViewState {
   sort: AuctionSort;
   page: number;
   size: number;
+  /** 검색어와 이름이 정확히 같은 매물만 보인다. 새로 찾지 않고 불러온 것을 거른다. */
+  exact: boolean;
 }
 
 const MAX_TEXT = 200;
@@ -95,6 +97,7 @@ export function readViewState(params: URLSearchParams): AuctionViewState {
     sort,
     page: Number.isInteger(page) && page >= 1 && page <= MAX_PAGE ? page : 1,
     size: PAGE_SIZE_OPTIONS.includes(size) ? size : DEFAULT_PAGE_SIZE,
+    exact: params.get('exact') === '1',
   };
 }
 
@@ -130,6 +133,7 @@ export function writeViewState(params: URLSearchParams, view: Partial<AuctionVie
   }
   if (view.page !== undefined) put(params, 'page', String(view.page), '1');
   if (view.size !== undefined) put(params, 'size', String(view.size), String(DEFAULT_PAGE_SIZE));
+  if (view.exact !== undefined) put(params, 'exact', view.exact ? '1' : '');
 }
 
 /** 새로 찾을 때의 주소. 쪽과 정렬은 처음으로 돌아가고, 쪽 크기와 탭은 그대로다. */
