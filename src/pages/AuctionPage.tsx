@@ -18,11 +18,13 @@ import {
   Flex,
   Grid,
   Input,
+  Segmented,
   Skeleton,
   Spin,
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   type TableColumnsType,
 } from 'antd';
@@ -86,7 +88,7 @@ import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useControlledPagination } from '@/lib/useListPagination';
 import { useUserSettings } from '@/lib/userSettings';
-import { RefreshIcon, SearchIcon } from '@/components/icons';
+import { HelpIcon, RefreshIcon, SearchIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -211,6 +213,44 @@ function LoadMoreStatus({
 }
 
 /**
+ * 개당 가격이 1일 중위가에서 몇 % 벗어났는지. "-52%", "+8%". 중위가를 모르거나 0 이면 없다. 0% 는 적지 않는다.
+ */
+function medianGap(pricePerUnit: number, median: number): string {
+  if (!(median > 0)) return '';
+  const percent = Math.round(((pricePerUnit - median) / median) * 100);
+  if (percent === 0) return '';
+  return `${percent > 0 ? '+' : ''}${percent}%`;
+}
+
+/** 1일 중위 열 제목. 무엇을 묶어 계산한 값인지 물음표 위에 올리면 보인다. */
+function MedianTitle() {
+  return (
+    <Flex gap={4} align="center" justify="flex-end">
+      1일 중위
+      <Tooltip
+        title={
+          <div style={{ fontSize: 12, maxWidth: 260 }}>
+            최근 1일 동안 같은 이름의 아이템이 거래된 개당 가격의 중위값입니다. 인챈트, 세공, 색이 다른 거래도
+            이름이 같으면 모두 합쳐 셉니다. 그래서 옵션이 붙은 이 매물과는 값이 다를 수 있습니다.
+          </div>
+        }
+      >
+        <span
+          tabIndex={0}
+          role="img"
+          aria-label="1일 중위 집계 기준"
+          style={{ display: 'inline-flex', fontSize: 14, cursor: 'help' }}
+        >
+          <Text type="secondary" style={{ display: 'inline-flex' }}>
+            <HelpIcon />
+          </Text>
+        </span>
+      </Tooltip>
+    </Flex>
+  );
+}
+
+/**
  * 심볼·도면·옷본을 숨겼다고 알린다. 숨긴 것이 없으면 아무것도 그리지 않는다. 표시 중일 때는 다시 숨길 수 있다.
  */
 function SymbolNotice({
@@ -231,6 +271,29 @@ function SymbolNotice({
       <Button type="link" size="small" onClick={onToggle}>
         {showing ? '숨기기' : '보기'}
       </Button>
+    </Flex>
+  );
+}
+
+/**
+ * 가격 열을 무엇으로 정렬할지. 묶음 매물이 있을 때만 나타난다. 묶음이 없으면 개당과 전체가 같아 고를 것이 없다.
+ */
+function PriceBasis({ byTotal, onChange }: { byTotal: boolean; onChange: (byTotal: boolean) => void }) {
+  return (
+    <Flex gap={8} align="center" wrap>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        가격순
+      </Text>
+      <Segmented
+        size="small"
+        aria-label="가격 정렬 기준"
+        value={byTotal ? 'total' : 'unit'}
+        onChange={(value) => onChange(value === 'total')}
+        options={[
+          { value: 'unit', label: '개당' },
+          { value: 'total', label: '전체' },
+        ]}
+      />
     </Flex>
   );
 }
@@ -269,7 +332,7 @@ export function AuctionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlSearch = useMemo(() => readSearchState(searchParams), [searchParams]);
   const view = useMemo(() => readViewState(searchParams), [searchParams]);
-  const { tab, sort, exact } = view;
+  const { tab, sort, exact, byTotal } = view;
   const searchKey = JSON.stringify([urlSearch.category, urlSearch.keyword, urlSearch.filterKey]);
 
   /**
@@ -442,6 +505,9 @@ export function AuctionPage() {
     (row: { item_name: string }) => itemsHaveClose && tierOf(row) >= PARTIAL_TIER,
     [itemsHaveClose, tierOf],
   );
+  /** 묶음(2개 이상) 매물이 있을 때만 가격순 기준을 고르게 한다. 없으면 개당과 전체가 같다. */
+  const itemsHaveBundle = useMemo(() => visibleItems.some((item) => item.item_count > 1), [visibleItems]);
+  const historyHaveBundle = useMemo(() => visibleHistory.some((item) => item.item_count > 1), [visibleHistory]);
   const historyIsPartial = useCallback(
     (row: { item_name: string }) => historyHaveClose && tierOf(row) >= PARTIAL_TIER,
     [historyHaveClose, tierOf],
@@ -450,6 +516,27 @@ export function AuctionPage() {
    * 열 정렬에 등급을 앞세운다. antd 는 내림차순일 때 비교 결과를 뒤집으므로 그때는 등급도 뒤집어 두어야
    * 결과적으로 등급이 늘 앞이다.
    */
+  /** 가격 열 정렬 값. 묶음 매물이 섞인 목록에서는 개당과 전체가 다르다. */
+  const priceOf = useCallback(
+    (row: { auction_price_per_unit: number; item_count: number }) =>
+      byTotal ? row.auction_price_per_unit * Math.max(row.item_count, 1) : row.auction_price_per_unit,
+    [byTotal],
+  );
+  /**
+   * 가격순 기준을 바꾼다. 바꾸면 그 기준이 바로 보이게 가격 열로 정렬을 옮기고, 이미 가격으로 정렬 중이면 방향은 둔다.
+   */
+  const changeBasis = useCallback(
+    (nextByTotal: boolean) =>
+      mutateParams((params) => {
+        const current = readViewState(params);
+        writeViewState(params, {
+          byTotal: nextByTotal,
+          sort: { key: 'price', order: current.sort.key === 'price' ? current.sort.order : 'ascend' },
+        });
+        params.delete('page');
+      }, true),
+    [mutateParams],
+  );
   const tiered = useCallback(
     <T extends { item_name: string }>(compare: (a: T, b: T) => number) =>
       (a: T, b: T, order?: AuctionSort['order'] | null) => {
@@ -813,16 +900,25 @@ export function AuctionPage() {
     ...(recentByName
       ? [
           {
-            title: '1일 중위',
+            title: <MedianTitle />,
             key: 'recent',
-            width: 120,
+            // 억 단위 금액이 두 줄로 갈라지지 않게 넓히고 줄바꿈을 막는다.
+            width: 170,
             align: 'right' as const,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
             render: (_value: unknown, record: AuctionItem) => {
               const summary = recentByName[record.item_name];
-              return summary ? (
-                <span className="tnum">{formatGold(summary.mid)}</span>
-              ) : (
-                <Text type="secondary">-</Text>
+              if (!summary) return <Text type="secondary">-</Text>;
+              const gap = medianGap(record.auction_price_per_unit, summary.mid);
+              return (
+                <Flex vertical gap={0} align="flex-end">
+                  <span className="tnum">{formatGold(summary.mid)}</span>
+                  {gap ? (
+                    <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                      중위 대비 {gap}
+                    </Text>
+                  ) : null}
+                </Flex>
               );
             },
           },
@@ -835,8 +931,8 @@ export function AuctionPage() {
       width: 170,
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      // 매물끼리 견주는 기준은 개당 가격이다. 묶음 크기가 달라도 이쪽이 비교가 된다.
-      sorter: tiered<AuctionItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
+      // 기본은 개당 가격이다. 묶음 크기가 달라도 이쪽이 비교가 된다. 묶음 전체 값으로도 갈 수 있다(byTotal).
+      sorter: tiered<AuctionItem>((a, b) => priceOf(a) - priceOf(b)),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
@@ -880,7 +976,15 @@ export function AuctionPage() {
             partial={itemIsPartial(record)}
             notes={[
               `${formatNumber(record.item_count)}개, ${remaining === '만료' ? remaining : `${remaining} 남음`}`,
-              ...(summary ? [`1일 중위 ${formatGold(summary.mid)}`] : []),
+              ...(summary
+                ? [
+                    `1일 중위 ${formatGold(summary.mid)}${
+                      medianGap(record.auction_price_per_unit, summary.mid)
+                        ? ` (${medianGap(record.auction_price_per_unit, summary.mid)})`
+                        : ''
+                    }`,
+                  ]
+                : []),
               ...(filtering ? describeMatch(record, deferredFilter) : []),
             ]}
           />
@@ -893,13 +997,13 @@ export function AuctionPage() {
       dataIndex: 'auction_price_per_unit',
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      sorter: tiered<AuctionItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
+      sorter: tiered<AuctionItem>((a, b) => priceOf(a) - priceOf(b)),
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf, tiered, itemIsPartial, formatGold]);
+  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf, tiered, priceOf, itemIsPartial, formatGold]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => isWide ? [
@@ -937,7 +1041,7 @@ export function AuctionPage() {
       width: 170,
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      sorter: tiered<AuctionHistoryItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
+      sorter: tiered<AuctionHistoryItem>((a, b) => priceOf(a) - priceOf(b)),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
@@ -979,13 +1083,13 @@ export function AuctionPage() {
       dataIndex: 'auction_price_per_unit',
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      sorter: tiered<AuctionHistoryItem>((a, b) => a.auction_price_per_unit - b.auction_price_per_unit),
+      sorter: tiered<AuctionHistoryItem>((a, b) => priceOf(a) - priceOf(b)),
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, filtering, deferredFilter, sortOrderOf, tiered, historyIsPartial]);
+  ], [isWide, filtering, deferredFilter, sortOrderOf, tiered, priceOf, historyIsPartial]);
 
   /**
    * 결과 영역은 검색어 타이핑과 분리한다.
@@ -1030,6 +1134,7 @@ export function AuctionPage() {
         }
       >
         <Flex vertical gap={12}>
+          {itemsHaveBundle ? <PriceBasis byTotal={byTotal} onChange={changeBasis} /> : null}
           <Table<AuctionItem>
             columns={itemColumns}
             dataSource={visibleItems}
@@ -1062,7 +1167,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, changeSort, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, changeBasis, byTotal, itemsHaveBundle, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <Flex vertical gap={12}>
@@ -1099,6 +1204,7 @@ export function AuctionPage() {
             거래 {formatNumber(historyLoaded)}건 가운데 {formatNumber(visibleHistory.length)}건이 조건과 맞습니다.
           </Text>
         ) : null}
+        {historyHaveBundle ? <PriceBasis byTotal={byTotal} onChange={changeBasis} /> : null}
         <Table<AuctionHistoryItem>
           columns={historyColumns}
           dataSource={visibleHistory}
@@ -1119,7 +1225,7 @@ export function AuctionPage() {
       </Flex>
     </QueryState>
     </Flex>
-  ), [enabled, changeSort, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
+  ), [enabled, changeSort, changeBasis, byTotal, historyHaveBundle, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   return (
     <>

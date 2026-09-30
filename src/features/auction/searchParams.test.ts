@@ -18,6 +18,7 @@ describe('경매장 주소 읽기', () => {
       page: 1,
       size: 10,
       exact: false,
+      byTotal: false,
     });
   });
 
@@ -44,6 +45,7 @@ describe('경매장 주소 읽기', () => {
       page: 1,
       size: 10,
       exact: false,
+      byTotal: false,
     });
     expect(readViewState(params('page=abc')).page).toBe(1);
     expect(readViewState(params('page=1.5')).page).toBe(1);
@@ -60,6 +62,12 @@ describe('경매장 주소 읽기', () => {
     expect(readViewState(params('exact=1')).exact).toBe(true);
     expect(readViewState(params('exact=0')).exact).toBe(false);
     expect(readViewState(params('exact=yes')).exact).toBe(false);
+  });
+
+  it('가격을 묶음 전체로 정렬하는 것은 by=total 일 때만 켜진다', () => {
+    expect(readViewState(params('by=total')).byTotal).toBe(true);
+    expect(readViewState(params('by=unit')).byTotal).toBe(false);
+    expect(readViewState(params('')).byTotal).toBe(false);
   });
 
   it('쪽 번호와 크기를 읽는다', () => {
@@ -161,6 +169,15 @@ describe('경매장 주소 쓰기', () => {
 
     expect(searched.get('exact')).toBe('1');
     expect(tabParamsFor(searched, 'history').get('exact')).toBe('1');
+  });
+
+  it('가격 정렬 기준을 쓰고, 개당으로 돌리면 주소에서 뺀다', () => {
+    const next = params('keyword=소드');
+    writeViewState(next, { byTotal: true });
+    expect(next.get('by')).toBe('total');
+
+    writeViewState(next, { byTotal: false });
+    expect(next.has('by')).toBe(false);
   });
 
   it('탭을 바꾸면 정렬과 쪽은 처음으로 돌아간다', () => {
