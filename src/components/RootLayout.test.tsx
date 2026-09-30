@@ -72,3 +72,35 @@ describe('서랍 메뉴', () => {
     expect(drawer.querySelector('.ant-menu-item-selected')).toHaveTextContent('경매장');
   });
 });
+
+describe('에린 시계', () => {
+  it('좁은 화면에서는 서랍 맨 위에 에린 시각과 상점 교체 시간이 보인다', async () => {
+    renderAt('/auction');
+    const drawer = await openDrawer();
+
+    expect(drawer).toHaveTextContent(/에린 시각 \d{2}:\d{2} \((낮|밤)\)/);
+    expect(drawer).toHaveTextContent(/다음 상점 교체까지/);
+  });
+
+  it('넓은 화면에서는 헤더 검색 단추 왼쪽에 에린 시각이 있다', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    renderAt('/auction');
+
+    const clock = await screen.findByRole('button', { name: /에린 시각 \d{2}:\d{2}/ });
+    const search = screen.getByRole('button', { name: /검색/ });
+
+    expect(clock).toHaveTextContent(/^에린 \d{2}:\d{2}$/);
+    // 문서에서 에린 시계가 검색 단추보다 앞에 있다.
+    expect(clock.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+});

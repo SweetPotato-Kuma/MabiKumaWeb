@@ -863,3 +863,24 @@ describe('장비 정보', () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe('GET /time', () => {
+  it('서버의 지금 시각을 본문에 담아 돌려주고 캐시하지 않는다', async () => {
+    const before = Date.now();
+    const response = await call('/time');
+    const after = Date.now();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('access-control-allow-origin')).toBeTruthy();
+    const { now } = await response.json();
+    expect(now).toBeGreaterThanOrEqual(before);
+    expect(now).toBeLessThanOrEqual(after);
+  });
+
+  it('GET 이 아니면 거절한다', async () => {
+    const response = await call('/time', { method: 'POST', body: {} });
+
+    expect(response.status).toBe(405);
+  });
+});

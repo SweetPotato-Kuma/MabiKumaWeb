@@ -389,6 +389,9 @@ const ALLOWED_PATHS = [
 
 const DEFAULT_CACHE_SECONDS = 60;
 
+/** 서버 시각을 묻는 경로. */
+const TIME_PATH = '/time';
+
 function corsHeaders(origin, allowList) {
   const headers = {
     Vary: 'Origin',
@@ -1291,6 +1294,24 @@ export default {
         403,
         corsHeaders('', allowList),
       );
+    }
+
+    /**
+     * 서버의 지금 시각. 방문자 PC 시계가 틀려도 에린 시각을 맞게 보이려고 화면이 한 번 묻는다.
+     * 본문에 담아 주므로 브라우저가 Date 헤더를 못 읽는 경우(CORS 노출 헤더 밖)에도 쓸 수 있다.
+     * 캐시하면 묵은 시각이 온다.
+     */
+    if (url.pathname === TIME_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('TIME_METHOD_NOT_ALLOWED', 'GET 으로 불러 주세요.', 405, cors);
+      }
+      return new Response(JSON.stringify({ now: Date.now() }), {
+        headers: {
+          ...cors,
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        },
+      });
     }
 
     // 이슈 제보만 POST 다. 넥슨 중계와 섞이지 않게 여기서 갈라 둔다.

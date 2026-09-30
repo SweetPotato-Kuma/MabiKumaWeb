@@ -24,6 +24,7 @@ import {
 } from 'antd';
 import { BagImage } from '@/components/BagImage';
 import { ColorChannelFields } from '@/components/ColorChannelFields';
+import { ShopResetCountdown } from '@/components/ErinnClock';
 import { canSearchBags } from '@/features/bags/api';
 import {
   COLOR_CHANNEL_KEYS,
@@ -639,7 +640,7 @@ export function BagsPage() {
         </Title>
         <Text type="secondary">
           고른 서버의 모든 채널, NPC 17명의 주머니를 조건에 맞는 것만 원하는 값에 가까운 순으로 보여 줍니다. 상점은
-          에린 하루(현실 36분)마다 바뀝니다.
+          에린 하루(현실 36분)마다 바뀝니다. <ShopResetCountdown />
         </Text>
       </Flex>
 

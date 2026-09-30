@@ -26,6 +26,7 @@ import {
   type PassListing,
 } from '@/features/magmell/ranking';
 import { usePassSearch } from '@/features/magmell/usePassSearch';
+import { ShopResetCountdown } from '@/components/ErinnClock';
 import { ServerSelect } from '@/components/ServerSelect';
 import { ALL_SERVERS, useServerParam } from '@/lib/useServerParam';
 import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
@@ -245,9 +246,12 @@ export function MagmellPassPage() {
 
   return (
     <Flex vertical gap={20}>
-      <Title level={3} style={{ margin: 0 }}>
-        마그 멜 통행증 찾기
-      </Title>
+      <Flex vertical gap={4}>
+        <Title level={3} style={{ margin: 0 }}>
+          마그 멜 통행증 찾기
+        </Title>
+        <ShopResetCountdown />
+      </Flex>
 
       {!available ? (
         <Alert

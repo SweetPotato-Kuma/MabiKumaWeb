@@ -110,3 +110,12 @@ describe('튼튼한 주머니 파트별 색 조건', () => {
     expect(screen.queryByLabelText('R 최소')).toBeNull();
   });
 });
+
+describe('튼튼한 주머니 상점 교체', () => {
+  it('상점이 에린 하루마다 바뀐다는 안내 옆에 교체까지 남은 시간이 나온다', () => {
+    renderPage();
+
+    expect(screen.getByText(/에린 하루\(현실 36분\)마다 바뀝니다/)).toBeInTheDocument();
+    expect(screen.getByText(/상점 교체까지 (\d+분 )?\d+초 남음/)).toBeInTheDocument();
+  });
+});

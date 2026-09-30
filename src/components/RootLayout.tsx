@@ -30,11 +30,13 @@ import logoMark from '@/assets/logo-mark.png';
 import wordmarkDark from '@/assets/wordmark-dark.png';
 import wordmark from '@/assets/wordmark.png';
 import { CommandPalette } from '@/components/CommandPalette';
+import { ErinnClockButton, ErinnClockDetail } from '@/components/ErinnClock';
 import { IssueReportModal, IssueReportTrigger } from '@/components/IssueReportButton';
 import { SettingsButton, SettingsPanel } from '@/components/SettingsPanel';
 import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { searchShortcutLabel, useSearchShortcut } from '@/lib/searchShortcut';
+import { useServerClockSync } from '@/lib/serverClock';
 import { useEndpointMode } from '@/lib/settings';
 import { useResolvedThemeMode, useThemePreference } from '@/lib/themePreference';
 import { DarkModeIcon, KeyIcon, LightModeIcon, MenuIcon, SearchIcon } from '@/components/icons';
@@ -180,6 +182,8 @@ export function RootLayout() {
   const hasAdminKey = useHasAdminKey();
   const isDark = useResolvedThemeMode() === 'dark';
   usePageMeta(location.pathname);
+  // 방문자 PC 시계가 틀려도 에린 시각이 맞게 보이도록 서버 시계와의 차이를 재 둔다.
+  useServerClockSync();
 
   // 복원 시뮬레이터의 시세 파일은 작다. 첫 화면을 다 그린 뒤 미리 받아 두면 시뮬레이터를
   // 처음 여는 사람도 나온 유물의 시세를 기다리지 않는다.
@@ -288,6 +292,8 @@ export function RootLayout() {
 
           <Space size={4}>
             {screens.sm ? <EndpointTag /> : null}
+            {/* 검색 단추 왼쪽. 좁은 화면은 헤더에 자리가 없어 서랍 맨 위에 둔다. */}
+            {compactNav ? null : <ErinnClockButton />}
             <SearchButton onOpen={() => setSearchOpen(true)} showShortcut={!compactNav} />
             <ThemeToggle />
             {/* 좁은 화면은 헤더가 좁아 설정을 메뉴 서랍 안에 둔다. */}
@@ -315,6 +321,9 @@ export function RootLayout() {
           title="메뉴"
           styles={{ body: { padding: 8 } }}
         >
+          <div style={{ padding: '8px 16px 12px' }}>
+            <ErinnClockDetail />
+          </div>
           <nav aria-label="주요 메뉴">
             <Menu
               mode="inline"
