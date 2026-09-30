@@ -101,7 +101,7 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
     expect(within(card).getByText('오버 드라이브 폭발 공격 대미지')).toBeInTheDocument();
     expect(within(card).getByText('490% 증가')).toBeInTheDocument();
-    expect(within(card).getByText('8,000만 G')).toBeInTheDocument();
+    expect(within(card).getByText('80,000,000 G')).toBeInTheDocument();
     expect(await within(card).findByText('블래스트 랜서')).toBeInTheDocument();
     expect(readRelicPriceCache()?.at).toBe(PRICE_FILE.at);
 
@@ -122,7 +122,7 @@ describe('무리아스의 유물 복원 시뮬레이터', () => {
     rigOverDriveSeven();
     fireEvent.click(screen.getByRole('button', { name: '복원하기' }));
     const card = screen.getByRole('region', { name: '방금 나온 유물' });
-    expect(within(card).getByText('8,000만 G')).toBeInTheDocument();
+    expect(within(card).getByText('80,000,000 G')).toBeInTheDocument();
     expect(screen.getByText('새 시세를 받는 중입니다.')).toBeInTheDocument();
   });
 

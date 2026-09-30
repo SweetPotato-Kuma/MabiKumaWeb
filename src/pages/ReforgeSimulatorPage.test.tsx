@@ -139,11 +139,11 @@ describe('세공 시뮬레이터', () => {
     expect(within(window).getByText('(20/20 레벨 : 30 증가)')).toBeInTheDocument();
     // 통계와 기록은 연출이 끝난 뒤에 올라간다. 먼저 올라가면 결과를 미리 알려 버린다.
     expect(screen.getByText('세공 기록 0번')).toBeInTheDocument();
-    expect(await screen.findByText('300만 G', {}, { timeout: FX_WAIT })).toBeInTheDocument();
+    expect(await screen.findByText('3,000,000 G', {}, { timeout: FX_WAIT })).toBeInTheDocument();
     expect(screen.getByText('세공 기록 1번')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '10번 세공' }));
-    expect(screen.getByText('3,300만 G')).toBeInTheDocument();
+    expect(screen.getByText('33,000,000 G')).toBeInTheDocument();
   });
 
   it('끝 레벨은 최대로 강조하고, 세공 기록은 펼쳐야 보인다', async () => {
@@ -178,7 +178,7 @@ describe('세공 시뮬레이터', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '세공하기' }));
     // 도구 둘에 보석 하나.
-    expect(await screen.findByText('650만 G', {}, { timeout: FX_WAIT })).toBeInTheDocument();
+    expect(await screen.findByText('6,500,000 G', {}, { timeout: FX_WAIT })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '새 옵션' })).toHaveTextContent(
       '(5/5 레벨 : 5% 증가)',
     );

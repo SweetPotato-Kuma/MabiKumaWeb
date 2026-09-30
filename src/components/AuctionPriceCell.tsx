@@ -1,6 +1,6 @@
 import { Flex, Typography } from 'antd';
 import { bundlePrice } from '@/features/auction/price';
-import { formatGold } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
 
@@ -15,6 +15,7 @@ const { Text } = Typography;
  * 전체 값은 API 가 주는 것이 아니라 개당 가격에 개수를 곱한 값이다.
  */
 export function AuctionPriceCell({ pricePerUnit, count }: { pricePerUnit: number; count: number }) {
+  const formatGold = useGoldFormatter();
   const price = bundlePrice(pricePerUnit, count);
 
   if (!price.isBundle) {

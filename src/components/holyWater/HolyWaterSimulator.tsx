@@ -47,7 +47,8 @@ import {
   type HolyWaterTier,
 } from '@/features/holyWater/simulator';
 import { formatChance } from '@/features/simulator/trials';
-import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import './holyWaterFx.css';
 
@@ -638,6 +639,7 @@ interface EffectTarget {
  * 성수의 경매장 최저가를 곱한다.
  */
 export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) {
+  const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   const { token } = theme.useToken();
   const reducedMotion = usePrefersReducedMotion();
@@ -953,7 +955,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
             <Col xs={12} sm={8} lg={4}>
               <Statistic
                 title="쓴 골드"
-                value={price === null ? '-' : formatGoldShort(price * count)}
+                value={price === null ? '-' : formatGold(price * count)}
                 loading={priceLoading}
                 styles={NUMERIC}
               />

@@ -18,7 +18,7 @@ describe('TrialOdds', () => {
     // 1 - 0.98^50 = 63.58%, 50 x 0.02 = 1번, 50 x 100만 = 5,000만 G
     expect(panel).toHaveTextContent('한 번 이상 나올 확률 63.58%');
     expect(panel).toHaveTextContent('평균 1번');
-    expect(panel).toHaveTextContent('5,000만 G');
+    expect(panel).toHaveTextContent('50,000,000 G');
   });
 
   it('시행 횟수를 바꾸면 다시 센다', () => {

@@ -48,7 +48,8 @@ import {
 import type { DungeonCoin } from '@/features/dungeonCoins/exchanges';
 import { useInventory, type Inventory } from '@/features/dungeonCoins/inventory';
 import { useDungeonPrices } from '@/features/dungeonCoins/prices';
-import { formatGold, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter, type GoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
 
@@ -70,6 +71,7 @@ const REASON_TEXT: Record<Extract<CraftValue, { status: 'unknown' }>['reason'], 
 type CategoryOf = (name: string) => string | undefined;
 
 function Gold({ value, strong, color }: { value: number; strong?: boolean; color?: string }) {
+  const formatGold = useGoldFormatter();
   return (
     <Text
       strong={strong}
@@ -94,7 +96,7 @@ function UnknownCell({ value }: { value: CraftValue }) {
   );
 }
 
-function inputCostText(cost: InputCost): string {
+function inputCostText(cost: InputCost, formatGold: GoldFormatter): string {
   switch (cost.status) {
     case 'ok':
       if (cost.from === 'held') return '가진 재료로 채움';
@@ -189,6 +191,7 @@ function CraftInputs({
    */
   pick?: BeadPlanPick;
 }) {
+  const formatGold = useGoldFormatter();
   return (
     <Flex vertical gap={8} style={{ paddingBlock: 4 }}>
       <Text type="secondary" style={{ fontSize: 13 }}>
@@ -235,7 +238,7 @@ function CraftInputs({
           </Flex>
           <Text type={cost.status === 'ok' && cost.from !== 'held' ? undefined : 'secondary'} className="tnum">
             {cost.status === 'ok' && cost.from === 'held' ? '' : heldText(held, input.count)}
-            {inputCostText(cost)}
+            {inputCostText(cost, formatGold)}
           </Text>
         </Flex>
       ))}
@@ -253,6 +256,7 @@ function PlanUsage({
   book: RecipeBook;
   categoryOf: CategoryOf;
 }) {
+  const formatGold = useGoldFormatter();
   return (
     <>
       {pick.usage.map((row) => {
@@ -281,6 +285,7 @@ function PlanUsage({
 
 /** 추천 조합의 합계. 무엇을 몇 번 만들지는 표의 "추천 제작" 칸이 말한다. */
 function PlanSummary({ plan, beads, pending }: { plan: BeadPlan; beads: number; pending: number }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   if (plan.picks.length === 0) {
     if (pending > 0) return null;
@@ -321,6 +326,7 @@ function PlanSummary({ plan, beads, pending }: { plan: BeadPlan; beads: number; 
 
 /** 가공 이득 칸. 음수면 가공이 원재료 값을 깎는다는 뜻이라 빨갛게 둔다. */
 function GainCell({ craft }: { craft: ValuedCraft }) {
+  const formatGold = useGoldFormatter();
   if (craft.value.status !== 'ok') return <UnknownCell value={craft.value} />;
   if (craft.raw.status === 'loading')
     return <Skeleton.Input active size="small" style={{ width: 88, minWidth: 88 }} />;
@@ -342,6 +348,7 @@ function GainCell({ craft }: { craft: ValuedCraft }) {
 
 /** 추천 칸. 몇 번 만들지와, 그만큼 만들 때 쓰는 구슬과 차익 합계. */
 function PickCell({ pick }: { pick?: BeadPlanPick }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   if (!pick) return <Text type="secondary">-</Text>;
   return (
@@ -479,6 +486,7 @@ export function BeadCraftCalculator({ entry }: { entry: DungeonCoin }) {
 }
 
 function CalculatorBody({ book, entry }: { book: RecipeBook; entry: DungeonCoin }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;

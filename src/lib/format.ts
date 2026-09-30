@@ -11,26 +11,46 @@ export function formatNumber(value: number | null | undefined): string {
   return numberFormatter.format(value);
 }
 
-/** 개당 가격에 단위를 붙인다. */
-export function formatGold(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return `${numberFormatter.format(value)} G`;
+/** 가격을 어떻게 적을지. 방문자의 설정(userSettings)에서 온다. */
+export interface PriceFormat {
+  /** number: `1,149,000,000 G`, korean: `11억 4,900만 G`. */
+  style: 'number' | 'korean';
+  /** 한글 표기에서 1만 미만 끝자리를 뺀다. 만이 안 되는 값은 그대로 적는다. */
+  omitSmall: boolean;
 }
 
+export const DEFAULT_PRICE_FORMAT: PriceFormat = { style: 'number', omitSmall: false };
+
+const EOK = 100_000_000;
+const MAN = 10_000;
+
 /**
- * 큰 가격을 억과 만으로 줄인다. 178,400,000 → "1억 7,840만 G". 칸이 좁은 표에서 쓴다.
- * 만 아래는 반올림해 버리고, 만이 안 되는 값은 그대로 적는다. unit 을 끄면 " G" 를 뗀다.
- * 가격만 늘어선 좁은 칸에서 쓴다.
+ * 골드 가격을 적는 유일한 함수. 화면의 가격은 모두 이 함수를 거친다(useGoldFormatter).
+ * 자리를 아끼려고 화면마다 다르게 줄이던 것을 하나로 합쳤다. 줄여 적고 싶으면 설정에서 한글 표기를 고른다.
+ *
+ * unit 을 끄면 " G" 를 뗀다. 가격만 늘어선 좁은 칸에서 쓴다.
  */
-export function formatGoldShort(value: number | null | undefined, unit = true): string {
+export function formatGoldWith(
+  value: number | null | undefined,
+  format: PriceFormat = DEFAULT_PRICE_FORMAT,
+  unit = true,
+): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '-';
   const suffix = unit ? ' G' : '';
-  if (Math.abs(value) < 10_000) return `${numberFormatter.format(value)}${suffix}`;
-  const man = Math.round(value / 10_000);
-  const eok = Math.trunc(man / 10_000);
-  const rest = man % 10_000;
-  const parts = [eok ? `${numberFormatter.format(eok)}억` : '', rest ? `${numberFormatter.format(rest)}만` : ''];
-  return `${parts.filter(Boolean).join(' ')}${suffix}`;
+  if (format.style === 'number') return `${numberFormatter.format(value)}${suffix}`;
+
+  const sign = value < 0 ? '-' : '';
+  const amount = Math.round(Math.abs(value));
+  if (amount < MAN) return `${sign}${numberFormatter.format(amount)}${suffix}`;
+  const eok = Math.floor(amount / EOK);
+  const man = Math.floor((amount % EOK) / MAN);
+  const rest = amount % MAN;
+  const parts = [
+    eok ? `${numberFormatter.format(eok)}억` : '',
+    man ? `${numberFormatter.format(man)}만` : '',
+    rest && !format.omitSmall ? numberFormatter.format(rest) : '',
+  ];
+  return `${sign}${parts.filter(Boolean).join(' ')}${suffix}`;
 }
 
 /** API 가 주는 UTC ISO 문자열을 로컬 시간 문자열로 바꾼다. */

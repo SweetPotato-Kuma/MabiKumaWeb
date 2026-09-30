@@ -59,7 +59,8 @@ import {
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import { formatEstimatedChance, sumAtLeastChance } from '@/features/simulator/breakEven';
 import { formatChance } from '@/features/simulator/trials';
-import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import './relicFx.css';
 
@@ -125,6 +126,7 @@ function PriceText({
   ideaPrice: number | null;
   state: PriceState;
 }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   if (state !== 'ready')
     return (
@@ -151,7 +153,7 @@ function PriceText({
         color: above ? token.colorPrimary : undefined,
       }}
     >
-      {formatGoldShort(price.price)}
+      {formatGold(price.price)}
       {/* 작게 붙여 가격 칸이 덜 넓어지게 한다. 좁은 목록에서도 한 줄에 든다. */}
       {trade ? <span style={{ fontSize: 12, marginInlineStart: 4 }}>최종</span> : null}
     </Text>
@@ -617,6 +619,7 @@ export function RelicSimulatorView({
   /** 시세. 받지 못해도 뽑기는 된다. */
   prices: RelicPriceState;
 }) {
+  const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   const { token } = theme.useToken();
   const reducedMotion = usePrefersReducedMotion();
@@ -775,8 +778,8 @@ export function RelicSimulatorView({
             <Text strong>본전</Text>
             <Text className="tnum" style={{ fontSize: 13 }}>
               본전 이상 얻을 확률 <Text strong>{formatEstimatedChance(breakEven)}</Text>, 평균 얻는
-              금액 <Text strong>{formatGoldShort(ideaChance.mean * trials)}</Text> (이데아{' '}
-              {formatGoldShort(ideaPrice * trials)})
+              금액 <Text strong>{formatGold(ideaChance.mean * trials)}</Text> (이데아{' '}
+              {formatGold(ideaPrice * trials)})
             </Text>
           </Flex>
         </section>
@@ -1016,7 +1019,7 @@ export function RelicSimulatorView({
             <Col xs={12} md={8}>
               <Statistic
                 title="쓴 이데아 값"
-                value={ideaSpent === null ? '-' : formatGoldShort(ideaSpent)}
+                value={ideaSpent === null ? '-' : formatGold(ideaSpent)}
                 loading={loading}
                 styles={NUMERIC}
               />
@@ -1024,7 +1027,7 @@ export function RelicSimulatorView({
             <Col xs={12} md={8}>
               <Statistic
                 title="나온 유물 시세 합계"
-                value={ready ? formatGoldShort(stats.total) : '-'}
+                value={ready ? formatGold(stats.total) : '-'}
                 loading={loading}
                 styles={NUMERIC}
               />
@@ -1042,7 +1045,7 @@ export function RelicSimulatorView({
                 value={
                   balance === null
                     ? '-'
-                    : `${balance > 0 ? '+' : balance < 0 ? '-' : ''}${formatGoldShort(Math.abs(balance))}`
+                    : `${balance > 0 ? '+' : balance < 0 ? '-' : ''}${formatGold(Math.abs(balance))}`
                 }
                 loading={loading}
                 styles={{

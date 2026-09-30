@@ -131,7 +131,7 @@ describe('유물 시세', () => {
     const cell = await screen.findByRole('link', {
       name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기',
     });
-    expect(within(cell).getByText('8,000만')).toBeInTheDocument();
+    expect(within(cell).getByText('80,000,000')).toBeInTheDocument();
     expect(screen.getByText(/5분 전에 받은 판매 중 매물/)).toBeInTheDocument();
     expect(screen.getByText('새 매물을 받는 중입니다.')).toBeInTheDocument();
   });
@@ -150,7 +150,7 @@ describe('유물 시세', () => {
       name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기',
     });
     // 두 번째 쪽의 8,000만이 첫 쪽의 9,500만보다 싸다.
-    expect(within(cell).getByText('8,000만')).toBeInTheDocument();
+    expect(within(cell).getByText('80,000,000')).toBeInTheDocument();
     expect(cell).toHaveAttribute('title', '80,000,000 G');
     // 같은 칸에 레벨과 매물 수가 있고, 레벨 글자는 그 레벨의 수치(700% 의 10분의 7)를 품는다.
     const line = cell.closest('[role="listitem"]') as HTMLElement;
@@ -165,7 +165,7 @@ describe('유물 시세', () => {
     });
     expect(
       screen.getByRole('link', { name: '오버 드라이브 폭발 공격 대미지 10레벨 매물 보기' }),
-    ).toHaveTextContent('3억');
+    ).toHaveTextContent('300,000,000');
     expect(screen.getByText('134,000,000 G')).toBeInTheDocument();
   });
 
@@ -174,7 +174,7 @@ describe('유물 시세', () => {
     await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
 
     const [eight, mark] = screen.getAllByTitle('최종 거래가 200,000,000 G, 9월 25일');
-    expect(eight).toHaveTextContent('2억');
+    expect(eight).toHaveTextContent('200,000,000');
     expect(mark).toHaveTextContent('최종');
     // 매물도 거래 기록도 없는 레벨은 기록이 없다고 적는다.
     expect(screen.getAllByText('기록 없음')).toHaveLength(7);
@@ -192,9 +192,9 @@ describe('유물 시세', () => {
     fireEvent.click(screen.getByRole('tab', { name: '그 밖의 유물' }));
 
     const special = await screen.findByRole('link', { name: '와드네 특급 매물 보기' });
-    expect(special).toHaveTextContent('3,200만 G');
+    expect(special).toHaveTextContent('32,000,000 G');
     expect(screen.getByRole('link', { name: '와드네 이데아 매물 보기' })).toHaveTextContent(
-      '22만 G',
+      '215,000 G',
     );
     expect(screen.queryByRole('link', { name: '와드네 일반 매물 보기' })).toBeNull();
   });

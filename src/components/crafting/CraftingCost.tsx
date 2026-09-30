@@ -61,7 +61,8 @@ import {
   type Recipe,
   type RecipeBook,
 } from '@/features/crafting/recipes';
-import { formatGold, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter, type GoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
 
@@ -93,6 +94,7 @@ const SMALL_STAT = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', f
  * 재료비가 모자라게 잡혔으면(partial) 실제 손익은 이보다 작다. 손해면 "이상", 이득이면 "최대" 를 붙인다.
  */
 function ProfitStat({ title, profit }: { title: string; profit: CraftProfit | undefined }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   // 밝은 배경에서 기본 초록과 빨강은 글자 대비가 모자라(2.2, 3.2) 더 진한 색을 쓴다.
   const light = useResolvedThemeMode() === 'light';
@@ -168,6 +170,7 @@ function RecipeCost({
   recipe: Recipe;
   picker: ReactNode;
 }) {
+  const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   const { token } = theme.useToken();
   const [quantity, setQuantity] = useState(1);
@@ -507,9 +510,15 @@ function RecipeCost({
 
         <div ref={tableRef}>
           <Table<TreeRow>
-            columns={treeColumns(book, setMethod, setBeads, categoryOf, coin, {
-              background: token.colorFillQuaternary,
-            })}
+            columns={treeColumns(
+              book,
+              setMethod,
+              setBeads,
+              categoryOf,
+              coin,
+              { background: token.colorFillQuaternary },
+              formatGold,
+            )}
             dataSource={treeRowsOf(plan.nodes, plan.sections, workRecipe ? works : 1)}
             rowKey="key"
             size="small"
@@ -741,6 +750,7 @@ function treeColumns(
   categoryOf: (name: string) => string | undefined,
   coin: string | undefined,
   sectionStyle: CSSProperties,
+  formatGold: GoldFormatter,
 ): TableColumnsType<TreeRow> {
   const itemColumns: ColumnType<ItemRow>[] = [
     {
@@ -955,6 +965,7 @@ function treeColumns(
 }
 
 function LowestPrice({ price, lowest }: { price: NodePrice; lowest?: number }): ReactNode {
+  const formatGold = useGoldFormatter();
   if (price.status === 'loading') return <Spin size="small" />;
   const status = priceStatusText(price);
   if (status || lowest === undefined) return <Text type="secondary">{status || '-'}</Text>;
@@ -967,6 +978,7 @@ function LowestPrice({ price, lowest }: { price: NodePrice; lowest?: number }): 
 
 /** 합이 온전하지 않으면 무엇이 빠졌는지 짧게 붙인다. 자세한 목록은 총액 아래에 있다. */
 function CostText({ cost, strong }: { cost: CostSum; strong?: boolean }) {
+  const formatGold = useGoldFormatter();
   if (cost.pending > 0 && cost.gold === 0) return <Spin size="small" />;
   const knownNothing = cost.gold === 0 && cost.unpriced.length > 0;
   return (

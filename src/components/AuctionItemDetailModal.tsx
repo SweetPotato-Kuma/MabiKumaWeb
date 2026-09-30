@@ -17,7 +17,8 @@ import { isEquipmentCategory } from '@/features/equipment/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { isRelicOption, parseRelicOption, RELIC_MAX_LEVEL } from '@/features/relics/murias';
 import type { ItemOption } from '@/features/auction/types';
-import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
+import { formatDateTime, formatNumber, formatRemaining } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { BookIcon } from '@/components/icons';
 
 const { Text } = Typography;
@@ -183,6 +184,7 @@ function OptionGroupTable({ group }: { group: OptionGroup }) {
 }
 
 export function AuctionItemDetailModal({ detail, onClose }: Props) {
+  const formatGold = useGoldFormatter();
   const { groups, colors, protections } = groupItemOptions(detail?.options);
   const price = bundlePrice(detail?.pricePerUnit ?? 0, detail?.count ?? 1);
   const hasOptions = groups.length > 0 || colors.length > 0 || protections.length > 0;

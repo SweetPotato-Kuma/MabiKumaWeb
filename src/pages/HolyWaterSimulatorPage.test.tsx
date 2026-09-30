@@ -82,7 +82,7 @@ describe('무리아스의 성수 시뮬레이터', () => {
     expect(within(latest()).getByText('98% 이상')).toBeInTheDocument();
 
     expect(await screen.findByText('바른 기록 1번', {}, { timeout: FX_WAIT })).toBeInTheDocument();
-    expect(screen.getByText('쓴 골드').closest('.ant-statistic')).toHaveTextContent('250만 G');
+    expect(screen.getByText('쓴 골드').closest('.ant-statistic')).toHaveTextContent('2,500,000 G');
 
     fireEvent.click(screen.getByRole('button', { name: /처음부터/ }));
     expect(within(latest()).getByText('아직 바르지 않았습니다.')).toBeInTheDocument();
@@ -159,7 +159,7 @@ describe('무리아스의 성수 시뮬레이터', () => {
       '한 번 이상 나올 확률 0.976%',
     );
     expect(screen.getByRole('region', { name: '바르기 횟수별 확률' })).toHaveTextContent(
-      '2,500만 G',
+      '25,000,000 G',
     );
 
     // 41 이상이면 E 한 장 전부: 1/102.

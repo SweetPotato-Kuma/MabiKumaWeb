@@ -56,7 +56,8 @@ import {
   type PriceCell,
 } from '@/features/relics/prices';
 import type { AuctionItem } from '@/features/auction/types';
-import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useCanQuery } from '@/lib/settings';
 import { useQueryTextParam } from '@/lib/useQueryParams';
 
@@ -109,6 +110,7 @@ function PriceLink({
   /** 굵게. 무리아스의 유물에서 이데아 최저가 이상인 칸을 가른다. */
   strong?: boolean;
 }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   if (!cell) return <Text type="secondary">-</Text>;
   return (
@@ -120,7 +122,7 @@ function PriceLink({
     >
       <Flex vertical gap={0} align="flex-end">
         <span className="tnum" style={{ whiteSpace: 'nowrap', fontWeight: strong ? 700 : undefined }}>
-          {formatGoldShort(cell.lowest, unit)}
+          {formatGold(cell.lowest, unit)}
         </span>
         {showCount ? (
           <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
@@ -228,6 +230,7 @@ function OptionCard({
   /** 이데아 최저가. 이 값 이상인 가격을 굵게 적는다. 매물이 없으면 null. */
   ideaPrice: number | null;
 }) {
+  const formatGold = useGoldFormatter();
   const { row, skill } = option;
   const { token } = theme.useToken();
   const aboveIdea = (price: number) => ideaPrice !== null && price >= ideaPrice;
@@ -304,7 +307,7 @@ function OptionCard({
                         fontWeight: aboveIdea(trade.price) ? 700 : undefined,
                       }}
                     >
-                      {formatGoldShort(trade.price, false)}
+                      {formatGold(trade.price, false)}
                     </Text>
                   ) : !cell ? (
                     // 거래 기록은 모으기 시작한 뒤의 것만 있다. 그 뒤로 팔린 적이 없으면 적을 값이 없다.
@@ -477,6 +480,7 @@ function IdeaOddsStat({ odds, ideaListed }: { odds: IdeaOdds | null; ideaListed:
 }
 
 function MuriasView({ items }: { items: AuctionItem[] }) {
+  const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   // 아르카나 이름을 왼쪽 칸에 두는 폭. 까닭은 ArcanaSection 에 있다.
   const wide = screens.xxl ?? true;

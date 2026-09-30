@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatGold, formatGoldShort, formatNumber, formatRemaining } from './format';
+import { formatGoldWith, formatNumber, formatRemaining } from './format';
 
 describe('formatNumber', () => {
   it('천 단위로 구분한다', () => {
@@ -12,9 +12,57 @@ describe('formatNumber', () => {
   });
 });
 
-describe('formatGold', () => {
-  it('골드 단위를 붙인다', () => {
-    expect(formatGold(52000)).toBe('52,000 G');
+describe('formatGoldWith', () => {
+  const number = { style: 'number', omitSmall: false } as const;
+  const korean = { style: 'korean', omitSmall: false } as const;
+  const koreanOmit = { style: 'korean', omitSmall: true } as const;
+
+  it('숫자 표기는 자릿수를 다 적고 G 를 붙인다', () => {
+    expect(formatGoldWith(52000, number)).toBe('52,000 G');
+    expect(formatGoldWith(1_149_000_000, number)).toBe('1,149,000,000 G');
+  });
+
+  it('설정을 넘기지 않으면 숫자 표기다', () => {
+    expect(formatGoldWith(52000)).toBe('52,000 G');
+  });
+
+  it('한글 표기는 억, 만, 나머지로 끊는다', () => {
+    expect(formatGoldWith(1_149_001_234, korean)).toBe('11억 4,900만 1,234 G');
+    expect(formatGoldWith(178_400_000, korean)).toBe('1억 7,840만 G');
+    expect(formatGoldWith(200_000_000, korean)).toBe('2억 G');
+    expect(formatGoldWith(80_000_000, korean)).toBe('8,000만 G');
+    expect(formatGoldWith(20_000, korean)).toBe('2만 G');
+  });
+
+  it('만이 안 되는 값은 어느 표기든 그대로 적는다', () => {
+    expect(formatGoldWith(9_500, korean)).toBe('9,500 G');
+    expect(formatGoldWith(9_500, koreanOmit)).toBe('9,500 G');
+    expect(formatGoldWith(0, korean)).toBe('0 G');
+  });
+
+  it('1만 미만 생략은 끝자리를 버린다', () => {
+    expect(formatGoldWith(1_149_001_234, koreanOmit)).toBe('11억 4,900만 G');
+    expect(formatGoldWith(215_999, koreanOmit)).toBe('21만 G');
+  });
+
+  it('생략은 숫자 표기에는 영향이 없다', () => {
+    expect(formatGoldWith(1_149_001_234, { style: 'number', omitSmall: true })).toBe('1,149,001,234 G');
+  });
+
+  it('단위를 끄면 G 를 뗀다', () => {
+    expect(formatGoldWith(1_079_000_000, korean, false)).toBe('10억 7,900만');
+    expect(formatGoldWith(52_000, number, false)).toBe('52,000');
+  });
+
+  it('음수는 부호를 앞에 붙인다', () => {
+    expect(formatGoldWith(-1_234_567, number)).toBe('-1,234,567 G');
+    expect(formatGoldWith(-1_234_567, korean)).toBe('-123만 4,567 G');
+  });
+
+  it('값이 없으면 하이픈이다', () => {
+    expect(formatGoldWith(null, korean)).toBe('-');
+    expect(formatGoldWith(undefined, number)).toBe('-');
+    expect(formatGoldWith(Number.NaN, number)).toBe('-');
   });
 });
 
@@ -31,17 +79,5 @@ describe('formatRemaining', () => {
 
   it('이미 지난 시각은 만료로 표시한다', () => {
     expect(formatRemaining('2025-12-31T23:00:00Z', now)).toBe('만료');
-  });
-});
-
-describe('formatGoldShort', () => {
-  it('억과 만으로 줄인다', () => {
-    expect(formatGoldShort(178_400_000)).toBe('1억 7,840만 G');
-    expect(formatGoldShort(80_000_000)).toBe('8,000만 G');
-    expect(formatGoldShort(200_000_000)).toBe('2억 G');
-    expect(formatGoldShort(215_000)).toBe('22만 G');
-    expect(formatGoldShort(9_500)).toBe('9,500 G');
-    expect(formatGoldShort(null)).toBe('-');
-    expect(formatGoldShort(1_079_000_000, false)).toBe('10억 7,900만');
   });
 });

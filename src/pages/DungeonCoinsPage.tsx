@@ -30,7 +30,8 @@ import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import { DUNGEON_COINS, dungeonCoinOf, type DungeonCoin } from '@/features/dungeonCoins/exchanges';
 import { useDungeonPrices } from '@/features/dungeonCoins/prices';
 import { rankExchanges, type ExchangeRow, type ExchangeValue } from '@/features/dungeonCoins/value';
-import { formatGold, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useCanQuery } from '@/lib/settings';
 
 const { Title, Text } = Typography;
@@ -68,6 +69,7 @@ function ExchangeName({ row, category }: { row: ExchangeRow; category?: string }
 }
 
 function DungeonCoinView({ entry }: { entry: DungeonCoin }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;

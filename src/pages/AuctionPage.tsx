@@ -79,7 +79,8 @@ import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features
 import { useIconMaps } from '@/features/itemcard/iconMap';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
 import { headerHeightFor } from '@/app/theme';
-import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
+import { formatDateTime, formatNumber, formatRemaining } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useControlledPagination } from '@/lib/useListPagination';
@@ -223,6 +224,7 @@ function historyItemDetail(record: AuctionHistoryItem): AuctionItemDetail {
 }
 
 export function AuctionPage() {
+  const formatGold = useGoldFormatter();
   const canQuery = useCanQuery();
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
@@ -844,7 +846,7 @@ export function AuctionPage() {
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf, tiered, itemIsPartial]);
+  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf, tiered, itemIsPartial, formatGold]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => isWide ? [

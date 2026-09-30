@@ -10,7 +10,8 @@ import {
   valueRange,
   valueY,
 } from '@/features/market/series';
-import { formatGold, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
 
@@ -46,6 +47,7 @@ export interface ChartTick {
 }
 
 function SlotTooltip({ slot }: { slot: ChartSlot }) {
+  const formatGold = useGoldFormatter();
   if (!slot.summary) return <span className="tnum">{slot.title} 거래 없음</span>;
   const { summary } = slot;
   return (
@@ -101,6 +103,7 @@ export function PriceHistoryChart({
   ticks: readonly ChartTick[];
   ariaLabel: string;
 }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   const count = slots.length;
   const [hover, setHover] = useState<number | null>(null);

@@ -81,7 +81,8 @@ import {
   type ReforgeTarget,
 } from '@/features/reforge/simulator';
 import { formatChance } from '@/features/simulator/trials';
-import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import { useResolvedThemeMode } from '@/lib/themePreference';
 import './reforgeFx.css';
@@ -732,6 +733,7 @@ function lowestOf(state: PriceState | undefined): number | null {
  * 적용하기" 를 눌러야 붙는다. 쓴 골드는 도구와 보석마다 쓴 개수에 경매장 최저가를 곱해 더한다.
  */
 function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simulator }) {
+  const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   /**
    * 작업대 배율. 휴대폰 폭에서는 원래 크기(208px)이고 넓을수록 키운다. 넓은 화면에서 작업대가 작으면
@@ -1177,7 +1179,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
           <Col xs={12} md={6}>
             <Statistic
               title="쓴 골드"
-              value={formatGoldShort(spent)}
+              value={formatGold(spent)}
               styles={NUMERIC}
             />
             <Flex gap={6} align="center">
@@ -1187,7 +1189,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
                   ? '경매장 시세를 받는 중입니다.'
                   : unpriced > 0
                     ? `시세가 없는 ${formatNumber(unpriced)}개는 빠졌습니다.`
-                    : `도구 ${formatGoldShort(toolSpent)}, 기억의 보석 ${formatGoldShort(gemSpent)}`}
+                    : `도구 ${formatGold(toolSpent)}, 기억의 보석 ${formatGold(gemSpent)}`}
               </Text>
             </Flex>
           </Col>

@@ -28,7 +28,7 @@ import {
 } from '@/features/magmell/ranking';
 import { usePassSearch } from '@/features/magmell/usePassSearch';
 import { SERVER_NAMES } from '@/features/servers/constants';
-import { formatNumber } from '@/lib/format';
+import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useListPagination } from '@/lib/useListPagination';
 import { readOneOf, useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
@@ -49,13 +49,10 @@ const SUMMARY_CHANNEL_LIMIT = 8;
 /** 결과가 유효한지 다시 볼 간격. 데이터를 다시 받는 것이 아니라 "지났다" 표시만 바꾼다. */
 const CLOCK_TICK_MS = 30 * 1000;
 
-function formatPrice(price: number, priceType: string | null): string {
-  return `${formatNumber(price)} ${priceType ?? ''}`.trim();
-}
-
 /** 가장 싼 값 한눈에 보기. 표를 읽기 전에 답이 먼저 보이게 한다. */
 function LowestSummary({ listings }: { listings: PassListing[] }) {
   const { token } = theme.useToken();
+  const formatGold = useGoldFormatter();
   const lowest = useMemo(() => listings.filter((row) => row.rank === 1), [listings]);
   if (lowest.length === 0) return null;
 
@@ -71,8 +68,7 @@ function LowestSummary({ listings }: { listings: PassListing[] }) {
           <Statistic
             title="최저가"
             value={first.price}
-            formatter={(value) => formatNumber(Number(value))}
-            suffix={first.priceType ?? undefined}
+            formatter={() => formatPriceWithType(formatGold, first.price, first.priceType)}
             styles={{ content: { color: token.colorPrimary, fontWeight: 600 } }}
             className="tnum"
           />
@@ -109,6 +105,7 @@ function LowestSummary({ listings }: { listings: PassListing[] }) {
 export function MagmellPassPage() {
   const available = canSearchPasses();
   const { token } = theme.useToken();
+  const formatGold = useGoldFormatter();
   const { state, search } = usePassSearch();
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
@@ -235,15 +232,15 @@ export function MagmellPassPage() {
                 최저가
               </Tag>
               <Text strong style={{ color: token.colorPrimary }}>
-                {formatPrice(price, row.priceType)}
+                {formatPriceWithType(formatGold, price, row.priceType)}
               </Text>
             </Flex>
           ) : (
-            formatPrice(price, row.priceType)
+            formatPriceWithType(formatGold, price, row.priceType)
           ),
       },
     ],
-    [token.colorPrimary, wide],
+    [token.colorPrimary, wide, formatGold],
   );
 
   const loading = state.status === 'loading';

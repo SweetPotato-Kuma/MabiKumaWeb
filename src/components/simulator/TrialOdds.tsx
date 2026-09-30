@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Flex, InputNumber, Typography, theme } from 'antd';
 import { atLeastOnce, expectedHits, formatChance } from '@/features/simulator/trials';
-import { formatGoldShort } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
 
@@ -80,6 +80,7 @@ export function TrialOdds({
   defaultTrials = 10,
   framed = true,
 }: TrialOddsProps) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   const [ownTrials, setOwnTrials] = useState(defaultTrials);
   const trials = fixedTrials ?? ownTrials;
@@ -114,7 +115,7 @@ export function TrialOdds({
           <Text strong>{formatExpected(expected)}번</Text>
           {cost !== null ? (
             <>
-              , <Text strong>{formatGoldShort(cost)}</Text>
+              , <Text strong>{formatGold(cost)}</Text>
             </>
           ) : null}
         </Text>

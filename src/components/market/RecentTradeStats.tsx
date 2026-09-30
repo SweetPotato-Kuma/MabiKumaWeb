@@ -1,6 +1,7 @@
 import { Col, Row, Statistic } from 'antd';
 import type { PriceSummary } from '@/features/market/api';
-import { formatGold, formatNumber } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 /**
  * 기간 하나의 개당 가격 요약을 한 줄로. 경매장 검색과 아이템 정보가 같이 쓴다.
@@ -8,6 +9,7 @@ import { formatGold, formatNumber } from '@/lib/format';
  * 거래 건수를 맨 앞에 둔다. 표본이 적으면 중위도 평균도 믿을 수 없으므로 그것부터 보여야 한다.
  */
 export function RecentTradeStats({ summary, label }: { summary: PriceSummary; label: string }) {
+  const formatGold = useGoldFormatter();
   const cells = [
     ['거래', `${formatNumber(summary.n)}건`],
     ['최저', formatGold(summary.lo)],

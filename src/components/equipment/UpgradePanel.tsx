@@ -1,6 +1,7 @@
 import { Descriptions, Flex, Select, Tooltip, Typography } from 'antd';
 import { HelpIcon } from '@/components/icons';
 import { formatNumber } from '@/lib/format';
+import { useGoldFormatter, type GoldFormatter } from '@/lib/useGoldFormatter';
 import { selectedUpgrades, upgradeCost, upgradesForSlot } from '@/features/equipment/simulate';
 import { describeStats } from '@/features/equipment/stats';
 import type { EquipmentRecord, UpgradeDef } from '@/features/equipment/types';
@@ -45,9 +46,9 @@ function effectText(def: UpgradeDef): string {
 }
 
 /** 비용 한 줄. "숙련 100, 150,000 G, 루비 5cm 이상" */
-function costText(def: UpgradeDef): string {
+function costText(def: UpgradeDef, formatGold: GoldFormatter): string {
   const parts = [`숙련 ${formatNumber(def.ep)}`];
-  if (def.gold) parts.push(`${formatNumber(def.gold)} G`);
+  if (def.gold) parts.push(formatGold(def.gold));
   if (def.gems?.length) {
     parts.push(def.gems.map(([name, size]) => `${name} ${size}cm 이상`).join(' 또는 '));
   }
@@ -62,6 +63,7 @@ function costText(def: UpgradeDef): string {
  * 개조를 해 주는 NPC 는 칸 이름 옆 (?) 에 올리면 보인다. 줄과 고르는 칸 양쪽에 적으면 같은 말이 겹치고 길어졌다.
  */
 export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: UpgradePanelProps) {
+  const formatGold = useGoldFormatter();
   const cost = upgradeCost(selectedUpgrades({ slots, gemSlots }, upgrades));
 
   const slotRow = (slot: number, gem: boolean) => {
@@ -75,7 +77,7 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
       if (gem) onChange(slots, next);
       else onChange(next, gemSlots);
     };
-    const summary = chosen ? `${effectText(chosen)} (${costText(chosen)})` : '';
+    const summary = chosen ? `${effectText(chosen)} (${costText(chosen, formatGold)})` : '';
     const slotNpcs = chosen ? npcText(chosen) : slotNpcText(candidates.map(([, def]) => def));
 
     return (
@@ -136,7 +138,7 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
                   </Text>
                 ) : null}
                 <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                  {costText(def)}
+                  {costText(def, formatGold)}
                 </Text>
               </Flex>
             );
@@ -172,7 +174,7 @@ export function UpgradePanel({ item, upgrades, slots, gemSlots, onChange }: Upgr
           {
             key: 'gold',
             label: '수수료 합계',
-            children: <span className="tnum">{formatNumber(cost.gold)} G</span>,
+            children: <span className="tnum">{formatGold(cost.gold)}</span>,
           },
         ]}
       />

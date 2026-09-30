@@ -55,6 +55,7 @@ import { useBagSearch } from '@/features/bags/useBagSearch';
 import { useGridFit } from '@/features/bags/useGridFit';
 import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
+import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
 import { useListPagination } from '@/lib/useListPagination';
 import { useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
@@ -105,10 +106,6 @@ function formatClock(ms: number): string {
   return new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatPrice(row: BagListing): string {
-  return row.price === null ? '-' : `${formatNumber(row.price)} ${row.priceType ?? ''}`.trim();
-}
-
 /** 주머니 색 견본. 비교에 쓰인 파트는 테두리를 두껍게 해 무엇과 비교했는지 보이게 한다. */
 function Swatches({
   colors,
@@ -155,6 +152,7 @@ function Swatches({
  * 따로 단을 나누는 규칙이 없어도 한 단으로 무너지지 않는다.
  */
 function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }) {
+  const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
 
   return (
@@ -204,7 +202,7 @@ function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }
               {row.channel}채널 {row.npc}
             </Text>
             <Text className="tnum" style={{ fontSize: 12 }}>
-              {formatPrice(row)}
+              {row.price === null ? '-' : formatPriceWithType(formatGold, row.price, row.priceType)}
             </Text>
           </Flex>
         </Card>
@@ -323,6 +321,7 @@ function PartChannelsRow({
 }
 
 export function BagsPage() {
+  const formatGold = useGoldFormatter();
   const available = canSearchBags();
   const { state, search } = useBagSearch();
   // 찾기 전에 미리 받아 둔다. 결과가 올 때쯤이면 칠할 준비가 끝나 있다.
@@ -473,7 +472,11 @@ export function BagsPage() {
         align: 'right',
         className: 'tnum',
         render: (price: number | null, row) =>
-          price === null ? <Text type="secondary">-</Text> : formatPrice(row),
+          price === null ? (
+            <Text type="secondary">-</Text>
+          ) : (
+            formatPriceWithType(formatGold, price, row.priceType)
+          ),
       },
       {
         title: '비슷함',
@@ -484,7 +487,7 @@ export function BagsPage() {
         render: (score: number | null) => (score === null ? '-' : `${score.toFixed(1)}%`),
       },
     ],
-    [dyeBook],
+    [dyeBook, formatGold],
   );
 
   const validity =
