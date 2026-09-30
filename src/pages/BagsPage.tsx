@@ -46,11 +46,18 @@ import {
   type BagTreeNode,
 } from '@/features/bags/groups';
 import { bagNamesOf, buildListings, type BagListing } from '@/features/bags/listings';
+import {
+  bagConditionParams,
+  hasBagConditions,
+  readBagConditions,
+  type PartTarget,
+} from '@/features/bags/searchParams';
 import { useBagSearch } from '@/features/bags/useBagSearch';
 import { useGridFit } from '@/features/bags/useGridFit';
 import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
+import { useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
 import { GridIcon, ListIcon, SearchIcon, StarFillIcon, StarIcon } from '@/components/icons';
 
@@ -65,19 +72,6 @@ type ViewMode = 'grid' | 'table';
 const VIEW_OPTIONS = [
   { value: 'grid', label: '그림', icon: <GridIcon /> },
   { value: 'table', label: '표', icon: <ListIcon /> },
-];
-
-/** 파트마다 원하는 색. 검색에서 뺀 파트는 어떤 색이든 된다. */
-interface PartTarget {
-  color: string;
-  excluded: boolean;
-}
-
-/** 처음에는 파트 A 만 흰색으로 찾는다. 흰 주머니를 가장 많이 찾는다. */
-const DEFAULT_TARGETS: PartTarget[] = [
-  { color: '#ffffff', excluded: false },
-  { color: '#ffffff', excluded: true },
-  { color: '#ffffff', excluded: true },
 ];
 
 /**
@@ -101,6 +95,9 @@ const ALL_TAB = 'all';
 const ROW_IMAGE_SIZE = 48;
 /** 그림 보기 카드의 주머니 그림. 원본의 두 배. */
 const CARD_IMAGE_SIZE = 96;
+
+/** 조건을 고친 뒤 주소에 쓰기까지 기다리는 시간. 색을 끌어 고르는 동안 주소가 계속 바뀌지 않게 한다. */
+const URL_WRITE_DELAY_MS = 300;
 
 /** 결과가 유효한지 다시 볼 간격. 데이터를 다시 받는 것이 아니라 "지났다" 표시만 바꾼다. */
 const CLOCK_TICK_MS = 30 * 1000;
@@ -327,10 +324,30 @@ export function BagsPage() {
   const screens = Grid.useBreakpoint();
   const wide = Boolean(screens.md);
 
-  const [server, setServer] = useState<string>(SERVER_NAMES[0]);
+  /**
+   * 검색 조건은 주소에 담는다. 처음 열 때 주소에서 읽고, 고칠 때마다 주소를 따라 고친다(replace).
+   * 그래서 새로고침해도 조건이 남고 링크로 나눌 수 있다. 조건을 바꿔 보는 것마다 뒤로 가기 단계가
+   * 쌓이지 않게 하고, 색을 끄는 동안 주소가 매번 바뀌지 않게 잠깐 기다린다.
+   */
+  const [params, updateParams] = useQueryParams();
+  const [initial] = useState(() => ({ conditions: readBagConditions(params), shared: hasBagConditions(params) }));
+  const [server, setServer] = useState<string>(initial.conditions.server);
   /** 트리에서 체크한 칸들. 비어 있으면 모든 주머니. */
-  const [selectedBags, setSelectedBags] = useState<string[]>([]);
-  const [targets, setTargets] = useState<PartTarget[]>(DEFAULT_TARGETS);
+  const [selectedBags, setSelectedBags] = useState<string[]>(initial.conditions.bags);
+  const [targets, setTargets] = useState<PartTarget[]>(initial.conditions.targets);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => updateParams(bagConditionParams({ server, bags: selectedBags, targets })),
+      URL_WRITE_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [server, selectedBags, targets, updateParams]);
+  // 조건이 실린 링크로 들어왔으면 찾기를 누른 것처럼 바로 받는다. 받은 결과는 조건과 상관없이 쓴다.
+  useEffect(() => {
+    if (available && initial.shared) void search(initial.conditions.server);
+    // 처음 열 때 한 번만 부른다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [view, setView] = useState<ViewMode>('grid');
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
 

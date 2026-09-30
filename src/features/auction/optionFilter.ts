@@ -641,9 +641,14 @@ export function thresholdSuggestions(
 
 let nextId = 1;
 
+/** 조건 블록마다 붙는 화면 안의 번호. 주소에서 조건을 되살릴 때도 새로 받는다. */
+export function nextConditionId(): number {
+  return nextId++;
+}
+
 /** 목록에서 고른 옵션으로 빈 조건 블록을 만든다. */
 export function newCondition(entry: Pick<CatalogEntry, 'kind' | 'optionType'>): Condition {
-  const id = nextId++;
+  const id = nextConditionId();
   switch (entry.kind) {
     case 'reforge':
       return { id, kind: 'reforge', name: '', minLevel: null };

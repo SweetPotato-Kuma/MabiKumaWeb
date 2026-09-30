@@ -4,7 +4,7 @@ import pageMeta from '@/app/pageMeta.json';
 import { ITEM_PATH_PREFIX } from '@/features/auction/dictionary';
 import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
-import { AuctionRoute } from '@/pages/AuctionRoute';
+import { AuctionPage } from '@/pages/AuctionPage';
 import { ItemsPage } from '@/pages/ItemsPage';
 import { LegacyRedirect } from '@/pages/LegacyRedirect';
 
@@ -47,7 +47,7 @@ export const router = createBrowserRouter(
       children: [
         // 방문자가 하려는 일은 시세 조회다. 소개 화면을 거치게 할 이유가 없다.
         { index: true, element: <Navigate to="/auction" replace /> },
-        { path: 'auction', element: <AuctionRoute /> },
+        { path: 'auction', element: <AuctionPage /> },
         /**
          * 목록(/items)과 아이템 한 장(/item/<slug>)이 한 화면을 나눠 쓴다. 두 경로를 한 부모 아래
          * 두어야 목록과 상세를 오갈 때 화면이 새로 그려지지 않는다. 상세를 보는 동안 숨겨 둔 목록의

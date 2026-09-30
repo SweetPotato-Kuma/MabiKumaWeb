@@ -30,6 +30,7 @@ import { usePassSearch } from '@/features/magmell/usePassSearch';
 import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatNumber } from '@/lib/format';
 import { useListPagination } from '@/lib/useListPagination';
+import { readOneOf, useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
 import { RefreshIcon } from '@/components/icons';
 
@@ -112,8 +113,15 @@ export function MagmellPassPage() {
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
 
-  const [server, setServer] = useState(ALL);
-  const [passName, setPassName] = useState(ALL);
+  // 서버와 통행증은 주소에 담는다. 링크를 나누거나 새로고침해도 같은 조건으로 본다.
+  const [params, updateParams] = useQueryParams();
+  const server = readOneOf<string>(params.get('server'), SERVER_OPTIONS.map((option) => option.value), ALL);
+  const setServer = (value: string) => updateParams({ server: value || null });
+  const setPassName = (value: string) => updateParams({ pass: value || null });
+  const passNames = useMemo(() => passNamesOf(state.results), [state.results]);
+  const passParam = params.get('pass') ?? ALL;
+  // 통행증 이름은 받아 온 목록에서만 고를 수 있다. 목록을 받은 뒤에도 없는 이름이면 전체로 본다.
+  const passName = state.results.length === 0 || passNames.includes(passParam) ? passParam : ALL;
 
   // 불러오기 전에 고를 것이 없으므로 들어오자마자 불러 온다. 같은 탭에서는 상점이 바뀌기 전까지 다시 받지 않는다.
   useEffect(() => {
@@ -135,9 +143,9 @@ export function MagmellPassPage() {
   const passOptions = useMemo(
     () => [
       { value: ALL, label: '채널마다 가장 싼 통행증' },
-      ...passNamesOf(state.results).map((name) => ({ value: name, label: shortPassName(name) })),
+      ...passNames.map((name) => ({ value: name, label: shortPassName(name) })),
     ],
-    [state.results],
+    [passNames],
   );
 
   /** 고른 서버에서 받은 채널 수. 목록 줄 수와 다르면 그 사실을 적는다. */

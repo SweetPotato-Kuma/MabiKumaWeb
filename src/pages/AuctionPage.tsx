@@ -59,10 +59,18 @@ import {
   describeMatch,
   EMPTY_OPTION_FILTER,
   matchesOptionFilter,
-  relicCondition,
   type OptionFilter,
 } from '@/features/auction/optionFilter';
-import { RELIC_MAX_LEVEL } from '@/features/relics/murias';
+import { serializeFilter } from '@/features/auction/filterUrl';
+import {
+  readSearchState,
+  readViewState,
+  searchParamsFor,
+  tabParamsFor,
+  writeViewState,
+  type AuctionSort,
+  type AuctionTab,
+} from '@/features/auction/searchParams';
 import { scanCategoriesFor, useOptionNamesQuery } from '@/features/auction/optionNames';
 import { useMarketRecentQuery } from '@/features/market/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
@@ -72,12 +80,16 @@ import { headerHeightFor } from '@/app/theme';
 import { formatDateTime, formatGold, formatNumber, formatRemaining } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
-import { useListPagination } from '@/lib/useListPagination';
+import { useControlledPagination } from '@/lib/useListPagination';
 import { RefreshIcon, SearchIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
-type Tab = 'items' | 'history';
+/** 표 머리를 눌렀을 때 antd 가 알려 주는 정렬 정보 가운데 쓰는 것만. */
+interface SorterLike {
+  columnKey?: unknown;
+  order?: AuctionSort['order'] | null;
+}
 
 /** 카테고리를 고르지 않은 상태. 트리의 '전체' 노드가 이 값을 가리킨다. */
 const ALL_CATEGORIES = '';
@@ -92,28 +104,6 @@ const EMPTY_INPUT: AuctionSearchInput = {
   category: ALL_CATEGORIES,
   keyword: '',
 };
-
-/** 주소에 실려 온 검색 조건. 아이템 정보에서 "시세 보기" 로 넘어오는 경로다. */
-function readSearchInput(params: URLSearchParams): AuctionSearchInput {
-  return {
-    category: params.get('category') ?? ALL_CATEGORIES,
-    keyword: params.get('keyword') ?? '',
-  };
-}
-
-/**
- * 주소에 실려 온 무리아스 유물 조건. 유물 시세 화면에서 칸을 누르면 그 옵션과 레벨로 온다.
- * 레벨이 1~10 이 아니면 그쪽 끝은 비워 둔다.
- */
-function readOptionFilter(params: URLSearchParams): OptionFilter {
-  const name = params.get('relic');
-  if (name === null) return EMPTY_OPTION_FILTER;
-  const level = (key: string) => {
-    const value = Number(params.get(key));
-    return Number.isInteger(value) && value >= 1 && value <= RELIC_MAX_LEVEL ? value : null;
-  };
-  return { conditions: [relicCondition(name, level('relicMin'), level('relicMax'))] };
-}
 
 /**
  * 그림 칸 크기. 아이콘은 인벤토리 칸(24px) 단위라 48x48 이 가장 많다. 48 이면 넷 중 셋이
@@ -227,14 +217,51 @@ export function AuctionPage() {
   const headerHeight = headerHeightFor(screens);
   const stickyHeader = useMemo(() => ({ offsetHeader: headerHeight }), [headerHeight]);
 
-  // 아이템 정보에서 넘어올 때 조건이 주소에 실려 온다. 첫 렌더에서만 읽고 이후에는 화면이 주인이다.
-  const [searchParams] = useSearchParams();
+  /**
+   * 검색 조건과 보는 방식은 주소가 주인이다. 찾기, 카테고리 고르기, 탭 바꾸기는 주소를 새로 써서
+   * 뒤로 가기로 돌아올 수 있게 하고, 정렬과 쪽 넘기기는 그 자리를 고친다. 검색은 주소의 조건이
+   * 바뀔 때 아래 효과가 한다. 그래서 새로고침, 뒤로 가기, 링크 공유가 같은 길을 탄다.
+   * 입력칸(form, optionFilter)은 찾기를 누르기 전의 초안이라 주소를 건드리지 않는다.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSearch = useMemo(() => readSearchState(searchParams), [searchParams]);
+  const view = useMemo(() => readViewState(searchParams), [searchParams]);
+  const { tab, sort } = view;
+  const searchKey = JSON.stringify([urlSearch.category, urlSearch.keyword, urlSearch.filterKey]);
 
-  const [initialInput] = useState(() => readSearchInput(searchParams));
-  const [form, setForm] = useState<AuctionSearchInput>(initialInput);
-  // 주소로 온 조건도 찾기를 누른 것과 같은 길(runSearch)로 보낸다. 아래 효과에서 한 번 부른다.
+  /**
+   * 한 번의 조작에서 주소를 두 번 고치면(정렬을 바꾸면 표가 쪽 넘기기도 알린다) 두 번째가 첫 번째를
+   * 덮어쓴다. 다음 렌더를 기다리지 않고 방금 쓴 주소에서 이어 가려고 ref 에 들고 있는다.
+   */
+  const paramsRef = useRef(searchParams);
+  useEffect(() => {
+    paramsRef.current = searchParams;
+  }, [searchParams]);
+  const navigate = useCallback(
+    (next: URLSearchParams, replace: boolean) => {
+      paramsRef.current = next;
+      setSearchParams(next, { replace });
+    },
+    [setSearchParams],
+  );
+  const mutateParams = useCallback(
+    (change: (params: URLSearchParams) => void, replace: boolean) => {
+      const next = new URLSearchParams(paramsRef.current);
+      change(next);
+      navigate(next, replace);
+    },
+    [navigate],
+  );
+
+  const [form, setForm] = useState<AuctionSearchInput>(() => ({
+    category: urlSearch.category,
+    keyword: urlSearch.keyword,
+  }));
+  /** 처음 열 때 주소에 검색이 실려 있었는지. 그랬다면 첫 화면 미리보기가 끼어들지 않는다. */
+  const [hadInitialSearch] = useState(
+    () => isAuctionSearchReady(urlSearch) || urlSearch.filterKey !== '',
+  );
   const [submitted, setSubmitted] = useState<AuctionSearchInput | null>(null);
-  const [tab, setTab] = useState<Tab>('items');
   const [detail, setDetail] = useState<AuctionItemDetail | null>(null);
 
   const query = submitted ?? EMPTY_INPUT;
@@ -293,7 +320,7 @@ export function AuctionPage() {
    * 찾기를 다시 누르지 않아도 바로 걸리고, 계산은 입력 뒤로 미뤄 타이핑이 밀리지 않게 한다.
    * 맞는 것이 모자라면 아래 자동 불러오기가 다음 묶음을 더 받는다.
    */
-  const [optionFilter, setOptionFilter] = useState<OptionFilter>(() => readOptionFilter(searchParams));
+  const [optionFilter, setOptionFilter] = useState<OptionFilter>(() => urlSearch.filter);
   /** 매물을 불러오기 전에도 상세 검색 자동완성이 비지 않게 하는 게임 데이터의 세공, 인챈트 이름. */
   const optionNames = useOptionNamesQuery().data;
   const deferredFilter = useDeferredValue(optionFilter);
@@ -312,11 +339,7 @@ export function AuctionPage() {
       filtering ? history.filter((item) => matchesOptionFilter(item, deferredFilter)) : history,
     [filtering, history, deferredFilter],
   );
-  /** 조건이 바뀌면 옛 쪽 번호는 뜻이 없다. 찾기를 새로 한 것처럼 첫 쪽으로 돌아간다. */
-  const pagingKey = useMemo(
-    () => `${JSON.stringify(submitted)}|${JSON.stringify(deferredFilter)}`,
-    [submitted, deferredFilter],
-  );
+  const draftFilterKey = useMemo(() => serializeFilter(deferredFilter), [deferredFilter]);
   /**
    * 최근 1일 시세. 불러온 매물이 전부 한 아이템이면 위에 요약 칸을 하나 두고, 여러 아이템이 섞이면
    * 줄마다 그 아이템의 1일 중위 가격을 붙인다. 섞인 목록에서 한 줄 요약은 뜻이 없다.
@@ -365,10 +388,41 @@ export function AuctionPage() {
   );
   usePrefetchItemCards(lookupKeys);
 
-  // 목록은 쪽으로 나눠 보여 준다. 새로 찾으면 첫 쪽으로 돌아간다.
+  // 목록은 쪽으로 나눠 보여 준다. 쪽 번호와 크기는 주소에 있고, 새로 찾으면 주소에서 빠져 첫 쪽으로 돌아간다.
   // 카드는 위에서 불러온 줄 전체를 한꺼번에 받아 두므로 쪽을 넘겨도 다시 묻지 않는다.
-  const itemsPaging = useListPagination(pagingKey);
-  const historyPaging = useListPagination(pagingKey);
+  const changePage = useCallback(
+    (page: number, size: number) => mutateParams((params) => writeViewState(params, { page, size }), true),
+    [mutateParams],
+  );
+  const itemsPaging = useControlledPagination({ page: view.page, pageSize: view.size, onChange: changePage });
+  const historyPaging = useControlledPagination({ page: view.page, pageSize: view.size, onChange: changePage });
+
+  /**
+   * 입력칸의 조건을 고치면 거르는 결과가 바로 바뀌므로 옛 쪽 번호는 뜻이 없다. 찾기를 누르기 전이라
+   * 주소의 조건과 달라졌을 때만 첫 쪽으로 돌린다. 뒤로 가기로 조건과 쪽이 함께 바뀔 때는 건드리지 않는다.
+   */
+  useEffect(() => {
+    if (draftFilterKey !== urlSearch.filterKey && view.page > 1) {
+      mutateParams((params) => params.delete('page'), true);
+    }
+    // 입력 중인 조건이 바뀔 때만 본다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftFilterKey]);
+
+  /** 표 머리를 눌러 정렬을 바꾼다. 쪽 넘기기는 pagination.onChange 가 맡으므로 여기서는 정렬만 본다. */
+  const changeSort = useCallback(
+    (_pagination: unknown, _filters: unknown, sorter: SorterLike | SorterLike[], extra: { action: string }) => {
+      if (extra.action !== 'sort') return;
+      const picked = Array.isArray(sorter) ? sorter[0] : sorter;
+      const key = typeof picked?.columnKey === 'string' ? picked.columnKey : '';
+      mutateParams((params) => {
+        params.delete('page');
+        if (key && picked?.order) writeViewState(params, { sort: { key, order: picked.order } });
+        else params.delete('sort');
+      }, true);
+    },
+    [mutateParams],
+  );
 
   // 끝쪽에 닿으면 다음 500건을 알아서 받는다. 쪽이 끝없이 이어지는 것처럼 보인다.
   const itemsMore = useAutoLoadMore({
@@ -420,7 +474,7 @@ export function AuctionPage() {
   }, [canQuery, prefetchCategories, queryClient]);
 
   /** 찾기를 눌렀는데 사전을 기다리는 중. 두 번 누르지 않게 버튼을 돌린다. */
-  const [resolving, setResolving] = useState(() => isAuctionSearchReady(initialInput));
+  const [resolving, setResolving] = useState(() => isAuctionSearchReady(form));
   const deferredKeyword = useDeferredValue(form.keyword);
   const suggestions = useMemo(
     () =>
@@ -461,23 +515,23 @@ export function AuctionPage() {
   }, []);
 
   /**
-   * 검색을 보낸다. 보내기 전에 사전으로 검색어를 다듬는다.
+   * 주소의 검색 조건으로 실제 검색을 건다. 보내기 전에 사전으로 검색어를 다듬는다.
    *
    * 넥슨 검색은 단어 단위로만 맞아서 "꿀우유" 로는 "향기로운 꿀 우유" 가, "우유" 로는
    * "딸기우유" 가 안 걸린다. 사전에서 걸리는 이름을 모두 찾아 넥슨이 알아듣는 검색어로
-   * 나눠 보낸다(resolveSearch). 초성은 사전의 이름으로 바꾸고 입력칸에도 보여 준다.
+   * 나눠 보낸다(resolveSearch). 초성은 사전의 이름으로 바꾸고 입력칸과 주소에도 그 이름을 적는다.
    *
    * 검색어가 있는데 사전을 아직 받는 중이면 다 받을 때까지 기다린다. 사전 없이 보내면
    * "꿀우유" 가 그대로 넘어가 0건이 된다. 사전은 700KB 남짓이라 첫 검색에서 흔히 겹친다.
+   * 기다리는 사이 주소가 또 바뀌었으면 옛 검색은 버린다(searchRun).
    */
-  async function runSearch(next: AuctionSearchInput) {
+  const searchRun = useRef(0);
+  async function runSearch(next: AuctionSearchInput, filter: OptionFilter) {
+    const run = ++searchRun.current;
+    const filtering = activeConditionCount(filter) > 0;
+
     // 장비나 유물 카테고리에 상세 검색 조건을 넣고 찾으면 모아 둔 매물에서 찾는다. 이름을 넣었으면 이름으로 찾는다.
-    if (
-      activeConditionCount(optionFilter) > 0 &&
-      !next.keyword.trim() &&
-      isSnapshotCategory(next.category) &&
-      canUseSnapshot()
-    ) {
+    if (filtering && !next.keyword.trim() && isSnapshotCategory(next.category) && canUseSnapshot()) {
       setResolving(false);
       setSubmitted({ category: next.category, keyword: '', scan: [next.category] });
       return;
@@ -485,14 +539,17 @@ export function AuctionPage() {
     if (!isAuctionSearchReady(next)) {
       setResolving(false);
       // 카테고리도 검색어도 없지만 상세 검색 조건이 있으면, 조건에 맞을 수 있는 카테고리를 훑는다.
-      if (activeConditionCount(optionFilter) > 0) {
-        const scan = scanCategoriesFor(optionFilter, optionNames);
+      if (filtering) {
+        const scan = scanCategoriesFor(filter, optionNames);
         if (scan.length === 0) {
           message.warning('넣은 조건을 모두 채울 수 있는 아이템이 없습니다. 세공과 유물 조건을 다시 확인해 주세요.');
           return;
         }
         setSubmitted({ category: ALL_CATEGORIES, keyword: '', scan });
+        return;
       }
+      // 주소에 검색이 없다. 아무것도 찾지 않은 첫 화면이다.
+      setSubmitted(null);
       return;
     }
 
@@ -501,6 +558,7 @@ export function AuctionPage() {
       setResolving(true);
       index = await queryClient.ensureQueryData(itemNameIndexQueryOptions).catch(() => null);
     }
+    if (run !== searchRun.current) return;
     setResolving(false);
 
     const resolved = resolveSearch(index, next);
@@ -514,20 +572,47 @@ export function AuctionPage() {
         ? { keyword: resolved.keyword, category: resolved.category }
         : prev,
     );
-    setSubmitted(resolved);
+    // 다듬은 검색어(초성을 이름으로 바꾼 것)를 주소에도 적는다. 공유한 링크가 같은 결과를 보게 한다.
+    if (resolved.keyword !== next.keyword) {
+      mutateParams((params) => {
+        if (resolved.keyword) params.set('keyword', resolved.keyword);
+        else params.delete('keyword');
+      }, true);
+    }
+    // 같은 조건이면 그대로 둔다. 새 객체가 되면 끝쪽 자동 불러오기가 처음부터 다시 센다.
+    setSubmitted((prev) => (prev && JSON.stringify(prev) === JSON.stringify(resolved) ? prev : resolved));
   }
 
+  /** 주소의 검색 조건이 바뀔 때(찾기, 뒤로 가기, 새로고침, 다른 화면에서 온 링크)마다 입력칸을 맞추고 다시 찾는다. */
   useEffect(() => {
-    void runSearch(initialInput);
-    // 첫 렌더에서 한 번만 부른다. 이후에는 화면이 주인이다.
+    const input = { category: urlSearch.category, keyword: urlSearch.keyword };
+    setForm((prev) =>
+      prev.category === input.category && prev.keyword.trim() === input.keyword ? prev : input,
+    );
+    setOptionFilter((prev) => (serializeFilter(prev) === urlSearch.filterKey ? prev : urlSearch.filter));
+    void runSearch(input, urlSearch.filter);
+    // 주소의 검색 조건이 바뀔 때만 다시 찾는다. 나머지는 그 렌더에서 읽은 값으로 충분하다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchKey]);
+
+  /**
+   * 찾기. 입력칸의 초안을 주소에 쓴다. 검색은 주소가 바뀌면 위 효과가 한다.
+   * 주소가 그대로면(같은 조건으로 다시 누름) 바뀔 것이 없어 아무 일도 하지 않는다.
+   */
+  function commitSearch(next: AuctionSearchInput, replace = false) {
+    const filterKey = serializeFilter(optionFilter);
+    if (!isAuctionSearchReady(next) && filterKey === '') return;
+    navigate(
+      searchParamsFor(paramsRef.current, { category: next.category, keyword: next.keyword, filterKey }),
+      replace,
+    );
+  }
 
   /** 카테고리를 고르는 것 자체가 둘러보기 행동이라 바로 조회한다. */
-  function selectCategory(category: string) {
+  function selectCategory(category: string, replace = false) {
     const next = { ...form, category };
     setForm(next);
-    if (isAuctionSearchReady(next)) void runSearch(next);
+    if (isAuctionSearchReady(next)) commitSearch(next, replace);
   }
 
   /**
@@ -538,13 +623,14 @@ export function AuctionPage() {
   const autoSelectedRef = useRef(false);
   useEffect(() => {
     if (autoSelectedRef.current) return;
-    if (submitted !== null || isAuctionSearchReady(initialInput)) {
+    if (submitted !== null || hadInitialSearch) {
       autoSelectedRef.current = true;
       return;
     }
     if (!previewTopCategory) return;
     autoSelectedRef.current = true;
-    selectCategory(previewTopCategory);
+    // 첫 화면을 채우는 것이지 사용자가 고른 검색이 아니라서 뒤로 가기 단계로 남기지 않는다.
+    selectCategory(previewTopCategory, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewTopCategory, submitted]);
 
@@ -559,6 +645,12 @@ export function AuctionPage() {
    * 스크롤됐다. 1px 만 넘쳐도 페이지 스크롤바가 떠서 화면이 흔들려 보였다.
    */
   const categoryPanel = <CategoryPicker value={form.category} onChange={selectCategory} />;
+
+  /** 주소의 정렬을 열에 건다. 표는 스스로 정렬 상태를 두지 않고 주소가 가리키는 대로 그린다. */
+  const sortOrderOf = useCallback(
+    (key: string): AuctionSort['order'] | null => (sort.key === key ? sort.order : null),
+    [sort],
+  );
 
   // 제네릭을 직접 적는다. useMemo 안에서는 배열 리터럴이 문맥 타입을 잃어
   // align: 'right' 같은 값이 string 으로 넓어진다.
@@ -585,10 +677,12 @@ export function AuctionPage() {
     },
     {
       title: '수량',
+      key: 'count',
       dataIndex: 'item_count',
       width: 80,
       align: 'right',
       sorter: (a, b) => a.item_count - b.item_count,
+      sortOrder: sortOrderOf('count'),
       render: (value: number) => <span className="tnum">{formatNumber(value)}</span>,
     },
     // 여러 아이템이 섞인 목록에서만. 호가 옆에 최근에 실제로 팔린 값을 두어 비싼지 싼지 바로 보이게 한다.
@@ -612,10 +706,11 @@ export function AuctionPage() {
       : []),
     {
       title: '가격',
+      key: 'price',
       dataIndex: 'auction_price_per_unit',
       width: 170,
       align: 'right',
-      defaultSortOrder: 'ascend',
+      sortOrder: sortOrderOf('price'),
       // 매물끼리 견주는 기준은 개당 가격이다. 묶음 크기가 달라도 이쪽이 비교가 된다.
       sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
       render: (_value, record) => (
@@ -624,8 +719,10 @@ export function AuctionPage() {
     },
     {
       title: '남은 시간',
+      key: 'expire',
       dataIndex: 'date_auction_expire',
       width: 160,
+      sortOrder: sortOrderOf('expire'),
       sorter: (a, b) => Date.parse(a.date_auction_expire) - Date.parse(b.date_auction_expire),
       render: (value: string) => (
         <Flex vertical gap={0}>
@@ -667,16 +764,17 @@ export function AuctionPage() {
     },
     {
       title: '가격',
+      key: 'price',
       dataIndex: 'auction_price_per_unit',
       align: 'right',
-      defaultSortOrder: 'ascend',
+      sortOrder: sortOrderOf('price'),
       sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, recentByName, filtering, deferredFilter]);
+  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => isWide ? [
@@ -698,17 +796,21 @@ export function AuctionPage() {
     },
     {
       title: '수량',
+      key: 'count',
       dataIndex: 'item_count',
       width: 80,
       align: 'right',
       sorter: (a, b) => a.item_count - b.item_count,
+      sortOrder: sortOrderOf('count'),
       render: (value: number) => <span className="tnum">{formatNumber(value)}</span>,
     },
     {
       title: '가격',
+      key: 'price',
       dataIndex: 'auction_price_per_unit',
       width: 170,
       align: 'right',
+      sortOrder: sortOrderOf('price'),
       sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
@@ -716,9 +818,10 @@ export function AuctionPage() {
     },
     {
       title: '거래 시각',
+      key: 'time',
       dataIndex: 'date_auction_buy',
       width: 170,
-      defaultSortOrder: 'descend',
+      sortOrder: sortOrderOf('time'),
       sorter: (a, b) => Date.parse(a.date_auction_buy) - Date.parse(b.date_auction_buy),
       render: (value: string) => <span className="tnum">{formatDateTime(value)}</span>,
     },
@@ -745,15 +848,17 @@ export function AuctionPage() {
     },
     {
       title: '가격',
+      key: 'price',
       dataIndex: 'auction_price_per_unit',
       align: 'right',
+      sortOrder: sortOrderOf('price'),
       sorter: (a, b) => a.auction_price_per_unit - b.auction_price_per_unit,
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, filtering, deferredFilter]);
+  ], [isWide, filtering, deferredFilter, sortOrderOf]);
 
   /**
    * 결과 영역은 검색어 타이핑과 분리한다.
@@ -816,6 +921,7 @@ export function AuctionPage() {
             rowKey={(record, index) => `${record.item_display_name}-${record.date_auction_expire}-${index ?? 0}`}
             size="small"
             pagination={itemsPaging.pagination}
+            onChange={changeSort}
             scroll={isWide ? { x: 640 } : undefined}
             sticky={stickyHeader}
           />
@@ -828,7 +934,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, itemColumns, visibleItems, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, itemColumns, visibleItems, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <QueryState
@@ -863,6 +969,7 @@ export function AuctionPage() {
           rowKey={(record) => record.auction_buy_id}
           size="small"
           pagination={historyPaging.pagination}
+          onChange={changeSort}
           scroll={isWide ? { x: 640 } : undefined}
           sticky={stickyHeader}
         />
@@ -874,7 +981,7 @@ export function AuctionPage() {
         />
       </Flex>
     </QueryState>
-  ), [enabled, visibleHistory, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
+  ), [enabled, changeSort, visibleHistory, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   return (
     <>
@@ -896,14 +1003,14 @@ export function AuctionPage() {
                     // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
                     const next = { ...form, keyword };
                     setForm(next);
-                    void runSearch(next);
+                    commitSearch(next);
                   }}
                   style={{ flex: '1 1 260px', minWidth: 0 }}
                 >
                   <Input
                     placeholder="아이템명 검색"
                     allowClear
-                    onPressEnter={() => void runSearch(form)}
+                    onPressEnter={() => commitSearch(form)}
                   />
                 </AutoComplete>
 
@@ -912,7 +1019,7 @@ export function AuctionPage() {
                   icon={<SearchIcon />}
                   loading={resolving}
                   disabled={!canSubmit || !canQuery}
-                  onClick={() => void runSearch(form)}
+                  onClick={() => commitSearch(form)}
                 >
                   찾기
                 </Button>
@@ -920,8 +1027,8 @@ export function AuctionPage() {
                   icon={<RefreshIcon />}
                   onClick={() => {
                     setForm(EMPTY_INPUT);
-                    setSubmitted(null);
                     setOptionFilter(EMPTY_OPTION_FILTER);
+                    navigate(new URLSearchParams(), false);
                   }}
                 >
                   검색 초기화
@@ -1005,7 +1112,7 @@ export function AuctionPage() {
           ) : (
             <Tabs
               activeKey={tab}
-              onChange={(key) => setTab(key as Tab)}
+              onChange={(key) => navigate(tabParamsFor(paramsRef.current, key as AuctionTab), false)}
               items={[
                 { key: 'items', label: '판매 중 매물', children: itemsPanel },
                 { key: 'history', label: '거래 내역', children: historyPanel },

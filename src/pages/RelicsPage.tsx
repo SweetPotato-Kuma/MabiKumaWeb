@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -58,6 +58,7 @@ import {
 import type { AuctionItem } from '@/features/auction/types';
 import { formatGold, formatGoldShort, formatNumber } from '@/lib/format';
 import { useCanQuery } from '@/lib/settings';
+import { useQueryTextParam } from '@/lib/useQueryParams';
 
 const { Title, Text } = Typography;
 
@@ -514,7 +515,7 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
       { replace: true },
     );
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useQueryTextParam('q');
   const needle = normalizeForSearch(query);
   // 옵션 이름이나 아르카나 이름에 들어 있으면 남긴다. "블래스트" 로 치면 그 아르카나가 통째로 남는다.
   const shown = groups
@@ -621,7 +622,7 @@ function OthersView({ items }: { items: AuctionItem[] }) {
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
   const allRows = useMemo(() => summarizeOtherRelics(items), [items]);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useQueryTextParam('q');
   const needle = normalizeForSearch(query);
   const rows = needle
     ? allRows.filter((row) => normalizeForSearch(row.name).includes(needle))

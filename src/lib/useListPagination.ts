@@ -53,3 +53,32 @@ export function useListPagination(resetKey: unknown, options: ListPaginationOpti
 
   return { page, pageSize, pagination };
 }
+
+interface ControlledPagination {
+  page: number;
+  pageSize: number;
+  /** 쪽이나 크기가 바뀌었다. 크기가 바뀌면 쪽은 1 로 온다. */
+  onChange: (page: number, pageSize: number) => void;
+}
+
+/**
+ * 쪽 번호와 크기를 밖(주소 쿼리스트링)이 들고 있는 표의 쪽 넘기기.
+ *
+ * useListPagination 과 같은 설정 객체를 내놓는다. 새로 찾을 때 첫 쪽으로 돌아가는 일은 밖이
+ * 주소를 새로 쓰면서 하므로 여기에는 없다.
+ */
+export function useControlledPagination({ page, pageSize, onChange }: ControlledPagination) {
+  const pagination = useMemo<TablePaginationConfig>(
+    () => ({
+      current: page,
+      pageSize,
+      pageSizeOptions: PAGE_SIZE_OPTIONS,
+      showSizeChanger: true,
+      size: 'small',
+      onChange: (nextPage, nextSize) => onChange(nextSize !== pageSize ? 1 : nextPage, nextSize),
+    }),
+    [page, pageSize, onChange],
+  );
+
+  return { page, pageSize, pagination };
+}
