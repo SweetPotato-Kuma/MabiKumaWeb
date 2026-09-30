@@ -31,6 +31,7 @@ import wordmarkDark from '@/assets/wordmark-dark.png';
 import wordmark from '@/assets/wordmark.png';
 import { CommandPalette } from '@/components/CommandPalette';
 import { IssueReportButton } from '@/components/IssueReportButton';
+import { SettingsButton, SettingsPanel } from '@/components/SettingsPanel';
 import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { searchShortcutLabel, useSearchShortcut } from '@/lib/searchShortcut';
@@ -260,6 +261,8 @@ export function RootLayout() {
             {screens.sm ? <EndpointTag /> : null}
             <SearchButton onOpen={() => setSearchOpen(true)} showShortcut={!compactNav} />
             <ThemeToggle />
+            {/* 좁은 화면은 헤더가 좁아 설정을 메뉴 서랍 안에 둔다. */}
+            {compactNav ? null : <SettingsButton />}
             {compactNav ? (
               <Button
                 type="text"
@@ -291,6 +294,12 @@ export function RootLayout() {
               style={{ borderInlineEnd: 'none', background: 'transparent' }}
             />
           </nav>
+          <Flex vertical gap={12} style={{ padding: '12px 16px' }}>
+            <Text strong style={{ fontSize: 15 }}>
+              설정
+            </Text>
+            <SettingsPanel />
+          </Flex>
           {/* 좁은 화면은 헤더에 조회 상태 배지를 둘 자리가 없다. 서랍 아래에 옮겨 둔다. */}
           {screens.sm ? null : (
             <div style={{ padding: '12px 16px' }}>
