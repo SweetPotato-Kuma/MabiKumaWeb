@@ -7,7 +7,8 @@ import {
   describeColorRange,
   type ColorChannel,
   type ColorChannelKey,
-} from '@/features/auction/optionFilter';
+  type ColorChannels,
+} from '@/features/colorChannels';
 
 const { Text } = Typography;
 
@@ -42,7 +43,7 @@ export function ColorChannelFields({
   channels,
   onChange,
 }: {
-  channels: Record<ColorChannelKey, ColorChannel>;
+  channels: ColorChannels;
   onChange: (key: ColorChannelKey, next: ColorChannel) => void;
 }) {
   return (

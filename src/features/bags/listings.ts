@@ -1,4 +1,5 @@
 import type { BagChannelResult } from './api';
+import { channelsMatch, hasColorChannels, type ColorChannels } from '@/features/colorChannels';
 import { hexToRgb, similarity, type Rgb } from './color';
 
 export interface BagListing {
@@ -23,6 +24,12 @@ interface ListingOptions {
    * 모두 null 이면 색으로 비교하지 않는다.
    */
   targets: readonly (string | null)[];
+  /**
+   * 파트 A, B, C 의 채널별 조건. 건 채널이 있는 파트는 그 채널을 모두 만족하는 주머니만 남긴다.
+   * 색을 비교하는 것(targets)과 별개라 가까운 순서는 그대로고, 조건에 맞는 것만 남는다.
+   * null 이거나 채널을 하나도 걸지 않은 파트는 거르지 않는다.
+   */
+  channels?: readonly (ColorChannels | null)[];
 }
 
 /**
@@ -41,13 +48,26 @@ export function buildListings(
   const wanted = options.targets
     .map((hex, part) => ({ part, rgb: hex ? hexToRgb(hex) : null }))
     .filter((entry): entry is { part: number; rgb: Rgb } => entry.rgb !== null);
-  const comparedParts = wanted.map((entry) => entry.part);
+  const narrowed = (options.channels ?? [])
+    .map((channels, part) => ({ part, channels }))
+    .filter((entry): entry is { part: number; channels: ColorChannels } =>
+      entry.channels !== null && hasColorChannels(entry.channels),
+    );
+  const comparedParts = [...new Set([...wanted, ...narrowed].map((entry) => entry.part))].sort(
+    (a, b) => a - b,
+  );
   const rows: BagListing[] = [];
 
   for (const result of channels) {
     for (const seller of result.npcs) {
       (seller.bags ?? []).forEach((bag, index) => {
         if (options.bagNames && !options.bagNames.has(bag.n)) return;
+
+        // 채널 조건을 건 파트가 조건에 맞지 않거나 없는 주머니는 뺀다.
+        for (const { part, channels: wantedChannels } of narrowed) {
+          const color = bag.c[part] ? hexToRgb(bag.c[part]) : null;
+          if (!color || !channelsMatch(wantedChannels, color)) return;
+        }
 
         let score: number | null = null;
         if (wanted.length > 0) {

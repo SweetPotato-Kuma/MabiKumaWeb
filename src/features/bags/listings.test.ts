@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BagChannelResult } from './api';
+import { emptyColorChannel, emptyColorChannels, type ColorChannel, type ColorChannels } from '@/features/colorChannels';
 import { bagNamesOf, buildListings } from './listings';
 
 const channels: BagChannelResult[] = [
@@ -44,6 +45,79 @@ const channels: BagChannelResult[] = [
 ];
 
 const NONE = [null, null, null];
+
+const withChannels = (changes: Partial<Record<'r' | 'g' | 'b', Partial<ColorChannel>>>): ColorChannels => {
+  const base = emptyColorChannels();
+  return {
+    r: { ...base.r, ...changes.r },
+    g: { ...base.g, ...changes.g },
+    b: { ...base.b, ...changes.b },
+  };
+};
+
+describe('buildListings 채널 조건', () => {
+  const names = (rows: ReturnType<typeof buildListings>) =>
+    rows.map((row) => `${row.channel} ${row.name}`);
+
+  it('파트의 채널을 범위로 걸면 그 범위에 든 주머니만 남긴다', () => {
+    // 파트 A 의 R 은 채널 1 실크 183, 채널 1 밀 255, 채널 2 실크 238 이다.
+    const rows = buildListings(channels, {
+      bagNames: null,
+      targets: NONE,
+      channels: [withChannels({ r: { min: 200, max: 255 } }), null, null],
+    });
+
+    expect(names(rows)).toEqual(['1 튼튼한 밀 주머니', '2 튼튼한 고급 실크 주머니']);
+  });
+
+  it('유사도는 기준값에서 채널 폭의 N% 안만 남긴다', () => {
+    const rows = buildListings(channels, {
+      bagNames: null,
+      targets: NONE,
+      // 183 ± 5% 는 170.25~195.75 라 채널 1 실크만 든다.
+      channels: [withChannels({ r: { similar: true, base: 183, percent: 5 } }), null, null],
+    });
+
+    expect(names(rows)).toEqual(['1 튼튼한 고급 실크 주머니']);
+  });
+
+  it('채널을 건 파트가 여럿이면 모두 맞아야 하고, 건 채널이 없는 파트는 거르지 않는다', () => {
+    const rows = buildListings(channels, {
+      bagNames: null,
+      targets: NONE,
+      channels: [
+        withChannels({ r: { min: 200, max: 255 } }),
+        // 파트 B 의 G 가 0 인 것은 채널 1 밀뿐이다.
+        withChannels({ g: { min: 0, max: 10 } }),
+        { r: emptyColorChannel(), g: emptyColorChannel(), b: emptyColorChannel() },
+      ],
+    });
+
+    expect(names(rows)).toEqual(['1 튼튼한 밀 주머니']);
+  });
+
+  it('색을 비교하는 순서는 그대로고, 조건에 맞는 것만 남는다', () => {
+    const rows = buildListings(channels, {
+      bagNames: null,
+      targets: ['#ffffff', null, null],
+      channels: [withChannels({ r: { min: 200, max: 255 } }), null, null],
+    });
+
+    // 흰색에 가까운 순이라 밀(정확히 흰색)이 먼저다.
+    expect(names(rows)).toEqual(['1 튼튼한 밀 주머니', '2 튼튼한 고급 실크 주머니']);
+    expect(rows[0].comparedParts).toEqual([0]);
+  });
+
+  it('채널 조건만 걸어도 그 파트를 비교한 파트로 적는다', () => {
+    const rows = buildListings(channels, {
+      bagNames: null,
+      targets: NONE,
+      channels: [null, withChannels({ b: { min: 0, max: 255 } }), null],
+    });
+
+    expect(rows.every((row) => row.comparedParts.join() === '1')).toBe(true);
+  });
+});
 
 describe('buildListings', () => {
   it('모든 파트를 검색에서 빼면 채널 순으로 모두 펼친다. 받지 못한 NPC 는 건너뛴다', () => {

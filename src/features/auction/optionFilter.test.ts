@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeConditionCount,
-  describeColorRange,
   isConditionActive,
   buildOptionCatalog,
   describeMatch,
@@ -13,10 +12,10 @@ import {
   parseReforge,
   summarizeCondition,
   thresholdSuggestions,
-  type ColorChannel,
   type Condition,
   type OptionFilter,
 } from './optionFilter';
+import { describeColorRange, type ColorChannel } from '@/features/colorChannels';
 import type { ItemOption } from './types';
 
 const option = (

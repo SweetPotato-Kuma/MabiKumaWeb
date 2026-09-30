@@ -9,6 +9,7 @@ import {
   Flex,
   Grid,
   Pagination,
+  Popover,
   Progress,
   Row,
   Segmented,
@@ -25,7 +26,14 @@ import {
   type TreeDataNode,
 } from 'antd';
 import { BagImage } from '@/components/BagImage';
+import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { canSearchBags } from '@/features/bags/api';
+import {
+  COLOR_CHANNEL_KEYS,
+  describeColorChannel,
+  emptyColorChannels,
+  hasColorChannels,
+} from '@/features/colorChannels';
 import { BAG_NAMES, COLOR_PRESETS } from '@/features/bags/constants';
 import { formatRgb } from '@/features/bags/color';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
@@ -252,6 +260,11 @@ function PartColorRow({
 }) {
   const savedColors = useSavedColors();
   const saved = isSavedColor(target.color);
+  // 채널을 건 파트는 단추에 건 조건을 적는다. 검색 제외한 파트는 조건이 있어도 쓰이지 않는다.
+  const narrowed = hasColorChannels(target.channels);
+  const summary = COLOR_CHANNEL_KEYS.map((key) => describeColorChannel(key, target.channels[key]))
+    .filter(Boolean)
+    .join(' ');
   const presets = [
     ...(savedColors.length > 0
       ? [
@@ -312,6 +325,44 @@ function PartColorRow({
       >
         검색 제외
       </Checkbox>
+      <Popover
+        trigger="click"
+        placement="bottomLeft"
+        title={`${PART_LABELS[part]} 색상`}
+        content={
+          <Flex vertical gap={12} style={{ width: 300, maxWidth: 'calc(100vw - 56px)' }}>
+            <ColorChannelFields
+              channels={target.channels}
+              onChange={(key, channel) =>
+                onChange({ ...target, channels: { ...target.channels, [key]: channel } })
+              }
+            />
+            <Flex justify="flex-end">
+              <Button
+                size="small"
+                disabled={!narrowed}
+                onClick={() => onChange({ ...target, channels: emptyColorChannels() })}
+              >
+                지우기
+              </Button>
+            </Flex>
+          </Flex>
+        }
+      >
+        <Button
+          size="small"
+          variant="outlined"
+          color={narrowed && !target.excluded ? 'primary' : 'default'}
+          disabled={target.excluded}
+          title={summary || undefined}
+          aria-label={`${PART_LABELS[part]} 유사도 검색`}
+          style={{ maxWidth: '100%' }}
+        >
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {summary || '유사도'}
+          </span>
+        </Button>
+      </Popover>
     </Flex>
   );
 }
@@ -370,9 +421,18 @@ export function BagsPage() {
     [targets],
   );
 
+  // 검색에서 뺀 파트는 채널 조건이 있어도 쓰지 않는다.
+  const searchChannels = useMemo(
+    () =>
+      targets.map((target) =>
+        target.excluded || !hasColorChannels(target.channels) ? null : target.channels,
+      ),
+    [targets],
+  );
+
   const listings = useMemo(
-    () => buildListings(state.channels, { bagNames, targets: searchTargets }),
-    [state.channels, bagNames, searchTargets],
+    () => buildListings(state.channels, { bagNames, targets: searchTargets, channels: searchChannels }),
+    [state.channels, bagNames, searchTargets, searchChannels],
   );
 
   /**
@@ -412,7 +472,7 @@ export function BagsPage() {
   const percent = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
   const failed = state.failedChannels.length > 0 && !loading;
 
-  const resetKey = `${state.server}|${selectedBags.join(',')}|${searchTargets.join(',')}|${currentTab}`;
+  const resetKey = `${state.server}|${selectedBags.join(',')}|${searchTargets.join(',')}|${JSON.stringify(searchChannels)}|${currentTab}`;
   const tablePaging = useListPagination(resetKey, { defaultPageSize: TABLE_PAGE_SIZE });
 
   // 그림 보기는 화면에 맞춘 개수씩 넘긴다. 위쪽 안내가 생기거나 없어지면 격자가 움직이므로 다시 잰다.

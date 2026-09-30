@@ -3,10 +3,12 @@ import {
   colorChannelBounds,
   DEFAULT_COLOR_PERCENT,
   emptyColorChannel,
+  type ColorChannel,
+} from '@/features/colorChannels';
+import {
   EMPTY_OPTION_FILTER,
   isConditionActive,
   nextConditionId,
-  type ColorChannel,
   type Condition,
   type OptionFilter,
 } from './optionFilter';
