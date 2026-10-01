@@ -40,7 +40,7 @@ describe('경매장 화면', () => {
     renderPage();
 
     expect(screen.getByPlaceholderText(/아이템명 검색/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /찾기/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '찾기' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /검색 초기화/ })).toBeInTheDocument();
   });
 
@@ -70,6 +70,6 @@ describe('경매장 화면', () => {
      * 키 유무는 여기서 단언하지 않는다. .env 의 프록시 설정에 따라 달라져서
      * 환경마다 결과가 뒤집히는 테스트가 된다.
      */
-    expect(screen.getByRole('button', { name: /찾기/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '찾기' })).toBeDisabled();
   });
 });

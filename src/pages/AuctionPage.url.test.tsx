@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
+import { serializeFilter } from '@/features/auction/filterUrl';
+import { addSavedSearch, getSavedSearches, resetSavedSearchesForTest } from '@/features/auction/savedSearches';
 import { resetSettingsForTest, updateSettings } from '@/lib/userSettings';
 import { AuctionPage } from '@/pages/AuctionPage';
 
@@ -131,6 +133,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   window.localStorage.clear();
   resetSettingsForTest();
+  resetSavedSearchesForTest();
 });
 
 // 페이지 전체를 그리는 시험이라 다른 시험과 함께 돌면 기본 5초를 넘기기도 한다.
@@ -148,7 +151,7 @@ describe('경매장 검색 조건과 주소', () => {
     const input = await screen.findByPlaceholderText(/아이템명 검색/);
 
     fireEvent.change(input, { target: { value: '활' } });
-    fireEvent.click(screen.getByRole('button', { name: /찾기/ }));
+    fireEvent.click(screen.getByRole('button', { name: '찾기' }));
 
     await waitFor(() => expect(router.search()).toBe('?keyword=%ED%99%9C'));
 
@@ -392,6 +395,119 @@ describe('경매장 검색 조건과 주소', () => {
 
       const link = await screen.findByRole('link', { name: '더 긴 기간의 시세 기록 보기' });
       expect(link).toHaveAttribute('href', '/items');
+    });
+  });
+
+  describe('검색 즐겨찾기', () => {
+    const dialog = () => screen.getByRole('dialog');
+
+    it('검색 줄에 등록과 목록 단추가 있다', () => {
+      renderAt('/auction');
+
+      expect(screen.getByRole('button', { name: /즐겨찾기 등록/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /즐겨찾기 목록/ })).toBeInTheDocument();
+    });
+
+    it('검색 조건이 하나도 없으면 등록할 수 없다고 알리고 창을 열지 않는다', async () => {
+      renderAt('/auction');
+
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+
+      expect(await screen.findByText(/저장할 검색 조건이 없습니다/)).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(getSavedSearches()).toHaveLength(0);
+    });
+
+    it('지금 조건에 이름과 설명을 붙여 저장한다', async () => {
+      renderAt('/auction?keyword=소울 보우&category=활');
+      await screen.findByDisplayValue('소울 보우');
+
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+      await screen.findByRole('dialog');
+      // 이름은 검색어로 미리 채워 둔다.
+      expect(within(dialog()).getByLabelText('이름')).toHaveValue('소울 보우');
+      expect(within(dialog()).getByText('"소울 보우"')).toBeInTheDocument();
+      fireEvent.change(within(dialog()).getByLabelText('이름'), { target: { value: '내 활' } });
+      fireEvent.change(within(dialog()).getByLabelText('설명 (선택)'), { target: { value: '가격 비교용' } });
+      fireEvent.click(within(dialog()).getByRole('button', { name: '저장' }));
+
+      await waitFor(() => expect(getSavedSearches()).toHaveLength(1));
+      expect(getSavedSearches()[0]).toMatchObject({ name: '내 활', description: '가격 비교용', keyword: '소울 보우', category: '활' });
+      expect(await screen.findByRole('button', { name: /즐겨찾기 목록 1/ })).toBeInTheDocument();
+    });
+
+    it('이름 없이는 저장하지 않는다', async () => {
+      renderAt('/auction?keyword=소드');
+      await screen.findByDisplayValue('소드');
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+      await screen.findByRole('dialog');
+
+      fireEvent.change(within(dialog()).getByLabelText('이름'), { target: { value: '   ' } });
+      fireEvent.click(within(dialog()).getByRole('button', { name: '저장' }));
+
+      expect(await within(dialog()).findByText('이름을 적어 주세요.')).toBeInTheDocument();
+      expect(getSavedSearches()).toHaveLength(0);
+    });
+
+    it('목록에서 고르면 바로 그 조건으로 검색한다', async () => {
+      addSavedSearch({ name: '소드 검색', keyword: '소드', category: '검', filterKey: '' });
+      const router = renderAt('/auction?keyword=활');
+      await screen.findByDisplayValue('활');
+
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 목록/ }));
+      await screen.findByRole('dialog');
+      expect(within(dialog()).getByText('소드 검색')).toBeInTheDocument();
+      fireEvent.click(within(dialog()).getByRole('button', { name: '소드 검색 검색' }));
+
+      await waitFor(() => expect(router.search()).toContain('keyword=%EC%86%8C%EB%93%9C'));
+      expect(router.search()).toContain('category=%EA%B2%80');
+      expect(await screen.findByDisplayValue('소드')).toBeInTheDocument();
+    });
+
+    it('상세 검색 조건도 저장되고 목록에 요약이 보인다', async () => {
+      const f = encodeURIComponent(serializeFilter({ conditions: [{ id: 1, kind: 'reforge', name: '스매시 대미지', minLevel: 5 }] }));
+      renderAt(`/auction?category=검&f=${f}`);
+      await screen.findByRole('button', { name: /즐겨찾기 등록/ });
+
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+      await screen.findByRole('dialog');
+      fireEvent.change(within(dialog()).getByLabelText('이름'), { target: { value: '스매시 5' } });
+      fireEvent.click(within(dialog()).getByRole('button', { name: '저장' }));
+      await waitFor(() => expect(getSavedSearches()).toHaveLength(1));
+
+      fireEvent.click(await screen.findByRole('button', { name: /즐겨찾기 목록/ }));
+      await screen.findByText('스매시 5');
+      expect(getSavedSearches()[0].filterKey).toContain('스매시 대미지');
+      expect(screen.getAllByText(/세공 스매시 대미지 5레벨 이상/).length).toBeGreaterThan(0);
+    });
+
+    it('이름과 설명을 고칠 수 있고 검색 조건은 그대로다', async () => {
+      addSavedSearch({ name: '옛 이름', keyword: '소드', category: '', filterKey: '' });
+      renderAt('/auction');
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 목록/ }));
+      await screen.findByRole('dialog');
+
+      fireEvent.click(within(dialog()).getByRole('button', { name: '옛 이름 수정' }));
+      const editor = (await screen.findAllByRole('dialog')).at(-1) as HTMLElement;
+      fireEvent.change(within(editor).getByLabelText('이름'), { target: { value: '새 이름' } });
+      fireEvent.click(within(editor).getByRole('button', { name: '수정' }));
+
+      await waitFor(() => expect(getSavedSearches()[0].name).toBe('새 이름'));
+      expect(getSavedSearches()[0].keyword).toBe('소드');
+    });
+
+    it('지울 수 있다. 확인을 거친다', async () => {
+      addSavedSearch({ name: '지울 것', keyword: '소드', category: '', filterKey: '' });
+      renderAt('/auction');
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 목록/ }));
+      await screen.findByRole('dialog');
+
+      fireEvent.click(within(dialog()).getByRole('button', { name: '지울 것 삭제' }));
+      expect(getSavedSearches()).toHaveLength(1);
+      fireEvent.click(await screen.findByRole('button', { name: '지우기' }));
+
+      await waitFor(() => expect(getSavedSearches()).toHaveLength(0));
+      expect(await within(dialog()).findByText(/저장한 검색이 없습니다/)).toBeInTheDocument();
     });
   });
 });

@@ -34,6 +34,7 @@ import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { BrowseLayout } from '@/components/BrowseLayout';
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { SavedSearchControls } from '@/components/SavedSearches';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
@@ -1289,6 +1290,11 @@ export function AuctionPage() {
                 >
                   검색 초기화
                 </Button>
+                {/* 지금 입력칸의 조건을 저장하고, 저장한 조건으로 바로 검색한다. */}
+                <SavedSearchControls
+                  current={{ keyword: form.keyword, category: form.category, filterKey: serializeFilter(optionFilter) }}
+                  onApply={(saved) => navigate(searchParamsFor(paramsRef.current, saved), false)}
+                />
               </Flex>
 
               <Flex gap={8} wrap align="center">
