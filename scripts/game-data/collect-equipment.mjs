@@ -304,14 +304,30 @@ const ENCHANT_DIR = resolve(CACHE_DIR, 'enchants');
 const enchantPath = (id) => resolve(ENCHANT_DIR, `${id}.json`);
 
 /**
+ * 받아 둔 인챈트가 쓸 수 있는 내용인지. 파일이 있어도 json 이 null 이면 못 쓴 것이다 — 남의
+ * 서버가 콜드 스타트의 몰린 요청을 못 견디고 전부 빈 응답을 준 적이 있다(2026-10-01). 그때
+ * 파일 존재만 보고 "받았다"고 여기면, 캐시가 깨진 채로 저장돼 서버가 멀쩡해져도 다시 받지 않고
+ * 영원히 빈 사전으로 남는다.
+ */
+async function hasEnchant(id) {
+  const text = await readFile(enchantPath(id), 'utf8').catch(() => null);
+  if (!text) return false;
+  try {
+    return JSON.parse(text).json != null;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 인챈트 하나: 효과 원문(JSON)과 붙일 수 있는 아이템 번호 목록. 1,400개 남짓이라 두 번씩 물어도
- * 아이템 JSON 보다 적다. 받아 둔 것은 다시 묻지 않는다.
+ * 아이템 JSON 보다 적다. 쓸 수 있게 받아 둔 것만 다시 묻지 않는다.
  */
 async function downloadEnchants(ids) {
   await mkdir(ENCHANT_DIR, { recursive: true });
   const todo = [];
   for (const id of ids) {
-    if (await readFile(enchantPath(id)).catch(() => null)) continue;
+    if (await hasEnchant(id)) continue;
     todo.push(id);
   }
   let got = 0;
