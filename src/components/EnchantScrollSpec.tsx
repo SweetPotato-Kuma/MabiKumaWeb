@@ -1,10 +1,17 @@
 import { Descriptions, Flex, Skeleton, Tag, Typography } from 'antd';
+import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { enchantRank, isEnchantNote, stripBrackets } from '@/features/equipment/enchant';
-import { sortVariants, useEnchantScroll, type ScrollVariant } from '@/features/enchantScroll/scrolls';
+import {
+  selectionScrollFor,
+  sortVariants,
+  useEnchantScroll,
+  type ScrollVariant,
+} from '@/features/enchantScroll/scrolls';
 
 const { Text } = Typography;
 
-function Variant({ variant }: { variant: ScrollVariant }) {
+function Variant({ variant, onNavigate }: { variant: ScrollVariant; onNavigate?: () => void }) {
+  const selection = selectionScrollFor(variant);
   const effects = variant.desc.filter((line) => !isEnchantNote(line));
   const notes = variant.desc.filter(isEnchantNote);
 
@@ -62,6 +69,15 @@ function Variant({ variant }: { variant: ScrollVariant }) {
               },
             ]
           : []),
+        ...(selection
+          ? [
+              {
+                key: 'selection',
+                label: '얻는 방법',
+                children: <ItemInfoLink name={selection} onNavigate={onNavigate} />,
+              },
+            ]
+          : []),
       ]}
     />
   );
@@ -75,10 +91,13 @@ function Variant({ variant }: { variant: ScrollVariant }) {
 export function EnchantScrollSpec({
   name,
   kind,
+  onNavigate,
 }: {
   name: string;
   /** 매물의 옵션이 알려 주는 접두/접미와 랭크. 있으면 맞는 사양만 보인다. */
   kind?: { slot: 0 | 1; level: number };
+  /** 안의 링크를 눌렀을 때 함께 할 일. 창 안에서 쓰면 창을 닫는다. */
+  onNavigate?: () => void;
 }) {
   const variants = useEnchantScroll(name, kind);
 
@@ -88,7 +107,7 @@ export function EnchantScrollSpec({
   return (
     <Flex vertical gap={16}>
       {sortVariants(variants).map((variant, index) => (
-        <Variant key={`${variant.slot}:${variant.level}:${index}`} variant={variant} />
+        <Variant key={`${variant.slot}:${variant.level}:${index}`} variant={variant} onNavigate={onNavigate} />
       ))}
     </Flex>
   );

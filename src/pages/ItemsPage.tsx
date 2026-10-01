@@ -30,6 +30,7 @@ import { SlidingStack } from '@/components/SlidingStack';
 import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
 import { EnchantScrollSpec } from '@/components/EnchantScrollSpec';
+import { SelectableScrolls } from '@/components/SelectableScrolls';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
 import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
 import { QueryState } from '@/components/QueryState';
@@ -46,7 +47,7 @@ import {
   type NameSuggestion,
 } from '@/features/auction/nameIndex';
 import type { Recipe, RecipeBook } from '@/features/crafting/recipes';
-import { parseScrollName } from '@/features/enchantScroll/scrolls';
+import { parseScrollName, selectionSourceOf } from '@/features/enchantScroll/scrolls';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { iconSrcOf, preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
 import { iconFileUrl, useIconMaps, useItemBrief } from '@/features/itemcard/iconMap';
@@ -222,6 +223,7 @@ export function ItemsPage() {
               cardName={scroll && nameIndex && !inDictionary ? scroll.base : undefined}
             >
               {scroll && category === '인챈트 스크롤' ? <EnchantScrollSpec name={detailName} /> : null}
+              {selectionSourceOf(detailName) ? <SelectableScrolls name={detailName} /> : null}
             </ItemInfoDetail>
           )}
           {/* 만들 수 있는 아이템이면 재료 트리와 제작 비용. 없으면 아무것도 그리지 않는다. */}

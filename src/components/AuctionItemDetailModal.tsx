@@ -298,6 +298,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             <EnchantScrollSpec
               name={detail.displayName}
               kind={parseEnchantKind(scrollKind?.option_sub_type, scrollKind?.option_value) ?? undefined}
+              onNavigate={onClose}
             />
           ) : null}
 

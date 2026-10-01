@@ -3,6 +3,9 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   findScrollVariants,
+  scrollsFromSource,
+  selectionScrollFor,
+  selectionSourceOf,
   isEnchantScrollName,
   parseEnchantKind,
   parseScrollName,
@@ -81,6 +84,31 @@ describe('인챈트 스크롤 사양 찾기', () => {
   });
 });
 
+describe('선택 스크롤과의 관계', () => {
+  const sample: ScrollFile = {
+    scrolls: {
+      '전용 인챈트 스크롤 - 망집': [{ slot: 1, level: 10, desc: ['최대 대미지 20 증가'], src: ['탈라 가흐'] }],
+      '전용 인챈트 스크롤 - 감싸는': [{ slot: 0, level: 10, desc: ['방어 5 증가'], src: ['탈라 가흐'] }],
+      '인챈트 스크롤 - 올빼미': [{ slot: 1, level: 8, desc: ['최대대미지 10 증가'], src: ['브리 레흐'] }],
+    },
+  };
+
+  it('선택 스크롤 이름에서 나오는 곳을, 사양에서 선택 스크롤 이름을 찾는다', () => {
+    expect(selectionSourceOf('탈라 가흐 인챈트 선택 스크롤')).toBe('탈라 가흐');
+    expect(selectionSourceOf('인챈트 스크롤')).toBeNull();
+    expect(selectionScrollFor(sample.scrolls['전용 인챈트 스크롤 - 망집'][0])).toBe('탈라 가흐 인챈트 선택 스크롤');
+    expect(selectionScrollFor(sample.scrolls['인챈트 스크롤 - 올빼미'][0])).toBeNull();
+  });
+
+  it('같은 나오는 곳의 스크롤만 이름순으로 모은다', () => {
+    expect(scrollsFromSource(sample, '탈라 가흐').map((scroll) => scroll.name)).toEqual([
+      '전용 인챈트 스크롤 - 감싸는',
+      '전용 인챈트 스크롤 - 망집',
+    ]);
+    expect(scrollsFromSource(sample, '없는 곳')).toEqual([]);
+  });
+});
+
 describe('수집한 인챈트 스크롤 사양', () => {
   const entries = Object.entries(file.scrolls);
 
@@ -99,6 +127,13 @@ describe('수집한 인챈트 스크롤 사양', () => {
         expect(variant.desc.join('\n'), name).not.toContain('not found key');
       }
     }
+  });
+
+  it('탈라 가흐 인챈트 스크롤 32개가 모두 선택 스크롤 목록에 든다', () => {
+    const found = scrollsFromSource(file, '탈라 가흐');
+    expect(found).toHaveLength(32);
+    // 선택 스크롤은 전용 인챈트만 준다.
+    for (const scroll of found) expect(scroll.name.startsWith('전용 인챈트 스크롤 - '), scroll.name).toBe(true);
   });
 
   it('모든 이름이 아이템 사전의 인챈트 스크롤 카테고리에 있다', () => {

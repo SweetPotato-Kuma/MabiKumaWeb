@@ -8,9 +8,24 @@ import { itemInfoPath } from '@/features/auction/dictionary';
  * 표 아래쪽에서 눌러도 새 아이템의 머리부터 보이게 맨 위로 올린다. 사전에 카테고리가 없는 아이템
  * (경매장에 오른 적 없는 재료)도 이름만으로 열린다.
  */
-export function ItemInfoLink({ name, category }: { name: string; category?: string }) {
+export function ItemInfoLink({
+  name,
+  category,
+  onNavigate,
+}: {
+  name: string;
+  category?: string;
+  /** 링크를 누를 때 함께 할 일. 창 안에서 누르면 창을 닫는다. */
+  onNavigate?: () => void;
+}) {
   return (
-    <Link to={itemInfoPath(category ?? '', name)} onClick={() => window.scrollTo({ top: 0 })}>
+    <Link
+      to={itemInfoPath(category ?? '', name)}
+      onClick={() => {
+        window.scrollTo({ top: 0 });
+        onNavigate?.();
+      }}
+    >
       {name}
     </Link>
   );

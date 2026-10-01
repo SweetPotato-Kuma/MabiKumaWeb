@@ -71,6 +71,50 @@ export function parseEnchantKind(
   return { enchant: match[1], slot: subType === '접두' ? 0 : 1, level };
 }
 
+/**
+ * 인챈트 스크롤을 직접 주지 않고 목록에서 하나를 고르게 하는 선택 스크롤. 나오는 곳(src) -> 선택 스크롤 이름.
+ * 탈라 가흐는 인챈트를 이 스크롤로만 준다. 고를 수 있는 목록은 나오는 곳이 같은 스크롤들이다.
+ */
+export const SELECTION_SCROLLS: Readonly<Record<string, string>> = {
+  '탈라 가흐': '탈라 가흐 인챈트 선택 스크롤',
+};
+
+/** 선택 스크롤 이름이 가리키는 나오는 곳. 선택 스크롤이 아니면 null. */
+export function selectionSourceOf(name: string): string | null {
+  return Object.entries(SELECTION_SCROLLS).find(([, scroll]) => scroll === name)?.[0] ?? null;
+}
+
+/** 이 사양이 선택 스크롤로 얻는 것이면 그 스크롤 이름. 아니면 null. */
+export function selectionScrollFor(variant: ScrollVariant): string | null {
+  const source = variant.src?.find((place) => place in SELECTION_SCROLLS);
+  return source ? SELECTION_SCROLLS[source] : null;
+}
+
+export interface SelectableScroll {
+  /** 사전 이름. 상세로 가는 링크에 쓴다 */
+  name: string;
+  variants: ScrollVariant[];
+}
+
+/** 이 나오는 곳에서 선택할 수 있는 스크롤. 이름순. */
+export function scrollsFromSource(file: ScrollFile, source: string): SelectableScroll[] {
+  return Object.entries(file.scrolls)
+    .map(([name, variants]) => ({ name, variants: variants.filter((variant) => variant.src?.includes(source)) }))
+    .filter(({ variants }) => variants.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+}
+
+/** 선택 스크롤 하나로 고를 수 있는 인챈트 스크롤들. 파일을 받는 중이면 undefined, 선택 스크롤이 아니거나 파일이 없으면 null. */
+export function useSelectableScrolls(selectionName: string): SelectableScroll[] | null | undefined {
+  const query = useQuery(enchantScrollQueryOptions);
+  const source = selectionSourceOf(selectionName);
+  if (source === null) return null;
+  if (query.isPending) return undefined;
+  if (!query.data) return null;
+  const found = scrollsFromSource(query.data, source);
+  return found.length > 0 ? found : null;
+}
+
 const indexes = new WeakMap<ScrollFile, Map<string, ScrollVariant[]>>();
 
 /** 인챈트 이름(두 이름 모두) -> 사양들. 일반 스크롤과 전용 스크롤에 같은 사양이 있으면 하나로 합친다. */
