@@ -38,6 +38,13 @@ const { Text } = Typography;
 /** 등급마다 한 번 발라 그 등급 이상이 나올 확률. 늘 같아 한 번만 센다. */
 const TIER_CHANCES = HOLY_WATER_TIERS.map((tier) => ({ tier, chance: tierChance(tier) }));
 
+/** 표 칸 폭. 가장 긴 값(한 번 이상 99.99% 이상, 열 자리 골드)이 들어가는 폭이다. */
+const COLUMN_WIDTH = { chance: 96, count: 136, trials: 176 } as const;
+/** 구간 칸이 "스태미나 자연 회복량 499 초과" 를 한 줄에 담는 폭까지 더한 표의 가장 좁은 폭. */
+const TABLE_MIN_WIDTH = 900;
+/** 좁은 화면에서 횟수 칸 하나의 최소 폭. */
+const NARROW_CELL_MIN = 132;
+
 /** 효과 고르기 목록. 수치가 하나뿐인 효과도 넣는다(음악 버프 효과를 노리는 사람이 있다). */
 const EFFECT_OPTIONS = HOLY_WATER_EFFECTS.map((effect, index) => ({
   value: index,
@@ -155,11 +162,16 @@ export function HolyWaterOdds({
   );
 
   const trialsLabel = `${formatNumber(trials)}번 하면`;
+  /*
+   * 칸 폭은 정해 둔다(표는 tableLayout fixed). 글자 폭에 맞추면 시행 횟수나 내 수치를 고칠 때마다 숫자
+   * 길이가 바뀌어 칸들이 들썩였다. 구간 칸만 남는 폭을 가져간다.
+   */
   const columns: TableColumnsType<OddsLine> = [
     { title: '구간', key: 'label', render: (_value, line) => labelCell(line) },
     {
       title: '확률',
       key: 'chance',
+      width: COLUMN_WIDTH.chance,
       align: 'right',
       className: 'tnum',
       render: (_value, line) => formatChance(line.chance),
@@ -167,24 +179,28 @@ export function HolyWaterOdds({
     {
       title: '평균',
       key: 'mean',
+      width: COLUMN_WIDTH.count,
       align: 'right',
       render: (_value, line) => (line.counts ? trialsCell(line.counts.mean, '에 한 번') : '-'),
     },
     {
       title: '절반 확률로',
       key: 'half',
+      width: COLUMN_WIDTH.count,
       align: 'right',
       render: (_value, line) => (line.counts ? trialsCell(line.counts.half, ' 안') : '-'),
     },
     {
       title: '90% 확률로',
       key: 'ninety',
+      width: COLUMN_WIDTH.count,
       align: 'right',
       render: (_value, line) => (line.counts ? trialsCell(line.counts.ninety, ' 안') : '-'),
     },
     {
       title: trialsLabel,
       key: 'trials',
+      width: COLUMN_WIDTH.trials,
       align: 'right',
       render: (_value, line) => (line.counts ? inTrialsCell(line) : '-'),
     },
@@ -290,7 +306,12 @@ export function HolyWaterOdds({
           <Flex gap={8} align="center" wrap>
             <TrialCountInput value={trials} onChange={setTrials} />
             {trialsCost !== null ? (
-              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              // 금액 자릿수가 바뀌어도 입력 줄이 들썩이지 않게 폭을 잡아 둔다.
+              <Text
+                type="secondary"
+                className="tnum"
+                style={{ fontSize: 12, minWidth: 120, whiteSpace: 'nowrap' }}
+              >
                 {formatGold(trialsCost)}
               </Text>
             ) : null}
@@ -304,7 +325,9 @@ export function HolyWaterOdds({
             rowKey="key"
             size="small"
             pagination={false}
-            scroll={{ x: 'max-content' }}
+            tableLayout="fixed"
+            // 이보다 좁으면 칸을 줄이지 않고 옆으로 민다.
+            scroll={{ x: TABLE_MIN_WIDTH }}
           />
         ) : (
           <Flex vertical gap={12}>
@@ -323,25 +346,25 @@ export function HolyWaterOdds({
                 </Flex>
                 {line.counts ? (
                   <Flex gap={16} wrap>
-                    <Flex vertical gap={0}>
+                    <Flex vertical gap={0} style={{ minWidth: NARROW_CELL_MIN }}>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         평균
                       </Text>
                       {trialsCell(line.counts.mean, '에 한 번')}
                     </Flex>
-                    <Flex vertical gap={0}>
+                    <Flex vertical gap={0} style={{ minWidth: NARROW_CELL_MIN }}>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         절반 확률로
                       </Text>
                       {trialsCell(line.counts.half, ' 안')}
                     </Flex>
-                    <Flex vertical gap={0}>
+                    <Flex vertical gap={0} style={{ minWidth: NARROW_CELL_MIN }}>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         90% 확률로
                       </Text>
                       {trialsCell(line.counts.ninety, ' 안')}
                     </Flex>
-                    <Flex vertical gap={0}>
+                    <Flex vertical gap={0} style={{ minWidth: NARROW_CELL_MIN }}>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {trialsLabel}
                       </Text>
