@@ -29,6 +29,7 @@ import { UsedInSection } from '@/components/crafting/UsedInSection';
 import { SlidingStack } from '@/components/SlidingStack';
 import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
 import { ItemIcon } from '@/components/ItemIcon';
+import { EnchantScrollSpec } from '@/components/EnchantScrollSpec';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
 import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
 import { QueryState } from '@/components/QueryState';
@@ -45,6 +46,7 @@ import {
   type NameSuggestion,
 } from '@/features/auction/nameIndex';
 import type { Recipe, RecipeBook } from '@/features/crafting/recipes';
+import { isEnchantScrollName } from '@/features/enchantScroll/scrolls';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { iconSrcOf, preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
 import { iconFileUrl, useIconMaps, useItemBrief } from '@/features/itemcard/iconMap';
@@ -210,7 +212,11 @@ export function ItemsPage() {
               key={`${category}\u0000${detailName}`}
               category={category}
               name={detailName}
-            />
+            >
+              {isEnchantScrollName(category, detailName) ? (
+                <EnchantScrollSpec name={detailName} />
+              ) : null}
+            </ItemInfoDetail>
           )}
           {/* 만들 수 있는 아이템이면 재료 트리와 제작 비용. 없으면 아무것도 그리지 않는다. */}
           <CraftingSection

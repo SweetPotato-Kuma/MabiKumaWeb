@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, Flex, Skeleton } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
@@ -17,7 +17,16 @@ import { SearchIcon } from '@/components/icons';
  * 바꿨다. 창은 주소가 없어서 링크로 열 수도, 뒤로 가기로 닫을 수도 없다.
  * 머리 모양은 경매장 매물 상세와 같은 ItemCardSummary 를 쓴다.
  */
-export function ItemInfoDetail({ category, name }: { category: string; name: string }) {
+export function ItemInfoDetail({
+  category,
+  name,
+  children,
+}: {
+  category: string;
+  name: string;
+  /** 설명 아래, 시세 단추 위에 더 보일 것(인챈트 스크롤의 사양 등). */
+  children?: ReactNode;
+}) {
   const keys = useMemo(() => [{ category, name }], [category, name]);
   usePrefetchItemCards(keys);
   const card = useItemCard(category, name);
@@ -39,6 +48,8 @@ export function ItemInfoDetail({ category, name }: { category: string; name: str
             description="이 아이템은 아직 설명이 없습니다. 게임 데이터에 없거나 새로 들어온 아이템입니다."
           />
         ) : null}
+
+        {children}
 
         <div>
           <Link to={`/auction?keyword=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`}>

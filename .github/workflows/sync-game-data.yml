@@ -55,6 +55,12 @@ jobs:
       - name: Fill recipe-only names into the dictionary
         run: node scripts/sync-recipe-names.mjs
 
+      # 인챈트 정의를 받아 두고(새로 생긴 것만), 스크롤 이름과 사양을 만든다. 카드를 올리기 전에 사전에 이름이 있어야 한다.
+      - name: Build enchant scrolls
+        run: |
+          node --max-old-space-size=4096 scripts/game-data/collect-equipment.mjs --download
+          node scripts/build-enchant-scrolls.mjs
+
       # 새 데이터가 화면 규칙을 깨면 여기서 멈춘다. 아직 아무것도 올리거나 커밋하지 않았다.
       - name: Test
         run: npm test
@@ -98,7 +104,7 @@ jobs:
       - name: Commit
         id: commit
         run: |
-          paths="public/data/items public/data/recipes.json public/data/skills"
+          paths="public/data/items public/data/recipes.json public/data/skills public/data/enchant-scrolls.json"
           if [ -z "$(git status --porcelain $paths)" ]; then
             echo "바뀐 것이 없습니다."
             echo "changed=false" >> "$GITHUB_OUTPUT"

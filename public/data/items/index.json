@@ -1,6 +1,6 @@
 {
-  "updated": "2026-09-29",
-  "total": 17325,
+  "updated": "2026-10-01",
+  "total": 18544,
   "categories": [
     {
       "name": "개조석",
@@ -305,7 +305,7 @@
     {
       "name": "인챈트 스크롤",
       "file": "920b5aa6.json",
-      "count": 5
+      "count": 1224
     },
     {
       "name": "장갑",

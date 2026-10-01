@@ -5,6 +5,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createCardMatcher } from './card-match.mjs';
 import { parseItemReference } from './mabi-resource.mjs';
+import { parseScrollName, scrollSubtitle } from '../lib/enchant-scrolls.mjs';
 
 /**
  * 아이템 설명과 아이콘을 모아 우리 워커에 올린다.
@@ -474,6 +475,9 @@ async function main() {
   const matcher = createCardMatcher(candidates, dictionary);
   log(`목록 해독: ${itemRows}행에서 이름이 풀린 것 ${items.size}개`);
 
+  // "인챈트 스크롤 - 올빼미" 는 게임 아이템이 아니다. 그림과 설명은 기본 스크롤의 것을 쓰고, 부제에 접두/접미와 랭크를 적는다.
+  const enchantScrolls = (await readJson(resolve(process.cwd(), 'public/data/enchant-scrolls.json'), null))?.scrolls ?? {};
+
   const state = await loadState();
   const categories = [...dictionary.keys()]
     .filter((category) => onlyCategories.size === 0 || onlyCategories.has(category))
@@ -493,8 +497,9 @@ async function main() {
 
     for (const name of dictionary.get(category)) {
       // 카드 이름은 늘 사전 쪽 이름으로 올린다. 경매장이 그 이름으로 묻기 때문이다.
-      const exact = matcher.pick(name, category);
-      const found = exact ?? compactIndex.get(compactName(name));
+      const scroll = parseScrollName(name);
+      const exact = matcher.pick(scroll ? scroll.base : name, category);
+      const found = exact ?? compactIndex.get(compactName(scroll ? scroll.base : name));
       if (!found) {
         missed++;
         if (onlyCategories.size) log(`  못 찾음: ${category} / ${name}`);
@@ -502,7 +507,12 @@ async function main() {
       }
       matched++;
       if (!exact) fuzzy++;
-      cards.push({ name, id: found.id, description: cleanDescription(found.description) });
+      cards.push({
+        name,
+        id: found.id,
+        description: cleanDescription(found.description),
+        subtitle: scroll && enchantScrolls[name] ? scrollSubtitle(enchantScrolls[name]) : '',
+      });
       if (!skipIcons) ids.push(found.id);
     }
 
@@ -536,7 +546,7 @@ async function main() {
 
     const payload = cards.map((card) => ({
       name: card.name,
-      subtitle: '',
+      subtitle: card.subtitle,
       description: card.description,
       icon: state.uploaded.get(String(card.id)) ?? '',
     }));
