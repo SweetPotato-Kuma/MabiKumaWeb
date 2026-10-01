@@ -27,3 +27,12 @@ if (typeof window !== 'undefined' && typeof window.ResizeObserver !== 'function'
     disconnect() {}
   };
 }
+
+/**
+ * findBy, waitFor 의 기본 기다림은 1초다. 느린 기계에서는 화면이 그보다 늦게 그려진다. 화면을 그리는 시험(jsdom)에만 건다.
+ * 요소가 정말 없을 때는 이만큼 늦게 실패할 뿐이다.
+ */
+if (typeof window !== 'undefined') {
+  const { configure } = await import('@testing-library/react');
+  configure({ asyncUtilTimeout: 5_000 });
+}
