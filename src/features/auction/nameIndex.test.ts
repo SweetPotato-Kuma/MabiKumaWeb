@@ -150,3 +150,30 @@ describe('planKeywordSearch', () => {
     expect(planKeywordSearch(index, ['없는이름'])).toBeNull();
   });
 });
+
+describe('다른 이름으로 찾기', () => {
+  const withAlt = buildNameIndex({
+    updated: '2026-10-01',
+    categories: ['인챈트 스크롤'],
+    items: [
+      ['인챈트 스크롤 - 나비', 0, '버터플라이'],
+      ['인챈트 스크롤 - 올빼미', 0],
+    ],
+  });
+  const found = (keyword: string) => searchNames(withAlt, keyword).map((item) => item.name);
+
+  it('이름으로도 다른 이름으로도 같은 항목이 나온다', () => {
+    expect(found('나비')).toEqual(['인챈트 스크롤 - 나비']);
+    expect(found('버터플라이')).toEqual(['인챈트 스크롤 - 나비']);
+    expect(found('버터 플라이')).toEqual(['인챈트 스크롤 - 나비']);
+  });
+
+  it('다른 이름의 초성으로도 찾고, 이름과 다른 이름 사이를 가로질러 맞지는 않는다', () => {
+    expect(found('ㅂㅌㅍㄹㅇ')).toEqual(['인챈트 스크롤 - 나비']);
+    expect(found('나비버터')).toEqual([]);
+  });
+
+  it('다른 이름은 이름으로 보이지 않는다', () => {
+    expect(withAlt.names).toEqual(['인챈트 스크롤 - 나비', '인챈트 스크롤 - 올빼미']);
+  });
+});

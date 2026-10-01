@@ -197,8 +197,12 @@ export function buildEnchantDef(row, cached, text, unknown, sources) {
     .split(/\\n|\n/)
     .map((line) => line.replace(/<\/?[^>]+>/g, '').trim())
     .filter(Boolean);
+  // 인챈트는 이름이 둘이다. 경매장과 게임 화면이 보여 주는 쪽은 두 번째 이름이고, 첫 번째 이름이
+  // 보이는 때도 있다(인챈트를 바른 시기에 따라). 두 번째를 이름으로, 다르면 첫 번째를 alt 로 둔다.
+  const first = json.LocalName || text(row.Name) || text(row.Name2);
+  const shown = json.LocalName2 || text(row.Name2) || first;
   const def = {
-    name: json.LocalName || text(row.Name) || text(row.Name2),
+    name: shown,
     // 0 접두, 1 접미
     slot: row.Usage ?? 0,
     // 1~6 이 F~A 랭크, 7~15 가 9~1 랭크다.
@@ -206,9 +210,10 @@ export function buildEnchantDef(row, cached, text, unknown, sources) {
     desc,
     effects: parseEnchantEffects(json.OptionList, unknown),
   };
+  if (first !== shown) def.alt = first;
   if (/setpersonalize\(true\)/i.test(json.OptionList ?? '')) def.personal = true;
   const src = new Set(sources.get(row.Id) ?? []);
-  if (TALA_GAH_ENCHANTS.has(def.name)) src.add('탈라 가흐');
+  if (TALA_GAH_ENCHANTS.has(shown) || TALA_GAH_ENCHANTS.has(first)) src.add('탈라 가흐');
   if (src.size) def.src = [...src].sort((a, b) => a.localeCompare(b, 'ko'));
   // 출시 제너레이션. 같은 출처 안에서 새것을 앞에 둘 때 쓴다.
   if (json.Generation) def.gen = json.Generation;

@@ -10,7 +10,7 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
-import { effectSummary, enchantRank } from '@/features/equipment/enchant';
+import { effectSummary, enchantLabel, enchantRank } from '@/features/equipment/enchant';
 import {
   compareForEquipment,
   equipClass,
@@ -80,7 +80,7 @@ function EnchantList({
   const needle = keyword.trim().replace(TRAILING_JAMO, '').trim();
   const base = view === 'notable' ? notable : options;
   const rows = needle
-    ? base.filter((enchant) => `${enchant.name} ${effectSummary(enchant)}`.includes(needle))
+    ? base.filter((enchant) => `${enchantLabel(enchant)} ${effectSummary(enchant)}`.includes(needle))
     : base;
 
   // 576px 미만. 효과 칸을 따로 두면 한두 글자만 남고 잘렸다. 이름 아래에 효과를 적는다.
@@ -97,7 +97,7 @@ function EnchantList({
       key: 'name',
       render: (_, enchant) => (
         <Flex vertical gap={2}>
-          <Text strong>{enchant.name}</Text>
+          <Text strong>{enchantLabel(enchant)}</Text>
           <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
             {effectSummary(enchant)}
           </Text>
@@ -119,7 +119,11 @@ function EnchantList({
       key: 'name',
       width: 168,
       ellipsis: true,
-      render: (_, enchant) => <Text strong>{enchant.name}</Text>,
+      render: (_, enchant) => (
+        <Text strong ellipsis={{ tooltip: enchantLabel(enchant) }}>
+          {enchantLabel(enchant)}
+        </Text>
+      ),
     },
     {
       title: '효과',
@@ -142,7 +146,7 @@ function EnchantList({
           {chosen ? (
             <>
               <Text strong className="tnum">
-                {rankLabel(chosen)} {chosen.name}
+                {rankLabel(chosen)} {enchantLabel(chosen)}
               </Text>
               <Button size="small" type="link" onClick={() => onChange(null)}>
                 빼기
@@ -193,7 +197,7 @@ function EnchantList({
             columnWidth: 36,
             selectedRowKeys: value === null ? [] : [value],
             onChange: (keys) => onChange(keys.length ? Number(keys[0]) : null),
-            getCheckboxProps: (enchant) => ({ 'aria-label': `${label} ${enchant.name} 바르기` }),
+            getCheckboxProps: (enchant) => ({ 'aria-label': `${label} ${enchantLabel(enchant)} 바르기` }),
           }}
           onRow={(enchant) => ({
             style: { cursor: 'pointer' },

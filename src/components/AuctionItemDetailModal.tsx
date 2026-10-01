@@ -20,6 +20,8 @@ import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatNumber, formatRemaining } from '@/lib/format';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { BookIcon } from '@/components/icons';
+import { EnchantScrollSpec } from '@/components/EnchantScrollSpec';
+import { parseEnchantKind, parseScrollName } from '@/features/enchantScroll/scrolls';
 
 const { Text } = Typography;
 
@@ -199,6 +201,14 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
   usePrefetchItemCards(cardKeys);
   const card = useItemCard(cardCategory, cardName);
 
+  /**
+   * 인챈트 스크롤이면 어떤 인챈트인지(이름, 접두/접미, 랭크)는 알려 주지만 효과는 옵션에 없다. 인챈트 이름이
+   * 같은 사양을 찾아 보여 준다. 전용, 개방된 전용 스크롤도 같은 인챈트면 같은 사양이다.
+   */
+  const scrollKind = detail?.options?.find((option) => option.option_type === '인챈트 종류');
+  const showScrollSpec =
+    detail !== null && detail?.category === '인챈트 스크롤' && parseScrollName(detail.displayName) !== null;
+
   return (
     <Modal open={detail !== null} onCancel={onClose} footer={null} width={860} title={null} destroyOnHidden>
       {detail === null ? null : (
@@ -282,6 +292,13 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
                 </Flex>
               ) : null}
             </Flex>
+          ) : null}
+
+          {showScrollSpec ? (
+            <EnchantScrollSpec
+              name={detail.displayName}
+              kind={parseEnchantKind(scrollKind?.option_sub_type, scrollKind?.option_value) ?? undefined}
+            />
           ) : null}
 
           {/*

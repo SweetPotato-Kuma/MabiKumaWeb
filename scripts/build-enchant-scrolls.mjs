@@ -6,7 +6,8 @@
  *   아이템 사전의 "인챈트 스크롤" 카테고리에 "인챈트 스크롤 - 올빼미" 같은 이름
  *
  * 이름은 경매장이 보여 주는 표기를 따른다(scripts/lib/enchant-scrolls.mjs). 경매장 이름 뒤에 붙는 인챈트
- * 이름은 게임 데이터의 두 번째 이름(LocalName2)이다. 첫 번째 이름은 다른 표기라 320개가 어긋난다.
+ * 이름은 게임 데이터의 두 번째 이름이다. 첫 번째 이름(320개가 다르다)은 사양의 alt 와 사전 항목의 alt 로
+ * 남겨 그 이름으로도 검색되게 한다.
  *
  * 받아 둔 리소스(.cache/item-cards)와 인챈트(.cache/equipment/enchants)를 읽는다. 없으면
  * `node scripts/game-data/collect-equipment.mjs --download` 를 먼저 돌린다.
@@ -18,7 +19,7 @@ import { resolve } from 'node:path';
 import { buildEnchantDef, buildEnchantSources } from './game-data/enchant-defs.mjs';
 import { parseEquipmentResource } from './game-data/mabi-equipment.mjs';
 import { readCategories, readDictionary, readExcluded, writeDictionary } from './lib/dictionary.mjs';
-import { SCROLL_CATEGORY, groupScrolls, parseScrollName } from './lib/enchant-scrolls.mjs';
+import { SCROLL_CATEGORY, altNames, groupScrolls, parseScrollName } from './lib/enchant-scrolls.mjs';
 
 const RESOURCE = resolve(process.cwd(), '.cache/item-cards/resourcedata.bin.br');
 const ENCHANT_DIR = resolve(process.cwd(), '.cache/equipment/enchants');
@@ -50,8 +51,7 @@ async function main() {
       .then(JSON.parse)
       .catch(() => null);
     if (!file?.json) continue;
-    const def = buildEnchantDef(row, file, text, new Set(), sources);
-    defs.push({ ...def, shown: file.json.LocalName2 || text(row.Name2) || def.name });
+    defs.push(buildEnchantDef(row, file, text, new Set(), sources));
   }
 
   const groups = groupScrolls(defs);
@@ -91,17 +91,27 @@ async function main() {
     }
   }
   let added = 0;
-  for (const name of groups.keys()) {
-    if (items.has(name) || excluded.has(`${SCROLL_CATEGORY}\u0000${name}`)) continue;
-    items.set(name, { name, first: today, last: today });
+  let changed = 0;
+  for (const [name, variants] of groups) {
+    if (excluded.has(`${SCROLL_CATEGORY}\u0000${name}`)) continue;
+    const alt = altNames(variants);
+    const existing = items.get(name);
+    if (existing) {
+      if (JSON.stringify(existing.alt ?? []) === JSON.stringify(alt)) continue;
+      if (alt.length > 0) existing.alt = alt;
+      else delete existing.alt;
+      changed += 1;
+      continue;
+    }
+    items.set(name, alt.length > 0 ? { name, first: today, last: today, alt } : { name, first: today, last: today });
     added += 1;
   }
-  if (added === 0 && removed === 0) {
+  if (added === 0 && removed === 0 && changed === 0) {
     console.log('사전에 더할 이름이 없습니다.');
     return;
   }
   const total = await writeDictionary(dictionary, { today, known: new Set(await readCategories()) });
-  console.log(`사전에 ${added}개를 더하고 ${removed}개를 내려 ${total}개가 되었습니다.`);
+  console.log(`사전에 ${added}개를 더하고 ${removed}개를 내리고 ${changed}개의 다른 이름을 고쳐 ${total}개가 되었습니다.`);
 }
 
 main().catch((error) => {

@@ -120,7 +120,10 @@ export function appliesToEquip(
 
 export interface EnchantDef {
   id: number;
+  /** 경매장과 게임 화면이 보여 주는 이름(두 번째 이름) */
   name: string;
+  /** 첫 번째 이름. 인챈트를 바른 시기에 따라 이 이름으로 보이기도 한다. 이름과 같으면 없다 */
+  alt?: string;
   /** 0 접두, 1 접미 */
   slot: 0 | 1;
   /** 1~6 이 F~A 랭크, 7~15 가 9~1 랭크 */

@@ -15,7 +15,8 @@ import { normalizeForSearch } from './dictionary';
 interface RawNameIndex {
   updated: string;
   categories: string[];
-  items: [name: string, categoryIndex: number][];
+  /** 셋째 칸은 다른 이름들(공백으로 이음). 인챈트 스크롤의 첫 번째 인챈트 이름처럼 그 이름으로도 찾혀야 할 때 있다. */
+  items: [name: string, categoryIndex: number, alt?: string][];
 }
 
 export interface NameIndex {
@@ -75,8 +76,10 @@ export function buildNameIndex(raw: RawNameIndex): NameIndex {
   const categoriesByName = new Map<string, string[]>();
 
   for (let index = 0; index < count; index += 1) {
-    const [name, categoryIndex] = raw.items[index];
-    const norm = normalizeForSearch(name);
+    const [name, categoryIndex, alt] = raw.items[index];
+    // 다른 이름은 이름 뒤에 널 문자로 이어 붙인다. 이름과 다른 이름 사이를 가로질러 맞는 일이 없고,
+    // 앞글자가 맞는 것(이름)이 중간에 맞는 것(다른 이름)보다 먼저 온다.
+    const norm = alt ? `${normalizeForSearch(name)}\u0000${normalizeForSearch(alt)}` : normalizeForSearch(name);
     names[index] = name;
     categoryOf[index] = categoryIndex;
     normalized[index] = norm;

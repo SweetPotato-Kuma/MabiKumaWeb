@@ -110,7 +110,10 @@ export async function writeDictionary(dictionary, { today, known }) {
         `${JSON.stringify({ category, updated: today, count: sorted.length, items: sorted }, null, 2)}\n`,
       );
     }
-    for (const item of sorted) nameRows.push([item.name, index.length]);
+    // 다른 이름이 있는 항목(인챈트 스크롤의 첫 번째 인챈트 이름)은 셋째 칸에 싣는다. 검색이 그 이름으로도 걸린다.
+    for (const item of sorted) {
+      nameRows.push(item.alt?.length ? [item.name, index.length, item.alt.join(' ')] : [item.name, index.length]);
+    }
     index.push({
       name: category,
       file,

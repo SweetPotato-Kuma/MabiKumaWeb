@@ -34,3 +34,8 @@ export function stripBrackets(line: string): string {
 export function effectSummary(enchant: EnchantDef): string {
   return enchant.desc.filter((line) => !isEnchantNote(line)).join(', ');
 }
+
+/** 이름 뒤에 다른 이름을 괄호로 붙인 글. 다른 이름이 없으면 이름만. "나비 (버터플라이)" */
+export function enchantLabel(enchant: Pick<EnchantDef, 'name' | 'alt'>): string {
+  return enchant.alt ? `${enchant.name} (${enchant.alt})` : enchant.name;
+}

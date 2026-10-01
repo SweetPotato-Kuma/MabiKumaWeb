@@ -13,20 +13,21 @@ const FILE = {
         desc: ['무기에 인챈트 가능', '최대대미지 10~12 증가', '[수리비 200% 증가]'],
         src: ['브리 레흐'],
       },
-      { slot: 0, level: 6, desc: ['마법 공격력 3 증가'] },
+      { slot: 0, level: 6, desc: ['마법 공격력 3 증가'], alt: '부엉이' },
     ],
+    '전용 인챈트 스크롤 - 나비': [{ slot: 1, level: 6, desc: ['마나실드 사용 중일 때 최대대미지 7~12 증가'], alt: '버터플라이' }],
   },
 };
 
-function renderSpec(name: string, body: unknown = FILE) {
+function renderSpec(name: string, kind?: { slot: 0 | 1; level: number }) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(JSON.stringify(body), { status: body ? 200 : 404 })),
+    vi.fn(async () => new Response(JSON.stringify(FILE), { status: 200 })),
   );
   return render(
     <AppProviders>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <EnchantScrollSpec name={name} />
+        <EnchantScrollSpec name={name} kind={kind} />
       </QueryClientProvider>
     </AppProviders>,
   );
@@ -50,6 +51,26 @@ describe('인챈트 스크롤 사양', () => {
     expect(screen.getByText('무기에 인챈트 가능')).toBeInTheDocument();
     expect(screen.getByText('수리비 200% 증가')).toBeInTheDocument();
     expect(screen.getByText('브리 레흐')).toBeInTheDocument();
+  });
+
+  it('개방된 전용 스크롤은 같은 인챈트 이름의 사양을 보여 주고 다른 이름도 적는다', async () => {
+    renderSpec('개방된 전용 인챈트 스크롤 - 나비');
+
+    expect(await screen.findByText('마나실드 사용 중일 때 최대대미지 7~12 증가')).toBeInTheDocument();
+    expect(screen.getByText('버터플라이')).toBeInTheDocument();
+  });
+
+  it('첫 번째 이름으로 불린 스크롤도 같은 사양을 보여 준다', async () => {
+    renderSpec('인챈트 스크롤 - 버터플라이');
+
+    expect(await screen.findByText('마나실드 사용 중일 때 최대대미지 7~12 증가')).toBeInTheDocument();
+  });
+
+  it('매물 옵션의 접두/접미와 랭크를 받으면 그 사양만 보여 준다', async () => {
+    renderSpec('인챈트 스크롤 - 올빼미', { slot: 0, level: 6 });
+
+    expect(await screen.findByText('접두 A 랭크')).toBeInTheDocument();
+    expect(screen.queryByText('접미 8 랭크')).toBeNull();
   });
 
   it('사양이 없는 이름이면 아무것도 그리지 않는다', async () => {

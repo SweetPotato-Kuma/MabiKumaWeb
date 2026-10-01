@@ -1,6 +1,7 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 
@@ -151,5 +152,68 @@ describe('매물 상세 모달', () => {
       '/item/글라디우스?category=%ED%8F%AC%EC%85%98',
     );
     expect(screen.queryByText(/장비 시뮬레이터에서/)).not.toBeInTheDocument();
+  });
+});
+
+describe('인챈트 스크롤 매물', () => {
+  const SPEC = '마나실드 사용 중일 때 최대대미지 7~12 증가';
+  const SCROLL: AuctionItemDetail = {
+    displayName: '개방된 전용 인챈트 스크롤 - 나비',
+    rawName: '개방된 전용 인챈트 스크롤',
+    category: '인챈트 스크롤',
+    count: 1,
+    pricePerUnit: 870,
+    options: [
+      { option_type: '내구도', option_value: '100%' },
+      { option_type: '인챈트 종류', option_sub_type: '접미', option_value: '나비 (랭크 A)' },
+    ],
+    timeLabel: '만료',
+    timeValue: '2026-10-03T09:00:00.000Z',
+    showRemaining: true,
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  function renderScroll(detail: AuctionItemDetail) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('data/enchant-scrolls.json')
+          ? new Response(
+              JSON.stringify({
+                scrolls: {
+                  '인챈트 스크롤 - 나비': [
+                    { slot: 1, level: 6, desc: [SPEC], alt: '버터플라이' },
+                    { slot: 0, level: 6, desc: ['접두 쪽 사양'] },
+                  ],
+                },
+              }),
+            )
+          : new Response('not found', { status: 404 }),
+      ),
+    );
+    return render(
+      <AppProviders>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter>
+            <AuctionItemDetailModal detail={detail} onClose={vi.fn()} />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AppProviders>,
+    );
+  }
+
+  it('개방된 전용 스크롤은 같은 이름 인챈트의 사양을 옵션의 접두/접미와 랭크에 맞춰 보여 준다', async () => {
+    renderScroll(SCROLL);
+
+    expect(await screen.findByText(SPEC)).toBeInTheDocument();
+    expect(screen.getByText('버터플라이')).toBeInTheDocument();
+    expect(screen.queryByText('접두 쪽 사양')).toBeNull();
+  });
+
+  it('인챈트 스크롤이 아닌 매물에는 사양 자리를 그리지 않는다', () => {
+    const { container } = renderModal(DETAIL);
+
+    expect(container.ownerDocument.querySelector('.ant-skeleton')).toBeNull();
   });
 });

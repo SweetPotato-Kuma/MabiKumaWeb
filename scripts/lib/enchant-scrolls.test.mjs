@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  altNames,
   groupScrolls,
   isPersonalEnchant,
   isPlaceholderEnchant,
@@ -8,7 +9,7 @@ import {
   scrollSubtitle,
 } from './enchant-scrolls.mjs';
 
-const def = (patch) => ({ shown: '올빼미', slot: 1, level: 8, desc: ['무기에 인챈트 가능', '최대대미지 10 증가'], ...patch });
+const def = (patch) => ({ name: '올빼미', slot: 1, level: 8, desc: ['무기에 인챈트 가능', '최대대미지 10 증가'], ...patch });
 
 describe('인챈트 스크롤 이름', () => {
   it('전용 인챈트는 전용 스크롤 이름이 된다', () => {
@@ -66,6 +67,15 @@ describe('스크롤 묶기', () => {
 
   it('자리표시 칸은 묶지 않는다', () => {
     expect(groupScrolls([def({ desc: ['not found key, optionset.1'] })]).size).toBe(0);
+  });
+
+  it('첫 번째 이름이 다르면 변형과 부제에 다른 이름으로 남긴다', () => {
+    const groups = groupScrolls([def({ name: '나비', alt: '버터플라이', slot: 1, level: 6 })]);
+    const variants = groups.get('인챈트 스크롤 - 나비');
+    expect(variants[0].alt).toBe('버터플라이');
+    expect(altNames(variants)).toEqual(['버터플라이']);
+    expect(scrollSubtitle(variants)).toBe('접미 A 랭크, 다른 이름 버터플라이');
+    expect(groupScrolls([def({})]).get('인챈트 스크롤 - 올빼미')[0]).not.toHaveProperty('alt');
   });
 
   it('부제는 접두/접미와 랭크다', () => {

@@ -20,16 +20,20 @@ import { SearchIcon } from '@/components/icons';
 export function ItemInfoDetail({
   category,
   name,
+  cardName,
   children,
 }: {
   category: string;
   name: string;
+  /** 그림과 설명을 찾을 사전 이름. 사전에 없는 이름(개방된 전용 인챈트 스크롤 - 올빼미)이면 기본 스크롤의 이름이다. 없으면 name. */
+  cardName?: string;
   /** 설명 아래, 시세 단추 위에 더 보일 것(인챈트 스크롤의 사양 등). */
   children?: ReactNode;
 }) {
-  const keys = useMemo(() => [{ category, name }], [category, name]);
+  const lookupName = cardName ?? name;
+  const keys = useMemo(() => [{ category, name: lookupName }], [category, lookupName]);
   usePrefetchItemCards(keys);
-  const card = useItemCard(category, name);
+  const card = useItemCard(category, lookupName);
 
   const configured = isCardStoreConfigured();
   const loading = configured && card === undefined;
@@ -38,7 +42,7 @@ export function ItemInfoDetail({
   return (
     <Card>
       <Flex vertical gap={20}>
-        <ItemCardSummary card={card} title={name} category={category} iconName={name} />
+        <ItemCardSummary card={card} title={name} category={category} iconName={lookupName} />
 
         {loading ? <Skeleton active title={false} paragraph={{ rows: 3 }} /> : null}
 

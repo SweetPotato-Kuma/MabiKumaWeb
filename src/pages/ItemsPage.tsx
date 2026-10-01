@@ -46,7 +46,7 @@ import {
   type NameSuggestion,
 } from '@/features/auction/nameIndex';
 import type { Recipe, RecipeBook } from '@/features/crafting/recipes';
-import { isEnchantScrollName } from '@/features/enchantScroll/scrolls';
+import { parseScrollName } from '@/features/enchantScroll/scrolls';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { iconSrcOf, preloadItemIcons, useItemCards } from '@/features/itemcard/cards';
 import { iconFileUrl, useIconMaps, useItemBrief } from '@/features/itemcard/iconMap';
@@ -110,9 +110,16 @@ export function ItemsPage() {
   const nameIndexQuery = useItemNameIndexQuery();
   const nameIndex = nameIndexQuery.data;
   const categoryParam = searchParams.get('category') ?? '';
+  /**
+   * 인챈트 스크롤 이름은 사전에 없는 것도 상세가 열린다("개방된 전용 인챈트 스크롤 - 올빼미", 첫 번째 인챈트 이름을
+   * 쓴 이름). 인챈트 이름으로 사양을 찾고, 그림과 설명은 기본 스크롤의 것을 쓴다.
+   */
+  const scroll = detailName ? parseScrollName(detailName) : null;
+  const inDictionary = nameIndex?.categoriesByName.has(detailName) ?? false;
   const category =
     categoryParam ||
-    (detailName ? (nameIndex?.categoriesByName.get(detailName)?.[0] ?? '') : '');
+    (detailName ? (nameIndex?.categoriesByName.get(detailName)?.[0] ?? '') : '') ||
+    (scroll ? '인챈트 스크롤' : '');
   const resolvingCategory = detailName !== '' && !categoryParam && nameIndexQuery.isPending;
 
   /**
@@ -212,10 +219,9 @@ export function ItemsPage() {
               key={`${category}\u0000${detailName}`}
               category={category}
               name={detailName}
+              cardName={scroll && nameIndex && !inDictionary ? scroll.base : undefined}
             >
-              {isEnchantScrollName(category, detailName) ? (
-                <EnchantScrollSpec name={detailName} />
-              ) : null}
+              {scroll && category === '인챈트 스크롤' ? <EnchantScrollSpec name={detailName} /> : null}
             </ItemInfoDetail>
           )}
           {/* 만들 수 있는 아이템이면 재료 트리와 제작 비용. 없으면 아무것도 그리지 않는다. */}

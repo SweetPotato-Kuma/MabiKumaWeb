@@ -42,6 +42,9 @@ function Variant({ variant }: { variant: ScrollVariant }) {
               },
             ]
           : []),
+        ...(variant.alt
+          ? [{ key: 'alt', label: '다른 이름', children: <Text>{variant.alt}</Text> }]
+          : []),
         ...(variant.src?.length
           ? [
               {
@@ -67,17 +70,25 @@ function Variant({ variant }: { variant: ScrollVariant }) {
 /**
  * 인챈트 스크롤의 사양. 접두/접미와 랭크, 효과, 적용 조건, 나오는 곳.
  * 같은 이름에 접두와 접미가 따로 있으면 둘 다 보인다. 사양이 없는 이름이면 아무것도 그리지 않는다.
+ * 전용, 개방된 전용 스크롤도 인챈트 이름이 같으면 같은 사양이다.
  */
-export function EnchantScrollSpec({ name }: { name: string }) {
-  const variants = useEnchantScroll(name);
+export function EnchantScrollSpec({
+  name,
+  kind,
+}: {
+  name: string;
+  /** 매물의 옵션이 알려 주는 접두/접미와 랭크. 있으면 맞는 사양만 보인다. */
+  kind?: { slot: 0 | 1; level: number };
+}) {
+  const variants = useEnchantScroll(name, kind);
 
   if (variants === undefined) return <Skeleton active title={false} paragraph={{ rows: 4 }} />;
   if (!variants) return null;
 
   return (
     <Flex vertical gap={16}>
-      {sortVariants(variants).map((variant) => (
-        <Variant key={`${variant.slot}:${variant.level}`} variant={variant} />
+      {sortVariants(variants).map((variant, index) => (
+        <Variant key={`${variant.slot}:${variant.level}:${index}`} variant={variant} />
       ))}
     </Flex>
   );

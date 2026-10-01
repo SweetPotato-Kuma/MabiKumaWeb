@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Flex, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import { ItemIcon } from '@/components/ItemIcon';
-import { enchantRank, stripBrackets } from '@/features/equipment/enchant';
+import { enchantLabel, enchantRank, stripBrackets } from '@/features/equipment/enchant';
 import type { ErgSummary } from '@/features/equipment/erg';
 import type { StatRow } from '@/features/equipment/simulate';
 import { describeSpecialStep, type SpecialStep } from '@/features/equipment/specialUpgrade';
@@ -207,7 +207,7 @@ export function EquipmentPreview({
           .map((enchant) => (
             <Block
               key={enchant.id}
-              title={`[${enchant.slot === 0 ? '접두' : '접미'}] ${enchant.name} (${enchantRank(enchant.level)} 랭크)`}
+              title={`[${enchant.slot === 0 ? '접두' : '접미'}] ${enchantLabel(enchant)} (${enchantRank(enchant.level)} 랭크)`}
             >
               {enchant.desc
                 // "양손 무기에 인챈트 가능" 은 적용 조건이라 뺀다. 이미 바른 장비라 볼 일이 없다.
