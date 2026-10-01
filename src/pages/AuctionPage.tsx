@@ -33,6 +33,7 @@ import { DetailSearchBar } from '@/components/AuctionOptionFilter';
 import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
 import { BrowseLayout } from '@/components/BrowseLayout';
+import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { SavedSearchControls } from '@/components/SavedSearches';
 import { EmptyState } from '@/components/EmptyState';
@@ -40,9 +41,11 @@ import { ItemIcon } from '@/components/ItemIcon';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
 import { RecentTradeStats } from '@/components/market/RecentTradeStats';
+import { categoryPath, leavesOfGroupKey } from '@/features/auction/categoryTree';
 import { itemInfoPath } from '@/features/auction/dictionary';
 import {
   isAuctionSearchReady,
+  matchesKeyword,
   useAuctionHistoryQuery,
   useAuctionItemsQuery,
   useAuctionScanQuery,
@@ -55,6 +58,7 @@ import {
   itemNameIndexQueryOptions,
   resolveSearch,
   searchNames,
+  splitTerms,
   useItemNameIndexQuery,
 } from '@/features/auction/nameIndex';
 import {
@@ -392,7 +396,12 @@ export function AuctionPage() {
   const scanQuery = useAuctionScanQuery(query.scan, enabled && scanning && liveScan && tab === 'items');
   const itemsQuery = !scanning ? keywordItemsQuery : liveScan ? scanQuery : snapshot;
   const scanProgress = scanning && liveScan ? scanQuery.data : undefined;
-  const historyQuery = useAuctionHistoryQuery(query, nameIndexQuery.data, enabled && tab === 'history');
+  // 묶음을 찾을 때는 묶음의 카테고리로 거래를 받고 검색어는 받은 것에서 거른다. 이름으로 따로 부르면 묶음 밖 거래가 섞인다.
+  const historyQuery = useAuctionHistoryQuery(
+    query,
+    scanning && query.keyword.trim() ? null : nameIndexQuery.data,
+    enabled && tab === 'history',
+  );
 
   /**
    * 첫 화면 미리보기(issue #8). 아직 아무것도 찾지 않았을 때만 서버 전체의 최근 거래를 받는다.
@@ -456,10 +465,16 @@ export function AuctionPage() {
     };
   }, [tierKeyword]);
   const exactOnly = exact && tierKeyword.trim() !== '';
+  // 묶음을 검색어와 함께 찾으면 카테고리를 차례로 불러온 매물에서 이름으로 거른다.
+  const scanTerms = useMemo(
+    () => (scanning && tierKeyword.trim() ? splitTerms(tierKeyword) : []),
+    [scanning, tierKeyword],
+  );
   const itemsMatching = useMemo(() => {
-    const byOption = filtering ? items.filter((item) => matchesOptionFilter(item, deferredFilter)) : items;
+    const byKeyword = scanTerms.length > 0 ? items.filter((item) => matchesKeyword(item, scanTerms)) : items;
+    const byOption = filtering ? byKeyword.filter((item) => matchesOptionFilter(item, deferredFilter)) : byKeyword;
     return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
-  }, [filtering, items, deferredFilter, exactOnly, tierOf]);
+  }, [filtering, items, scanTerms, deferredFilter, exactOnly, tierOf]);
   const historyMatching = useMemo(() => {
     const byOption = filtering ? history.filter((item) => matchesOptionFilter(item, deferredFilter)) : history;
     return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
@@ -670,6 +685,8 @@ export function AuctionPage() {
         !optionNames?.reforgeCaps?.[condition.name.trim()],
     );
     if (typing) return null;
+    const groupLeaves = leavesOfGroupKey(form.category);
+    if (groupLeaves) return groupLeaves.every(isSnapshotCategory) ? [...groupLeaves] : null;
     if (form.category) return isSnapshotCategory(form.category) ? [form.category] : null;
     return scanCategoriesFor(deferredFilter, optionNames);
   }, [deferredFilter, form.category, form.keyword, optionNames]);
@@ -685,17 +702,24 @@ export function AuctionPage() {
   const [resolving, setResolving] = useState(() => isAuctionSearchReady(form));
   const deferredKeyword = useDeferredValue(form.keyword);
   const suggestions = useMemo(
-    () =>
-      nameIndexQuery.data
-        ? searchNames(nameIndexQuery.data, deferredKeyword, { category: form.category, limit: SUGGESTION_LIMIT })
-        : [],
+    () => {
+      if (!nameIndexQuery.data) return [];
+      // 묶음은 이름 인덱스에 없는 카테고리다. 전체에서 찾아 묶음에 속한 이름만 남긴다.
+      const leaves = leavesOfGroupKey(form.category);
+      if (leaves) {
+        return searchNames(nameIndexQuery.data, deferredKeyword, { limit: SUGGESTION_LIMIT * 8 })
+          .filter((item) => item.categories.some((category) => leaves.includes(category)))
+          .slice(0, SUGGESTION_LIMIT);
+      }
+      return searchNames(nameIndexQuery.data, deferredKeyword, { category: form.category, limit: SUGGESTION_LIMIT });
+    },
     [nameIndexQuery.data, deferredKeyword, form.category],
   );
   const suggestionOptions = useMemo(
     () =>
       suggestions.map((item) => ({
         value: item.name,
-        label: <NameSuggestionLabel item={item} showCategory={!form.category} />,
+        label: <NameSuggestionLabel item={item} showCategory={!form.category || leavesOfGroupKey(form.category) !== null} />,
       })),
     [suggestions, form.category],
   );
@@ -737,6 +761,14 @@ export function AuctionPage() {
   async function runSearch(next: AuctionSearchInput, filter: OptionFilter) {
     const run = ++searchRun.current;
     const filtering = activeConditionCount(filter) > 0;
+
+    // 묶음(원거리 장비 등)을 찾으면 그 묶음의 카테고리를 차례로 불러온다. 넥슨 API 는 카테고리 하나씩만 준다.
+    const groupLeaves = leavesOfGroupKey(next.category);
+    if (groupLeaves) {
+      setResolving(false);
+      setSubmitted({ category: ALL_CATEGORIES, keyword: next.keyword.trim(), scan: [...groupLeaves] });
+      return;
+    }
 
     // 장비나 유물 카테고리에 상세 검색 조건을 넣고 찾으면 모아 둔 매물에서 찾는다. 이름을 넣었으면 이름으로 찾는다.
     if (filtering && !next.keyword.trim() && isSnapshotCategory(next.category) && canUseSnapshot()) {
@@ -1276,6 +1308,8 @@ export function AuctionPage() {
                 />
               </Flex>
 
+              <CategoryBreadcrumb category={form.category} onSelect={selectCategory} />
+
               <Flex gap={8} wrap align="center">
                 <Checkbox
                   checked={exact}
@@ -1298,11 +1332,6 @@ export function AuctionPage() {
                 >
                   검색 초기화
                 </Button>
-                {form.category ? (
-                  <Tag closable onClose={() => selectCategory(ALL_CATEGORIES)}>
-                    {form.category}
-                  </Tag>
-                ) : null}
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {/*
                     찾는 방식이 둘이라 그대로 알린다. 전체 검색은 사전으로 걸리는 이름을 골라
@@ -1318,6 +1347,12 @@ export function AuctionPage() {
                         : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물 ${formatNumber(itemsLoaded)}건에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
                       : nameIndexQuery.isPending
                     ? '아이템 이름을 불러오는 중입니다.'
+                    : form.category && leavesOfGroupKey(form.category)
+                      ? `${categoryPath(form.category).at(-1)?.label} 묶음의 카테고리 ${formatNumber(submitted?.scan?.length ?? 0)}곳을 차례로 불러옵니다.${
+                          scanProgress
+                            ? ` 불러오기 마친 카테고리 ${formatNumber(scanProgress.scanned)}/${formatNumber(scanProgress.total)}곳.`
+                            : ''
+                        }`
                     : form.category
                       ? `${form.category} 매물에서 이름 일부로 찾습니다.`
                       : submitted?.keywordsTruncated && !submitted.category

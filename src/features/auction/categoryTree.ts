@@ -120,6 +120,42 @@ export function isGroupKey(key: string): boolean {
   return key.startsWith(GROUP_KEY_PREFIX);
 }
 
+/** 묶음 이름. 묶음 키가 아니면 null. */
+export function groupNameOf(key: string): string | null {
+  if (!isGroupKey(key)) return null;
+  const name = key.slice(GROUP_KEY_PREFIX.length);
+  return CATEGORY_GROUPS.some((group) => group.name === name) ? name : null;
+}
+
+/** 묶음 키의 하위 카테고리. 묶음을 찾는 것은 이 잎들을 차례로 불러오는 것이다. 묶음 키가 아니면 null. */
+export function leavesOfGroupKey(key: string): readonly string[] | null {
+  const name = groupNameOf(key);
+  return name === null ? null : (CATEGORY_GROUPS.find((group) => group.name === name)?.categories ?? null);
+}
+
+/** 화면에 적는 이름. 묶음 키는 묶음 이름으로, 잎은 그대로. */
+export function categoryLabel(category: string): string {
+  return groupNameOf(category) ?? category;
+}
+
+export interface CategoryCrumb {
+  label: string;
+  /** 누르면 찾을 카테고리 값. 전체는 빈 글자다. */
+  value: string;
+}
+
+/** 전체 > 묶음 > 잎 으로 이어지는 경로. 고른 것이 없으면 빈 배열이다. */
+export function categoryPath(category: string): CategoryCrumb[] {
+  if (!category) return [];
+  const root: CategoryCrumb = { label: '전체', value: '' };
+  const group = groupNameOf(category);
+  if (group !== null) return [root, { label: group, value: category }];
+  const parent = findGroupOf(category);
+  return parent === undefined
+    ? [root, { label: category, value: category }]
+    : [root, { label: parent, value: groupKeyOf(parent) }, { label: category, value: category }];
+}
+
 /** 트리에 등장하는 모든 키. 잎은 카테고리 이름 그대로, 묶음은 접두사가 붙는다. */
 export function allTreeKeys(): string[] {
   return CATEGORY_GROUPS.flatMap((group) => [groupKeyOf(group.name), ...group.categories]);

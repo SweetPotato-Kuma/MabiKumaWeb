@@ -3,9 +3,11 @@ import { Flex, Grid, Select, Tree, Typography, type TreeDataNode } from 'antd';
 import type { Key } from 'react';
 import {
   CATEGORY_GROUPS,
+  categoryLabel,
   findGroupOf,
   findUngroupedCategories,
   groupKeyOf,
+  groupNameOf,
   isGroupKey,
 } from '@/features/auction/categoryTree';
 import { usePrefetchIconMap } from '@/features/itemcard/iconMap';
@@ -103,7 +105,7 @@ export function CategoryPicker({
 
   const treeData = useMemo(() => buildTreeData(counts, allLabel, showAll), [counts, allLabel, showAll]);
   const selectOptions = useMemo(() => buildSelectOptions(allLabel, showAll), [allLabel, showAll]);
-  const expandedGroup = findGroupOf(value);
+  const expandedGroup = groupNameOf(value) ?? findGroupOf(value);
 
   const [expandedKeys, setExpandedKeys] = useState<Key[]>(() =>
     expandedGroup ? [groupKeyOf(expandedGroup)] : [],
@@ -133,6 +135,8 @@ export function CategoryPicker({
         options={selectOptions}
         showSearch
         optionFilterProp="label"
+        // 묶음을 찾는 중이면 값이 묶음 키라 목록에 없다. 키 대신 묶음 이름을 보인다.
+        labelRender={({ label, value: shown }) => (isGroupKey(String(shown)) ? categoryLabel(String(shown)) : label)}
         placeholder="카테고리"
         aria-label="카테고리"
         style={{ width: '100%' }}

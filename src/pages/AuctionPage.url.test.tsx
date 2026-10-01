@@ -398,6 +398,53 @@ describe('경매장 검색 조건과 주소', () => {
     });
   });
 
+  describe('분류 경로 배지', () => {
+    const crumbs = () => within(screen.getByRole('navigation', { name: '카테고리 경로' }));
+
+    it('고른 카테고리까지 전체, 묶음, 카테고리 순으로 배지를 보인다', async () => {
+      renderAt('/auction?category=활');
+
+      expect(await screen.findByRole('navigation', { name: '카테고리 경로' })).toBeInTheDocument();
+      expect(crumbs().getByText('전체')).toBeInTheDocument();
+      expect(crumbs().getByText('원거리 장비')).toBeInTheDocument();
+      expect(crumbs().getByText('활')).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('고른 것이 없으면 경로를 두지 않는다', () => {
+      renderAt('/auction');
+
+      expect(screen.queryByRole('navigation', { name: '카테고리 경로' })).toBeNull();
+    });
+
+    it('상위 배지를 누르면 그 묶음을 찾는다', async () => {
+      const router = renderAt('/auction?category=활');
+      await screen.findByRole('navigation', { name: '카테고리 경로' });
+
+      fireEvent.click(crumbs().getByText('원거리 장비'));
+
+      await waitFor(() => expect(new URLSearchParams(router.search()).get('category')).toBe('group:원거리 장비'));
+      expect(crumbs().queryByText('활')).toBeNull();
+      expect(crumbs().getByText('원거리 장비')).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('전체 배지를 누르면 카테고리를 푼다', async () => {
+      const router = renderAt('/auction?category=활&keyword=소울');
+      await screen.findByRole('navigation', { name: '카테고리 경로' });
+
+      fireEvent.click(crumbs().getByText('전체'));
+
+      await waitFor(() => expect(router.search()).not.toContain('category'));
+      expect(router.search()).toContain('keyword=');
+    });
+
+    it('주소에 없는 묶음 이름이 실려 오면 카테고리를 고르지 않은 것으로 본다', async () => {
+      renderAt('/auction?category=group:없는 묶음');
+
+      expect(await screen.findByText(/카테고리를 고르거나/)).toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: '카테고리 경로' })).toBeNull();
+    });
+  });
+
   describe('검색 즐겨찾기', () => {
     const dialog = () => screen.getByRole('dialog');
     // 즐겨찾기 단추 하나가 펼치는 메뉴에서 칸을 고른다.

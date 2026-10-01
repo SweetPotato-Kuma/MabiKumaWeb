@@ -10,6 +10,12 @@ import {
 const params = (query: string) => new URLSearchParams(query);
 
 describe('경매장 주소 읽기', () => {
+  it('묶음 카테고리는 이름이 맞을 때만 읽고, 없는 묶음은 비운다', () => {
+    expect(readSearchState(params('?category=group:원거리 장비')).category).toBe('group:원거리 장비');
+    expect(readSearchState(params('?category=group:없는 묶음')).category).toBe('');
+    expect(readSearchState(params('?category=활')).category).toBe('활');
+  });
+
   it('아무것도 없으면 기본 화면이다', () => {
     expect(readSearchState(params(''))).toMatchObject({ category: '', keyword: '', filterKey: '' });
     expect(readViewState(params(''))).toEqual({

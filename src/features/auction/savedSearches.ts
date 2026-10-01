@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
+import { categoryLabel } from './categoryTree';
 import { parseFilter, serializeFilter } from './filterUrl';
 import { summarizeCondition } from './optionFilter';
 
@@ -192,7 +193,7 @@ export function useSavedSearchActions() {
 /** 목록에 보일 한 줄 요약: 카테고리, 검색어, 상세 조건. */
 export function describeSavedSearch(query: SavedSearchQuery): string[] {
   return [
-    query.category,
+    categoryLabel(query.category),
     query.keyword.trim() ? `"${query.keyword.trim()}"` : '',
     ...parseFilter(query.filterKey).conditions.map(summarizeCondition),
   ].filter(Boolean);

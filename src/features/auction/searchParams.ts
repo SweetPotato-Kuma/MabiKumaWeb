@@ -1,5 +1,6 @@
 import { PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE } from '@/lib/useListPagination';
 import { RELIC_MAX_LEVEL } from '@/features/relics/murias';
+import { groupNameOf, isGroupKey } from './categoryTree';
 import { parseFilter, serializeFilter } from './filterUrl';
 import { relicCondition, type OptionFilter } from './optionFilter';
 
@@ -72,10 +73,13 @@ function readLegacyRelic(params: URLSearchParams): OptionFilter | null {
   return { conditions: [relicCondition(name.slice(0, MAX_TEXT), level('relicMin'), level('relicMax'))] };
 }
 
+/** 없는 묶음 이름이 주소에 실려 있으면 카테고리를 고르지 않은 것으로 본다. */
+const knownCategory = (category: string) => (isGroupKey(category) && groupNameOf(category) === null ? '' : category);
+
 export function readSearchState(params: URLSearchParams): AuctionSearchState {
   const filter = params.has('f') ? parseFilter(params.get('f')) : (readLegacyRelic(params) ?? parseFilter(null));
   return {
-    category: text(params, 'category'),
+    category: knownCategory(text(params, 'category')),
     keyword: text(params, 'keyword'),
     filter,
     filterKey: serializeFilter(filter),

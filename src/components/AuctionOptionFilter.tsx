@@ -3,6 +3,7 @@ import { AutoComplete, Button, Flex, Grid, Popover, Select, Typography } from 'a
 import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { AddIcon, ArrowDownIcon, DeleteIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
+import { offeredKinds } from '@/features/auction/optionKinds';
 import {
   COLOR_OPTION_LABEL,
   conditionLabel,
@@ -28,7 +29,6 @@ import {
 } from '@/features/auction/optionNames';
 import {
   formatRelicValue,
-  RELIC_CATEGORY,
   RELIC_LEVELS,
   relicValueAt,
 } from '@/features/relics/murias';
@@ -150,15 +150,6 @@ export function DetailSearchBar({
 }) {
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
 
-  // 무리아스 유물 단추는 유물을 찾을 때만 둔다. 그때는 그 단추가 가장 쓸모 있어 맨 앞에 온다.
-  const showRelic =
-    category === RELIC_CATEGORY ||
-    catalog.some((entry) => entry.kind === 'relic') ||
-    value.conditions.some((condition) => condition.kind === 'relic');
-  const quickConditions = showRelic
-    ? [RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS]
-    : QUICK_CONDITIONS;
-
   const setConditions = (conditions: Condition[]) => onChange({ conditions });
   const update = (id: number, next: Partial<Condition>) =>
     setConditions(
@@ -171,12 +162,9 @@ export function DetailSearchBar({
   const inGroup = (group: GroupKey) =>
     value.conditions.filter((condition) => groupOf(condition) === group);
 
-  /** 단추를 열면 빈 조건을 하나 만들어 바로 고르게 하고, 닫을 때 빈 조건은 치운다. */
+  /** 창을 닫을 때 값이 비어 있는 조건은 치운다. 고르기만 하고 값을 넣지 않은 것은 조건이 아니다. */
   const toggleGroup = (group: GroupKey, open: boolean) => {
     if (open) {
-      const quick = quickConditions.find((each) => each.kind === group);
-      if (quick && inGroup(group).length === 0)
-        setConditions([...value.conditions, newCondition(quick)]);
       setOpenGroup(group);
       return;
     }
@@ -188,10 +176,31 @@ export function DetailSearchBar({
     setOpenGroup(null);
   };
 
-  const quickKinds = new Set<ConditionKind>(quickConditions.map((quick) => quick.kind));
-  const moreOptions = catalog
-    .filter((entry) => !quickKinds.has(entry.kind))
-    .map((entry) => ({ value: entry.label, label: entry.label, count: entry.count }));
+  // 카테고리에 붙는 옵션만 고르게 한다. 무리아스 유물에 세공은 쓸모가 없다.
+  const allQuick = [RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS];
+  const offered = offeredKinds(
+    category,
+    catalog.map((entry) => entry.kind),
+    value.conditions.map((condition) => condition.kind),
+  );
+  const quickConditions = allQuick.filter((quick) => offered.includes(quick.kind));
+  // 이미 건 조건 종류는 배지로 보이므로 고르는 목록에서 뺀다. 세공만 한 배지 안에서 세 줄까지 늘린다.
+  const usedKinds = new Set(value.conditions.map((condition) => condition.kind));
+  const quickKinds = new Set<ConditionKind>(allQuick.map((quick) => quick.kind));
+  const usedExtras = new Set(
+    value.conditions.flatMap((condition) =>
+      condition.kind === 'number' || condition.kind === 'text' ? [condition.optionType] : [],
+    ),
+  );
+  const pickOptions = [
+    ...quickConditions
+      .filter((quick) => !usedKinds.has(quick.kind))
+      .map((quick) => ({ value: `quick:${quick.kind}`, label: quick.label, count: undefined as number | undefined })),
+    ...catalog
+      .filter((entry) => !quickKinds.has(entry.kind) && !usedExtras.has(entry.optionType))
+      .map((entry) => ({ value: `extra:${entry.label}`, label: entry.label, count: entry.count as number | undefined })),
+  ];
+
   const extras = value.conditions.filter(
     (condition) => condition.kind === 'number' || condition.kind === 'text',
   );
@@ -207,6 +216,21 @@ export function DetailSearchBar({
     />
   );
 
+  const addCondition = (picked: string) => {
+    const split = picked.indexOf(':');
+    const source = picked.slice(0, split);
+    const key = picked.slice(split + 1);
+    const entry =
+      source === 'quick'
+        ? allQuick.find((quick) => quick.kind === key)
+        : catalog.find((each) => each.label === key);
+    if (!entry) return;
+    const condition = newCondition(entry);
+    setConditions([...value.conditions, condition]);
+    // 고르자마자 값을 넣는 창을 연다.
+    setOpenGroup(groupOf(condition));
+  };
+
   return (
     <Flex gap={6} wrap align="center">
       <Text strong style={{ fontSize: 13, marginInlineEnd: 2 }}>
@@ -216,6 +240,7 @@ export function DetailSearchBar({
       {quickConditions.map((quick) => {
         const group = quick.kind;
         const conditions = inGroup(group);
+        if (conditions.length === 0) return null;
         const active = conditions.filter(isConditionActive);
         const label =
           active.length === 0
@@ -289,35 +314,25 @@ export function DetailSearchBar({
       <Select
         value={null}
         size="small"
-        placeholder="+ 옵션"
-        options={moreOptions}
-        disabled={moreOptions.length === 0}
+        placeholder="세부 옵션 선택"
+        options={pickOptions}
+        disabled={pickOptions.length === 0}
         showSearch
         optionFilterProp="label"
         optionRender={(option) => (
           <Flex justify="space-between" gap={12}>
             <span>{option.label}</span>
-            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-              {formatNumber(option.data.count)}건
-            </Text>
+            {option.data.count !== undefined ? (
+              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                {formatNumber(option.data.count)}건
+              </Text>
+            ) : null}
           </Flex>
         )}
-        onChange={(label: string) => {
-          const entry = catalog.find((each) => each.label === label);
-          if (!entry) return;
-          const condition = newCondition(entry);
-          setConditions([...value.conditions, condition]);
-          // 고르자마자 값을 넣는 창을 연다.
-          setOpenGroup(groupOf(condition));
-        }}
-        aria-label="그 밖의 옵션으로 상세 검색"
-        title={
-          moreOptions.length === 0
-            ? '매물을 불러오면 최대 공격, 세트 효과처럼 그 매물에 있는 옵션을 고를 수 있습니다.'
-            : undefined
-        }
+        onChange={addCondition}
+        aria-label="세부 옵션 선택"
         popupMatchSelectWidth={240}
-        style={{ width: 96 }}
+        style={{ width: 150 }}
       />
 
       {anyActive ? (

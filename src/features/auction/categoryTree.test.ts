@@ -4,10 +4,14 @@ import {
   CATEGORY_GROUPS,
   GROUPED_CATEGORIES,
   allTreeKeys,
+  categoryLabel,
+  categoryPath,
   findGroupOf,
   findUngroupedCategories,
   groupKeyOf,
+  groupNameOf,
   isGroupKey,
+  leavesOfGroupKey,
 } from './categoryTree';
 
 /**
@@ -66,5 +70,31 @@ describe('경매장 카테고리 묶음', () => {
     expect(findGroupOf('허브')).toBe('소모품');
     expect(findGroupOf('유물')).toBe('특수 장비');
     expect(findGroupOf('없는 카테고리')).toBeUndefined();
+  });
+
+  it('묶음 키는 하위 카테고리와 이름을 돌려주고, 잎은 묶음이 아니다', () => {
+    expect(leavesOfGroupKey(groupKeyOf('원거리 장비'))).toContain('활');
+    expect(groupNameOf(groupKeyOf('액세서리'))).toBe('액세서리');
+    expect(leavesOfGroupKey('활')).toBeNull();
+    expect(leavesOfGroupKey('group:없는 묶음')).toBeNull();
+    expect(categoryLabel(groupKeyOf('원거리 장비'))).toBe('원거리 장비');
+    expect(categoryLabel('활')).toBe('활');
+  });
+
+  it('고른 카테고리까지 전체, 묶음, 잎 순으로 경로를 만든다', () => {
+    expect(categoryPath('')).toEqual([]);
+    expect(categoryPath('활')).toEqual([
+      { label: '전체', value: '' },
+      { label: '원거리 장비', value: groupKeyOf('원거리 장비') },
+      { label: '활', value: '활' },
+    ]);
+    expect(categoryPath(groupKeyOf('원거리 장비'))).toEqual([
+      { label: '전체', value: '' },
+      { label: '원거리 장비', value: groupKeyOf('원거리 장비') },
+    ]);
+  });
+
+  it('이름이 겹치는 묶음과 잎(액세서리)을 가른다', () => {
+    expect(categoryPath('액세서리').map((crumb) => crumb.value)).toEqual(['', groupKeyOf('액세서리'), '액세서리']);
   });
 });

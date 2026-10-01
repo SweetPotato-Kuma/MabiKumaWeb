@@ -34,7 +34,7 @@ export function isAuctionSearchReady(input: AuctionSearchInput): boolean {
  * 띄어쓰기를 지우고 부분 문자열로 본다. 게임 아이템 이름의 띄어쓰기를 외우고 있는
  * 사람은 없다. "숏소드" 로 쳐도 "숏 소드" 가 걸려야 한다.
  */
-function matchesKeyword(item: { item_name: string; item_display_name: string }, terms: string[]): boolean {
+export function matchesKeyword(item: { item_name: string; item_display_name: string }, terms: string[]): boolean {
   if (terms.length === 0) return true;
   const haystack = normalizeForSearch(`${item.item_display_name} ${item.item_name}`);
   // 초성은 필요할 때만 뽑는다. 대부분의 검색어는 초성이 아니다.
