@@ -36,7 +36,7 @@ function leafTitle(category: string, counts?: Readonly<Record<string, number>>) 
   if (count === undefined) return category;
 
   return (
-    <Flex justify="space-between" gap={12}>
+    <Flex justify="space-between" align="center" gap={12}>
       <span>{category}</span>
       <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
         {formatNumber(count)}
