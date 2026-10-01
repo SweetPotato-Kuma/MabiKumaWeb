@@ -225,6 +225,14 @@ const enchantIn = (options: ItemOption[], slot: string, name: string) => {
 
 type ReforgeCondition = Extract<Condition, { kind: 'reforge' }>;
 
+/** 세공 한 줄이 조건 하나를 채우는지. */
+function reforgeFits(reforge: Reforge, condition: ReforgeCondition): boolean {
+  return (
+    normalizeForSearch(reforge.name).includes(normalizeForSearch(condition.name)) &&
+    (condition.minLevel === null || reforge.level >= condition.minLevel)
+  );
+}
+
 /**
  * 세공 조건을 모두 채우는지. 한 세공 옵션이 두 조건을 한꺼번에 채울 수는 없다.
  * 조건과 옵션이 세 개 이하라 모든 짝을 다 대 본다.
@@ -232,9 +240,7 @@ type ReforgeCondition = Extract<Condition, { kind: 'reforge' }>;
 function matchesReforges(options: ItemOption[], conditions: ReforgeCondition[]): boolean {
   if (conditions.length === 0) return true;
   const reforges = reforgesOf(options);
-  const fits = (reforge: Reforge, condition: ReforgeCondition) =>
-    normalizeForSearch(reforge.name).includes(normalizeForSearch(condition.name)) &&
-    (condition.minLevel === null || reforge.level >= condition.minLevel);
+  const fits = reforgeFits;
   const assign = (index: number, used: Set<number>): boolean => {
     if (index === conditions.length) return true;
     return reforges.some(
@@ -440,18 +446,34 @@ export function relicLevelRange({
   return '';
 }
 
+/** 조건에 걸린 옵션의 한 조각. hit 이면 조건을 채운 조각이라 강조하고, 아니면 곁들여 보이는 옵션이다. */
+export interface MatchChip {
+  text: string;
+  hit: boolean;
+}
+
+/** 조건 종류 하나가 이 매물에서 보인 옵션들. label 은 "세공" 처럼 종류 이름이다. */
+export interface MatchNote {
+  label: string;
+  chips: MatchChip[];
+}
+
 /**
- * 조건에 걸린 옵션을 짧은 글로. 표에는 옵션 칸이 없어서, 조건을 걸었을 때 이름 아래에 적어
- * 왜 걸렸는지 누르지 않고도 보이게 한다. 같은 종류의 조건이 여럿이어도 한 번만 적는다.
+ * 조건에 걸린 옵션을 조각으로. 표에는 옵션 칸이 없어서, 조건을 걸었을 때 이름 아래에 보여 왜 걸렸는지
+ * 누르지 않고도 알게 한다. 같은 종류의 조건이 여럿이어도 한 번만 적는다.
+ *
+ * 한 줄 글로 이으면 세공 셋, 인챈트 둘이 길게 붙어 어디까지가 어느 옵션인지 읽기 어려웠다. 옵션마다 조각으로
+ * 나누고, 조건을 채운 조각(hit)은 강조한다. 매물에 붙은 다른 같은 종류 옵션은 곁들여 보이되 강조하지 않는다.
  */
 export function describeMatch(
   item: { item_option?: ItemOption[] },
   filter: OptionFilter,
-): string[] {
+): MatchNote[] {
   const options = item.item_option ?? [];
-  const notes: string[] = [];
+  const notes: MatchNote[] = [];
   const seen = new Set<string>();
-  for (const condition of filter.conditions.filter(isConditionActive)) {
+  const active = filter.conditions.filter(isConditionActive);
+  for (const condition of active) {
     const key =
       condition.kind === 'number' || condition.kind === 'text'
         ? `${condition.kind}:${condition.optionType}`
@@ -462,50 +484,71 @@ export function describeMatch(
     seen.add(key);
 
     if (condition.kind === 'reforge') {
-      const reforges = reforgesOf(options).map((reforge) => `${reforge.name} ${reforge.level}레벨`);
-      if (reforges.length > 0) notes.push(`세공: ${reforges.join(', ')}`);
+      const wanted = active.filter((each): each is ReforgeCondition => each.kind === 'reforge');
+      const chips = reforgesOf(options).map((reforge) => ({
+        text: `${reforge.name} ${reforge.level}레벨`,
+        hit: wanted.some((each) => reforgeFits(reforge, each)),
+      }));
+      if (chips.length > 0) notes.push({ label: '세공', chips });
     } else if (condition.kind === 'enchant') {
-      const enchants = options
+      const chips = options
         .filter((option) => option.option_type === '인챈트')
-        .map((option) => `${option.option_sub_type ?? ''} ${option.option_value ?? ''}`.trim());
-      if (enchants.length > 0) notes.push(`인챈트: ${enchants.join(', ')}`);
+        .map((option) => {
+          const needle = normalizeForSearch(
+            option.option_sub_type === ENCHANT_PREFIX ? condition.prefix : condition.suffix,
+          );
+          return {
+            text: `${option.option_sub_type ?? ''} ${option.option_value ?? ''}`.trim(),
+            hit: needle !== '' && normalizeForSearch(enchantName(option.option_value)).includes(needle),
+          };
+        });
+      if (chips.length > 0) notes.push({ label: '인챈트', chips });
     } else if (condition.kind === 'special') {
       const special = options.find((option) => option.option_type === '특별 개조');
       if (special)
-        notes.push(`특별 개조 ${special.option_sub_type ?? ''}${special.option_value ?? ''}`);
+        notes.push({
+          label: '특별 개조',
+          chips: [{ text: `${special.option_sub_type ?? ''}${special.option_value ?? ''}`, hit: true }],
+        });
     } else if (condition.kind === 'erg') {
       const erg = options.find((option) => option.option_type === '에르그');
-      if (erg) notes.push(`에르그 ${erg.option_sub_type ?? ''} ${erg.option_value ?? ''}레벨`);
+      if (erg)
+        notes.push({
+          label: '에르그',
+          chips: [{ text: `${erg.option_sub_type ?? ''} ${erg.option_value ?? ''}레벨`.trim(), hit: true }],
+        });
     } else if (condition.kind === 'color') {
       const hit = options.find((option) => colorOptionMatches(option, condition));
       const rgb = hit ? parseRgb(hit.option_value) : null;
       if (hit && rgb) {
         const part = hit.option_sub_type ? `${hit.option_sub_type} ` : '';
-        notes.push(`${part}R:${rgb.r} G:${rgb.g} B:${rgb.b}`);
+        notes.push({ label: '색상', chips: [{ text: `${part}R:${rgb.r} G:${rgb.g} B:${rgb.b}`, hit: true }] });
       }
     } else if (condition.kind === 'relic') {
       const relic = parseRelicOption(options.find(isRelicOption)?.option_value);
       if (relic)
-        notes.push(`${relic.name} ${relic.level}레벨 (${formatRelicValue(relic, relic.value)})`);
+        notes.push({
+          label: MURIAS_OPTION_TYPE,
+          chips: [{ text: `${relic.name} ${relic.level}레벨 (${formatRelicValue(relic, relic.value)})`, hit: true }],
+        });
     } else if (condition.kind === 'pet') {
       const option = options.find(
         (each) => each.option_type === PET_OPTION_TYPE && each.option_sub_type === condition.field,
       );
-      if (option) notes.push(`${condition.field} ${option.option_value ?? ''}`);
+      if (option)
+        notes.push({ label: PET_OPTION_TYPE, chips: [{ text: `${condition.field} ${option.option_value ?? ''}`, hit: true }] });
     } else if (condition.kind === 'number') {
       const option = options.find((each) => each.option_type === condition.optionType);
       const value = option ? optionNumber(option) : null;
-      if (value !== null) notes.push(`${numberLabel(condition.optionType)} ${value}`);
+      if (value !== null) notes.push({ label: numberLabel(condition.optionType), chips: [{ text: String(value), hit: true }] });
     } else {
       const text = normalizeForSearch(condition.text);
       const hit = options.find(
         (option) =>
           option.option_type === condition.optionType &&
-          normalizeForSearch(`${option.option_value ?? ''} ${option.option_desc ?? ''}`).includes(
-            text,
-          ),
+          normalizeForSearch(`${option.option_value ?? ''} ${option.option_desc ?? ''}`).includes(text),
       );
-      if (hit) notes.push(`${hit.option_type}: ${hit.option_value ?? ''}`);
+      if (hit) notes.push({ label: hit.option_type, chips: [{ text: hit.option_value ?? '', hit: true }] });
     }
   }
   return notes;

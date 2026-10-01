@@ -200,10 +200,34 @@ describe('describeMatch', () => {
       ),
     );
     expect(notes).toEqual([
-      '세공: 스매시 대미지 5레벨, 윈드밀 대미지 3레벨',
-      '특별 개조 R6',
-      '최대 공격 100',
+      {
+        label: '세공',
+        // 5레벨 이상이라는 조건을 채운 것만 강조한다. 윈드밀 3레벨은 곁들여 보인다.
+        chips: [
+          { text: '스매시 대미지 5레벨', hit: true },
+          { text: '윈드밀 대미지 3레벨', hit: false },
+        ],
+      },
+      { label: '특별 개조', chips: [{ text: 'R6', hit: true }] },
+      { label: '최대 공격', chips: [{ text: '100', hit: true }] },
     ]);
+  });
+
+  it('세공 이름을 걸면 그 이름만 강조한다', () => {
+    const [note] = describeMatch(sword, only({ kind: 'reforge', name: '윈드밀', minLevel: null }));
+
+    expect(note.chips).toEqual([
+      { text: '스매시 대미지 5레벨', hit: false },
+      { text: '윈드밀 대미지 3레벨', hit: true },
+    ]);
+  });
+
+  it('인챈트는 건 칸의 이름이 든 것만 강조한다', () => {
+    const [note] = describeMatch(sword, only({ kind: 'enchant', prefix: '울프', suffix: '' }));
+
+    expect(note.label).toBe('인챈트');
+    expect(note.chips.filter((chip) => chip.hit)).toEqual([{ text: '접두 울프헌터 (랭크 C)', hit: true }]);
+    expect(note.chips.some((chip) => !chip.hit)).toBe(true);
   });
 });
 
@@ -304,7 +328,10 @@ describe('무리아스 유물 조건', () => {
     ).conditions;
     expect(summarizeCondition(condition)).toBe('무리아스 유물 오버 드라이브 5~8레벨');
     expect(describeMatch(seven, { conditions: [condition] })).toEqual([
-      '오버 드라이브 폭발 공격 대미지 7레벨 (490%)',
+      {
+        label: '무리아스 유물',
+        chips: [{ text: '오버 드라이브 폭발 공격 대미지 7레벨 (490%)', hit: true }],
+      },
     ]);
   });
 
@@ -362,7 +389,7 @@ describe('펫 정보 조건', () => {
   it('요약과 걸린 이유를 적는다', () => {
     expect(summarizeCondition({ id: 1, kind: 'pet', field: '종족명', text: '스쿠터', min: null })).toBe('펫 정보 종족명 "스쿠터"');
     expect(summarizeCondition({ id: 1, kind: 'pet', field: '레벨', text: '', min: 100 })).toBe('펫 정보 레벨 100 이상');
-    expect(describeMatch(medal, pet('레벨', '', 100))).toEqual(['레벨 106']);
+    expect(describeMatch(medal, pet('레벨', '', 100))).toEqual([{ label: '펫 정보', chips: [{ text: '레벨 106', hit: true }] }]);
   });
 
   it('목록에는 펫 정보 한 칸으로 나오고, 종족명과 항목별 값을 자동완성에 쓴다', () => {

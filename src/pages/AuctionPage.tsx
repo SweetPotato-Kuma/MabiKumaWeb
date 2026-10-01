@@ -67,6 +67,7 @@ import {
   describeMatch,
   EMPTY_OPTION_FILTER,
   matchesOptionFilter,
+  type MatchNote,
   type OptionFilter,
 } from '@/features/auction/optionFilter';
 import { serializeFilter } from '@/features/auction/filterUrl';
@@ -143,10 +144,13 @@ function ItemIconCell({ rawName, category }: { rawName: string; category: string
 function ItemNameCell({
   displayName,
   notes,
+  matches,
   partial,
 }: {
   displayName: string;
   notes?: string[];
+  /** 상세 검색 조건에 걸린 옵션. 조각(배지)으로 보이고, 조건을 채운 조각은 강조한다. */
+  matches?: MatchNote[];
   /** 검색어가 이름에 그대로 들어맞지 않고 일부만 걸려 나온 줄. */
   partial?: boolean;
 }) {
@@ -162,6 +166,23 @@ function ItemNameCell({
         <Text key={note} type="secondary" style={{ fontSize: 12 }}>
           {note}
         </Text>
+      ))}
+      {matches?.map((match) => (
+        <Flex key={match.label} gap={4} wrap align="center">
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {match.label}
+          </Text>
+          {match.chips.map((chip, index) => (
+            <Tag
+              key={`${chip.text}-${index}`}
+              color={chip.hit ? 'processing' : undefined}
+              // 긴 이름(세공, 인챈트)이 좁은 칸 밖으로 넘치지 않게 줄을 바꾼다.
+              style={{ margin: 0, fontWeight: chip.hit ? 600 : 400, whiteSpace: 'normal', maxWidth: '100%' }}
+            >
+              {chip.text}
+            </Tag>
+          ))}
+        </Flex>
       ))}
     </Flex>
   );
@@ -930,7 +951,7 @@ export function AuctionPage() {
         <ItemNameCell
           displayName={record.item_display_name}
           partial={itemIsPartial(record)}
-          notes={filtering ? describeMatch(record, deferredFilter) : undefined}
+          matches={filtering ? describeMatch(record, deferredFilter) : undefined}
         />
       ),
     },
@@ -1033,8 +1054,8 @@ export function AuctionPage() {
                     }`,
                   ]
                 : []),
-              ...(filtering ? describeMatch(record, deferredFilter) : []),
             ]}
+            matches={filtering ? describeMatch(record, deferredFilter) : undefined}
           />
         );
       },
@@ -1068,7 +1089,7 @@ export function AuctionPage() {
         <ItemNameCell
           displayName={record.item_display_name}
           partial={historyIsPartial(record)}
-          notes={filtering ? describeMatch(record, deferredFilter) : undefined}
+          matches={filtering ? describeMatch(record, deferredFilter) : undefined}
         />
       ),
     },
@@ -1120,8 +1141,8 @@ export function AuctionPage() {
           partial={historyIsPartial(record)}
           notes={[
             `${formatNumber(record.item_count)}개, ${formatDateTime(record.date_auction_buy)}`,
-            ...(filtering ? describeMatch(record, deferredFilter) : []),
           ]}
+          matches={filtering ? describeMatch(record, deferredFilter) : undefined}
         />
       ),
     },
