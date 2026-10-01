@@ -1265,6 +1265,31 @@ export function AuctionPage() {
     </Flex>
   ), [enabled, changeSort, changeBasis, byTotal, historyHaveBundle, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
+  /**
+   * 검색 카드에 보이는 한 줄 상태. 지금 하는 일이 있을 때만 적고, 평소에는 비운다.
+   * 모아 둔 매물은 그 사이 팔린 것이 섞일 수 있어 모은 시각을 함께 알린다. 걸리는 이름이 너무 많으면
+   * 다 부르지 못하니 그때도 알린다.
+   */
+  const scanProgressLabel = scanProgress
+    ? ` 불러오기 마친 카테고리 ${formatNumber(scanProgress.scanned)}/${formatNumber(scanProgress.total)}곳.`
+    : '';
+  const searchStatus =
+    scanning && snapshot.status === 'checking'
+      ? '모아 둔 장비 매물을 받는 중입니다.'
+      : scanning && snapshot.status === 'ready' && snapshot.at !== null
+        ? !snapshot.data
+          ? '모아 둔 장비 매물을 받는 중입니다.'
+          : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물 ${formatNumber(itemsLoaded)}건에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
+        : nameIndexQuery.isPending
+          ? '아이템 이름을 불러오는 중입니다.'
+          : form.category && leavesOfGroupKey(form.category)
+            ? `${categoryPath(form.category).at(-1)?.label} 묶음의 카테고리 ${formatNumber(submitted?.scan?.length ?? 0)}곳을 차례로 불러옵니다.${scanProgressLabel}`
+            : submitted?.keywordsTruncated && !submitted.category
+              ? '걸리는 이름이 많아 일부만 찾았습니다. 조금 더 길게 입력하거나 카테고리를 골라 주세요.'
+              : submitted?.scan && !form.category && !form.keyword.trim()
+                ? `상세 검색 조건이 붙을 수 있는 장비 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${scanProgressLabel}`
+                : null;
+
   return (
     <>
       <BrowseLayout
@@ -1311,11 +1336,21 @@ export function AuctionPage() {
                   current={{ keyword: form.keyword, category: form.category, filterKey: serializeFilter(optionFilter) }}
                   onApply={(saved) => navigate(searchParamsFor(paramsRef.current, saved), false)}
                 />
+                <Button
+                  icon={<RefreshIcon />}
+                  aria-label="검색 초기화"
+                  title="검색 초기화"
+                  onClick={() => {
+                    setForm(EMPTY_INPUT);
+                    setOptionFilter(EMPTY_OPTION_FILTER);
+                    navigate(new URLSearchParams(), false);
+                  }}
+                />
               </Flex>
 
-              <CategoryBreadcrumb category={form.category} onSelect={selectCategory} />
-
-              <Flex gap={8} wrap align="center">
+              {/* 분류 경로, 정확히 일치, 지금 하는 일을 한 줄에 둔다. 검색 카드는 세 줄을 넘기지 않는다. */}
+              <Flex gap={12} wrap align="center">
+                <CategoryBreadcrumb category={form.category} onSelect={selectCategory} />
                 <Checkbox
                   checked={exact}
                   onChange={(event) =>
@@ -1327,49 +1362,11 @@ export function AuctionPage() {
                 >
                   정확히 일치
                 </Checkbox>
-                <Button
-                  icon={<RefreshIcon />}
-                  onClick={() => {
-                    setForm(EMPTY_INPUT);
-                    setOptionFilter(EMPTY_OPTION_FILTER);
-                    navigate(new URLSearchParams(), false);
-                  }}
-                >
-                  검색 초기화
-                </Button>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {/*
-                    찾는 방식이 둘이라 그대로 알린다. 전체 검색은 사전으로 걸리는 이름을 골라
-                    keyword-search 를 나눠 부르고, 카테고리를 고르면 그 목록을 받아 와 이름 일부로 거른다.
-                    걸리는 이름이 너무 많으면 다 부르지 못하니 그때만 알린다.
-                  */}
-                  {/* 모아 둔 매물은 그 사이 팔린 것이 섞일 수 있어 모은 시각을 함께 알린다. */}
-                  {scanning && snapshot.status === 'checking'
-                    ? '모아 둔 장비 매물을 받는 중입니다.'
-                    : scanning && snapshot.status === 'ready' && snapshot.at !== null
-                      ? !snapshot.data
-                        ? '모아 둔 장비 매물을 받는 중입니다.'
-                        : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물 ${formatNumber(itemsLoaded)}건에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
-                      : nameIndexQuery.isPending
-                    ? '아이템 이름을 불러오는 중입니다.'
-                    : form.category && leavesOfGroupKey(form.category)
-                      ? `${categoryPath(form.category).at(-1)?.label} 묶음의 카테고리 ${formatNumber(submitted?.scan?.length ?? 0)}곳을 차례로 불러옵니다.${
-                          scanProgress
-                            ? ` 불러오기 마친 카테고리 ${formatNumber(scanProgress.scanned)}/${formatNumber(scanProgress.total)}곳.`
-                            : ''
-                        }`
-                    : form.category
-                      ? `${form.category} 매물에서 이름 일부로 찾습니다.`
-                      : submitted?.keywordsTruncated && !submitted.category
-                        ? '걸리는 이름이 많아 일부만 찾았습니다. 조금 더 길게 입력하거나 카테고리를 골라 주세요.'
-                        : submitted?.scan && !form.category && !form.keyword.trim()
-                          ? `상세 검색 조건이 붙을 수 있는 장비 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${
-                              scanProgress
-                                ? ` 불러오기 마친 카테고리 ${formatNumber(scanProgress.scanned)}/${formatNumber(scanProgress.total)}곳.`
-                                : ''
-                            }`
-                          : '이름 일부로 찾습니다. 띄어쓰기는 달라도 됩니다. 상세 검색 조건만 넣고 찾아도 됩니다.'}
-                </Text>
+                {searchStatus ? (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {searchStatus}
+                  </Text>
+                ) : null}
               </Flex>
 
               <DetailSearchBar
