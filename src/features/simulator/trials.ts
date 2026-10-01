@@ -38,3 +38,9 @@ export function formatChance(chance: number): string {
   if (percent >= 1) return `${percent.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}%`;
   return `${percent.toLocaleString('ko-KR', { maximumSignificantDigits: 3 })}%`;
 }
+
+/** 기댓값을 읽기 좋게. 1 이상은 소수 둘째 자리, 그 아래는 유효 숫자 세 자리. */
+export function formatExpected(value: number): string {
+  if (value >= 1) return value.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+  return value.toLocaleString('ko-KR', { maximumSignificantDigits: 3 });
+}

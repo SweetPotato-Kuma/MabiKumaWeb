@@ -1,18 +1,17 @@
 import { useState } from 'react';
 import { Flex, InputNumber, Typography, theme } from 'antd';
-import { atLeastOnce, expectedHits, formatChance } from '@/features/simulator/trials';
+import {
+  atLeastOnce,
+  expectedHits,
+  formatChance,
+  formatExpected,
+} from '@/features/simulator/trials';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
 
 /** 입력 칸이 받는 가장 큰 횟수. 이보다 크면 비용과 기댓값이 읽을 수 없는 숫자가 된다. */
 export const MAX_TRIALS = 10_000_000;
-
-/** 기댓값을 읽기 좋게. 1 이상은 소수 둘째 자리, 그 아래는 유효 숫자 세 자리. */
-function formatExpected(value: number): string {
-  if (value >= 1) return value.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
-  return value.toLocaleString('ko-KR', { maximumSignificantDigits: 3 });
-}
 
 /** "시행 횟수 [10]번". 계산기 창 맨 위에 두고 그 아래 계산들이 같은 횟수를 쓴다. */
 export function TrialCountInput({

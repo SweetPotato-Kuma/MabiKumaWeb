@@ -7,10 +7,7 @@ import {
   Divider,
   Flex,
   Grid,
-  InputNumber,
-  Popover,
   Row,
-  Select,
   Spin,
   Statistic,
   Switch,
@@ -21,15 +18,8 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { ItemIcon } from '@/components/ItemIcon';
-import {
-  CalculateIcon,
-  CloseIcon,
-  ResetIcon,
-  StarFillIcon,
-  WaterDropIcon,
-} from '@/components/icons';
+import { ResetIcon, StarFillIcon, WaterDropIcon } from '@/components/icons';
 import { HolyWaterOdds } from '@/components/holyWater/HolyWaterOdds';
-import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import { useMarketPrices, type PriceState } from '@/features/crafting/market';
 import {
   effectChance,
@@ -591,18 +581,6 @@ function lowestOf(state: PriceState | undefined): number | null {
 
 const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
 
-/** 효과 고르기 목록. 수치가 하나뿐인 효과도 넣는다(음악 버프 효과를 노리는 사람이 있다). */
-const EFFECT_OPTIONS = HOLY_WATER_EFFECTS.map((effect, index) => ({
-  value: index,
-  label: effect.name,
-}));
-
-/** 노리는 효과. 이 효과가 이 수치 이상으로 붙기를 바란다. effect 는 HOLY_WATER_EFFECTS 의 순번이다. */
-interface EffectTarget {
-  effect: number;
-  minValue: number;
-}
-
 /**
  * 무리아스의 성수 시뮬레이터. 유물 복원 창처럼 왼쪽 작업대에서 성수를 바르고 오른쪽에 방금 붙은 효과를
  * 크게 보인다. 스크롤 102장을 고르게 고르고 그 폭 안에서 수치를 고르게 고른다. 쓴 골드는 바른 횟수에
@@ -699,85 +677,6 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
     '--rf': stageScale,
   } as CSSProperties;
 
-  /**
-   * 특정 효과 기댓값 계산기. 떠 있는 창에 둔다. 창 밖을 눌러도 닫히지 않아, 열어 둔 채 바르기를
-   * 이어 하며 그 효과가 몇 번 나왔는지 본다. 단추를 다시 누르거나 닫기를 누르면 닫힌다.
-   */
-  const [calcOpen, setCalcOpen] = useState(false);
-  const [trials, setTrials] = useState(10);
-  const [target, setTarget] = useState<EffectTarget | null>(null);
-  const targetEffect = target ? HOLY_WATER_EFFECTS[target.effect] : null;
-  const targetChance = target ? effectChance(target.effect, target.minValue) : 0;
-  const targetHits = useMemo(
-    () =>
-      target
-        ? counted.filter(
-            (draw) => draw.source.effect === target.effect && draw.value >= target.minValue,
-          ).length
-        : 0,
-    [counted, target],
-  );
-
-  const calculator = (
-    <Flex vertical gap={10} style={{ width: 'min(440px, calc(100vw - 88px))' }}>
-      <TrialCountInput value={trials} onChange={setTrials} />
-      <Divider style={{ margin: 0 }} />
-      <Flex gap={8} align="center" wrap>
-        <Select<number>
-          aria-label="특정 효과"
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder="예: 최대 대미지"
-          value={target?.effect ?? null}
-          onChange={(effect) =>
-            setTarget(
-              effect === undefined || effect === null
-                ? null
-                : { effect, minValue: effectMax(HOLY_WATER_EFFECTS[effect]) },
-            )
-          }
-          options={EFFECT_OPTIONS}
-          popupMatchSelectWidth={false}
-          style={{ flex: '1 1 200px', minWidth: 0 }}
-        />
-        <InputNumber<number>
-          aria-label="특정 효과의 가장 낮은 수치"
-          min={1}
-          max={targetEffect ? effectMax(targetEffect) : 1}
-          value={target?.minValue ?? null}
-          disabled={!target}
-          onChange={(value) => {
-            if (value === null || !target || !targetEffect) return;
-            setTarget({
-              ...target,
-              minValue: Math.min(Math.max(Math.round(value), 1), effectMax(targetEffect)),
-            });
-          }}
-          suffix="이상"
-          className="tnum"
-          style={{ width: 120 }}
-        />
-      </Flex>
-      {target ? (
-        <>
-          <Text className="tnum" style={{ fontSize: 13 }}>
-            한 번에 <Text strong>{formatChance(targetChance)}</Text>, 평균{' '}
-            <Text strong>{formatNumber(Math.ceil(1 / targetChance))}번</Text>에 한 번
-            {count > 0 ? `, 지금까지 ${formatNumber(targetHits)}번` : ''}
-          </Text>
-          <TrialOdds
-            framed={false}
-            trials={trials}
-            chance={targetChance}
-            verb="바르기"
-            costPerTrial={price}
-          />
-        </>
-      ) : null}
-    </Flex>
-  );
-
   const single = simulator.lastBatch <= 1;
 
   return (
@@ -825,32 +724,6 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
               </Flex>
               <Flex gap={8} wrap justify="center">
                 <Button onClick={() => apply(10)}>10번 바르기</Button>
-                <Popover
-                  open={calcOpen}
-                  trigger={[]}
-                  placement="bottomLeft"
-                  title={
-                    <Flex justify="space-between" align="center" gap={8}>
-                      <span>특정 효과 기댓값</span>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<CloseIcon />}
-                        aria-label="특정 효과 기댓값 닫기"
-                        onClick={() => setCalcOpen(false)}
-                      />
-                    </Flex>
-                  }
-                  content={calculator}
-                >
-                  <Button
-                    icon={<CalculateIcon />}
-                    aria-expanded={calcOpen}
-                    onClick={() => setCalcOpen(!calcOpen)}
-                  >
-                    특정 효과 기댓값
-                  </Button>
-                </Popover>
                 <Button
                   icon={<ResetIcon />}
                   onClick={() => {
@@ -967,6 +840,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
         priceLoading={priceLoading}
         priceOverridden={priceOverride !== null}
         onPriceChange={setPriceOverride}
+        draws={counted}
       />
 
       <Collapse

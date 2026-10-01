@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { fetchAuctionList } from '@/features/auction/api';
 import { oddsCounts } from '@/features/holyWater/odds';
-import { chanceAbovePercent, tierChance } from '@/features/holyWater/simulator';
+import { tierChance } from '@/features/holyWater/simulator';
 import { formatChance } from '@/features/simulator/trials';
 import { HolyWaterSimulatorPage } from '@/pages/HolyWaterSimulatorPage';
 
@@ -144,47 +144,16 @@ describe('무리아스의 성수 시뮬레이터', () => {
     );
     expect(screen.getByText('바른 기록 10번')).toBeInTheDocument();
   });
-
-  it('특정 효과 기댓값은 떠 있는 계산기에서 센다', async () => {
-    renderPage();
-    await screen.findByText(/성수 최저가 2,500,000/);
-    fireEvent.click(screen.getByRole('button', { name: /특정 효과 기댓값/ }));
-    fireEvent.mouseDown(await screen.findByLabelText('특정 효과'));
-    fireEvent.click(
-      await screen.findByText('4대 속성 연금 대미지', {
-        selector: '.ant-select-item-option-content',
-      }),
-    );
-
-    // 고르면 최대치(50)부터: 1/102 x 1/10 = 1/1020. 10번이면 1 - (1019/1020)^10 = 0.976%.
-    expect(screen.getByText(/^한 번에/)).toHaveTextContent('한 번에 0.098%, 평균 1,020번에 한 번');
-    expect(screen.getByRole('region', { name: '바르기 횟수별 확률' })).toHaveTextContent(
-      '한 번 이상 나올 확률 0.976%',
-    );
-    expect(screen.getByRole('region', { name: '바르기 횟수별 확률' })).toHaveTextContent(
-      '25,000,000 G',
-    );
-
-    // 41 이상이면 E 한 장 전부: 1/102.
-    fireEvent.change(screen.getByLabelText('특정 효과의 가장 낮은 수치'), {
-      target: { value: '41' },
-    });
-    await waitFor(() =>
-      expect(screen.getByText(/^한 번에/)).toHaveTextContent('한 번에 0.98%, 평균 102번에 한 번'),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '특정 효과 기댓값 닫기' }));
-    await waitFor(() =>
-      expect(screen.queryByRole('region', { name: '바르기 횟수별 확률' })).not.toBeInTheDocument(),
-    );
-  });
 });
 
 describe('성수 확률과 비용', () => {
   const PRICE = 2_500_000;
 
   function stubMarket(price: number | null) {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 404 })),
+    );
     vi.mocked(fetchAuctionList).mockImplementation(async ({ itemName }) => ({
       auction_item:
         itemName === '무리아스의 성수' && price !== null
@@ -251,27 +220,73 @@ describe('성수 확률과 비용', () => {
     }
   });
 
-  it('현재 수치를 넣으면 그보다 높게 나올 확률과 횟수, 비용이 계산된다', async () => {
+  /** 확률과 비용 카드에서 현재 내 효과와 수치를 고른다. */
+  async function pickMine(effect: string, value: number) {
+    fireEvent.mouseDown(within(odds()).getByLabelText('현재 내 효과'));
+    fireEvent.click(
+      await screen.findByText(effect, { selector: '.ant-select-item-option-content' }),
+    );
+    fireEvent.change(within(odds()).getByLabelText('현재 내 수치'), {
+      target: { value: String(value) },
+    });
+  }
+
+  it('현재 내 효과와 수치를 고르면 그보다 높게 나올 확률과 횟수, 비용이 계산된다', async () => {
     renderPage();
     await screen.findByText(/성수 최저가 2,500,000/);
 
-    fireEvent.change(within(odds()).getByLabelText('현재 내 수치'), { target: { value: '97.5' } });
-
-    const chance = chanceAbovePercent(97.5);
+    // 최대 대미지 27 보다 높게는 28~30: E 한 장의 3/6 이라 (3/6)/102 = 1/204.
+    await pickMine('최대 대미지', 27);
+    const chance = 3 / 6 / 102;
     const counts = oddsCounts(chance)!;
-    const group = await within(odds()).findByRole('group', { name: '내 수치 97.5% 초과' });
+    const group = await within(odds()).findByRole('group', { name: '최대 대미지 27 초과' });
     expect(group).toHaveTextContent(`확률 ${formatChance(chance)}`);
-    expect(group).toHaveTextContent(`${counts.mean}번에 한 번`);
+    expect(group).toHaveTextContent('204번에 한 번');
     expect(group).toHaveTextContent(won(counts.ninety * PRICE));
+    expect(group).toHaveTextContent('지금까지 0번');
+  });
+
+  it('시행 횟수를 넣으면 그 안에 한 번 이상 나올 확률과 나오는 횟수를 센다', async () => {
+    renderPage();
+    await screen.findByText(/성수 최저가 2,500,000/);
+
+    // 4대 속성 연금 대미지 49 보다 높게는 50 하나: 1/1020. 10번이면 1 - (1019/1020)^10 = 0.976%.
+    await pickMine('4대 속성 연금 대미지', 49);
+    let group = await within(odds()).findByRole('group', { name: '4대 속성 연금 대미지 49 초과' });
+    expect(group).toHaveTextContent('1,020번에 한 번');
+    expect(group).toHaveTextContent('10번 하면');
+    expect(group).toHaveTextContent('한 번 이상 0.976%');
+    expect(odds()).toHaveTextContent(won(10 * PRICE));
+
+    // 40 보다 높게는 E 한 장 전부: 1/102. 102번이면 평균 1번 나온다.
+    fireEvent.change(within(odds()).getByLabelText('현재 내 수치'), { target: { value: '40' } });
+    fireEvent.change(within(odds()).getByLabelText('시행 횟수'), { target: { value: '102' } });
+    group = await within(odds()).findByRole('group', { name: '4대 속성 연금 대미지 40 초과' });
+    expect(group).toHaveTextContent('102번 하면');
+    expect(group).toHaveTextContent('평균 1번 나옴');
   });
 
   it('더 높은 수치가 없으면 그렇게 알린다', async () => {
     renderPage();
 
-    fireEvent.change(within(odds()).getByLabelText('현재 내 수치'), { target: { value: '100' } });
-
-    const group = await within(odds()).findByRole('group', { name: '내 수치 100% 초과' });
+    await pickMine('최대 대미지', 30);
+    const group = await within(odds()).findByRole('group', { name: '최대 대미지 30 초과' });
     expect(group).toHaveTextContent('이 수치보다 높게는 나오지 않습니다.');
+  });
+
+  it('지금까지 바른 것 가운데 내 수치보다 높게 나온 횟수를 센다', async () => {
+    window.localStorage.setItem('mabikuma:holyWaterFx', 'off');
+    renderPage();
+    await pickMine('최대 대미지', 27);
+
+    // 최대 대미지 29 가 한 번 나온다.
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(4.5 / 102)
+      .mockReturnValueOnce(4.5 / 6);
+    fireEvent.click(screen.getByRole('button', { name: '바르기' }));
+    expect(
+      await within(odds()).findByRole('group', { name: '최대 대미지 27 초과' }),
+    ).toHaveTextContent('지금까지 1번');
   });
 
   it('성수 가격을 직접 바꾸면 모든 비용이 다시 계산된다', async () => {
@@ -294,10 +309,14 @@ describe('성수 확률과 비용', () => {
     await screen.findByText(/성수 최저가 2,500,000/);
     fireEvent.change(within(odds()).getByLabelText('성수 가격'), { target: { value: '1000000' } });
 
-    fireEvent.click(await within(odds()).findByRole('button', { name: /경매장 최저가 2,500,000 G로/ }));
+    fireEvent.click(
+      await within(odds()).findByRole('button', { name: /경매장 최저가 2,500,000 G로/ }),
+    );
 
     const counts = oddsCounts(tierChance(98))!;
-    expect(within(odds()).getByRole('group', { name: '98% 이상' })).toHaveTextContent(won(counts.mean * PRICE));
+    expect(within(odds()).getByRole('group', { name: '98% 이상' })).toHaveTextContent(
+      won(counts.mean * PRICE),
+    );
     expect(screen.getByText(/성수 최저가 2,500,000/)).toBeInTheDocument();
   });
 
@@ -312,7 +331,9 @@ describe('성수 확률과 비용', () => {
 
     fireEvent.change(within(odds()).getByLabelText('성수 가격'), { target: { value: '500000' } });
 
-    expect(within(odds()).getByRole('group', { name: '98% 이상' })).toHaveTextContent(won(counts.mean * 500_000));
+    expect(within(odds()).getByRole('group', { name: '98% 이상' })).toHaveTextContent(
+      won(counts.mean * 500_000),
+    );
   });
 
   it('넓은 화면에서는 표로 그린다', async () => {
@@ -328,7 +349,7 @@ describe('성수 확률과 비용', () => {
     }));
     renderPage();
 
-    for (const name of ['구간', '확률', '평균', '절반 확률로', '90% 확률로']) {
+    for (const name of ['구간', '확률', '평균', '절반 확률로', '90% 확률로', '10번 하면']) {
       expect(within(odds()).getByRole('columnheader', { name })).toBeInTheDocument();
     }
     expect(within(odds()).getAllByRole('row')).toHaveLength(5);

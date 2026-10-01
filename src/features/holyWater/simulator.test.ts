@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  chanceAbovePercent,
   drawHolyWater,
   effectChance,
   HOLY_WATER_EFFECTS,
@@ -107,54 +106,5 @@ describe('tierOf', () => {
     // 수치가 하나뿐인 19장을 빼면 83장이고, 그 가운데 절반 남짓이 50% 이상이다.
     expect(chances[0]).toBeGreaterThan(0.4);
     expect(chances[0]).toBeLessThan(83 / 102);
-  });
-});
-
-describe('chanceAbovePercent', () => {
-  it('0% 를 넘는 것은 등급이 있는 효과가 붙는 모든 경우다', () => {
-    // 수치가 하나뿐인 효과(세트 효과 등)는 등급이 없어 빠진다. 나머지는 수치가 1 이상이면 0% 를 넘는다.
-    const graded = HOLY_WATER_EFFECTS.reduce(
-      (sum, effect, index) => (effect.ranges[effect.ranges.length - 1][1] <= 1 ? sum : sum + effectChance(index, 1)),
-      0,
-    );
-
-    expect(chanceAbovePercent(0)).toBeCloseTo(graded, 10);
-  });
-
-  it('100% 이상은 넘을 수 없다', () => {
-    expect(chanceAbovePercent(100)).toBe(0);
-    expect(chanceAbovePercent(120)).toBe(0);
-  });
-
-  it('수치가 높을수록 확률이 줄어든다', () => {
-    let previous = Infinity;
-    for (let percent = 0; percent <= 100; percent += 2.5) {
-      const chance = chanceAbovePercent(percent);
-      expect(chance).toBeLessThanOrEqual(previous);
-      previous = chance;
-    }
-  });
-
-  it('최대치 하나만 남는 수치 바로 아래에서는 효과마다 마지막 한 칸만 센다', () => {
-    // 최대 대미지(최대 30)는 29% 를 넘으려면 30 이어야 한다. 96.7% 를 넘는 수치는 30 뿐이다.
-    const max = HOLY_WATER_EFFECTS.findIndex((effect) => effect.name === '최대 대미지');
-    const onlyMax = effectChance(max, 30);
-
-    expect(onlyMax).toBeGreaterThan(0);
-    // 96.7% 는 29/30 = 96.66...% 를 아주 조금 넘긴 값이다. 최대치 하나만 남는다.
-    expect(chanceAbovePercent(96.7)).toBeLessThan(chanceAbovePercent(90));
-  });
-
-  it('등급 표의 값과 같은 방향이다(더 높은 등급일수록 확률이 낮다)', () => {
-    expect(chanceAbovePercent(50)).toBeGreaterThan(chanceAbovePercent(90));
-    expect(chanceAbovePercent(90)).toBeGreaterThan(chanceAbovePercent(98));
-  });
-
-  it('확률은 0 과 1 사이다', () => {
-    for (const percent of [0, 10, 50, 97.3, 99.9]) {
-      const chance = chanceAbovePercent(percent);
-      expect(chance).toBeGreaterThanOrEqual(0);
-      expect(chance).toBeLessThanOrEqual(1);
-    }
   });
 });

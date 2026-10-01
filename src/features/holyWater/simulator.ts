@@ -152,22 +152,6 @@ export function effectChance(effect: number, minValue: number): number {
 export const topShare = (effect: number, value: number) =>
   effectChance(effect, value) / effectChance(effect, 1);
 
-/**
- * 한 번 발라 수치가 그 효과 최대치의 percent% 를 넘을 확률. 등급 표(tierChance)가 50, 90, 95, 98% 만 다루는 것을
- * 임의의 수치로 넓힌 것이다. "현재 내 수치가 97.3% 인데 이보다 높게 나오려면" 에 답한다.
- *
- * 등급은 가장 가까운 정수로 잘라 "이상" 을 세지만, 여기서는 "보다 높게" 라 수치가 최대치의 percent% 를 넘는
- * 가장 작은 정수부터 센다. 수치가 하나뿐인 효과는 등급이 없어 빼는 것도 같다. percent 가 100 이상이면 0 이다.
- */
-export function chanceAbovePercent(percent: number): number {
-  return HOLY_WATER_EFFECTS.reduce((sum, effect, index) => {
-    const max = effectMax(effect);
-    if (max <= 1) return sum;
-    const minValue = Math.max(1, Math.floor((max * percent) / 100 + 1e-9) + 1);
-    return minValue > max ? sum : sum + effectChance(index, minValue);
-  }, 0);
-}
-
 /** 한 번 발라 그 등급 이상이 나올 확률. */
 export function tierChance(tier: HolyWaterTier): number {
   return HOLY_WATER_EFFECTS.reduce(
