@@ -9,6 +9,7 @@ import {
   EMPTY_OPTION_FILTER,
   isConditionActive,
   nextConditionId,
+  PET_FIELDS,
   type Condition,
   type OptionFilter,
 } from './optionFilter';
@@ -120,6 +121,11 @@ function parseCondition(raw: unknown): Condition | null {
         minLevel: numberOrNull(raw.minLevel),
         maxLevel: numberOrNull(raw.maxLevel),
       };
+    case 'pet': {
+      const field = text(raw.field);
+      if (!PET_FIELDS.includes(field)) return null;
+      return { id: nextConditionId(), kind: 'pet', field, text: text(raw.text), min: numberOrNull(raw.min) };
+    }
     case 'number': {
       const optionType = text(raw.optionType);
       if (!optionType) return null;

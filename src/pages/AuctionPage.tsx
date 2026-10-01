@@ -839,8 +839,13 @@ export function AuctionPage() {
    * 찾기. 입력칸의 초안을 주소에 쓴다. 검색은 주소가 바뀌면 위 효과가 한다.
    * 주소가 그대로면(같은 조건으로 다시 누름) 바뀔 것이 없어 아무 일도 하지 않는다.
    */
-  function commitSearch(next: AuctionSearchInput, replace = false, options: { exact?: boolean } = {}) {
-    const filterKey = serializeFilter(optionFilter);
+  function commitSearch(
+    next: AuctionSearchInput,
+    replace = false,
+    options: { exact?: boolean; filter?: OptionFilter } = {},
+  ) {
+    // 상세 검색 창에서 검색을 누르면 입력칸 상태가 아직 바뀌기 전이라, 창이 고른 조건을 직접 받는다.
+    const filterKey = serializeFilter(options.filter ?? optionFilter);
     if (!isAuctionSearchReady(next) && filterKey === '') return;
     const params = searchParamsFor(paramsRef.current, {
       category: next.category,
@@ -1370,6 +1375,10 @@ export function AuctionPage() {
               <DetailSearchBar
                 value={optionFilter}
                 onChange={setOptionFilter}
+                onSearch={(filter) => {
+                  setOptionFilter(filter);
+                  commitSearch(form, false, { filter });
+                }}
                 catalog={optionCatalog}
                 names={optionNames}
                 category={form.category}

@@ -138,3 +138,25 @@ describe('상세 검색 조건과 주소', () => {
     expect(parseFilter(JSON.stringify(many)).conditions).toHaveLength(12);
   });
 });
+
+describe('펫 정보 조건 주소', () => {
+  it('항목과 값을 주소에 담고 되살린다', () => {
+    const text = serializeFilter({
+      conditions: [
+        { id: 1, kind: 'pet', field: '종족명', text: '스쿠터', min: null },
+        { id: 2, kind: 'pet', field: '레벨', text: '', min: 120 },
+      ],
+    });
+
+    expect(parseFilter(text).conditions).toMatchObject([
+      { kind: 'pet', field: '종족명', text: '스쿠터' },
+      { kind: 'pet', field: '레벨', min: 120 },
+    ]);
+  });
+
+  it('모르는 항목은 그 조건만 버린다', () => {
+    const back = parseFilter(JSON.stringify([{ kind: 'pet', field: '없는 항목', min: 1 }, { kind: 'pet', field: '행운', min: 50 }]));
+
+    expect(back.conditions).toMatchObject([{ kind: 'pet', field: '행운', min: 50 }]);
+  });
+});

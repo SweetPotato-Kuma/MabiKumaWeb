@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { AutoComplete, Button, Flex, Grid, Popover, Select, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { AutoComplete, Button, Card, Flex, Modal, Select, Tag, Typography } from 'antd';
 import { ColorChannelFields } from '@/components/ColorChannelFields';
-import { AddIcon, ArrowDownIcon, DeleteIcon } from '@/components/icons';
+import { AddIcon, DeleteIcon, SearchIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import { offeredKinds } from '@/features/auction/optionKinds';
 import {
@@ -12,6 +12,9 @@ import {
   isConditionActive,
   newCondition,
   numberLabel,
+  PET_FIELDS,
+  PET_QUICK_CONDITION,
+  PET_SPECIES_FIELD,
   QUICK_CONDITIONS,
   RELIC_QUICK_CONDITION,
   summarizeCondition,
@@ -48,8 +51,8 @@ const SPECIAL_OPTIONS = [
 ];
 
 /**
- * 창 안의 목록(자동완성, 고르기, 색 고르기)을 창 안에 그린다. 바깥(body)에 그리면 목록을 누르는
- * 순간 창이 "바깥을 눌렀다" 고 보고 닫힌다.
+ * 작은 창(Popover) 안의 목록을 창 안에 그린다. 바깥(body)에 그리면 목록을 누르는 순간 창이
+ * "바깥을 눌렀다" 고 보고 닫힌다. 상세 검색 창(Modal)에서는 body 에 그려도 닫히지 않는다.
  */
 const inPopover = (trigger: HTMLElement): HTMLElement =>
   trigger.closest<HTMLElement>('.ant-popover') ?? document.body;
@@ -62,12 +65,6 @@ const NUMBER_INPUT_WIDTH = 112;
 
 /** 옆에 숫자 칸을 둘 때 이름 칸의 최소 폭. "컴뱃 마스터리 최대 대미지" 와 지우기 단추가 드는 폭이다. */
 const NAME_INPUT_MIN = 200;
-
-/**
- * 조건 창 폭. 세공 한 줄(이름 칸, 숫자 칸, 빼기 단추)이 한 줄에 드는 폭이다.
- * 휴대폰에서는 화면 좌우 16px 씩을 남기고 줄어든다.
- */
-const POPOVER_WIDTH = 380;
 
 /**
  * 이름 자동완성 목록의 폭. 입력칸보다 좁아지지 않고, 긴 이름("1막: 우연한 충돌 대미지 배율")은
@@ -116,7 +113,7 @@ function mergeNames(
   ];
 }
 
-/** 버튼 하나가 맡는 조건 묶음. 자주 쓰는 다섯 가지는 종류별로, 그 밖의 옵션은 조건마다 하나. */
+/** 창 안에서 한 칸이 맡는 조건 묶음. 자주 쓰는 옵션은 종류별로, 그 밖의 옵션은 조건마다 하나. */
 type GroupKey = ConditionKind | `extra:${number}`;
 
 const groupOf = (condition: Condition): GroupKey =>
@@ -124,12 +121,21 @@ const groupOf = (condition: Condition): GroupKey =>
     ? `extra:${condition.id}`
     : condition.kind;
 
+/** 자주 쓰는 옵션 전부. 어떤 것을 둘지는 카테고리가 정한다(offeredKinds). */
+const ALL_QUICK_CONDITIONS = [RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS, PET_QUICK_CONDITION];
+const ALL_QUICK_KINDS = new Set<ConditionKind>(ALL_QUICK_CONDITIONS.map((quick) => quick.kind));
+
+/** 한 칸 안에 줄을 여러 개 둘 수 있는 옵션과 그 상한. 장비의 세공이 최대 세 줄이다. */
+const MAX_ROWS: Partial<Record<ConditionKind, number>> = { reforge: MAX_REFORGE_CONDITIONS, pet: 6 };
+
+const ROW_ADD_LABEL: Partial<Record<ConditionKind, string>> = { reforge: '세공 조건 추가', pet: '펫 조건 추가' };
+
 /**
  * 경매장 상세 검색.
  *
- * 검색 칸 바로 아래에 조건 단추를 한 줄로 둔다. 단추를 누르면 그 아래에 작은 창이 열려 값을
- * 고른다. 조건을 걸면 단추 글이 "세공 스매시 대미지 10레벨 이상" 처럼 바뀐다. 입력칸을 검색
- * 카드에 늘어놓으면 카드가 길어져 결과가 밀리고, 옆 서랍에 두면 검색과 따로 노는 기능처럼 보였다.
+ * 검색 칸 아래에는 건 조건만 배지로 요약해 보이고, 조건을 더하거나 고치는 것은 창(DetailSearchModal)에서 한다.
+ * 창은 옵션마다 칸을 세로로 쌓아 값을 한눈에 보게 하고, 아래 단추로 옵션을 더한 뒤 검색을 누르면 그 조건으로 찾는다.
+ * 작은 창을 옵션마다 따로 여닫게 했더니, 무엇을 골랐고 무엇이 더 있는지 한 번에 보이지 않았다.
  *
  * 넥슨 경매장 API 는 옵션으로 찾지 못해 불러온 매물을 이 조건으로 거른다. 자동완성은 불러온
  * 매물의 이름과 값을 먼저, 게임 데이터의 이름을 그 뒤에 보여 준다.
@@ -137,74 +143,136 @@ const groupOf = (condition: Condition): GroupKey =>
 export function DetailSearchBar({
   value,
   onChange,
+  onSearch,
   catalog,
   names,
   category,
 }: {
   value: OptionFilter;
+  /** 배지를 빼거나 모두 지울 때. 찾지는 않고 입력칸의 조건만 바꾼다. */
   onChange: (next: OptionFilter) => void;
+  /** 창에서 검색을 눌렀을 때. 고른 조건으로 바로 찾는다. */
+  onSearch: (next: OptionFilter) => void;
   catalog: CatalogEntry[];
   names: OptionNames | null | undefined;
-  /** 고른 카테고리. 한손 장비, 액세서리는 세공 최대 레벨이 달라 레벨 자동완성에 쓴다. */
+  /** 고른 카테고리. 어떤 옵션을 둘지와, 한손 장비, 액세서리의 세공 최대 레벨(레벨 자동완성)에 쓴다. */
   category: string;
 }) {
-  const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
+  const [open, setOpen] = useState(false);
+  const active = value.conditions.filter(isConditionActive);
+  const openable =
+    offeredKinds(category, catalog.map((entry) => entry.kind), value.conditions.map((condition) => condition.kind)).length > 0 ||
+    catalog.some((entry) => !ALL_QUICK_KINDS.has(entry.kind)) ||
+    value.conditions.length > 0;
 
-  const setConditions = (conditions: Condition[]) => onChange({ conditions });
+  return (
+    <Flex gap={6} wrap align="center">
+      <Text strong style={{ fontSize: 13, marginInlineEnd: 2 }}>
+        상세 검색
+      </Text>
+
+      {active.map((condition) => (
+        <Tag
+          key={condition.id}
+          closable
+          onClose={() => onChange({ conditions: value.conditions.filter((each) => each.id !== condition.id) })}
+          onClick={() => setOpen(true)}
+          style={{ marginInlineEnd: 0, cursor: 'pointer' }}
+          color="processing"
+        >
+          {summarizeCondition(condition)}
+        </Tag>
+      ))}
+
+      <Button size="small" icon={<AddIcon />} disabled={!openable} onClick={() => setOpen(true)}>
+        {active.length > 0 ? '상세 옵션 수정' : '상세 옵션'}
+      </Button>
+
+      {active.length > 0 ? (
+        <Button size="small" type="link" onClick={() => onChange({ conditions: [] })}>
+          조건 모두 지우기
+        </Button>
+      ) : null}
+
+      {open ? (
+        <DetailSearchModal
+          initial={value.conditions}
+          catalog={catalog}
+          names={names}
+          category={category}
+          onCancel={() => setOpen(false)}
+          onSearch={(conditions) => {
+            setOpen(false);
+            onSearch({ conditions });
+          }}
+        />
+      ) : null}
+    </Flex>
+  );
+}
+
+/**
+ * 상세 검색 창. 옵션마다 칸이 세로로 쌓이고, 칸마다 값을 넣는다. 아래 단추로 옵션 칸을 더한다.
+ * 고친 것은 검색을 누를 때만 입력칸에 들어가고, 취소하면 버려진다.
+ */
+function DetailSearchModal({
+  initial,
+  catalog,
+  names,
+  category,
+  onCancel,
+  onSearch,
+}: {
+  initial: Condition[];
+  catalog: CatalogEntry[];
+  names: OptionNames | null | undefined;
+  category: string;
+  onCancel: () => void;
+  onSearch: (conditions: Condition[]) => void;
+}) {
+  const [draft, setDraft] = useState<Condition[]>(initial);
+
   const update = (id: number, next: Partial<Condition>) =>
-    setConditions(
-      value.conditions.map((condition) =>
-        condition.id === id ? ({ ...condition, ...next } as Condition) : condition,
-      ),
+    setDraft((prev) =>
+      prev.map((condition) => (condition.id === id ? ({ ...condition, ...next } as Condition) : condition)),
     );
-  const remove = (id: number) =>
-    setConditions(value.conditions.filter((condition) => condition.id !== id));
-  const inGroup = (group: GroupKey) =>
-    value.conditions.filter((condition) => groupOf(condition) === group);
+  const removeOne = (id: number) => setDraft((prev) => prev.filter((condition) => condition.id !== id));
+  const removeGroup = (group: GroupKey) =>
+    setDraft((prev) => prev.filter((condition) => groupOf(condition) !== group));
 
-  /** 창을 닫을 때 값이 비어 있는 조건은 치운다. 고르기만 하고 값을 넣지 않은 것은 조건이 아니다. */
-  const toggleGroup = (group: GroupKey, open: boolean) => {
-    if (open) {
-      setOpenGroup(group);
-      return;
-    }
-    setConditions(
-      value.conditions.filter(
-        (condition) => groupOf(condition) !== group || isConditionActive(condition),
-      ),
-    );
-    setOpenGroup(null);
-  };
-
-  // 카테고리에 붙는 옵션만 고르게 한다. 무리아스 유물에 세공은 쓸모가 없다.
-  const allQuick = [RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS];
+  // 카테고리에 붙는 옵션만 더하게 한다. 무리아스 유물에 세공은 쓸모가 없다.
   const offered = offeredKinds(
     category,
     catalog.map((entry) => entry.kind),
-    value.conditions.map((condition) => condition.kind),
+    draft.map((condition) => condition.kind),
   );
-  const quickConditions = allQuick.filter((quick) => offered.includes(quick.kind));
-  // 이미 건 조건 종류는 배지로 보이므로 고르는 목록에서 뺀다. 세공만 한 배지 안에서 세 줄까지 늘린다.
-  const usedKinds = new Set(value.conditions.map((condition) => condition.kind));
-  const quickKinds = new Set<ConditionKind>(allQuick.map((quick) => quick.kind));
+  const quickConditions = ALL_QUICK_CONDITIONS.filter((quick) => offered.includes(quick.kind));
+
+  // 칸의 순서: 자주 쓰는 옵션은 위 목록 순서대로, 그 밖의 옵션은 더한 순서대로.
+  const groups: GroupKey[] = [
+    ...quickConditions.map((quick) => quick.kind).filter((kind) => draft.some((condition) => condition.kind === kind)),
+    ...draft.filter((condition) => condition.kind === 'number' || condition.kind === 'text').map(groupOf),
+  ];
+  const addable = quickConditions.filter((quick) => !draft.some((condition) => condition.kind === quick.kind));
   const usedExtras = new Set(
-    value.conditions.flatMap((condition) =>
+    draft.flatMap((condition) =>
       condition.kind === 'number' || condition.kind === 'text' ? [condition.optionType] : [],
     ),
   );
-  const pickOptions = [
-    ...quickConditions
-      .filter((quick) => !usedKinds.has(quick.kind))
-      .map((quick) => ({ value: `quick:${quick.kind}`, label: quick.label, count: undefined as number | undefined })),
-    ...catalog
-      .filter((entry) => !quickKinds.has(entry.kind) && !usedExtras.has(entry.optionType))
-      .map((entry) => ({ value: `extra:${entry.label}`, label: entry.label, count: entry.count as number | undefined })),
-  ];
+  const extraOptions = catalog
+    .filter((entry) => !ALL_QUICK_KINDS.has(entry.kind) && !usedExtras.has(entry.optionType))
+    .map((entry) => ({ value: entry.label, label: entry.label, count: entry.count }));
 
-  const extras = value.conditions.filter(
-    (condition) => condition.kind === 'number' || condition.kind === 'text',
-  );
-  const anyActive = value.conditions.some(isConditionActive);
+  const add = (entry: Pick<CatalogEntry, 'kind' | 'optionType'>) =>
+    setDraft((prev) => {
+      const condition = newCondition(entry);
+      if (condition.kind === 'pet') {
+        // 줄을 더할 때는 아직 쓰지 않은 항목으로 시작한다. 같은 항목을 두 번 걸 일은 드물다.
+        const used = new Set(prev.flatMap((each) => (each.kind === 'pet' ? [each.field] : [])));
+        condition.field = PET_FIELDS.find((field) => !used.has(field)) ?? condition.field;
+      }
+      return [...prev, condition];
+    });
 
   const editorFor = (condition: Condition) => (
     <ConditionEditor
@@ -216,193 +284,129 @@ export function DetailSearchBar({
     />
   );
 
-  const addCondition = (picked: string) => {
-    const split = picked.indexOf(':');
-    const source = picked.slice(0, split);
-    const key = picked.slice(split + 1);
-    const entry =
-      source === 'quick'
-        ? allQuick.find((quick) => quick.kind === key)
-        : catalog.find((each) => each.label === key);
-    if (!entry) return;
-    const condition = newCondition(entry);
-    setConditions([...value.conditions, condition]);
-    // 고르자마자 값을 넣는 창을 연다.
-    setOpenGroup(groupOf(condition));
+  const blockOf = (group: GroupKey) => {
+    const conditions = draft.filter((condition) => groupOf(condition) === group);
+    const first = conditions[0];
+    const label = conditionLabel(first);
+    const cap = MAX_ROWS[first.kind];
+    return (
+      <Card
+        key={group}
+        size="small"
+        title={label}
+        extra={
+          <Button
+            type="text"
+            size="small"
+            icon={<DeleteIcon />}
+            aria-label={`${label} 옵션 삭제`}
+            onClick={() => removeGroup(group)}
+          />
+        }
+      >
+        <Flex vertical gap={10}>
+          {conditions.map((condition) =>
+            cap !== undefined && conditions.length > 1 ? (
+              // 빼기 단추는 입력칸과 같은 높이(기본 크기)로 두어 한 줄 가운데에 선다.
+              <div key={condition.id} style={rowGrid('minmax(0, 1fr) auto')}>
+                {editorFor(condition)}
+                <Button
+                  type="text"
+                  icon={<DeleteIcon />}
+                  aria-label={`이 ${label} 조건 빼기`}
+                  onClick={() => removeOne(condition.id)}
+                />
+              </div>
+            ) : (
+              <div key={condition.id}>{editorFor(condition)}</div>
+            ),
+          )}
+          {cap !== undefined && conditions.length < cap ? (
+            <Button
+              size="small"
+              icon={<AddIcon />}
+              style={{ alignSelf: 'flex-start' }}
+              onClick={() => add({ kind: first.kind, optionType: label })}
+            >
+              {ROW_ADD_LABEL[first.kind]}
+            </Button>
+          ) : null}
+        </Flex>
+      </Card>
+    );
   };
 
+  const nothingToAdd = addable.length === 0 && extraOptions.length === 0;
+
   return (
-    <Flex gap={6} wrap align="center">
-      <Text strong style={{ fontSize: 13, marginInlineEnd: 2 }}>
-        상세 검색
-      </Text>
-
-      {quickConditions.map((quick) => {
-        const group = quick.kind;
-        const conditions = inGroup(group);
-        if (conditions.length === 0) return null;
-        const active = conditions.filter(isConditionActive);
-        const label =
-          active.length === 0
-            ? quick.label
-            : `${summarizeCondition(active[0])}${active.length > 1 ? ` 외 ${active.length - 1}` : ''}`;
-        return (
-          <ConditionPopover
-            key={group}
-            open={openGroup === group}
-            onOpenChange={(open) => toggleGroup(group, open)}
-            title={quick.label}
-            onClear={() => {
-              setConditions(value.conditions.filter((condition) => groupOf(condition) !== group));
-              setOpenGroup(null);
-            }}
-            active={active.length > 0}
-            label={label}
-            content={
-              <Flex vertical gap={10}>
-                {conditions.map((condition) =>
-                  group === 'reforge' && conditions.length > 1 ? (
-                    // 빼기 단추는 입력칸과 같은 높이(기본 크기)로 두어 한 줄 가운데에 선다.
-                    <div key={condition.id} style={rowGrid('minmax(0, 1fr) auto')}>
-                      {editorFor(condition)}
-                      <Button
-                        type="text"
-                        icon={<DeleteIcon />}
-                        aria-label="이 세공 조건 빼기"
-                        onClick={() => remove(condition.id)}
-                      />
-                    </div>
-                  ) : (
-                    <div key={condition.id}>{editorFor(condition)}</div>
-                  ),
-                )}
-                {group === 'reforge' && conditions.length < MAX_REFORGE_CONDITIONS ? (
-                  <Button
-                    size="small"
-                    icon={<AddIcon />}
-                    style={{ alignSelf: 'flex-start' }}
-                    onClick={() => setConditions([...value.conditions, newCondition(quick)])}
-                  >
-                    세공 조건 추가
-                  </Button>
-                ) : null}
-              </Flex>
-            }
-          />
-        );
-      })}
-
-      {extras.map((condition) => {
-        const group = groupOf(condition);
-        return (
-          <ConditionPopover
-            key={group}
-            open={openGroup === group}
-            onOpenChange={(open) => toggleGroup(group, open)}
-            title={conditionLabel(condition)}
-            onClear={() => {
-              remove(condition.id);
-              setOpenGroup(null);
-            }}
-            active={isConditionActive(condition)}
-            label={summarizeCondition(condition) || conditionLabel(condition)}
-            content={editorFor(condition)}
-          />
-        );
-      })}
-
-      <Select
-        value={null}
-        size="small"
-        placeholder="세부 옵션 선택"
-        options={pickOptions}
-        disabled={pickOptions.length === 0}
-        showSearch
-        optionFilterProp="label"
-        optionRender={(option) => (
-          <Flex justify="space-between" gap={12}>
-            <span>{option.label}</span>
-            {option.data.count !== undefined ? (
-              <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                {formatNumber(option.data.count)}건
-              </Text>
-            ) : null}
-          </Flex>
-        )}
-        onChange={addCondition}
-        aria-label="세부 옵션 선택"
-        popupMatchSelectWidth={240}
-        style={{ width: 150 }}
-      />
-
-      {anyActive ? (
-        <Button size="small" type="link" onClick={() => setConditions([])}>
-          조건 모두 지우기
-        </Button>
-      ) : null}
-    </Flex>
-  );
-}
-
-/** 조건 단추와 그 아래에 열리는 작은 창. */
-function ConditionPopover({
-  open,
-  onOpenChange,
-  title,
-  onClear,
-  active,
-  label,
-  content,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  onClear: () => void;
-  active: boolean;
-  label: string;
-  content: ReactNode;
-}) {
-  const screens = Grid.useBreakpoint();
-  return (
-    <Popover
-      open={open}
-      onOpenChange={onOpenChange}
-      trigger="click"
-      // antd 는 bottomLeft 창이 화면을 넘으면 bottomRight 로 뒤집기만 하고 밀어 넣지는 않는다.
-      // 768px 미만에서 줄 가운데 단추(인챈트, 에르그)의 창이 어느 쪽으로 뒤집어도 화면 밖으로 나갔다.
-      // bottom 은 화면 안으로 밀어 넣는다.
-      placement={screens.md === false ? 'bottom' : 'bottomLeft'}
+    <Modal
+      open
+      title="세부 옵션 검색"
+      width="min(640px, calc(100vw - 32px))"
+      onCancel={onCancel}
       destroyOnHidden
-      title={title}
-      content={
-        <Flex vertical gap={12} style={{ width: POPOVER_WIDTH, maxWidth: 'calc(100vw - 56px)' }}>
-          {content}
-          <Flex justify="flex-end" gap={8}>
-            <Button size="small" onClick={onClear}>
-              지우기
-            </Button>
-            <Button size="small" type="primary" onClick={() => onOpenChange(false)}>
-              확인
+      footer={
+        <Flex justify="space-between" gap={8} wrap>
+          <Button disabled={draft.length === 0} onClick={() => setDraft([])}>
+            모두 지우기
+          </Button>
+          <Flex gap={8}>
+            <Button onClick={onCancel}>취소</Button>
+            <Button
+              type="primary"
+              icon={<SearchIcon />}
+              onClick={() => onSearch(draft.filter(isConditionActive))}
+            >
+              검색
             </Button>
           </Flex>
         </Flex>
       }
     >
-      <Button
-        size="small"
-        color={active ? 'primary' : 'default'}
-        variant="outlined"
-        icon={<ArrowDownIcon />}
-        iconPlacement="end"
-        aria-expanded={open}
-        title={label}
-        // 조건이 길면("세공 컴뱃 마스터리 최대 대미지 15레벨 이상 외 1") 단추가 화면보다 넓어졌다.
-        // 줄 폭을 넘지 않게 하고 넘치는 글은 말줄임한다. 전체 글은 title 로 보인다.
-        style={{ maxWidth: '100%' }}
-      >
-        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-      </Button>
-    </Popover>
+      <Flex vertical gap={12}>
+        {groups.map(blockOf)}
+
+        {nothingToAdd ? null : (
+          <Flex vertical gap={8}>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              옵션 추가
+            </Text>
+            <Flex gap={8} wrap align="center">
+              {addable.map((quick) => (
+                <Button key={quick.kind} size="small" icon={<AddIcon />} onClick={() => add(quick)}>
+                  {quick.label}
+                </Button>
+              ))}
+              {extraOptions.length > 0 ? (
+                <Select
+                  value={null}
+                  size="small"
+                  placeholder="그 밖의 옵션"
+                  options={extraOptions}
+                  showSearch
+                  optionFilterProp="label"
+                  optionRender={(option) => (
+                    <Flex justify="space-between" gap={12}>
+                      <span>{option.label}</span>
+                      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                        {formatNumber(option.data.count)}건
+                      </Text>
+                    </Flex>
+                  )}
+                  onChange={(label: string) => {
+                    const entry = catalog.find((each) => each.label === label);
+                    if (entry) add(entry);
+                  }}
+                  aria-label="그 밖의 옵션 추가"
+                  popupMatchSelectWidth={260}
+                  style={{ width: 160 }}
+                />
+              ) : null}
+            </Flex>
+          </Flex>
+        )}
+      </Flex>
+    </Modal>
   );
 }
 
@@ -414,6 +418,7 @@ function entryFor(catalog: CatalogEntry[], condition: Condition): CatalogEntry |
     case 'special':
     case 'erg':
     case 'relic':
+    case 'pet':
       return catalog.find((entry) => entry.kind === condition.kind);
     case 'color':
       return catalog.find((entry) => entry.label === COLOR_OPTION_LABEL);
@@ -777,6 +782,38 @@ function ConditionEditor({
             레벨은 1에서 10까지이고, 한 레벨마다 최대 수치의 10분의 1씩 오릅니다.
           </Text>
         </Flex>
+      );
+    }
+    case 'pet': {
+      const isSpecies = condition.field === PET_SPECIES_FIELD;
+      return (
+        <div style={rowGrid('132px minmax(0, 1fr)')}>
+          <Select
+            value={condition.field}
+            onChange={(field) => onChange({ field, text: '', min: null })}
+            options={PET_FIELDS.map((field) => ({ value: field, label: field }))}
+            aria-label="펫 정보 항목"
+            getPopupContainer={inPopover}
+          />
+          {isSpecies ? (
+            <NameInput
+              value={condition.text}
+              onChange={(text) => onChange({ text })}
+              suggestions={mergeNames(entry?.values, undefined)}
+              placeholder="종족명"
+              label="펫 종족명"
+            />
+          ) : (
+            <NumberInput
+              value={condition.min}
+              onChange={(min) => onChange({ min })}
+              values={entry?.numbers[condition.field]}
+              defaults={undefined}
+              unit=""
+              label={`펫 ${condition.field} 최솟값`}
+            />
+          )}
+        </div>
       );
     }
     case 'number':

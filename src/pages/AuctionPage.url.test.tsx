@@ -398,6 +398,30 @@ describe('경매장 검색 조건과 주소', () => {
     });
   });
 
+  describe('상세 검색 창', () => {
+    it('창에서 옵션을 더하고 검색을 누르면 조건이 주소에 실리고 입력칸에 배지로 남는다', async () => {
+      const router = renderAt('/auction?category=분양 메달');
+      await screen.findByRole('button', { name: /상세 옵션/ });
+
+      fireEvent.click(screen.getByRole('button', { name: /상세 옵션/ }));
+      const dialog = within(await screen.findByRole('dialog'));
+      fireEvent.click(dialog.getByRole('button', { name: '펫 정보' }));
+      fireEvent.change(dialog.getByLabelText('펫 종족명'), { target: { value: '스쿠터' } });
+      fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
+
+      await waitFor(() => expect(new URLSearchParams(router.search()).get('f')).toContain('스쿠터'));
+      expect(new URLSearchParams(router.search()).get('category')).toBe('분양 메달');
+      expect(await screen.findByText('펫 정보 종족명 "스쿠터"')).toBeInTheDocument();
+    });
+
+    it('주소의 조건이 배지로 요약된다', async () => {
+      const f = serializeFilter({ conditions: [{ id: 1, kind: 'pet', field: '레벨', text: '', min: 100 }] });
+      renderAt(`/auction?category=분양 메달&f=${encodeURIComponent(f)}`);
+
+      expect(await screen.findByText('펫 정보 레벨 100 이상')).toBeInTheDocument();
+    });
+  });
+
   describe('분류 경로 배지', () => {
     const crumbs = () => within(screen.getByRole('navigation', { name: '카테고리 경로' }));
 

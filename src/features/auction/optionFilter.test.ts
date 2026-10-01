@@ -318,3 +318,59 @@ describe('무리아스 유물 조건', () => {
     expect(entry?.scales['플레임 버스트 대미지']).toEqual({ max: 450, unit: '%' });
   });
 });
+
+describe('펫 정보 조건', () => {
+  /** 분양 메달 한 건. 펫 정보는 항목마다 옵션 하나(option_sub_type 이 항목 이름)로 온다. */
+  const medal = {
+    item_option: [
+      option('펫 정보', '스쿠터', '종족명'),
+      option('펫 정보', '106', '레벨'),
+      option('펫 정보', '473', '스태미나'),
+    ],
+  };
+  const pet = (field: string, text: string, min: number | null): OptionFilter => ({
+    conditions: [{ id: 1, kind: 'pet', field, text, min }],
+  });
+
+  it('종족명은 문구가 들어 있는지로 본다. 띄어쓰기는 무시한다', () => {
+    expect(matchesOptionFilter(medal, pet('종족명', '스쿠', null))).toBe(true);
+    expect(matchesOptionFilter(medal, pet('종족명', '잭', null))).toBe(false);
+  });
+
+  it('다른 항목은 그 항목의 값이 이상인지로 본다. 다른 항목의 값과 섞이지 않는다', () => {
+    expect(matchesOptionFilter(medal, pet('레벨', '', 100))).toBe(true);
+    expect(matchesOptionFilter(medal, pet('레벨', '', 107))).toBe(false);
+    // 스태미나가 473 이어도 레벨 조건에는 쓰이지 않는다.
+    expect(matchesOptionFilter(medal, pet('레벨', '', 400))).toBe(false);
+  });
+
+  it('값을 넣지 않은 줄은 조건이 아니다', () => {
+    expect(isConditionActive({ id: 1, kind: 'pet', field: '종족명', text: ' ', min: null })).toBe(false);
+    expect(isConditionActive({ id: 1, kind: 'pet', field: '레벨', text: '', min: null })).toBe(false);
+  });
+
+  it('여러 줄이면 모두 맞아야 한다', () => {
+    const both: OptionFilter = {
+      conditions: [
+        { id: 1, kind: 'pet', field: '종족명', text: '스쿠터', min: null },
+        { id: 2, kind: 'pet', field: '레벨', text: '', min: 120 },
+      ],
+    };
+    expect(matchesOptionFilter(medal, both)).toBe(false);
+  });
+
+  it('요약과 걸린 이유를 적는다', () => {
+    expect(summarizeCondition({ id: 1, kind: 'pet', field: '종족명', text: '스쿠터', min: null })).toBe('펫 정보 종족명 "스쿠터"');
+    expect(summarizeCondition({ id: 1, kind: 'pet', field: '레벨', text: '', min: 100 })).toBe('펫 정보 레벨 100 이상');
+    expect(describeMatch(medal, pet('레벨', '', 100))).toEqual(['레벨 106']);
+  });
+
+  it('목록에는 펫 정보 한 칸으로 나오고, 종족명과 항목별 값을 자동완성에 쓴다', () => {
+    const entry = buildOptionCatalog([medal]).find((each) => each.kind === 'pet');
+
+    expect(entry?.label).toBe('펫 정보');
+    expect(entry?.values.map((value) => value.value)).toEqual(['스쿠터']);
+    expect(entry?.numbers['레벨']).toEqual([106]);
+    expect(entry?.numbers['스태미나']).toEqual([473]);
+  });
+});

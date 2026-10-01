@@ -50,6 +50,11 @@ export type Condition =
    * 두 레벨 사이(끝 포함)이고, 한쪽이 비면 그쪽은 끝이 없다.
    */
   | { id: number; kind: 'relic'; name: string; minLevel: number | null; maxLevel: number | null }
+  /**
+   * 펫 정보(분양 메달). 넥슨이 항목마다 옵션 하나(option_sub_type 이 항목 이름)로 준다.
+   * field 가 종족명이면 text 가 들어 있는 것, 나머지(레벨, 생명력 등)는 min 이상이다.
+   */
+  | { id: number; kind: 'pet'; field: string; text: string; min: number | null }
   /** 숫자 옵션(최대 공격, 크리티컬, 방어력 등)이 min 이상. */
   | { id: number; kind: 'number'; optionType: string; min: number | null }
   /** 그 밖의 옵션(세트 효과, 장인 개조 등)에 문구가 들어 있다. */
@@ -67,6 +72,30 @@ export const EMPTY_OPTION_FILTER: OptionFilter = { conditions: [] };
 export const ENCHANT_PREFIX = '접두';
 export const ENCHANT_SUFFIX = '접미';
 
+/** 펫 정보 옵션 이름과 문구로 찾는 항목(종족명). 나머지 항목은 숫자다. */
+export const PET_OPTION_TYPE = '펫 정보';
+/** 펫 정보가 붙는 경매장 카테고리. */
+export const PET_CATEGORY = '분양 메달';
+export const PET_SPECIES_FIELD = '종족명';
+/** 펫 정보에서 고를 수 있는 항목. 종족명만 문구고 나머지는 숫자(이상)다. */
+export const PET_FIELDS: readonly string[] = [
+  PET_SPECIES_FIELD,
+  '레벨',
+  '누적 레벨',
+  '펫 포인트',
+  '생명력',
+  '마나',
+  '스태미나',
+  '체력',
+  '의지',
+  '솜씨',
+  '지력',
+  '행운',
+  '나이',
+  '남은 분양 횟수',
+  '최대 소환 시간',
+];
+
 /** 옵션 이름으로 어떤 입력칸을 쓸지. 숫자인지 문구인지는 값을 보고 가른다(buildOptionCatalog). */
 const KIND_BY_TYPE: Record<string, ConditionKind> = {
   '세공 옵션': 'reforge',
@@ -76,6 +105,7 @@ const KIND_BY_TYPE: Record<string, ConditionKind> = {
   '아이템 색상': 'color',
   색상: 'color',
   [MURIAS_OPTION_TYPE]: 'relic',
+  [PET_OPTION_TYPE]: 'pet',
 };
 
 /** 두 색 옵션은 조건 하나로 다룬다. 장비 파트 색과 염색 앰플 색. */
@@ -102,6 +132,10 @@ export function isConditionActive(condition: Condition): boolean {
         condition.minLevel !== null ||
         condition.maxLevel !== null
       );
+    case 'pet':
+      return condition.field === PET_SPECIES_FIELD
+        ? normalizeForSearch(condition.text) !== ''
+        : condition.min !== null;
     case 'number':
       return condition.min !== null;
     case 'text':
@@ -254,6 +288,14 @@ function matchesCondition(options: ItemOption[], condition: Condition): boolean 
         );
       });
     }
+    case 'pet':
+      return options.some((option) => {
+        if (option.option_type !== PET_OPTION_TYPE || option.option_sub_type !== condition.field) return false;
+        if (condition.field === PET_SPECIES_FIELD)
+          return normalizeForSearch(option.option_value ?? '').includes(normalizeForSearch(condition.text));
+        const value = toNumber(option.option_value);
+        return condition.min === null || (value !== null && value >= condition.min);
+      });
     case 'number':
       return options.some((option) => {
         if (option.option_type !== condition.optionType) return false;
@@ -311,6 +353,8 @@ export function conditionLabel(condition: Condition): string {
       return '색상';
     case 'relic':
       return MURIAS_OPTION_TYPE;
+    case 'pet':
+      return PET_OPTION_TYPE;
     case 'number':
       return numberLabel(condition.optionType);
     case 'text':
@@ -370,6 +414,10 @@ export function summarizeCondition(condition: Condition): string {
       return [label, condition.name.trim() || '아무 옵션', relicLevelRange(condition)]
         .filter(Boolean)
         .join(' ');
+    case 'pet':
+      return condition.field === PET_SPECIES_FIELD
+        ? `${label} ${condition.field} "${condition.text.trim()}"`
+        : `${label} ${condition.field} ${condition.min} 이상`;
     case 'number':
       return `${label} ${condition.min} 이상`;
     case 'text':
@@ -407,7 +455,9 @@ export function describeMatch(
     const key =
       condition.kind === 'number' || condition.kind === 'text'
         ? `${condition.kind}:${condition.optionType}`
-        : condition.kind;
+        : condition.kind === 'pet'
+          ? `pet:${condition.field}`
+          : condition.kind;
     if (seen.has(key)) continue;
     seen.add(key);
 
@@ -437,6 +487,11 @@ export function describeMatch(
       const relic = parseRelicOption(options.find(isRelicOption)?.option_value);
       if (relic)
         notes.push(`${relic.name} ${relic.level}레벨 (${formatRelicValue(relic, relic.value)})`);
+    } else if (condition.kind === 'pet') {
+      const option = options.find(
+        (each) => each.option_type === PET_OPTION_TYPE && each.option_sub_type === condition.field,
+      );
+      if (option) notes.push(`${condition.field} ${option.option_value ?? ''}`);
     } else if (condition.kind === 'number') {
       const option = options.find((each) => each.option_type === condition.optionType);
       const value = option ? optionNumber(option) : null;
@@ -496,6 +551,8 @@ function numberOf(kind: ConditionKind | null, option: ItemOption): number | null
     case 'special':
     case 'erg':
       return toNumber(option.option_value);
+    case 'pet':
+      return option.option_sub_type === PET_SPECIES_FIELD ? null : toNumber(option.option_value);
     case null:
       return optionNumber(option);
     default:
@@ -568,7 +625,9 @@ export function buildOptionCatalog(
               ? enchantName(option.option_value)
               : fixed === null
                 ? option.option_value
-                : undefined;
+                : fixed === 'pet' && option.option_sub_type === PET_SPECIES_FIELD
+                  ? option.option_value
+                  : undefined;
       // 같은 매물에 같은 이름이 두 번 나와도 한 건으로 센다.
       const nameKey = `${label}\u0000${option.option_sub_type ?? ''}\u0000${name ?? ''}`;
       if (name && !namesHere.has(nameKey)) {
@@ -584,7 +643,12 @@ export function buildOptionCatalog(
       if (number !== null) {
         const perLabel = maxHere.get(label) ?? new Map<string, number>();
         maxHere.set(label, perLabel);
-        const keys = (fixed === 'reforge' || fixed === 'relic') && name ? ['', name] : [''];
+        const keys =
+          (fixed === 'reforge' || fixed === 'relic') && name
+            ? ['', name]
+            : fixed === 'pet' && option.option_sub_type
+              ? ['', option.option_sub_type]
+              : [''];
         for (const key of keys) perLabel.set(key, Math.max(perLabel.get(key) ?? -Infinity, number));
       }
     }
@@ -671,6 +735,8 @@ export function newCondition(entry: Pick<CatalogEntry, 'kind' | 'optionType'>): 
       return { id, kind: 'color', part: '', ...emptyColorChannels() };
     case 'relic':
       return { id, kind: 'relic', name: '', minLevel: null, maxLevel: null };
+    case 'pet':
+      return { id, kind: 'pet', field: PET_SPECIES_FIELD, text: '', min: null };
     case 'number':
       return { id, kind: 'number', optionType: entry.optionType, min: null };
     case 'text':
@@ -698,6 +764,13 @@ export const RELIC_QUICK_CONDITION = {
   label: MURIAS_OPTION_TYPE,
   kind: 'relic',
   optionType: MURIAS_OPTION_TYPE,
+} as const satisfies (typeof QUICK_CONDITIONS)[number];
+
+/** 펫 정보 조건 단추. 분양 메달을 찾을 때만 보인다(offeredKinds). */
+export const PET_QUICK_CONDITION = {
+  label: PET_OPTION_TYPE,
+  kind: 'pet',
+  optionType: PET_OPTION_TYPE,
 } as const satisfies (typeof QUICK_CONDITIONS)[number];
 
 /** 무리아스 유물 조건 하나. 주소로 넘어온 조건(시세 화면의 칸 누르기)을 만들 때 쓴다. */

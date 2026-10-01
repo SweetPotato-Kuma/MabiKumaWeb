@@ -63,4 +63,21 @@ describe('scanCategoriesFor', () => {
     };
     expect(scanCategoriesFor(filter, names)).toEqual(['유물']);
   });
+
+  it('펫 정보 조건이 있으면 분양 메달만 훑는다', () => {
+    const filter = {
+      conditions: [{ id: 1, kind: 'pet' as const, field: '레벨', text: '', min: 100 }],
+    };
+    expect(scanCategoriesFor(filter, names)).toEqual(['분양 메달']);
+  });
+
+  it('유물과 펫 정보를 함께 걸면 훑을 카테고리가 없다', () => {
+    const filter = {
+      conditions: [
+        { id: 1, kind: 'relic' as const, name: '', minLevel: 7, maxLevel: null },
+        { id: 2, kind: 'pet' as const, field: '레벨', text: '', min: 100 },
+      ],
+    };
+    expect(scanCategoriesFor(filter, names)).toEqual([]);
+  });
 });

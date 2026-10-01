@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { EQUIPMENT_CATEGORIES } from '@/features/equipment/api';
 import { RELIC_CATEGORY } from '@/features/relics/murias';
 import { findGroupOf } from './categoryTree';
-import { isConditionActive, type OptionFilter } from './optionFilter';
+import { isConditionActive, PET_CATEGORY, type OptionFilter } from './optionFilter';
 
 /**
  * 상세 검색 자동완성의 기본 이름. 게임 데이터의 세공 능력 이름과 인챈트 이름이다.
@@ -100,7 +100,8 @@ export function reforgeLevelSuggestions(
  * 넥슨 경매장 API 는 카테고리나 이름 없이는 매물을 주지 않는다. 그래서 조건에 맞을 수 있는
  * 카테고리를 차례로 불러와 거른다. 세공 이름을 정확히 넣었으면 그 세공이 붙는 카테고리만,
  * 세공이 여럿이면 모두 붙을 수 있는 카테고리만 훑는다. 그 밖에는 장비 카테고리 전체다.
- * 무리아스 유물 조건이 있으면 유물 카테고리 하나다. 그 옵션은 거기에만 붙는다.
+ * 무리아스 유물 조건이 있으면 유물 카테고리 하나, 펫 정보 조건이 있으면 분양 메달 하나다. 그 옵션은 거기에만 붙는다.
+ * 둘을 함께 걸면 둘 다 채울 수 있는 카테고리가 없다.
  * 빈 배열이면 조건을 모두 채울 수 있는 카테고리가 없다는 뜻이다.
  */
 export function scanCategoriesFor(
@@ -110,7 +111,11 @@ export function scanCategoriesFor(
   const relic = filter.conditions.some(
     (condition) => condition.kind === 'relic' && isConditionActive(condition),
   );
-  let categories: string[] = relic ? [RELIC_CATEGORY] : [...EQUIPMENT_CATEGORIES];
+  const pet = filter.conditions.some(
+    (condition) => condition.kind === 'pet' && isConditionActive(condition),
+  );
+  if (relic && pet) return [];
+  let categories: string[] = relic ? [RELIC_CATEGORY] : pet ? [PET_CATEGORY] : [...EQUIPMENT_CATEGORIES];
   for (const condition of filter.conditions) {
     if (condition.kind !== 'reforge' || !isConditionActive(condition)) continue;
     const allowed = names?.reforgeCategories?.[condition.name.trim()];
