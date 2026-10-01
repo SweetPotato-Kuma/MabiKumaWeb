@@ -373,6 +373,111 @@ describe('옵션 문장마다 최종 거래', () => {
   });
 });
 
+describe('인기 거래 아이템', () => {
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    pages = [
+      [
+        trade(1, 60, { price: 100 }),
+        trade(2, 120, { price: 300 }),
+        trade(3, 2 * 86400, { price: 50 }),
+        trade(4, 60, { name: '가죽', price: 20, count: 10, category: '재료' }),
+        trade(5, 90, { name: '비싼 검', price: 100_000, category: '검' }),
+        // 1시간 밖(2시간 전)이지만 24시간 안이다.
+        trade(6, 7200, { name: '가죽', price: 10, count: 10, category: '재료' }),
+      ],
+    ];
+    stubHistory();
+    await collectTrades(env, NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('24시간은 거래 횟수순과 총 거래 금액순을 따로 준다', async () => {
+    const body = await (await call('/market/popular?window=24h')).json();
+
+    // 풀 2건(총 400), 가죽 2건(수량 20, 총 300), 검 1건. 횟수가 같으면 총 금액이 큰 쪽이 앞이다.
+    expect(body.byCount.map((row) => row.name)).toEqual(['싱싱한 풀', '가죽', '비싼 검']);
+    expect(body.byTotal.map((row) => row.name)).toEqual(['비싼 검', '싱싱한 풀', '가죽']);
+    expect(body.byCount[0]).toMatchObject({ n: 2, qty: 2, total: 400, avg: 200, category: '기타' });
+    expect(body.byCount[1]).toMatchObject({ n: 2, qty: 20, total: 300, avg: 15 });
+  });
+
+  it('1시간은 그 안의 거래만 센다', async () => {
+    const body = await (await call('/market/popular?window=1h')).json();
+
+    // 가죽과 검은 1건씩이라 총 금액이 큰 검이 앞이다.
+    expect(body.byCount.map((row) => `${row.name}:${row.n}`)).toEqual([
+      '싱싱한 풀:2',
+      '비싼 검:1',
+      '가죽:1',
+    ]);
+  });
+
+  it('7일은 하루 요약으로 세어 이틀 전 거래도 든다', async () => {
+    const body = await (await call('/market/popular?window=7d')).json();
+
+    expect(body.byCount[0]).toMatchObject({ name: '싱싱한 풀', n: 3, total: 450 });
+    expect(body.window).toBe('7d');
+  });
+
+  it('집계 기간과 기준 시각을 함께 준다', async () => {
+    const day = await (await call('/market/popular?window=24h')).json();
+    expect(day.to).toBe(new Date(NOW).toISOString());
+    expect(day.from).toBe(new Date(NOW - 86_400_000).toISOString());
+    expect(day.updated).toBe(new Date(NOW).toISOString());
+
+    // 7일 창은 한국 시각 날짜로 가른다. 오늘(09-25)을 포함해 7일이라 09-19 00:00 KST 부터다.
+    const week = await (await call('/market/popular?window=7d')).json();
+    expect(week.from).toBe('2026-09-18T15:00:00.000Z');
+  });
+
+  it('기록을 모으기 시작한 날이 창보다 늦으면 부분 집계라고 알린다', async () => {
+    const week = await (await call('/market/popular?window=7d')).json();
+    // 수집은 이틀 전(2026-09-23)부터 시작했다.
+    expect(week.partial).toBe(true);
+    expect(week.since).toBe('2026-09-23');
+
+    const hour = await (await call('/market/popular?window=1h')).json();
+    expect(hour.partial).toBe(false);
+  });
+
+  it('수량이 0 이하인 줄은 평균을 0 으로 적지 않고 비운다', async () => {
+    env.MARKET.sqlite.exec(
+      "INSERT INTO daily (name, day, category, n, qty, total, lo, hi, mid) VALUES ('깨진 줄', " +
+        `${kstDay(Math.floor(NOW / 1000))}, '기타', 50, 0, 1310000, 0, 0, 0)`,
+    );
+    const body = await (await call('/market/popular?window=7d')).json();
+
+    expect(body.byCount.find((row) => row.name === '깨진 줄')).toMatchObject({ n: 50, avg: null });
+  });
+
+  it('모르는 기간은 거절하고, 기간을 안 주면 24시간이다', async () => {
+    expect((await call('/market/popular?window=1y')).status).toBe(400);
+    expect((await (await call('/market/popular')).json()).window).toBe('24h');
+  });
+
+  it('거래가 없던 기간은 빈 순위다', async () => {
+    env.MARKET.sqlite.exec('DELETE FROM trades; DELETE FROM daily');
+    const body = await (await call('/market/popular?window=24h')).json();
+
+    expect(body.byCount).toEqual([]);
+    expect(body.byTotal).toEqual([]);
+  });
+
+  it('조회 횟수 제한에 걸리면 429, 저장소가 없으면 503, POST 는 거절한다', async () => {
+    env.MARKET_RATE_LIMIT = { limit: async () => ({ success: false }) };
+    expect((await call('/market/popular')).status).toBe(429);
+    env.MARKET_RATE_LIMIT = undefined;
+    expect((await call('/market/popular', { method: 'POST', body: {} })).status).toBe(405);
+    env.MARKET = undefined;
+    expect((await call('/market/popular')).status).toBe(503);
+  });
+});
+
 describe('시세 경로', () => {
   beforeEach(async () => {
     vi.useFakeTimers({ toFake: ['Date'] });

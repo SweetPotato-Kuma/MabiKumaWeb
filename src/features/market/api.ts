@@ -58,6 +58,38 @@ export interface MarketRecentResponse {
   updated: string | null;
 }
 
+/** 인기 거래 아이템의 집계 기간. 워커의 POPULAR_WINDOWS 와 같다. */
+export type PopularWindow = '1h' | '24h' | '7d' | '30d';
+
+export interface PopularRow {
+  name: string;
+  category: string;
+  /** 거래 횟수 */
+  n: number;
+  /** 거래된 수량 합 */
+  qty: number;
+  /** 총 거래 금액 */
+  total: number;
+  /** 수량 가중 개당 평균. 수량을 알 수 없으면 null(0 으로 적지 않는다). */
+  avg: number | null;
+}
+
+export interface PopularResponse {
+  window: PopularWindow;
+  /** 집계 기간의 처음과 끝(ISO). 1시간과 24시간은 지금에서 거꾸로, 7일과 30일은 한국 시각 날짜로 센다. */
+  from: string;
+  to: string;
+  /** 기록을 모으기 시작한 날이 집계 기간보다 늦어, 그 날부터의 순위라는 뜻이다. */
+  partial: boolean;
+  /** 거래 횟수가 많은 순. */
+  byCount: PopularRow[];
+  /** 총 거래 금액이 많은 순. */
+  byTotal: PopularRow[];
+  since: string | null;
+  /** 마지막으로 받은 시각(ISO) */
+  updated: string | null;
+}
+
 /** 한 번에 물을 수 있는 이름 수. 워커의 RECENT_MAX_NAMES 와 같다. */
 export const RECENT_MAX_NAMES = 60;
 
@@ -96,6 +128,28 @@ export async function fetchMarketRecent(
     signal,
   });
   return readJson<MarketRecentResponse>(response);
+}
+
+export async function fetchMarketPopular(
+  window: PopularWindow,
+  signal?: AbortSignal,
+): Promise<PopularResponse> {
+  const response = await fetch(`${getProxyUrl()}/market/popular?window=${window}`, {
+    headers: { accept: 'application/json' },
+    signal,
+  });
+  return readJson<PopularResponse>(response);
+}
+
+/** 인기 거래 아이템 순위. 펼쳤을 때만 묻는다(enabled). */
+export function useMarketPopularQuery(window: PopularWindow, enabled: boolean) {
+  return useQuery({
+    queryKey: ['market', 'popular', window],
+    queryFn: ({ signal }) => fetchMarketPopular(window, signal),
+    enabled: enabled && canLookupMarket(),
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
 }
 
 /** 아이템 하나의 최근 1일 통계와 날짜별 요약. */

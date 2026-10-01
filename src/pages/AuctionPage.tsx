@@ -40,6 +40,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { NameSuggestionLabel } from '@/components/NameSuggestionLabel';
 import { QueryState } from '@/components/QueryState';
+import { PopularTrades } from '@/components/market/PopularTrades';
 import { RecentTradeStats } from '@/components/market/RecentTradeStats';
 import { categoryPath, leavesOfGroupKey } from '@/features/auction/categoryTree';
 import { itemInfoPath } from '@/features/auction/dictionary';
@@ -1394,6 +1395,14 @@ export function AuctionPage() {
         side={categoryPanel}
       >
         <Flex vertical gap={16}>
+          <PopularTrades
+            onSearch={(name) => {
+              // 이름만으로 찾고 이름이 같은 것만 보인다. 카테고리까지 걸면 그 카테고리를 통째로 받아야 한다.
+              const params = searchParamsFor(paramsRef.current, { category: '', keyword: name, filterKey: '' });
+              writeViewState(params, { exact: true });
+              navigate(params, false);
+            }}
+          />
           <Card variant="outlined" size="small">
             <Flex vertical gap={10}>
               {/*

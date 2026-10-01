@@ -21,6 +21,7 @@ export const MARKET_ITEM_PATH = '/market/item';
 export const MARKET_RECENT_PATH = '/market/recent';
 export const MARKET_OPTION_TRADES_PATH = '/market/option-trades';
 export const MARKET_HISTORY_PATH = '/market/history';
+export const MARKET_POPULAR_PATH = '/market/popular';
 export const MARKET_COLLECT_PATH = '/market/collect';
 
 const KST_OFFSET_SECONDS = 9 * 3600;
@@ -67,6 +68,41 @@ export const HOURLY_HOURS = 7 * 24;
 const HOUR_SECONDS = 3600;
 
 const NAME_MAX = 120;
+
+/**
+ * 인기 거래 아이템의 집계 기간. 1시간과 24시간은 거래 원본(trades)에서, 7일과 30일은 하루 요약(daily)에서 센다.
+ * 원본으로 한 달을 세면 읽는 줄이 수백만이다. 하루 요약은 한국 시각 날짜로 가르므로 7일과 30일은 오늘을 포함한
+ * 날짜 수다(오늘은 아직 덜 찬 날이다). 캐시 시간은 집계가 무거울수록 길게 둔다.
+ */
+export const POPULAR_WINDOWS = {
+  '1h': { seconds: 3600, cacheSeconds: 300 },
+  '24h': { seconds: DAY_SECONDS, cacheSeconds: 900 },
+  '7d': { days: 7, cacheSeconds: 1800 },
+  '30d': { days: 30, cacheSeconds: 1800 },
+};
+
+/** 인기 순위에 담을 아이템 수. 화면은 처음 10개를 보이고 펼치면 이만큼까지 보인다. */
+export const POPULAR_LIMIT = 30;
+
+/**
+ * 기간 안에서 거래 횟수가 많은 순, 총 거래 금액이 많은 순 두 가지 순위를 한 번에 뽑는다. 아이템별로 묶는 일은
+ * 한 번이고 정렬만 둘이다. 같으면 다른 쪽 기준, 그다음 이름 순이라 새로 불러도 순서가 흔들리지 않는다.
+ */
+const POPULAR_TRADES_SQL = `WITH g AS (
+  SELECT name, MAX(category) AS category, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total
+  FROM trades WHERE ts >= ?1 AND ts < ?2 GROUP BY name
+)
+SELECT * FROM (SELECT 'n' AS src, name, category, n, qty, total FROM g ORDER BY n DESC, total DESC, name LIMIT ?3)
+UNION ALL
+SELECT * FROM (SELECT 't' AS src, name, category, n, qty, total FROM g ORDER BY total DESC, n DESC, name LIMIT ?3)`;
+
+const POPULAR_DAILY_SQL = `WITH g AS (
+  SELECT name, MAX(category) AS category, SUM(n) AS n, SUM(qty) AS qty, SUM(total) AS total
+  FROM daily WHERE day > ?1 AND day <= ?2 GROUP BY name
+)
+SELECT * FROM (SELECT 'n' AS src, name, category, n, qty, total FROM g ORDER BY n DESC, total DESC, name LIMIT ?3)
+UNION ALL
+SELECT * FROM (SELECT 't' AS src, name, category, n, qty, total FROM g ORDER BY total DESC, n DESC, name LIMIT ?3)`;
 
 /** 같은 질문은 이 시간 동안 엣지 캐시에서 답한다. 수집이 10분마다라 더 자주 볼 이유가 없다. */
 const CACHE_SECONDS = 300;
@@ -696,6 +732,89 @@ export async function marketHistory(request, url, env, cors) {
       ...cors,
       'content-type': 'application/json; charset=utf-8',
       'cache-control': `public, max-age=${CACHE_SECONDS}`,
+      'x-market-cache': hit ? 'hit' : 'miss',
+    },
+  });
+}
+
+/** 순위 한 줄. 평균은 수량으로 가중한 개당 가격이고, 수량이 0 이하면 값이 없다(0 으로 적지 않는다). */
+function toPopularRow(row) {
+  return {
+    name: row.name,
+    category: row.category,
+    n: row.n,
+    qty: row.qty,
+    total: row.total,
+    avg: row.qty > 0 ? Math.round(row.total / row.qty) : null,
+  };
+}
+
+/**
+ * 인기 거래 아이템. 기간(window) 안의 두 순위와 집계 기간을 돌려준다.
+ *
+ * 집계 기간은 from 부터 to 까지(ISO)다. 기록을 모으기 시작한 날(since)이 from 보다 늦으면 partial 이고,
+ * 그때는 시작한 날부터의 순위다. 거래가 한 건도 없으면 두 순위가 비어 있다.
+ */
+export async function popularTrades(db, window, now = Date.now()) {
+  const spec = POPULAR_WINDOWS[window];
+  const nowSec = Math.floor(now / 1000);
+  let results;
+  let fromSec;
+  if (spec.days) {
+    const today = kstDay(nowSec);
+    fromSec = dayStart(today - spec.days + 1);
+    ({ results } = await db
+      .prepare(POPULAR_DAILY_SQL)
+      .bind(today - spec.days, today, POPULAR_LIMIT)
+      .all());
+  } else {
+    fromSec = nowSec - spec.seconds;
+    ({ results } = await db
+      .prepare(POPULAR_TRADES_SQL)
+      .bind(fromSec, nowSec + 1, POPULAR_LIMIT)
+      .all());
+  }
+  const rows = results ?? [];
+  const info = await collectionInfo(db);
+  const started = Number(await readMeta(db, 'started')) || 0;
+  return {
+    window,
+    from: new Date(fromSec * 1000).toISOString(),
+    to: new Date(nowSec * 1000).toISOString(),
+    partial: started > fromSec,
+    byCount: rows.filter((row) => row.src === 'n').map(toPopularRow),
+    byTotal: rows.filter((row) => row.src === 't').map(toPopularRow),
+    ...info,
+  };
+}
+
+/**
+ * GET /market/popular?window=1h|24h|7d|30d → 인기 거래 아이템 순위(거래 횟수순, 총 거래 금액순).
+ * 경매장 화면의 인기 거래 아이템 차트가 쓴다.
+ */
+export async function marketPopular(request, url, env, cors, now = Date.now()) {
+  if (!env.MARKET)
+    return marketError('MARKET_NOT_CONFIGURED', '시세 기록이 아직 없습니다.', 503, cors);
+  const window = url.searchParams.get('window') ?? '24h';
+  if (!Object.hasOwn(POPULAR_WINDOWS, window))
+    return marketError('MARKET_BAD_WINDOW', '집계 기간은 1h, 24h, 7d, 30d 중 하나입니다.', 400, cors);
+
+  if (await rateLimited(request, env)) {
+    return marketError('MARKET_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
+  }
+
+  const { cacheSeconds } = POPULAR_WINDOWS[window];
+  const cacheKey = `https://market.cache${MARKET_POPULAR_PATH}?window=${window}`;
+  const { body, hit } = await withEdgeCache(
+    cacheKey,
+    () => popularTrades(env.MARKET, window, now),
+    cacheSeconds,
+  );
+  return new Response(body, {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': `public, max-age=${cacheSeconds}`,
       'x-market-cache': hit ? 'hit' : 'miss',
     },
   });
