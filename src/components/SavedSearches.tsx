@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { App, Button, Dropdown, Empty, Flex, Form, Input, List, Modal, Popconfirm, Tag, Typography } from 'antd';
+import { App, Button, Dropdown, Flex, Form, Grid, Input, Modal, Popconfirm, Table, Tag, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { EmptyState } from '@/components/EmptyState';
 import { ArrowDownIcon, ListIcon, StarIcon } from '@/components/icons';
 import {
   DESCRIPTION_MAX,
   NAME_MAX,
   describeSavedSearch,
+  findSavedSearch,
   hasSearchCondition,
   useSavedSearchActions,
   useSavedSearches,
@@ -109,10 +112,16 @@ export function SavedSearchControls({
   const [saving, setSaving] = useState(false);
   const [listing, setListing] = useState(false);
   const [editing, setEditing] = useState<SavedSearch | null>(null);
+  const wide = Grid.useBreakpoint().md ?? false;
 
   const openSave = () => {
     if (!hasSearchCondition(current)) {
       message.warning('저장할 검색 조건이 없습니다. 검색어, 카테고리, 상세 검색 가운데 하나를 넣어 주세요.');
+      return;
+    }
+    const existing = findSavedSearch(current);
+    if (existing) {
+      message.warning(`같은 조건이 "${existing.name}" 이름으로 이미 저장돼 있습니다.`);
       return;
     }
     setSaving(true);
@@ -125,7 +134,8 @@ export function SavedSearchControls({
       message.success('검색 즐겨찾기에 저장했습니다.');
       return;
     }
-    if (result.reason === 'full') message.warning('즐겨찾기가 가득 찼습니다. 안 쓰는 것을 지우고 다시 저장해 주세요.');
+    if (result.reason === 'duplicate') message.warning(`같은 조건이 "${result.existing.name}" 이름으로 이미 저장돼 있습니다.`);
+    else if (result.reason === 'full') message.warning('즐겨찾기가 가득 찼습니다. 안 쓰는 것을 지우고 다시 저장해 주세요.');
     else if (result.reason === 'empty') message.warning('저장할 검색 조건이 없습니다.');
     else message.warning('이름을 적어 주세요.');
   };
@@ -133,6 +143,58 @@ export function SavedSearchControls({
   const edit = (values: NameForm) => {
     if (editing && update(editing.id, values)) setEditing(null);
   };
+
+  const actions = (item: SavedSearch) => (
+    <Flex gap={6} style={{ whiteSpace: 'nowrap' }}>
+      <Button
+        type="primary"
+        size="small"
+        aria-label={`${item.name} 검색`}
+        onClick={() => {
+          setListing(false);
+          onApply(item);
+        }}
+      >
+        검색
+      </Button>
+      <Button size="small" aria-label={`${item.name} 수정`} onClick={() => setEditing(item)}>
+        수정
+      </Button>
+      <Popconfirm
+        title="이 즐겨찾기를 지울까요?"
+        okText="지우기"
+        cancelText="취소"
+        onConfirm={() => remove(item.id)}
+      >
+        <Button size="small" danger aria-label={`${item.name} 삭제`}>
+          삭제
+        </Button>
+      </Popconfirm>
+    </Flex>
+  );
+
+  // 좁은 화면에서는 조건과 설명을 이름 아래로 내려 칸 수를 줄인다.
+  const columns: ColumnsType<SavedSearch> = [
+    {
+      title: '이름',
+      key: 'name',
+      render: (_, item) => (
+        <Flex vertical gap={4} style={{ minWidth: 0 }}>
+          <Text strong>{item.name}</Text>
+          {item.description ? (
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              {item.description}
+            </Text>
+          ) : null}
+          {wide ? null : <ConditionTags query={item} />}
+        </Flex>
+      ),
+    },
+    ...(wide
+      ? [{ title: '조건', key: 'query', render: (_: unknown, item: SavedSearch) => <ConditionTags query={item} /> }]
+      : []),
+    { title: '', key: 'actions', width: 160, render: (_, item) => actions(item) },
+  ];
 
   return (
     <>
@@ -177,59 +239,17 @@ export function SavedSearchControls({
         title="검색 즐겨찾기"
         footer={null}
         onCancel={() => setListing(false)}
-        width={640}
+        width={760}
         destroyOnHidden
       >
-        {saved.length === 0 ? (
-          <Empty description="저장한 검색이 없습니다. 검색한 뒤 즐겨찾기 등록을 눌러 보세요." />
-        ) : (
-          <List
-            dataSource={[...saved]}
-            renderItem={(item) => (
-              <List.Item
-                key={item.id}
-                actions={[
-                  <Button
-                    key="apply"
-                    type="primary"
-                    size="small"
-                    aria-label={`${item.name} 검색`}
-                    onClick={() => {
-                      setListing(false);
-                      onApply(item);
-                    }}
-                  >
-                    검색
-                  </Button>,
-                  <Button key="edit" size="small" aria-label={`${item.name} 수정`} onClick={() => setEditing(item)}>
-                    수정
-                  </Button>,
-                  <Popconfirm
-                    key="remove"
-                    title="이 즐겨찾기를 지울까요?"
-                    okText="지우기"
-                    cancelText="취소"
-                    onConfirm={() => remove(item.id)}
-                  >
-                    <Button size="small" danger aria-label={`${item.name} 삭제`}>
-                      삭제
-                    </Button>
-                  </Popconfirm>,
-                ]}
-              >
-                <Flex vertical gap={6} style={{ minWidth: 0 }}>
-                  <Text strong>{item.name}</Text>
-                  {item.description ? (
-                    <Text type="secondary" style={{ fontSize: 13 }}>
-                      {item.description}
-                    </Text>
-                  ) : null}
-                  <ConditionTags query={item} />
-                </Flex>
-              </List.Item>
-            )}
-          />
-        )}
+        <Table<SavedSearch>
+          size="small"
+          rowKey="id"
+          columns={columns}
+          dataSource={[...saved]}
+          pagination={saved.length > 10 ? { pageSize: 10, showSizeChanger: false, hideOnSinglePage: true } : false}
+          locale={{ emptyText: <EmptyState size="small" description="저장한 검색이 없습니다. 검색한 뒤 즐겨찾기에서 등록해 보세요." /> }}
+        />
       </Modal>
     </>
   );

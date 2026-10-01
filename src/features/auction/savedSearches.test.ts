@@ -66,6 +66,33 @@ describe('즐겨찾기 저장', () => {
     expect(getSavedSearches().map((item) => item.name)).toEqual(['둘째', '첫째']);
   });
 
+  it('같은 조건은 이름이 달라도 다시 저장하지 않는다', () => {
+    const first = addSavedSearch({ name: '처음', keyword: '유물', category: '유물', filterKey });
+
+    const again = addSavedSearch({ name: '다른 이름', keyword: ' 유물 ', category: '유물', filterKey });
+
+    expect(again.ok).toBe(false);
+    expect(!again.ok && again.reason === 'duplicate' && first.ok && again.existing.id === first.item.id).toBe(true);
+    expect(getSavedSearches()).toHaveLength(1);
+  });
+
+  it('조건이 하나라도 다르면 따로 저장한다', () => {
+    addSavedSearch({ name: '가', keyword: '유물', category: '유물', filterKey });
+    addSavedSearch({ name: '나', keyword: '유물', category: '유물', filterKey: '' });
+    addSavedSearch({ name: '다', keyword: '유물', category: '', filterKey });
+
+    expect(getSavedSearches()).toHaveLength(3);
+  });
+
+  it('저장소에 같은 조건이 겹쳐 있으면 하나만 살린다', () => {
+    const items = parseSaved([
+      { id: 'a', name: '하나', keyword: '소드', category: '', filterKey: '' },
+      { id: 'b', name: '둘', keyword: '소드', category: '', filterKey: '' },
+    ]);
+
+    expect(items.map((item) => item.id)).toEqual(['a']);
+  });
+
   it('가득 차면 더 저장하지 않는다', () => {
     for (let i = 0; i < SAVED_MAX; i += 1) addSavedSearch({ name: `검색 ${i}`, keyword: `k${i}`, category: '', filterKey: '' });
 

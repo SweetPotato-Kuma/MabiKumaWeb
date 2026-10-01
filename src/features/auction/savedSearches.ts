@@ -54,11 +54,15 @@ export function parseSaved(raw: unknown): SavedSearch[] {
       filterKey: serializeParsed(text(value.filterKey, 4000)),
     };
     if (!hasSearchCondition(query)) continue;
+    if (items.some((item) => sameQuery(item, query))) continue;
     seen.add(id);
     items.push({ id, name, description: text(value.description, DESCRIPTION_MAX), ...query });
   }
   return items;
 }
+
+const sameQuery = (a: SavedSearchQuery, b: SavedSearchQuery) =>
+  a.keyword.trim() === b.keyword.trim() && a.category === b.category && a.filterKey === b.filterKey;
 
 function serializeParsed(filterKey: string): string {
   return filterKey === '' ? '' : serializeFilter(parseFilter(filterKey));
@@ -107,11 +111,17 @@ export function getSavedSearches(): readonly SavedSearch[] {
 
 export type SaveResult =
   | { ok: true; item: SavedSearch }
-  | { ok: false; reason: 'empty' | 'name' | 'full' };
+  | { ok: false; reason: 'empty' | 'name' | 'full' }
+  | { ok: false; reason: 'duplicate'; existing: SavedSearch };
+
+/** 같은 검색 조건으로 이미 저장한 것. 이름과 설명이 달라도 조건이 같으면 같은 검색이다. */
+export function findSavedSearch(query: SavedSearchQuery): SavedSearch | undefined {
+  return snapshot.find((item) => sameQuery(item, query));
+}
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-/** 새로 저장한다. 조건이 없거나 이름이 비었거나 가득 찼으면 저장하지 않고 까닭을 돌려준다. */
+/** 새로 저장한다. 조건이 없거나, 이름이 비었거나, 가득 찼거나, 같은 조건이 이미 있으면 저장하지 않고 까닭을 돌려준다. */
 export function addSavedSearch(input: SavedSearchQuery & { name: string; description?: string }): SaveResult {
   const query: SavedSearchQuery = {
     keyword: input.keyword.trim(),
@@ -119,6 +129,8 @@ export function addSavedSearch(input: SavedSearchQuery & { name: string; descrip
     filterKey: input.filterKey,
   };
   if (!hasSearchCondition(query)) return { ok: false, reason: 'empty' };
+  const existing = findSavedSearch(query);
+  if (existing) return { ok: false, reason: 'duplicate', existing };
   const name = input.name.trim().slice(0, NAME_MAX);
   if (!name) return { ok: false, reason: 'name' };
   if (snapshot.length >= SAVED_MAX) return { ok: false, reason: 'full' };

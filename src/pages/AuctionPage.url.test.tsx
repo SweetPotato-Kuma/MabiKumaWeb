@@ -444,6 +444,18 @@ describe('경매장 검색 조건과 주소', () => {
       expect(await screen.findByRole('menuitem', { name: /목록 보기 1/ })).toBeInTheDocument();
     });
 
+    it('이미 저장한 조건은 다시 저장하지 못하게 막고 먼저 알린다', async () => {
+      addSavedSearch({ name: '내 소드', keyword: '소드', category: '', filterKey: '' });
+      renderAt('/auction?keyword=소드');
+      await screen.findByDisplayValue('소드');
+
+      await pick(/지금 검색 등록/);
+
+      expect(await screen.findByText(/"내 소드" 이름으로 이미 저장돼 있습니다/)).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(getSavedSearches()).toHaveLength(1);
+    });
+
     it('이름 없이는 저장하지 않는다', async () => {
       renderAt('/auction?keyword=소드');
       await screen.findByDisplayValue('소드');
