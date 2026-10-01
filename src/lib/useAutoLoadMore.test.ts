@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_FRUITLESS_FETCHES, useAutoLoadMore } from './useAutoLoadMore';
+import { MAX_FRUITLESS_FETCHES, MAX_LOAD_ALL_FETCHES, useAutoLoadMore } from './useAutoLoadMore';
 
 type Props = Parameters<typeof useAutoLoadMore>[0];
 
@@ -83,5 +83,30 @@ describe('useAutoLoadMore', () => {
     rerender(base({ rowCount: 500, fetchNextPage, resetKey: 'b' }));
 
     expect(result.current.paused).toBe(false);
+  });
+
+  it('전부 받는 중에는 끝쪽을 열지 않아도, 맞는 줄이 늘지 않아도 끝까지 받는다', async () => {
+    let remaining = 5;
+    const fetchNextPage = vi.fn(() => {
+      remaining -= 1;
+      return Promise.resolve();
+    });
+    // 받을 때마다 다시 그려져 hasNextPage 가 새로 읽힌다.
+    renderHook(() => useAutoLoadMore(base({ page: 1, rowCount: 0, loadAll: true, fetchNextPage, hasNextPage: remaining > 0 })));
+
+    await waitFor(() => expect(fetchNextPage).toHaveBeenCalledTimes(5));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fetchNextPage).toHaveBeenCalledTimes(5);
+  });
+
+  it('전부 받는 중에도 너무 큰 카테고리에서는 한도에서 멈추고, 이어 가면 다시 받는다', async () => {
+    const fetchNextPage = vi.fn(() => Promise.resolve());
+    const { result } = renderHook(() => useAutoLoadMore(base({ rowCount: 0, loadAll: true, fetchNextPage })));
+
+    await waitFor(() => expect(result.current.paused).toBe(true), { timeout: 10_000 });
+    expect(fetchNextPage).toHaveBeenCalledTimes(MAX_LOAD_ALL_FETCHES);
+
+    act(() => result.current.resume());
+    await waitFor(() => expect(fetchNextPage.mock.calls.length).toBeGreaterThan(MAX_LOAD_ALL_FETCHES));
   });
 });

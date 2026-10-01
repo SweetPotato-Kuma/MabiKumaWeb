@@ -8,6 +8,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
  */
 export const MAX_FRUITLESS_FETCHES = 3;
 
+/**
+ * 전부 받는 중(loadAll)에 연달아 받을 수 있는 묶음 수. 500건씩이라 5만 건이다.
+ * 이보다 큰 카테고리는 여기서 멈추고 계속할지 사용자가 고르게 한다. 넥슨 쪽 한도를 조용히 다 쓰지 않으려는 것이다.
+ */
+export const MAX_LOAD_ALL_FETCHES = 100;
+
 interface AutoLoadMoreInput {
   /** 지금 보고 있는 쪽 번호. 1부터. */
   page: number;
@@ -21,6 +27,11 @@ interface AutoLoadMoreInput {
   active: boolean;
   /** 바뀌면 멈춤과 셈을 처음으로 돌린다. 새로 찾을 때 넘긴다. */
   resetKey: unknown;
+  /**
+   * 끝쪽을 열기를 기다리지 않고 남은 것을 모두 받는다. 조건으로 거르는 검색이 쓴다. 조건에 맞는 줄은
+   * 어느 묶음에 있을지 모르므로, 그 카테고리의 매물을 다 받아 거른 뒤에야 결과가 완전하다.
+   */
+  loadAll?: boolean;
 }
 
 /**
@@ -39,12 +50,14 @@ export function useAutoLoadMore({
   fetchNextPage,
   active,
   resetKey,
+  loadAll = false,
 }: AutoLoadMoreInput) {
   const [paused, setPaused] = useState(false);
   // 받는 중인지는 isFetching 보다 먼저 안다. 그 틈에 두 번 부르면 react-query 가 앞 요청을 끊는다.
   const busy = useRef(false);
   const misses = useRef(0);
   const rowsAtLastFetch = useRef<number | null>(null);
+  const fetchedAll = useRef(0);
   // 받기가 끝나면 한 번 더 따져 보게 한다. 결과가 그대로면 react-query 는 다시 그리지 않는다.
   const [settled, setSettled] = useState(0);
 
@@ -52,19 +65,30 @@ export function useAutoLoadMore({
     setPaused(false);
     misses.current = 0;
     rowsAtLastFetch.current = null;
+    fetchedAll.current = 0;
   }, [resetKey]);
 
   const atLastPage = page * pageSize >= rowCount;
 
   useEffect(() => {
-    if (!active || paused || busy.current || isFetching || !hasNextPage || !atLastPage) return;
+    if (!active || paused || busy.current || isFetching || !hasNextPage) return;
+    if (!loadAll && !atLastPage) return;
 
-    const before = rowsAtLastFetch.current;
-    if (before !== null) {
-      misses.current = rowCount > before ? 0 : misses.current + 1;
-      if (misses.current >= MAX_FRUITLESS_FETCHES) {
+    if (loadAll) {
+      // 전부 받을 때는 맞는 줄이 늘었는지 보지 않는다. 한 묶음에 하나도 없어도 다음 묶음에 있을 수 있다.
+      if (fetchedAll.current >= MAX_LOAD_ALL_FETCHES) {
         setPaused(true);
         return;
+      }
+      fetchedAll.current += 1;
+    } else {
+      const before = rowsAtLastFetch.current;
+      if (before !== null) {
+        misses.current = rowCount > before ? 0 : misses.current + 1;
+        if (misses.current >= MAX_FRUITLESS_FETCHES) {
+          setPaused(true);
+          return;
+        }
       }
     }
 
@@ -74,12 +98,13 @@ export function useAutoLoadMore({
       busy.current = false;
       setSettled((count) => count + 1);
     });
-  }, [active, atLastPage, fetchNextPage, hasNextPage, isFetching, paused, rowCount, settled]);
+  }, [active, atLastPage, fetchNextPage, hasNextPage, isFetching, loadAll, paused, rowCount, settled]);
 
   /** 멈춘 뒤 사용자가 계속 찾겠다고 할 때. */
   const resume = useCallback(() => {
     misses.current = 0;
     rowsAtLastFetch.current = null;
+    fetchedAll.current = 0;
     setPaused(false);
   }, []);
 

@@ -181,11 +181,14 @@ function LoadMoreStatus({
   isFetching,
   paused,
   onResume,
+  loadAll,
 }: {
   hasNextPage: boolean;
   isFetching: boolean;
   paused: boolean;
   onResume: () => void;
+  /** 조건으로 거르느라 매물을 모두 받는 중인지. 멈춘 까닭이 다르다. */
+  loadAll: boolean;
 }) {
   if (isFetching) {
     return (
@@ -202,7 +205,7 @@ function LoadMoreStatus({
     return (
       <Flex gap={4} wrap align="center">
         <Text type="secondary" style={{ fontSize: 12 }}>
-          몇 번 더 받아 봤지만 조건에 맞는 것이 늘지 않아 멈췄습니다.
+          {loadAll ? '매물이 많아 여기까지만 받았습니다.' : '몇 번 더 받아 봤지만 조건에 맞는 것이 늘지 않아 멈췄습니다.'}
         </Text>
         <Button type="link" size="small" onClick={onResume}>
           계속 찾기
@@ -647,7 +650,12 @@ export function AuctionPage() {
     [mutateParams],
   );
 
-  // 끝쪽에 닿으면 다음 500건을 알아서 받는다. 쪽이 끝없이 이어지는 것처럼 보인다.
+  /**
+   * 조건(상세 검색, 카테고리 안의 검색어, 묶음 안의 검색어)으로 거르는 검색은 그 카테고리의 매물을 모두 받아 거른다.
+   * 맞는 매물은 어느 묶음에 있을지 모르고, 일부만 보여 주면 결과가 모자란 줄도 모른다.
+   * 거르지 않는 둘러보기는 끝쪽에 닿을 때만 다음 500건을 받는다. 쪽이 끝없이 이어지는 것처럼 보인다.
+   */
+  const loadEverything = filtering || scanTerms.length > 0 || (query.category !== '' && query.keyword.trim() !== '');
   const itemsMore = useAutoLoadMore({
     page: itemsPaging.page,
     pageSize: itemsPaging.pageSize,
@@ -657,6 +665,7 @@ export function AuctionPage() {
     fetchNextPage: itemsQuery.fetchNextPage,
     active: enabled && tab === 'items',
     resetKey: submitted,
+    loadAll: loadEverything,
   });
   const historyMore = useAutoLoadMore({
     page: historyPaging.page,
@@ -667,6 +676,7 @@ export function AuctionPage() {
     fetchNextPage: historyQuery.fetchNextPage,
     active: enabled && tab === 'history',
     resetKey: submitted,
+    loadAll: loadEverything,
   });
 
   const queryClient = useQueryClient();
@@ -1164,11 +1174,11 @@ export function AuctionPage() {
         error={itemsQuery.error}
         isEmpty={visibleItems.length === 0}
         emptyMessage={
-          itemsLoaded > 0
-            ? itemsQuery.hasNextPage && !itemsMore.paused
-              ? `불러온 ${formatNumber(itemsLoaded)}건 중 조건에 맞는 것이 아직 없어 더 찾고 있습니다.`
-              : `불러온 ${formatNumber(itemsLoaded)}건 중 조건에 맞는 것이 없습니다. 조건을 넓혀 보세요.`
-            : '조건에 맞는 매물이 없습니다. 검색어를 줄이거나 카테고리를 바꿔 보세요.'
+          itemsQuery.hasNextPage && !itemsMore.paused
+            ? '조건에 맞는 매물을 찾는 중입니다.'
+            : itemsLoaded > 0
+              ? '조건에 맞는 매물이 없습니다. 조건을 넓혀 보세요.'
+              : '조건에 맞는 매물이 없습니다. 검색어를 줄이거나 카테고리를 바꿔 보세요.'
         }
       >
         <Flex vertical gap={12}>
@@ -1201,11 +1211,12 @@ export function AuctionPage() {
             isFetching={itemsQuery.isFetchingNextPage}
             paused={itemsMore.paused}
             onResume={itemsMore.resume}
+            loadAll={loadEverything}
           />
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, changeSort, changeBasis, byTotal, itemsHaveBundle, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, changeBasis, byTotal, itemsHaveBundle, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <Flex vertical gap={12}>
@@ -1237,11 +1248,6 @@ export function AuctionPage() {
             거래 기록은 {historySince}부터 모았습니다.
           </Text>
         ) : null}
-        {visibleHistory.length !== historyLoaded ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            거래 {formatNumber(historyLoaded)}건 가운데 {formatNumber(visibleHistory.length)}건이 조건과 맞습니다.
-          </Text>
-        ) : null}
         {historyHaveBundle ? <PriceBasis byTotal={byTotal} onChange={changeBasis} /> : null}
         <Table<AuctionHistoryItem>
           columns={historyColumns}
@@ -1259,11 +1265,12 @@ export function AuctionPage() {
           isFetching={historyQuery.isFetchingNextPage}
           paused={historyMore.paused}
           onResume={historyMore.resume}
+          loadAll={loadEverything}
         />
       </Flex>
     </QueryState>
     </Flex>
-  ), [enabled, changeSort, changeBasis, byTotal, historyHaveBundle, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
+  ), [enabled, changeSort, changeBasis, byTotal, historyHaveBundle, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, loadEverything, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   /**
    * 검색 카드에 보이는 한 줄 상태. 지금 하는 일이 있을 때만 적고, 평소에는 비운다.
@@ -1279,7 +1286,7 @@ export function AuctionPage() {
       : scanning && snapshot.status === 'ready' && snapshot.at !== null
         ? !snapshot.data
           ? '모아 둔 장비 매물을 받는 중입니다.'
-          : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물 ${formatNumber(itemsLoaded)}건에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
+          : `${snapshotAgeLabel(snapshot.at)} 모아 둔 장비 매물에서 찾았습니다. 그 사이 팔린 매물이 있을 수 있습니다.`
         : nameIndexQuery.isPending
           ? '아이템 이름을 불러오는 중입니다.'
           : form.category && leavesOfGroupKey(form.category)
@@ -1289,6 +1296,73 @@ export function AuctionPage() {
               : submitted?.scan && !form.category && !form.keyword.trim()
                 ? `상세 검색 조건이 붙을 수 있는 장비 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${scanProgressLabel}`
                 : null;
+
+  const keywordInput = (
+    <AutoComplete
+      value={form.keyword}
+      options={suggestionOptions}
+      onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
+      onSelect={(keyword: string) => {
+        // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
+        // 자동완성에서 고른 것은 그 아이템을 찾겠다는 뜻이라 이름이 정확히 같은 것만 보인다.
+        const next = { ...form, keyword };
+        setForm(next);
+        commitSearch(next, false, { exact: true });
+      }}
+      style={{ flex: '1 1 260px', minWidth: 0, width: isWide ? '100%' : undefined }}
+    >
+      <Input placeholder="아이템명 검색" allowClear onPressEnter={() => commitSearch(form)} />
+    </AutoComplete>
+  );
+  const searchButton = (
+    <Button
+      type="primary"
+      icon={<SearchIcon />}
+      loading={resolving}
+      disabled={!canSubmit || !canQuery}
+      onClick={() => commitSearch(form)}
+    >
+      찾기
+    </Button>
+  );
+  // 지금 입력칸의 조건을 저장하고, 저장한 조건으로 바로 검색한다.
+  const savedControls = (
+    <SavedSearchControls
+      current={{ keyword: form.keyword, category: form.category, filterKey: serializeFilter(optionFilter) }}
+      onApply={(saved) => navigate(searchParamsFor(paramsRef.current, saved), false)}
+    />
+  );
+  const resetButton = (
+    <Button
+      icon={<RefreshIcon />}
+      aria-label="검색 초기화"
+      title="검색 초기화"
+      onClick={() => {
+        setForm(EMPTY_INPUT);
+        setOptionFilter(EMPTY_OPTION_FILTER);
+        navigate(new URLSearchParams(), false);
+      }}
+    />
+  );
+  const breadcrumb = <CategoryBreadcrumb category={form.category} onSelect={selectCategory} />;
+  const exactCheckbox = (
+    <Checkbox
+      checked={exact}
+      onChange={(event) =>
+        mutateParams((params) => {
+          writeViewState(params, { exact: event.target.checked });
+          params.delete('page');
+        }, true)
+      }
+    >
+      정확히 일치
+    </Checkbox>
+  );
+  const statusText = searchStatus ? (
+    <Text type="secondary" style={{ fontSize: 12 }}>
+      {searchStatus}
+    </Text>
+  ) : null;
 
   return (
     <>
@@ -1301,73 +1375,47 @@ export function AuctionPage() {
         <Flex vertical gap={16}>
           <Card variant="outlined" size="small">
             <Flex vertical gap={10}>
-              <Flex gap={8} wrap align="center">
-                <AutoComplete
-                  value={form.keyword}
-                  options={suggestionOptions}
-                  onChange={(keyword: string) => setForm((prev) => ({ ...prev, keyword }))}
-                  onSelect={(keyword: string) => {
-                    // 카테고리를 좁히는 판단은 runSearch 가 사전으로 한 곳에서 한다.
-                    // 자동완성에서 고른 것은 그 아이템을 찾겠다는 뜻이라 이름이 정확히 같은 것만 보인다.
-                    const next = { ...form, keyword };
-                    setForm(next);
-                    commitSearch(next, false, { exact: true });
+              {/*
+                검색 카드는 세 줄이다: 입력과 단추, 분류와 정확히 일치와 상태, 상세 검색.
+                넓은 화면에서는 첫 두 줄을 같은 칸 나누기(grid)에 올려 정확히 일치가 늘 찾기 단추 바로 아래에 선다.
+                분류 경로나 상태 문구가 길어져도 이 칸은 움직이지 않는다. 좁은 화면에서는 줄바꿈에 맡기고,
+                정확히 일치를 분류 경로 앞에 두어 거기서도 제자리를 지킨다.
+              */}
+              {isWide ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto auto auto',
+                    columnGap: 8,
+                    rowGap: 10,
+                    alignItems: 'center',
                   }}
-                  style={{ flex: '1 1 260px', minWidth: 0 }}
                 >
-                  <Input
-                    placeholder="아이템명 검색"
-                    allowClear
-                    onPressEnter={() => commitSearch(form)}
-                  />
-                </AutoComplete>
-
-                <Button
-                  type="primary"
-                  icon={<SearchIcon />}
-                  loading={resolving}
-                  disabled={!canSubmit || !canQuery}
-                  onClick={() => commitSearch(form)}
-                >
-                  찾기
-                </Button>
-                {/* 지금 입력칸의 조건을 저장하고, 저장한 조건으로 바로 검색한다. */}
-                <SavedSearchControls
-                  current={{ keyword: form.keyword, category: form.category, filterKey: serializeFilter(optionFilter) }}
-                  onApply={(saved) => navigate(searchParamsFor(paramsRef.current, saved), false)}
-                />
-                <Button
-                  icon={<RefreshIcon />}
-                  aria-label="검색 초기화"
-                  title="검색 초기화"
-                  onClick={() => {
-                    setForm(EMPTY_INPUT);
-                    setOptionFilter(EMPTY_OPTION_FILTER);
-                    navigate(new URLSearchParams(), false);
-                  }}
-                />
-              </Flex>
-
-              {/* 분류 경로, 정확히 일치, 지금 하는 일을 한 줄에 둔다. 검색 카드는 세 줄을 넘기지 않는다. */}
-              <Flex gap={12} wrap align="center">
-                <CategoryBreadcrumb category={form.category} onSelect={selectCategory} />
-                <Checkbox
-                  checked={exact}
-                  onChange={(event) =>
-                    mutateParams((params) => {
-                      writeViewState(params, { exact: event.target.checked });
-                      params.delete('page');
-                    }, true)
-                  }
-                >
-                  정확히 일치
-                </Checkbox>
-                {searchStatus ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {searchStatus}
-                  </Text>
-                ) : null}
-              </Flex>
+                  {keywordInput}
+                  {searchButton}
+                  {savedControls}
+                  {resetButton}
+                  <Flex gap={12} wrap align="center" style={{ minWidth: 0 }}>
+                    {breadcrumb}
+                    {statusText}
+                  </Flex>
+                  <div style={{ gridColumn: '2 / -1' }}>{exactCheckbox}</div>
+                </div>
+              ) : (
+                <>
+                  <Flex gap={8} wrap align="center">
+                    {keywordInput}
+                    {searchButton}
+                    {savedControls}
+                    {resetButton}
+                  </Flex>
+                  <Flex gap={12} wrap align="center">
+                    {exactCheckbox}
+                    {breadcrumb}
+                    {statusText}
+                  </Flex>
+                </>
+              )}
 
               <DetailSearchBar
                 value={optionFilter}

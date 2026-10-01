@@ -398,6 +398,16 @@ describe('경매장 검색 조건과 주소', () => {
     });
   });
 
+  describe('조건으로 거른 결과가 비었을 때', () => {
+    it('불러온 건수를 적지 않고 조건을 넓히라고만 한다', async () => {
+      const f = serializeFilter({ conditions: [{ id: 1, kind: 'reforge', name: '없는 세공', minLevel: 20 }] });
+      renderAt(`/auction?category=검&f=${encodeURIComponent(f)}`);
+
+      expect(await screen.findByText('조건에 맞는 매물이 없습니다. 조건을 넓혀 보세요.')).toBeInTheDocument();
+      expect(screen.queryByText(/불러온 .*건/)).toBeNull();
+    });
+  });
+
   describe('상세 검색 창', () => {
     it('창에서 옵션을 더하고 검색을 누르면 조건이 주소에 실리고 입력칸에 배지로 남는다', async () => {
       const router = renderAt('/auction?category=분양 메달');
