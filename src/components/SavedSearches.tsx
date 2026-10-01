@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { App, Button, Empty, Flex, Form, Input, List, Modal, Popconfirm, Tag, Typography } from 'antd';
-import { ListIcon, StarIcon } from '@/components/icons';
+import { App, Button, Dropdown, Empty, Flex, Form, Input, List, Modal, Popconfirm, Tag, Typography } from 'antd';
+import { ArrowDownIcon, ListIcon, StarIcon } from '@/components/icons';
 import {
   DESCRIPTION_MAX,
   NAME_MAX,
@@ -90,7 +90,7 @@ function NameModal({
 }
 
 /**
- * 경매장 검색 즐겨찾기 단추 둘. 검색 줄에 둔다.
+ * 경매장 검색 즐겨찾기 단추 하나. 검색 줄에 두고, 누르면 등록과 목록이 펼쳐진다.
  * - 등록: 지금 검색 조건에 이름과 설명을 붙여 저장한다. 조건이 하나도 없으면 알리고 저장하지 않는다.
  * - 목록: 저장한 것을 고르면 바로 그 조건으로 검색한다. 이름과 설명을 고치거나 지울 수 있다.
  */
@@ -136,12 +136,21 @@ export function SavedSearchControls({
 
   return (
     <>
-      <Button icon={<StarIcon />} onClick={openSave}>
-        즐겨찾기 등록
-      </Button>
-      <Button icon={<ListIcon />} onClick={() => setListing(true)}>
-        즐겨찾기 목록{saved.length > 0 ? ` ${saved.length}` : ''}
-      </Button>
+      <Dropdown
+        trigger={['click']}
+        menu={{
+          items: [
+            { key: 'save', icon: <StarIcon />, label: '지금 검색 등록' },
+            { key: 'list', icon: <ListIcon />, label: `목록 보기${saved.length > 0 ? ` ${saved.length}` : ''}` },
+          ],
+          onClick: ({ key }) => (key === 'save' ? openSave() : setListing(true)),
+        }}
+      >
+        <Button icon={<StarIcon />}>
+          즐겨찾기
+          <ArrowDownIcon />
+        </Button>
+      </Dropdown>
 
       <NameModal
         open={saving}

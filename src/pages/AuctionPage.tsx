@@ -1269,6 +1269,14 @@ export function AuctionPage() {
                 >
                   찾기
                 </Button>
+                {/* 지금 입력칸의 조건을 저장하고, 저장한 조건으로 바로 검색한다. */}
+                <SavedSearchControls
+                  current={{ keyword: form.keyword, category: form.category, filterKey: serializeFilter(optionFilter) }}
+                  onApply={(saved) => navigate(searchParamsFor(paramsRef.current, saved), false)}
+                />
+              </Flex>
+
+              <Flex gap={8} wrap align="center">
                 <Checkbox
                   checked={exact}
                   onChange={(event) =>
@@ -1290,14 +1298,6 @@ export function AuctionPage() {
                 >
                   검색 초기화
                 </Button>
-                {/* 지금 입력칸의 조건을 저장하고, 저장한 조건으로 바로 검색한다. */}
-                <SavedSearchControls
-                  current={{ keyword: form.keyword, category: form.category, filterKey: serializeFilter(optionFilter) }}
-                  onApply={(saved) => navigate(searchParamsFor(paramsRef.current, saved), false)}
-                />
-              </Flex>
-
-              <Flex gap={8} wrap align="center">
                 {form.category ? (
                   <Tag closable onClose={() => selectCategory(ALL_CATEGORIES)}>
                     {form.category}

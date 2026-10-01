@@ -400,18 +400,25 @@ describe('경매장 검색 조건과 주소', () => {
 
   describe('검색 즐겨찾기', () => {
     const dialog = () => screen.getByRole('dialog');
+    // 즐겨찾기 단추 하나가 펼치는 메뉴에서 칸을 고른다.
+    const pick = async (name: RegExp) => {
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기/ }));
+      fireEvent.click(await screen.findByRole('menuitem', { name }));
+    };
 
-    it('검색 줄에 등록과 목록 단추가 있다', () => {
+    it('검색 줄에는 즐겨찾기 단추 하나만 두고, 눌러서 등록과 목록을 고른다', async () => {
       renderAt('/auction');
 
-      expect(screen.getByRole('button', { name: /즐겨찾기 등록/ })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /즐겨찾기 목록/ })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /즐겨찾기/ })).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기/ }));
+      expect(await screen.findByRole('menuitem', { name: /지금 검색 등록/ })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /목록 보기/ })).toBeInTheDocument();
     });
 
     it('검색 조건이 하나도 없으면 등록할 수 없다고 알리고 창을 열지 않는다', async () => {
       renderAt('/auction');
 
-      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+      await pick(/지금 검색 등록/);
 
       expect(await screen.findByText(/저장할 검색 조건이 없습니다/)).toBeInTheDocument();
       expect(screen.queryByRole('dialog')).toBeNull();
@@ -422,7 +429,7 @@ describe('경매장 검색 조건과 주소', () => {
       renderAt('/auction?keyword=소울 보우&category=활');
       await screen.findByDisplayValue('소울 보우');
 
-      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+      await pick(/지금 검색 등록/);
       await screen.findByRole('dialog');
       // 이름은 검색어로 미리 채워 둔다.
       expect(within(dialog()).getByLabelText('이름')).toHaveValue('소울 보우');
@@ -433,13 +440,14 @@ describe('경매장 검색 조건과 주소', () => {
 
       await waitFor(() => expect(getSavedSearches()).toHaveLength(1));
       expect(getSavedSearches()[0]).toMatchObject({ name: '내 활', description: '가격 비교용', keyword: '소울 보우', category: '활' });
-      expect(await screen.findByRole('button', { name: /즐겨찾기 목록 1/ })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기/ }));
+      expect(await screen.findByRole('menuitem', { name: /목록 보기 1/ })).toBeInTheDocument();
     });
 
     it('이름 없이는 저장하지 않는다', async () => {
       renderAt('/auction?keyword=소드');
       await screen.findByDisplayValue('소드');
-      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+      await pick(/지금 검색 등록/);
       await screen.findByRole('dialog');
 
       fireEvent.change(within(dialog()).getByLabelText('이름'), { target: { value: '   ' } });
@@ -454,7 +462,7 @@ describe('경매장 검색 조건과 주소', () => {
       const router = renderAt('/auction?keyword=활');
       await screen.findByDisplayValue('활');
 
-      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 목록/ }));
+      await pick(/목록 보기/);
       await screen.findByRole('dialog');
       expect(within(dialog()).getByText('소드 검색')).toBeInTheDocument();
       fireEvent.click(within(dialog()).getByRole('button', { name: '소드 검색 검색' }));
@@ -467,15 +475,15 @@ describe('경매장 검색 조건과 주소', () => {
     it('상세 검색 조건도 저장되고 목록에 요약이 보인다', async () => {
       const f = encodeURIComponent(serializeFilter({ conditions: [{ id: 1, kind: 'reforge', name: '스매시 대미지', minLevel: 5 }] }));
       renderAt(`/auction?category=검&f=${f}`);
-      await screen.findByRole('button', { name: /즐겨찾기 등록/ });
+      await screen.findByRole('button', { name: /즐겨찾기/ });
 
-      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 등록/ }));
+      await pick(/지금 검색 등록/);
       await screen.findByRole('dialog');
       fireEvent.change(within(dialog()).getByLabelText('이름'), { target: { value: '스매시 5' } });
       fireEvent.click(within(dialog()).getByRole('button', { name: '저장' }));
       await waitFor(() => expect(getSavedSearches()).toHaveLength(1));
 
-      fireEvent.click(await screen.findByRole('button', { name: /즐겨찾기 목록/ }));
+      await pick(/목록 보기/);
       await screen.findByText('스매시 5');
       expect(getSavedSearches()[0].filterKey).toContain('스매시 대미지');
       expect(screen.getAllByText(/세공 스매시 대미지 5레벨 이상/).length).toBeGreaterThan(0);
@@ -484,7 +492,7 @@ describe('경매장 검색 조건과 주소', () => {
     it('이름과 설명을 고칠 수 있고 검색 조건은 그대로다', async () => {
       addSavedSearch({ name: '옛 이름', keyword: '소드', category: '', filterKey: '' });
       renderAt('/auction');
-      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 목록/ }));
+      await pick(/목록 보기/);
       await screen.findByRole('dialog');
 
       fireEvent.click(within(dialog()).getByRole('button', { name: '옛 이름 수정' }));
@@ -499,7 +507,7 @@ describe('경매장 검색 조건과 주소', () => {
     it('지울 수 있다. 확인을 거친다', async () => {
       addSavedSearch({ name: '지울 것', keyword: '소드', category: '', filterKey: '' });
       renderAt('/auction');
-      fireEvent.click(screen.getByRole('button', { name: /즐겨찾기 목록/ }));
+      await pick(/목록 보기/);
       await screen.findByRole('dialog');
 
       fireEvent.click(within(dialog()).getByRole('button', { name: '지울 것 삭제' }));
