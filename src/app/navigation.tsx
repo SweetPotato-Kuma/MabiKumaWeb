@@ -89,14 +89,12 @@ export const NAV_TREE: NavEntry[] = [
     sections: [
       {
         items: [
-          // 계산기 화면이 먼저다. 목록(/calculators)이 앞에 오면 그 아래 경로가 모두 목록 칸으로 잡힌다.
           ...CALCULATORS.map((calculator) => ({
             path: calculatorPath(calculator.id),
             label: calculator.title,
             icon: <CalculateIcon />,
             keywords: '계산 계산기',
           })),
-          { path: '/calculators', label: '전체 계산기', icon: <CalculateIcon />, keywords: '계산기 목록' },
         ],
       },
     ],

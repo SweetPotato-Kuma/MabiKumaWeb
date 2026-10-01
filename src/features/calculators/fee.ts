@@ -114,7 +114,6 @@ const fields: readonly Field[] = [
     quick: [100_000_000, 50_000_000, 10_000_000, 1_000_000],
   },
   { type: 'toggle', key: 'premium', label: '프리미엄 라이프, 콤비네이션 멤버십 (수수료 4%)', default: false },
-  { type: 'toggle', key: 'owned', label: '쿠폰을 이미 가지고 있다 (쿠폰 값 0)', default: false },
   ...COUPON_PERCENTS.map(
     (percent): Field => ({
       type: 'gold',
@@ -138,13 +137,12 @@ function compute(values: Values, { quote }: { quote: (name: string) => number | 
   const other = num(values, 'other');
   const people = Math.max(1, num(values, 'people'));
   const rate = values.premium === true ? PREMIUM_FEE_RATE : FEE_RATE;
-  const owned = values.owned === true;
 
   const options: FeeOption[] = [
     NO_COUPON,
     ...COUPON_PERCENTS.map((percent): FeeOption => {
       const typed = values[couponKey(percent)];
-      const cost = owned ? 0 : typeof typed === 'number' ? typed : quote(couponName(percent));
+      const cost = typeof typed === 'number' ? typed : quote(couponName(percent));
       return { id: couponKey(percent), label: `${percent}% 할인`, discount: percent / 100, cost };
     }),
   ];

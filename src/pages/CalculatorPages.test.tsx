@@ -181,15 +181,6 @@ describe('경매장 수수료 계산기', () => {
     expect(screen.getByText(/6분 전에 시세/)).toBeInTheDocument();
   });
 
-  it('쿠폰을 이미 가지고 있다고 하면 쿠폰 값 0 으로 계산한다', async () => {
-    renderAt('/fee-calculator');
-    await within(result()).findByText('100% 할인');
-
-    fireEvent.click(screen.getByRole('checkbox', { name: /이미 가지고 있다/ }));
-
-    await waitFor(() => expect(within(result()).getByText('100,000,000 G')).toBeInTheDocument());
-  });
-
   it('결과 복사와 공유 링크가 클립보드에 넣는다', async () => {
     const writeText = vi.fn(async (_text: string) => undefined);
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });

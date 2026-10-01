@@ -148,17 +148,11 @@ describe('수수료 계산기 틀', () => {
   });
 
   it('프리미엄이면 수수료가 4% 다', () => {
-    const result = feeCalculator.compute(valuesOf({ premium: true, owned: true }), context);
+    const result = feeCalculator.compute(valuesOf({ premium: true }), context);
 
-    // 수수료 4,000,000 을 100% 쿠폰(보유)으로 모두 덜 낸다.
-    expect(result.headline[1].gold).toBe(100_000_000);
-  });
-
-  it('쿠폰을 이미 가지고 있으면 쿠폰 값을 0 으로 본다', () => {
-    const result = feeCalculator.compute(valuesOf({ owned: true }), context);
-
-    expect(result.headline[0].text).toBe('100% 할인');
-    expect(result.headline[1].gold).toBe(100_000_000);
+    // 수수료 4,000,000 을 100% 쿠폰(400만 골드)으로 모두 덜 내도 쿠폰 값이 같아 남는 것이 같다. 같으면 쿠폰을 안 쓴다.
+    expect(result.headline[0].text).toBe('쿠폰 안 씀');
+    expect(result.headline[1].gold).toBe(96_000_000);
   });
 
   it('기타 비용은 수령액에서 빠진다', () => {
