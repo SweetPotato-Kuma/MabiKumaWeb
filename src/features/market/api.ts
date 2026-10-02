@@ -128,6 +128,21 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * 시세 기록을 받는다. 연결이 끊기거나 워커가 CORS 헤더 없이 터지면 브라우저는 까닭 없이 "Failed to fetch" 만 던진다.
+ * 화면에 그대로 보이면 무슨 일인지 알 수 없어 읽을 수 있는 문장으로 바꾼다.
+ */
+async function fetchMarketJson<T>(url: string | URL, signal?: AbortSignal): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, { headers: { accept: 'application/json' }, signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    throw new Error('시세 기록을 받지 못했습니다. 연결을 확인하고 잠시 뒤 다시 열어 보세요.');
+  }
+  return readJson<T>(response);
+}
+
 export async function fetchMarketItem(
   name: string,
   signal?: AbortSignal,
@@ -156,11 +171,7 @@ export async function fetchMarketPopular(
   window: PopularWindow,
   signal?: AbortSignal,
 ): Promise<PopularResponse> {
-  const response = await fetch(`${getProxyUrl()}/market/popular?window=${window}`, {
-    headers: { accept: 'application/json' },
-    signal,
-  });
-  return readJson<PopularResponse>(response);
+  return fetchMarketJson<PopularResponse>(`${getProxyUrl()}/market/popular?window=${window}`, signal);
 }
 
 /** 유물 옵션 하나의 레벨별 거래가 추이. 창을 열 때만 묻는다(enabled). */
@@ -170,7 +181,7 @@ export function useRelicSeriesQuery(option: string, enabled = true) {
     queryFn: async ({ signal }) => {
       const url = new URL(`${getProxyUrl()}/market/relic-series`);
       url.searchParams.set('option', option);
-      return readJson<RelicSeriesResponse>(await fetch(url, { headers: { accept: 'application/json' }, signal }));
+      return fetchMarketJson<RelicSeriesResponse>(url, signal);
     },
     enabled: enabled && canLookupMarket() && option !== '',
     staleTime: FIVE_MINUTES,
@@ -182,10 +193,7 @@ export function useRelicSeriesQuery(option: string, enabled = true) {
 export function useRelicRecentQuery(enabled = true) {
   return useQuery({
     queryKey: ['market', 'relicRecent'],
-    queryFn: async ({ signal }) =>
-      readJson<RelicRecentResponse>(
-        await fetch(`${getProxyUrl()}/market/relic-recent`, { headers: { accept: 'application/json' }, signal }),
-      ),
+    queryFn: ({ signal }) => fetchMarketJson<RelicRecentResponse>(`${getProxyUrl()}/market/relic-recent`, signal),
     enabled: enabled && canLookupMarket(),
     staleTime: FIVE_MINUTES,
     retry: false,

@@ -540,6 +540,47 @@ describe('무리아스의 유물 레벨별 시세', () => {
     expect(body.recent.map((row) => row[1])).toEqual([1_000_000, 9_000_000, 3_000_000, 5_000_000, 800_000]);
   });
 
+  it('D1 의 LIKE 한도(패턴 50바이트)를 넘는 긴 한글 옵션 이름도 읽는다', async () => {
+    const LONG = '인터루드 슬래시의 4막: 질투의 화신 대미지 배율';
+    const longText = `${LONG} 490% 증가 (최대 700%)`;
+    pages = [[relic(30, 60, 5_000_000, longText)]];
+    stubHistory();
+    await collectTrades(env, NOW);
+    // 로컬 SQLite 에는 없는 D1 의 한도를 흉내 낸다. LIKE 의 패턴이 50바이트를 넘으면 터진다.
+    const real = env.MARKET.prepare.bind(env.MARKET);
+    env.MARKET.prepare = (sql) => {
+      const statement = real(sql);
+      return {
+        ...statement,
+        bind: (...args) => {
+          if (/ LIKE /i.test(sql) && args.some((arg) => typeof arg === 'string' && Buffer.byteLength(arg) > 50))
+            throw new Error('LIKE or GLOB pattern too complex');
+          return statement.bind(...args);
+        },
+      };
+    };
+
+    const response = await call(`/market/relic-series?option=${encodeURIComponent(LONG)}`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    expect(body.recent.map((row) => row[1])).toEqual([5_000_000]);
+    expect(body.daily.map((row) => row[0])).toEqual([longText]);
+  });
+
+  it('읽다가 터져도 CORS 가 붙은 오류 응답을 준다. 브라우저에 까닭 없는 Failed to fetch 로 보이지 않게 한다', async () => {
+    env.MARKET.prepare = () => {
+      throw new Error('boom');
+    };
+
+    const response = await call(`/market/relic-series?option=${encodeURIComponent('아무 옵션')}`);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
+    expect((await response.json()).error.name).toBe('MARKET_QUERY_FAILED');
+    expect((await call('/market/relic-recent')).status).toBe(500);
+  });
+
   it('옵션 이름의 특수문자는 글자 그대로 찾는다', async () => {
     const body = await (await call(`/market/relic-series?option=${encodeURIComponent('오버 %')}`)).json();
 

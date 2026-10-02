@@ -151,12 +151,16 @@ const RELIC_PICK = `SELECT t.id, t.ts, t.price, t.count, json_extract(o.value, '
  * 옵션 하나(이름이 같은 문장 모두)의 문장별, 날짜별 거래가. 문장은 "옵션 이름 수치 증가 (최대 N)" 모양이라
  * 이름 뒤에 공백이 오는 것만 고른다. 이름이 다른 옵션의 앞부분과 겹치는 것은 화면이 문장을 읽어 걸러낸다.
  * 중위는 거래 건수 기준이다(STATS_SQL 과 같다).
+ *
+ * 앞부분 맞추기는 LIKE 가 아니라 substr 로 한다. D1 은 LIKE 패턴을 50바이트로 막는데 한글은 글자당 3바이트라
+ * 17글자가 넘는 옵션 이름("인터루드 슬래시의 4막: 질투의 화신 대미지 배율")은 "LIKE or GLOB pattern too complex"
+ * 로 터졌다. 로컬 SQLite 에는 이 한도가 없어 시험으로는 잡히지 않는다.
  */
 const RELIC_SERIES_SQL = `WITH picked AS (
   SELECT text, (ts + ${KST_OFFSET_SECONDS}) / ${DAY_SECONDS} AS day, count, price,
     ROW_NUMBER() OVER (PARTITION BY text, (ts + ${KST_OFFSET_SECONDS}) / ${DAY_SECONDS} ORDER BY price) AS rn,
     COUNT(*) OVER (PARTITION BY text, (ts + ${KST_OFFSET_SECONDS}) / ${DAY_SECONDS}) AS c
-  FROM (${RELIC_PICK} AND ts >= ?1) WHERE text LIKE ?2 ESCAPE '\\'
+  FROM (${RELIC_PICK} AND ts >= ?1) WHERE substr(text, 1, ?3) = ?2
 )
 SELECT text, day, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total, MIN(price) AS lo, MAX(price) AS hi,
   CAST(ROUND(AVG(CASE WHEN rn IN ((c + 1) / 2, (c + 2) / 2) THEN price END)) AS INTEGER) AS mid
@@ -164,7 +168,7 @@ FROM picked
 GROUP BY text, day
 ORDER BY text, day`;
 
-const RELIC_RECENT_TRADES_SQL = `SELECT text, price, count, ts FROM (${RELIC_PICK}) WHERE text LIKE ?1 ESCAPE '\\'
+const RELIC_RECENT_TRADES_SQL = `SELECT text, price, count, ts FROM (${RELIC_PICK}) WHERE substr(text, 1, ?2) = ?1
 ORDER BY ts DESC, id DESC LIMIT ${RELIC_RECENT_TRADES}`;
 
 /** 모든 유물 문장의 최근 1일 통계. 줄마다 그 문장(그 레벨) 값을 붙이는 데 쓴다. */
@@ -179,9 +183,6 @@ SELECT text, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total, MIN(
   CAST(ROUND(AVG(CASE WHEN rn IN ((c + 1) / 2, (c + 2) / 2) THEN price END)) AS INTEGER) AS mid
 FROM picked
 GROUP BY text`;
-
-/** LIKE 의 특수문자(%, _, \\)를 글자 그대로 찾게 한다. */
-const likeEscape = (text) => text.replace(/[\\%_]/g, (char) => `\\${char}`);
 
 /** 한국 시각 기준 날짜 번호. 1970-01-01 이 0 이다. */
 export function kstDay(ts) {
@@ -862,11 +863,9 @@ export async function marketPopular(request, url, env, cors, now = Date.now()) {
 
   const { cacheSeconds } = POPULAR_WINDOWS[window];
   const cacheKey = `https://market.cache${MARKET_POPULAR_PATH}?window=${window}`;
-  const { body, hit } = await withEdgeCache(
-    cacheKey,
-    () => popularTrades(env.MARKET, window, now),
-    cacheSeconds,
-  );
+  const cached = await cachedQuery(cacheKey, () => popularTrades(env.MARKET, window, now), cacheSeconds, cors);
+  if (cached instanceof Response) return cached;
+  const { body, hit } = cached;
   return new Response(body, {
     headers: {
       ...cors,
@@ -884,10 +883,12 @@ export async function marketPopular(request, url, env, cors, now = Date.now()) {
 export async function relicSeries(db, option, days = RELIC_SERIES_DAYS, now = Date.now()) {
   const today = kstDay(Math.floor(now / 1000));
   const since = dayStart(today - days + 1);
-  const pattern = `${likeEscape(option)} %`;
+  // 이름 바로 뒤에 공백이 온 문장만. substr 은 글자 수로 센다(한글 한 글자가 한 칸).
+  const prefix = `${option} `;
+  const length = [...prefix].length;
   const [daily, recent] = await Promise.all([
-    db.prepare(RELIC_SERIES_SQL).bind(since, pattern).all(),
-    db.prepare(RELIC_RECENT_TRADES_SQL).bind(pattern).all(),
+    db.prepare(RELIC_SERIES_SQL).bind(since, prefix, length).all(),
+    db.prepare(RELIC_RECENT_TRADES_SQL).bind(prefix, length).all(),
   ]);
   return {
     option,
@@ -935,6 +936,19 @@ export async function relicRecentStats(db, now = Date.now()) {
   return items;
 }
 
+/**
+ * 엣지 캐시를 거쳐 읽는다. 읽다가 터지면 오류 응답(CORS 헤더 포함)으로 바꿔 돌려준다. 잡지 않으면 워커가 CORS 헤더 없는
+ * 500 을 내서, 브라우저에는 까닭 없는 "Failed to fetch" 로만 보인다.
+ */
+async function cachedQuery(cacheKey, compute, seconds, cors) {
+  try {
+    return await withEdgeCache(cacheKey, compute, seconds);
+  } catch (error) {
+    console.error(JSON.stringify({ market: 'query failed', key: cacheKey, error: String(error) }));
+    return marketError('MARKET_QUERY_FAILED', '시세를 읽지 못했습니다. 잠시 뒤 다시 열어 보세요.', 500, cors);
+  }
+}
+
 function cachedJson(body, hit, cors, seconds = CACHE_SECONDS) {
   return new Response(body, {
     headers: {
@@ -965,7 +979,7 @@ export async function marketRelicSeries(request, url, env, cors, now = Date.now(
   }
 
   const cacheKey = `https://market.cache${MARKET_RELIC_SERIES_PATH}?option=${encodeURIComponent(option)}&days=${days}`;
-  const { body, hit } = await withEdgeCache(
+  const cached = await cachedQuery(
     cacheKey,
     async () => {
       const [series, info] = await Promise.all([
@@ -975,8 +989,10 @@ export async function marketRelicSeries(request, url, env, cors, now = Date.now(
       return { ...series, ...info };
     },
     900,
+    cors,
   );
-  return cachedJson(body, hit, cors, 900);
+  if (cached instanceof Response) return cached;
+  return cachedJson(cached.body, cached.hit, cors, 900);
 }
 
 /** GET /market/relic-recent → 유물 문장(레벨)마다 최근 1일 통계. 경매장 목록과 상세가 유물의 레벨별 시세를 붙일 때 쓴다. */
@@ -986,11 +1002,17 @@ export async function marketRelicRecent(request, env, cors, now = Date.now()) {
   if (await rateLimited(request, env)) {
     return marketError('MARKET_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
   }
-  const { body, hit } = await withEdgeCache(`https://market.cache${MARKET_RELIC_RECENT_PATH}`, async () => {
-    const [items, info] = await Promise.all([relicRecentStats(env.MARKET, now), collectionInfo(env.MARKET)]);
-    return { items, ...info };
-  });
-  return cachedJson(body, hit, cors);
+  const cached = await cachedQuery(
+    `https://market.cache${MARKET_RELIC_RECENT_PATH}`,
+    async () => {
+      const [items, info] = await Promise.all([relicRecentStats(env.MARKET, now), collectionInfo(env.MARKET)]);
+      return { items, ...info };
+    },
+    CACHE_SECONDS,
+    cors,
+  );
+  if (cached instanceof Response) return cached;
+  return cachedJson(cached.body, cached.hit, cors);
 }
 
 /** POST /market/collect → 지금 한 번 받는다. 운영자 전용. 배포 직후 첫 수집을 확인할 때 쓴다. */
