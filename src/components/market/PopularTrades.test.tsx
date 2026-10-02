@@ -186,6 +186,39 @@ describe('인기 거래 아이템 펼침', () => {
     expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 
+  it('띠의 어디를 눌러도 펼쳐진다. 오른쪽 끝 화살표까지 갈 필요가 없다', async () => {
+    stubPopular(body());
+    renderChart();
+
+    fireEvent.click(await screen.findByText('인기 거래'));
+
+    expect(await screen.findByRole('link', { name: '낙지' })).toBeInTheDocument();
+  });
+
+  it('펼친 머리줄을 눌러도 접힌다', async () => {
+    stubPopular(body());
+    renderChart();
+    await screen.findByText('낙지');
+    expand();
+
+    fireEvent.click(await screen.findByText('인기 거래 아이템'));
+
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: '인기 거래 아이템 펼치기' })).toBeInTheDocument();
+  });
+
+  it('키보드로도 Enter 와 Space 로 펼치고 접는다', async () => {
+    stubPopular(body());
+    renderChart();
+    await screen.findByText('낙지');
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '인기 거래 아이템 펼치기' }), { key: 'Enter' });
+    expect(await screen.findByRole('link', { name: '낙지' })).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '인기 거래 아이템 접기' }), { key: ' ' });
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
+  });
+
   it('펼침 상태는 기억하지 않는다', async () => {
     stubPopular(body());
     const first = renderChart();

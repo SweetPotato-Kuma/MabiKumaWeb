@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Alert, Button, Flex, Grid, Segmented, Skeleton, Tag, Typography, theme } from 'antd';
 import { ArrowDownIcon, SearchIcon, TrendingUpIcon } from '@/components/icons';
 import { EmptyState } from '@/components/EmptyState';
@@ -229,21 +229,37 @@ export function PopularTrades({
     background: token.colorBgContainer,
   };
 
-  const toggle = (
-    <Button
-      type="text"
-      size="small"
-      aria-expanded={open}
-      aria-label={open ? '인기 거래 아이템 접기' : '인기 거래 아이템 펼치기'}
-      icon={<ArrowDownIcon style={{ transform: open ? 'rotate(180deg)' : undefined }} />}
-      onClick={() => setOpen((prev) => !prev)}
-    />
+  /**
+   * 띠와 펼친 머리줄 어디를 눌러도 펼치고 접는다. 화살표는 상태를 알리는 그림일 뿐이고 단추가 아니다.
+   * 접힌 띠에는 누를 아이템이 없어서, 오른쪽 끝 작은 화살표까지 마우스를 옮길 이유가 없다.
+   * 키보드로도 Enter 와 Space 로 연다.
+   */
+  const toggleProps = {
+    role: 'button',
+    tabIndex: 0,
+    'aria-expanded': open,
+    'aria-label': open ? '인기 거래 아이템 접기' : '인기 거래 아이템 펼치기',
+    onClick: () => setOpen((prev) => !prev),
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      setOpen((prev) => !prev);
+    },
+  } as const;
+  const arrow = (
+    <ArrowDownIcon style={{ flex: '0 0 auto', transform: open ? 'rotate(180deg)' : undefined, color: token.colorTextSecondary }} />
   );
 
   if (!open) {
     return (
       <div
-        style={{ ...frame, padding: '6px 8px 6px 14px' }}
+        {...toggleProps}
+        style={{
+          ...frame,
+          padding: '6px 14px',
+          cursor: 'pointer',
+          background: hovering ? token.colorFillQuaternary : token.colorBgContainer,
+        }}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
         onFocus={() => setHovering(true)}
@@ -261,7 +277,7 @@ export function PopularTrades({
           ) : (
             <Ticker rows={rows} basis={basis} paused={hovering} tickMs={tickMs} />
           )}
-          {toggle}
+          {arrow}
         </Flex>
       </div>
     );
@@ -270,14 +286,14 @@ export function PopularTrades({
   return (
     <div style={{ ...frame, padding: '10px 12px' }}>
       <Flex vertical gap={12}>
-        <Flex justify="space-between" align="center" gap={8}>
+        <Flex {...toggleProps} justify="space-between" align="center" gap={8} style={{ cursor: 'pointer' }}>
           <Flex gap={8} align="center">
             <TrendingUpIcon />
             <Text strong style={{ fontSize: 16 }}>
               인기 거래 아이템
             </Text>
           </Flex>
-          {toggle}
+          {arrow}
         </Flex>
 
         <Flex gap={12} wrap align="center">
