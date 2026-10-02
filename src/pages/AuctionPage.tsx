@@ -15,11 +15,9 @@ import {
   Button,
   Card,
   Checkbox,
-  Drawer,
   Flex,
   Grid,
   Input,
-  Segmented,
   Skeleton,
   Spin,
   Table,
@@ -31,7 +29,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
-import { DetailConditionBadges, DetailOptionsPanel } from '@/components/AuctionOptionFilter';
+import { DetailConditionBadges, DetailOptionsModal } from '@/components/AuctionOptionFilter';
 import { hasDetailOptions } from '@/features/auction/optionKinds';
 import { AuctionPriceCell } from '@/components/AuctionPriceCell';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
@@ -100,7 +98,7 @@ import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useControlledPagination } from '@/lib/useListPagination';
 import { useUserSettings } from '@/lib/userSettings';
-import { AddIcon, HelpIcon, RefreshIcon, SearchIcon, WarningIcon } from '@/components/icons';
+import { HelpIcon, RefreshIcon, SearchIcon, TuneIcon, WarningIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -954,29 +952,25 @@ export function AuctionPage() {
   const categoryPanel = <CategoryPicker value={form.category} onChange={selectCategory} />;
 
   /**
-   * 상세 검색은 인게임 경매장처럼 결과 옆에 둔다. 넓은 화면은 왼쪽 카테고리 칸이 카테고리와 상세 옵션 탭을 갖고(결과 칸 폭은
-   * 그대로), 좁은 화면은 단추가 아래에서 올라오는 시트를 연다. 고치는 대로 불러온 결과가 바로 걸러진다.
+   * 상세 검색은 창에서 한다. 단추는 찾기 단추 옆에 두어 늘 눈에 띄고, 건 조건이 있으면 개수를 달고 강조한다.
+   * 창은 열 때마다 건 조건에서 다시 시작하고, 검색을 누르면 그 조건으로 찾는다.
    */
-  const [sideTab, setSideTab] = useState<'category' | 'options'>('category');
-  const [optionsSheet, setOptionsSheet] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsAvailable = hasDetailOptions(form.category, optionCatalog, optionFilter);
   const activeOptionCount = activeConditionCount(optionFilter);
-  const optionsPanel = (
-    <DetailOptionsPanel
-      value={optionFilter}
-      onChange={setOptionFilter}
-      onSearch={(filter) => {
-        setOptionFilter(filter);
-        setOptionsSheet(false);
-        commitSearch(form, false, { filter });
-      }}
-      catalog={optionCatalog}
-      names={optionNames}
-      category={form.category}
-    />
-  );
-  const openOptions = () => (isWide ? setSideTab('options') : setOptionsSheet(true));
   const optionsLabel = activeOptionCount > 0 ? `상세 옵션 ${activeOptionCount}` : '상세 옵션';
+  const optionsButton = (
+    <Button
+      icon={<TuneIcon />}
+      type={activeOptionCount > 0 ? 'primary' : 'default'}
+      ghost={activeOptionCount > 0}
+      disabled={!optionsAvailable}
+      onClick={() => setOptionsOpen(true)}
+    >
+      {optionsLabel}
+    </Button>
+  );
+  const loadedForOptions = tab === 'items' ? items : history;
 
   /** 주소의 정렬을 열에 건다. 표는 스스로 정렬 상태를 두지 않고 주소가 가리키는 대로 그린다. */
   const sortOrderOf = useCallback(
@@ -1474,24 +1468,8 @@ export function AuctionPage() {
       <BrowseLayout
         title="경매장 조회"
         notice={<ApiKeyNotice />}
-        sideTitle={
-          isWide ? (
-            <Segmented
-              block
-              size="small"
-              aria-label="왼쪽 칸 보기"
-              value={sideTab}
-              onChange={setSideTab}
-              options={[
-                { value: 'category', label: '카테고리' },
-                { value: 'options', label: optionsLabel, disabled: !optionsAvailable && sideTab !== 'options' },
-              ]}
-            />
-          ) : (
-            '카테고리'
-          )
-        }
-        side={isWide && sideTab === 'options' ? optionsPanel : categoryPanel}
+        sideTitle="카테고리"
+        side={categoryPanel}
       >
         <Flex vertical gap={16}>
           <PopularTrades
@@ -1506,7 +1484,7 @@ export function AuctionPage() {
             <Flex vertical gap={10}>
               {/*
                 검색 카드는 두 줄이다(인게임 경매장과 같다): 입력과 단추, 분류 경로와 정확히 일치와 상태.
-                상세 검색은 결과 옆(왼쪽 칸의 탭, 좁은 화면은 시트)에서 고치고, 건 조건이 있을 때만 아래에 배지 한 줄이 생긴다.
+                상세 옵션 단추는 첫 줄 찾기 단추 옆에 늘 보이고, 건 조건이 있을 때만 아래에 배지 한 줄이 생긴다.
                 넓은 화면에서는 두 줄을 같은 칸 나누기(grid)에 올려 정확히 일치가 늘 찾기 단추 바로 아래에 선다.
                 분류 경로나 상태 문구가 길어져도 이 칸은 움직이지 않는다. 좁은 화면에서는 줄바꿈에 맡기고,
                 정확히 일치를 분류 경로 앞에 두어 거기서도 제자리를 지킨다.
@@ -1515,7 +1493,7 @@ export function AuctionPage() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) auto auto auto',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto auto auto auto',
                     columnGap: 8,
                     rowGap: 10,
                     alignItems: 'center',
@@ -1523,18 +1501,10 @@ export function AuctionPage() {
                 >
                   {keywordInput}
                   {searchButton}
+                  {optionsButton}
                   {savedControls}
                   {resetButton}
                   <Flex gap={12} wrap align="center" style={{ minWidth: 0 }}>
-                    <Button
-                      size="small"
-                      icon={<AddIcon />}
-                      type={sideTab === 'options' ? 'primary' : 'default'}
-                      disabled={!optionsAvailable}
-                      onClick={() => setSideTab('options')}
-                    >
-                      {optionsLabel}
-                    </Button>
                     {breadcrumb}
                     {statusText}
                   </Flex>
@@ -1545,21 +1515,19 @@ export function AuctionPage() {
                   <Flex gap={8} wrap align="center">
                     {keywordInput}
                     {searchButton}
+                    {optionsButton}
                     {savedControls}
                     {resetButton}
                   </Flex>
                   <Flex gap={12} wrap align="center">
                     {exactCheckbox}
-                    <Button size="small" icon={<AddIcon />} disabled={!optionsAvailable} onClick={() => setOptionsSheet(true)}>
-                      {optionsLabel}
-                    </Button>
                     {breadcrumb}
                     {statusText}
                   </Flex>
                 </>
               )}
 
-              <DetailConditionBadges value={optionFilter} onChange={setOptionFilter} onOpen={openOptions} />
+              <DetailConditionBadges value={optionFilter} onChange={setOptionFilter} onOpen={() => setOptionsOpen(true)} />
             </Flex>
           </Card>
 
@@ -1605,17 +1573,22 @@ export function AuctionPage() {
         </Flex>
       </BrowseLayout>
 
-      {/* 좁은 화면의 상세 검색. 아래에서 올라오는 시트이고, 안의 패널은 넓은 화면의 왼쪽 탭과 같다. */}
-      <Drawer
-        open={optionsSheet && !isWide}
-        onClose={() => setOptionsSheet(false)}
-        placement="bottom"
-        height="85dvh"
-        title="상세 옵션"
-        destroyOnHidden
-      >
-        {optionsPanel}
-      </Drawer>
+      {optionsOpen ? (
+        <DetailOptionsModal
+          initial={optionFilter}
+          catalog={optionCatalog}
+          names={optionNames}
+          category={form.category}
+          total={loadedForOptions.length}
+          countMatches={(filter) => loadedForOptions.filter((item) => matchesOptionFilter(item, filter)).length}
+          onCancel={() => setOptionsOpen(false)}
+          onSearch={(filter) => {
+            setOptionsOpen(false);
+            setOptionFilter(filter);
+            commitSearch(form, false, { filter });
+          }}
+        />
+      ) : null}
       <AuctionItemDetailModal detail={detail} onClose={() => setDetail(null)} />
     </>
   );

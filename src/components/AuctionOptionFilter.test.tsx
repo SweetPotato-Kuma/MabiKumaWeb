@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
-import { DetailConditionBadges, DetailOptionsPanel } from '@/components/AuctionOptionFilter';
+import { DetailConditionBadges, DetailOptionsModal } from '@/components/AuctionOptionFilter';
 import { hasDetailOptions } from '@/features/auction/optionKinds';
 import {
   buildOptionCatalog,
@@ -41,28 +41,36 @@ const petCatalog = buildOptionCatalog([
 const catalogFor = (category: string) =>
   category === '유물' ? relicCatalog : category === '분양 메달' ? petCatalog : [];
 
-/** 패널과 건 조건 배지를 함께 둔 틀. 경매장 화면에서는 패널이 왼쪽 탭(좁은 화면은 시트)에, 배지가 검색 카드 아래에 선다. */
+/** 창과 건 조건 배지를 함께 둔 틀. 창에서 검색을 눌러야 건 조건이 되어 배지로 남는다. */
 function Harness({
   category,
   onSearch = () => {},
+  matches = () => 0,
+  total = 0,
+  onCancel = () => {},
 }: {
   category: string;
   onSearch?: (filter: OptionFilter) => void;
+  matches?: (filter: OptionFilter) => number;
+  total?: number;
+  onCancel?: () => void;
 }) {
   const [filter, setFilter] = useState<OptionFilter>(EMPTY_OPTION_FILTER);
   return (
     <AppProviders>
       <DetailConditionBadges value={filter} onChange={setFilter} onOpen={() => {}} />
-      <DetailOptionsPanel
-        value={filter}
-        onChange={setFilter}
+      <DetailOptionsModal
+        initial={EMPTY_OPTION_FILTER}
+        catalog={catalogFor(category)}
+        names={null}
+        category={category}
+        countMatches={matches}
+        total={total}
+        onCancel={onCancel}
         onSearch={(next: OptionFilter) => {
           setFilter(next);
           onSearch(next);
         }}
-        catalog={catalogFor(category)}
-        names={null}
-        category={category}
       />
     </AppProviders>
   );
@@ -78,7 +86,7 @@ const chipNames = () =>
     .map((button: HTMLElement) => button.textContent ?? '')
     .filter((text: string) => OPTION_NAMES.includes(text));
 
-describe('상세 옵션 패널', () => {
+describe('상세 옵션 창', () => {
   it('장비 카테고리에서는 세공, 인챈트, 특별 개조, 에르그, 색상 칸을 더하게 한다', () => {
     render(<Harness category="검" />);
 
@@ -107,14 +115,48 @@ describe('상세 옵션 패널', () => {
     expect(chipNames()).toEqual(['세공', '인챈트', '특별 개조', '에르그']);
   });
 
-  it('값을 넣는 대로 바로 배지에 요약된다. 검색을 누르지 않아도 걸린다', () => {
+  it('검색을 누르면 건 조건이 배지로 요약된다. 누르기 전에는 걸리지 않는다', () => {
     render(<Harness category="검" />);
     addOption('색상');
 
     fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('R 최대'), { target: { value: '200' } });
+    expect(screen.queryByText(/색상 R 100~200/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /^검색$/ }));
 
     expect(screen.getByText(/색상 R 100~200/)).toBeInTheDocument();
+  });
+
+  it('취소하면 고친 것이 버려진다', () => {
+    const onCancel = vi.fn();
+    const onSearch = vi.fn();
+    render(<Harness category="검" onCancel={onCancel} onSearch={onSearch} />);
+    addOption('색상');
+    fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
+
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onSearch).not.toHaveBeenCalled();
+    expect(screen.queryByText(/색상 R 100/)).toBeNull();
+  });
+
+  it('불러온 매물이 있으면 고른 조건에 몇 건이 맞는지 아래에 보인다', () => {
+    const matches = vi.fn(() => 3);
+    render(<Harness category="검" total={12} matches={matches} />);
+
+    expect(screen.getByText('불러온 12건')).toBeInTheDocument();
+    addOption('색상');
+    fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
+
+    expect(screen.getByText('불러온 12건 중 3건 일치')).toBeInTheDocument();
+  });
+
+  it('불러온 매물이 없으면 건수를 보이지 않는다', () => {
+    render(<Harness category="검" total={0} />);
+
+    expect(screen.queryByText(/불러온/)).toBeNull();
   });
 
   it('값을 넣지 않은 옵션 칸은 배지가 없다', () => {
@@ -155,6 +197,7 @@ describe('상세 옵션 패널', () => {
     render(<Harness category="검" />);
     addOption('색상');
     fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: /^검색$/ }));
     expect(screen.getByText(/색상 R 100/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '조건 모두 지우기' }));
@@ -162,7 +205,7 @@ describe('상세 옵션 패널', () => {
     expect(screen.queryByText(/색상 R 100/)).toBeNull();
   });
 
-  it('패널의 모두 지우기는 칸까지 비운다', () => {
+  it('창의 모두 지우기는 칸까지 비운다', () => {
     render(<Harness category="검" />);
     addOption('색상');
     addOption('에르그');
@@ -208,6 +251,7 @@ describe('무리아스 유물 상세 검색', () => {
 
     expect(await screen.findByText('7레벨 (490%)')).toBeInTheDocument();
     fireEvent.click(screen.getByText('7레벨 (490%)'));
+    fireEvent.click(screen.getByRole('button', { name: /^검색$/ }));
 
     expect(
       await screen.findByText(/무리아스 유물 오버 드라이브 폭발 공격 대미지 7레벨 이상/),
@@ -236,6 +280,7 @@ describe('색상 상세 검색', () => {
 
     // 오차는 처음에 10% 라 120 ± 25.5 다.
     expect(await screen.findByText('94.5~145.5')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^검색$/ }));
     expect(screen.getByText(/색상 G 120 ±10%/)).toBeInTheDocument();
   });
 });

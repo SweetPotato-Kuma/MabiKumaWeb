@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AutoComplete, Button, Card, Flex, Select, Tag, Typography } from 'antd';
+import { AutoComplete, Button, Card, Flex, Modal, Select, Tag, Typography } from 'antd';
 import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { AddIcon, DeleteIcon, SearchIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
@@ -131,8 +131,8 @@ const MAX_ROWS: Partial<Record<ConditionKind, number>> = { reforge: MAX_REFORGE_
 const ROW_ADD_LABEL: Partial<Record<ConditionKind, string>> = { reforge: '세공 조건 추가', pet: '펫 조건 추가' };
 
 /**
- * 건 조건을 배지로 요약한다. 상세 검색 패널이 닫혀 있어도(카테고리 탭, 좁은 화면) 어떤 조건이 걸려 있는지 보이고, 하나씩
- * 빼거나 모두 지울 수 있다. 걸린 조건이 없으면 아무것도 그리지 않는다.
+ * 건 조건을 배지로 요약한다. 상세 검색 창이 닫혀 있어도 어떤 조건이 걸려 있는지 보이고, 하나씩 빼거나 모두 지울 수 있다.
+ * 걸린 조건이 없으면 아무것도 그리지 않는다.
  */
 export function DetailConditionBadges({
   value,
@@ -141,7 +141,7 @@ export function DetailConditionBadges({
 }: {
   value: OptionFilter;
   onChange: (next: OptionFilter) => void;
-  /** 배지를 눌렀을 때. 상세 검색 패널을 연다. */
+  /** 배지를 눌렀을 때. 상세 검색 창을 연다. */
   onOpen: () => void;
 }) {
   const active = value.conditions.filter(isConditionActive);
@@ -171,19 +171,14 @@ export function DetailConditionBadges({
 }
 
 /**
- * 경매장 상세 검색 패널. 옵션마다 칸이 세로로 쌓이고, 칸마다 값을 넣는다. 아래 단추로 옵션 칸을 더한다.
+ * 상세 검색 창의 본문. 옵션마다 칸이 세로로 쌓이고, 칸마다 값을 넣는다. 아래 단추로 옵션 칸을 더한다.
  *
- * 인게임 경매장처럼 결과 옆(왼쪽 카테고리 칸의 탭, 좁은 화면은 아래에서 올라오는 시트)에 두고, 고치는 대로 바로 적용한다.
- * 넥슨 경매장 API 는 옵션으로 찾지 못해 불러온 매물을 이 조건으로 거르므로, 불러온 결과는 값을 넣는 대로 바뀐다. 아직 불러오지
- * 않은 카테고리를 훑을 때는 아래 검색 단추로 조건을 주소에 확정해 찾는다. 모달로 열었을 때는 열려 있는 동안 결과가 가려져
- * 조건이 결과를 어떻게 바꾸는지 볼 수 없었다.
- *
- * 자동완성은 불러온 매물의 이름과 값을 먼저, 게임 데이터의 이름을 그 뒤에 보여 준다.
+ * 넥슨 경매장 API 는 옵션으로 찾지 못해 불러온 매물을 이 조건으로 거른다. 자동완성은 불러온 매물의 이름과 값을 먼저,
+ * 게임 데이터의 이름을 그 뒤에 보여 준다.
  */
 export function DetailOptionsPanel({
   value,
   onChange,
-  onSearch,
   catalog,
   names,
   category,
@@ -191,8 +186,6 @@ export function DetailOptionsPanel({
   value: OptionFilter;
   /** 고치는 대로 부른다. 값이 빈 조건 칸도 들어 있다(고르기만 하고 아직 값을 넣지 않은 것). */
   onChange: (next: OptionFilter) => void;
-  /** 검색 단추. 값을 넣은 조건만 넘겨 그 조건으로 찾는다. */
-  onSearch: (next: OptionFilter) => void;
   catalog: CatalogEntry[];
   names: OptionNames | null | undefined;
   /** 고른 카테고리. 어떤 옵션을 둘지와, 한손 장비, 액세서리의 세공 최대 레벨(레벨 자동완성)에 쓴다. */
@@ -351,19 +344,75 @@ export function DetailOptionsPanel({
         </Flex>
       )}
 
-      <Flex gap={8} justify="space-between" wrap>
-        <Button disabled={draft.length === 0} onClick={() => setDraft([])}>
-          모두 지우기
-        </Button>
-        <Button
-          type="primary"
-          icon={<SearchIcon />}
-          onClick={() => onSearch({ conditions: draft.filter(isConditionActive) })}
-        >
-          검색
-        </Button>
-      </Flex>
     </Flex>
+  );
+}
+
+/**
+ * 상세 검색 창. 고친 것은 검색을 누를 때만 건 조건이 되고, 취소하면 버려진다. 창이 결과를 가리므로, 지금 고른 조건이
+ * 불러온 매물 중 몇 건에 맞는지를 아래에 바로 보여 준다. 열 때마다 새로 그려 초안을 건 조건에서 다시 시작한다.
+ */
+export function DetailOptionsModal({
+  initial,
+  catalog,
+  names,
+  category,
+  countMatches,
+  total,
+  onCancel,
+  onSearch,
+}: {
+  initial: OptionFilter;
+  catalog: CatalogEntry[];
+  names: OptionNames | null | undefined;
+  category: string;
+  /** 초안 조건에 맞는 불러온 매물 수. */
+  countMatches: (filter: OptionFilter) => number;
+  /** 불러온 매물 수. 0 이면 맞는 수를 보여 주지 않는다. */
+  total: number;
+  onCancel: () => void;
+  /** 값을 넣은 조건만 넘긴다. */
+  onSearch: (next: OptionFilter) => void;
+}) {
+  const [draft, setDraft] = useState<OptionFilter>(initial);
+  const activeCount = draft.conditions.filter(isConditionActive).length;
+
+  return (
+    <Modal
+      open
+      title="상세 옵션 검색"
+      width="min(640px, calc(100vw - 32px))"
+      onCancel={onCancel}
+      destroyOnHidden
+      footer={
+        <Flex justify="space-between" align="center" gap={8} wrap>
+          <Flex gap={12} align="center" wrap>
+            <Button disabled={draft.conditions.length === 0} onClick={() => setDraft({ conditions: [] })}>
+              모두 지우기
+            </Button>
+            {total > 0 ? (
+              <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
+                {activeCount > 0
+                  ? `불러온 ${formatNumber(total)}건 중 ${formatNumber(countMatches(draft))}건 일치`
+                  : `불러온 ${formatNumber(total)}건`}
+              </Text>
+            ) : null}
+          </Flex>
+          <Flex gap={8}>
+            <Button onClick={onCancel}>취소</Button>
+            <Button
+              type="primary"
+              icon={<SearchIcon />}
+              onClick={() => onSearch({ conditions: draft.conditions.filter(isConditionActive) })}
+            >
+              검색
+            </Button>
+          </Flex>
+        </Flex>
+      }
+    >
+      <DetailOptionsPanel value={draft} onChange={setDraft} catalog={catalog} names={names} category={category} />
+    </Modal>
   );
 }
 
