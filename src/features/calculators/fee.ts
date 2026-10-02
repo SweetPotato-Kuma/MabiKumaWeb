@@ -113,7 +113,8 @@ const fields: readonly Field[] = [
     default: 100_000_000,
     quick: [100_000_000, 50_000_000, 10_000_000, 1_000_000],
   },
-  { type: 'toggle', key: 'premium', label: '프리미엄 라이프, 콤비네이션 멤버십 (수수료 4%)', default: false },
+  // 멤버십 여부와 직접 넣은 쿠폰 값은 내 설정이다. 메뉴로 다시 들어와도 매번 새로 넣지 않게 기억한다.
+  { type: 'toggle', key: 'premium', label: '프리미엄 라이프, 콤비네이션 멤버십 (수수료 4%)', default: false, remember: true },
   ...COUPON_PERCENTS.map(
     (percent): Field => ({
       type: 'gold',
@@ -121,6 +122,7 @@ const fields: readonly Field[] = [
       label: `${percent}% 쿠폰 값`,
       default: null,
       autoFill: couponName(percent),
+      remember: true,
     }),
   ),
   { type: 'gold', key: 'other', label: '기타 비용 (제작비 등)', default: 0, quick: [10_000_000, 1_000_000] },

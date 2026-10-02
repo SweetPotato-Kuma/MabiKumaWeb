@@ -117,6 +117,52 @@ describe('경매장 수수료 계산기', () => {
     expect(within(result()).getByText('96,000,000 G')).toBeInTheDocument();
   });
 
+  it('직접 넣은 쿠폰 값과 멤버십은 메뉴로 다시 들어와도 남아 있고, 판매가는 기본값으로 돌아간다', async () => {
+    const first = renderAt('/fee-calculator');
+    await within(result()).findByText('100% 할인');
+    fireEvent.change(screen.getByLabelText('10% 쿠폰 값'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /프리미엄 라이프/ }));
+    fireEvent.change(screen.getByLabelText('판매가'), { target: { value: '5000000' } });
+    await waitFor(() => expect(search).toContain('c10=123456'));
+    first.unmount();
+
+    // 주소에 쿼리가 없는 채로 다시 들어온다.
+    renderAt('/fee-calculator');
+
+    expect(await screen.findByLabelText('10% 쿠폰 값')).toHaveValue('123,456');
+    expect(screen.getByRole('checkbox', { name: /프리미엄 라이프/ })).toBeChecked();
+    expect(screen.getByLabelText('판매가')).toHaveValue('100,000,000');
+  });
+
+  it('공유 링크의 쿠폰 값이 이기고, 링크를 열어도 내 저장값은 바뀌지 않는다', async () => {
+    const mine = renderAt('/fee-calculator');
+    await within(result()).findByText('100% 할인');
+    fireEvent.change(screen.getByLabelText('10% 쿠폰 값'), { target: { value: '123456' } });
+    await waitFor(() => expect(search).toContain('c10=123456'));
+    mine.unmount();
+
+    const shared = renderAt('/fee-calculator?c10=7000');
+    expect(await screen.findByLabelText('10% 쿠폰 값')).toHaveValue('7,000');
+    shared.unmount();
+
+    renderAt('/fee-calculator');
+    expect(await screen.findByLabelText('10% 쿠폰 값')).toHaveValue('123,456');
+  });
+
+  it('쿠폰 값을 비우면 시세로 돌아가고 다음에도 비어 있다', async () => {
+    const first = renderAt('/fee-calculator');
+    await within(result()).findByText('100% 할인');
+    fireEvent.change(screen.getByLabelText('10% 쿠폰 값'), { target: { value: '123456' } });
+    await waitFor(() => expect(search).toContain('c10=123456'));
+    fireEvent.click(await screen.findAllByRole('button', { name: '시세로 되돌리기' }).then((buttons) => buttons[0]));
+    await waitFor(() => expect(search).not.toContain('c10='));
+    first.unmount();
+
+    renderAt('/fee-calculator');
+
+    expect(await screen.findByLabelText('10% 쿠폰 값')).toHaveValue('');
+  });
+
   it('판매가를 바꾸면 결과가 바뀌고 주소에 실린다', async () => {
     renderAt('/fee-calculator');
     await within(result()).findByText('100% 할인');

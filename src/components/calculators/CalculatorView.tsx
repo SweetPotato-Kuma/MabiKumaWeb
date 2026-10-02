@@ -31,6 +31,7 @@ import type {
   Values,
 } from '@/features/calculators/schema';
 import { useItemQuotes, type QuoteBasis } from '@/features/calculators/quotes';
+import { remember, withRemembered } from '@/features/calculators/remembered';
 import { readValues, writeValues } from '@/features/calculators/url';
 import { headerHeightFor } from '@/app/theme';
 import { formatGoldWith } from '@/lib/format';
@@ -379,7 +380,10 @@ export function CalculatorView({ def }: { def: CalculatorDef }) {
   const { token } = theme.useToken();
 
   const [params, setParams] = useSearchParams();
-  const [values, setValues] = useState<Values>(() => readValues(def.fields, params));
+  // 주소의 값이 먼저이고, 주소에 없는 기억 칸(직접 넣은 쿠폰 값, 멤버십 등)은 이 브라우저에 남긴 값으로 채운다.
+  const [values, setValues] = useState<Values>(() =>
+    withRemembered(def.id, def.fields, readValues(def.fields, params), params),
+  );
   const basis: QuoteBasis = params.get('basis') === 'mid' ? 'mid' : 'lowest';
 
   // 입력은 바로 바뀌고 주소는 잠깐 멈춘 뒤에 따라간다. 뒤로 가기 단계가 글자마다 쌓이지 않게 바꿔 끼운다.
@@ -392,9 +396,15 @@ export function CalculatorView({ def }: { def: CalculatorDef }) {
     return () => window.clearTimeout(timer);
   }, [values, def.fields, setParams]);
 
+  // 사용자가 직접 고칠 때만 기억 칸을 저장한다. 링크를 열었다고 내 설정을 바꾸지 않는다.
   const setValue = useCallback(
-    (key: string, value: Values[string]) => setValues((previous) => ({ ...previous, [key]: value })),
-    [],
+    (key: string, value: Values[string]) => {
+      const next = { ...valuesRef.current, [key]: value };
+      valuesRef.current = next;
+      setValues(next);
+      remember(def.id, def.fields, next);
+    },
+    [def.id, def.fields],
   );
 
   const names = useMemo(() => def.quoteNames?.(values) ?? [], [def, values]);

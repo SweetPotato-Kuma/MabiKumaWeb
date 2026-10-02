@@ -16,6 +16,11 @@ interface FieldBase {
   label: string;
   /** 칸 아래 작은 글씨. 입력에 필요한 말만 적는다. */
   hint?: string;
+  /**
+   * 내 설정으로 기억할 칸. 직접 고친 값을 이 브라우저에 남겨, 메뉴로 다시 들어와도 주소의 값이 없으면 되살린다
+   * (features/calculators/remembered.ts). 판매가처럼 쓸 때마다 달라지는 값에는 쓰지 않는다.
+   */
+  remember?: boolean;
 }
 
 /** 골드 금액. 억, 만 단위 빠른 증가 단추를 둘 수 있다. */
