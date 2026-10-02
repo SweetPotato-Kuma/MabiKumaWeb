@@ -61,12 +61,11 @@ const websiteLd = origin
     ]
   : [];
 
-// 루트 주소(/)는 화면별 HTML 이 없어 index.html 이 그대로 나간다. 여기에도 그림과 사이트 이름을 싣는다.
+// 없는 주소(404.html)에도 그림과 사이트 이름을 싣는다. canonical 은 달지 않는다. 없는 주소가 모두
+// 첫 화면의 사본으로 읽히면 안 된다. 첫 화면(index.html)은 아래에서 화면별 HTML 과 같은 방식으로 굽는다.
 const rootHead = [...ogImageTags, ...websiteLd];
 if (rootHead.length) {
-  const withHead = indexHtml.replace('</head>', `  ${rootHead.join('\n    ')}\n  </head>`);
-  await writeFile(resolve(distDir, 'index.html'), withHead);
-  await writeFile(resolve(distDir, '404.html'), withHead);
+  await writeFile(resolve(distDir, '404.html'), indexHtml.replace('</head>', `  ${rootHead.join('\n    ')}\n  </head>`));
 }
 
 /**
@@ -137,6 +136,38 @@ for (const page of pageMeta.pages) {
     }),
   );
 }
+
+/**
+ * 첫 화면(/). 구글은 검색 결과에 띄울 사이트 이름(WebSite)과 아이콘을 이 쪽에서만 읽는다.
+ * canonical 을 자기 자신으로 달고, 본문에 화면마다 링크를 넣어 자바스크립트를 돌리기 전에도
+ * 사이트 안을 따라 들어올 수 있게 한다. 다른 화면 HTML 은 #root 가 비어 링크가 하나도 없었다.
+ */
+function renderHomeBody() {
+  const links = pageMeta.pages.map(
+    (page) =>
+      `<li><a href="${escapeHtml(encodeURI(page.path))}">${escapeHtml(page.title)}</a>: ${escapeHtml(page.description)}</li>`,
+  );
+  return [
+    `<main style="visibility:hidden;max-width:960px;margin:0 auto;padding:24px 16px;line-height:1.6">`,
+    `<h1>${escapeHtml(pageMeta.siteName)}</h1>`,
+    `<p>${escapeHtml(pageMeta.defaultDescription)}</p>`,
+    '<ul>',
+    ...links,
+    '</ul>',
+    '</main>',
+  ].join('\n');
+}
+
+await writeFile(
+  resolve(distDir, 'index.html'),
+  renderHtml({
+    path: '/',
+    title: pageMeta.defaultTitle,
+    description: pageMeta.defaultDescription,
+    head: websiteLd,
+    body: renderHomeBody(),
+  }),
+);
 
 /**
  * 아이템마다 HTML 을 굽는다. /item/<slug> 가 item/<slug>.html 로 200 을 받는다.
@@ -246,7 +277,7 @@ if (origin) {
       .map((path) => `  <url><loc>${escapeHtml(`${origin}${encodeURI(path)}`)}</loc></url>`)
       .join('\n')}\n</urlset>\n`;
   const sitemaps = [
-    ['sitemap-pages.xml', pageMeta.pages.map((page) => page.path)],
+    ['sitemap-pages.xml', ['/', ...pageMeta.pages.map((page) => page.path)]],
     ...(itemPages.length ? [['sitemap-items.xml', itemPages.map((page) => itemPath(page.name))]] : []),
   ];
   for (const [file, paths] of sitemaps) await writeFile(resolve(distDir, file), urlset(paths));

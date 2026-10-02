@@ -244,7 +244,7 @@ export function RootLayout() {
           gap={screens.md ? 28 : 12}
           style={{ ...containerStyle, height: '100%', lineHeight: 'normal' }}
         >
-          <NavLink to="/auction" aria-label="마비쿠마 홈">
+          <Link to="/" aria-label="마비쿠마 홈">
             <Space size={8}>
               {/* 원본은 2배 크기로 담았다. 너비와 높이를 적어 두어야 그림이 늦게 떠도 글자가 밀리지 않는다. */}
               <img src={isDark ? logoMarkDark : logoMark} alt="" width={34} height={40} style={{ display: 'block' }} />
@@ -262,7 +262,7 @@ export function RootLayout() {
                 style={{ display: 'block' }}
               />
             </Space>
-          </NavLink>
+          </Link>
 
           {compactNav ? (
             <div style={{ flex: 1 }} />

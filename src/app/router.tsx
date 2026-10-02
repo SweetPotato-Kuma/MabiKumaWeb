@@ -6,6 +6,7 @@ import { CALCULATORS, calculatorPath } from '@/features/calculators/registry';
 import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
+import { HomePage } from '@/pages/HomePage';
 import { ItemsPage } from '@/pages/ItemsPage';
 import { LegacyRedirect } from '@/pages/LegacyRedirect';
 
@@ -49,8 +50,8 @@ export const router = createBrowserRouter(
       element: <RootLayout />,
       errorElement: <RouteErrorPage />,
       children: [
-        // 방문자가 하려는 일은 시세 조회다. 소개 화면을 거치게 할 이유가 없다.
-        { index: true, element: <Navigate to="/auction" replace /> },
+        // 루트는 제 자리에서 화면을 그린다. 다른 곳으로 넘기면 구글이 첫 화면을 수집하지 않는다(HomePage).
+        { index: true, element: <HomePage /> },
         { path: 'auction', element: <AuctionPage /> },
         /**
          * 목록(/items)과 아이템 한 장(/item/<slug>)이 한 화면을 나눠 쓴다. 두 경로를 한 부모 아래

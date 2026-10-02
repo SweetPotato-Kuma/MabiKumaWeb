@@ -147,11 +147,11 @@ export function navPages(entries: NavEntry[]): NavPage[] {
 }
 
 /**
- * 현재 경로에 해당하는 칸의 경로. 루트로 들어오면 경매장이 첫 화면이다.
- * 어느 칸에도 맞지 않으면(없는 주소의 404 화면 등) 빈 글자다. 그때 아무 메뉴도 선택되어 있으면 안 된다.
+ * 현재 경로에 해당하는 칸의 경로.
+ * 어느 칸에도 맞지 않으면(첫 화면, 없는 주소의 404 화면 등) 빈 글자다. 그때 아무 메뉴도 선택되어 있으면 안 된다.
  */
 export function selectedPathFor(pathname: string, entries: NavEntry[]): string {
-  if (pathname === '/') return '/auction';
+  if (pathname === '/') return '';
   const match = navPages(entries).find(({ leaf }) =>
     [leaf.path, ...(leaf.alsoMatches ?? [])].some((prefix) => pathname.startsWith(prefix)),
   );

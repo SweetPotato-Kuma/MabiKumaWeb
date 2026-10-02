@@ -32,7 +32,10 @@ describe('메뉴 구조', () => {
     expect(selectedPathFor('/items', entries)).toBe('/items');
     expect(selectedPathFor('/item/숏-소드', entries)).toBe('/items');
     expect(selectedPathFor('/relic-simulator', entries)).toBe('/relic-simulator');
-    expect(selectedPathFor('/', entries)).toBe('/auction');
+  });
+
+  it('첫 화면에서는 선택된 칸이 없다', () => {
+    expect(selectedPathFor('/', entries)).toBe('');
   });
 
   it('어느 칸에도 맞지 않는 주소(404)에서는 선택된 칸이 없다', () => {
