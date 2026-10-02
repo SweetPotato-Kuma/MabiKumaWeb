@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AutoComplete, Button, Card, Flex, Modal, Select, Tag, Typography } from 'antd';
+import { AutoComplete, Button, Card, Flex, Select, Tag, Typography } from 'antd';
 import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { AddIcon, DeleteIcon, SearchIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
@@ -131,16 +131,56 @@ const MAX_ROWS: Partial<Record<ConditionKind, number>> = { reforge: MAX_REFORGE_
 const ROW_ADD_LABEL: Partial<Record<ConditionKind, string>> = { reforge: '세공 조건 추가', pet: '펫 조건 추가' };
 
 /**
- * 경매장 상세 검색.
- *
- * 검색 칸 아래에는 건 조건만 배지로 요약해 보이고, 조건을 더하거나 고치는 것은 창(DetailSearchModal)에서 한다.
- * 창은 옵션마다 칸을 세로로 쌓아 값을 한눈에 보게 하고, 아래 단추로 옵션을 더한 뒤 검색을 누르면 그 조건으로 찾는다.
- * 작은 창을 옵션마다 따로 여닫게 했더니, 무엇을 골랐고 무엇이 더 있는지 한 번에 보이지 않았다.
- *
- * 넥슨 경매장 API 는 옵션으로 찾지 못해 불러온 매물을 이 조건으로 거른다. 자동완성은 불러온
- * 매물의 이름과 값을 먼저, 게임 데이터의 이름을 그 뒤에 보여 준다.
+ * 건 조건을 배지로 요약한다. 상세 검색 패널이 닫혀 있어도(카테고리 탭, 좁은 화면) 어떤 조건이 걸려 있는지 보이고, 하나씩
+ * 빼거나 모두 지울 수 있다. 걸린 조건이 없으면 아무것도 그리지 않는다.
  */
-export function DetailSearchBar({
+export function DetailConditionBadges({
+  value,
+  onChange,
+  onOpen,
+}: {
+  value: OptionFilter;
+  onChange: (next: OptionFilter) => void;
+  /** 배지를 눌렀을 때. 상세 검색 패널을 연다. */
+  onOpen: () => void;
+}) {
+  const active = value.conditions.filter(isConditionActive);
+  if (active.length === 0) return null;
+  return (
+    <Flex gap={6} wrap align="center">
+      <Text strong style={{ fontSize: 13, marginInlineEnd: 2 }}>
+        상세 검색
+      </Text>
+      {active.map((condition) => (
+        <Tag
+          key={condition.id}
+          closable
+          onClose={() => onChange({ conditions: value.conditions.filter((each) => each.id !== condition.id) })}
+          onClick={onOpen}
+          style={{ marginInlineEnd: 0, cursor: 'pointer' }}
+          color="processing"
+        >
+          {summarizeCondition(condition)}
+        </Tag>
+      ))}
+      <Button size="small" type="link" onClick={() => onChange({ conditions: [] })}>
+        조건 모두 지우기
+      </Button>
+    </Flex>
+  );
+}
+
+/**
+ * 경매장 상세 검색 패널. 옵션마다 칸이 세로로 쌓이고, 칸마다 값을 넣는다. 아래 단추로 옵션 칸을 더한다.
+ *
+ * 인게임 경매장처럼 결과 옆(왼쪽 카테고리 칸의 탭, 좁은 화면은 아래에서 올라오는 시트)에 두고, 고치는 대로 바로 적용한다.
+ * 넥슨 경매장 API 는 옵션으로 찾지 못해 불러온 매물을 이 조건으로 거르므로, 불러온 결과는 값을 넣는 대로 바뀐다. 아직 불러오지
+ * 않은 카테고리를 훑을 때는 아래 검색 단추로 조건을 주소에 확정해 찾는다. 모달로 열었을 때는 열려 있는 동안 결과가 가려져
+ * 조건이 결과를 어떻게 바꾸는지 볼 수 없었다.
+ *
+ * 자동완성은 불러온 매물의 이름과 값을 먼저, 게임 데이터의 이름을 그 뒤에 보여 준다.
+ */
+export function DetailOptionsPanel({
   value,
   onChange,
   onSearch,
@@ -149,96 +189,22 @@ export function DetailSearchBar({
   category,
 }: {
   value: OptionFilter;
-  /** 배지를 빼거나 모두 지울 때. 찾지는 않고 입력칸의 조건만 바꾼다. */
+  /** 고치는 대로 부른다. 값이 빈 조건 칸도 들어 있다(고르기만 하고 아직 값을 넣지 않은 것). */
   onChange: (next: OptionFilter) => void;
-  /** 창에서 검색을 눌렀을 때. 고른 조건으로 바로 찾는다. */
+  /** 검색 단추. 값을 넣은 조건만 넘겨 그 조건으로 찾는다. */
   onSearch: (next: OptionFilter) => void;
   catalog: CatalogEntry[];
   names: OptionNames | null | undefined;
   /** 고른 카테고리. 어떤 옵션을 둘지와, 한손 장비, 액세서리의 세공 최대 레벨(레벨 자동완성)에 쓴다. */
   category: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const active = value.conditions.filter(isConditionActive);
-  const openable =
-    offeredKinds(category, catalog.map((entry) => entry.kind), value.conditions.map((condition) => condition.kind)).length > 0 ||
-    catalog.some((entry) => !ALL_QUICK_KINDS.has(entry.kind)) ||
-    value.conditions.length > 0;
-
-  return (
-    <Flex gap={6} wrap align="center">
-      <Text strong style={{ fontSize: 13, marginInlineEnd: 2 }}>
-        상세 검색
-      </Text>
-
-      {active.map((condition) => (
-        <Tag
-          key={condition.id}
-          closable
-          onClose={() => onChange({ conditions: value.conditions.filter((each) => each.id !== condition.id) })}
-          onClick={() => setOpen(true)}
-          style={{ marginInlineEnd: 0, cursor: 'pointer' }}
-          color="processing"
-        >
-          {summarizeCondition(condition)}
-        </Tag>
-      ))}
-
-      <Button size="small" icon={<AddIcon />} disabled={!openable} onClick={() => setOpen(true)}>
-        {active.length > 0 ? '상세 옵션 수정' : '상세 옵션'}
-      </Button>
-
-      {active.length > 0 ? (
-        <Button size="small" type="link" onClick={() => onChange({ conditions: [] })}>
-          조건 모두 지우기
-        </Button>
-      ) : null}
-
-      {open ? (
-        <DetailSearchModal
-          initial={value.conditions}
-          catalog={catalog}
-          names={names}
-          category={category}
-          onCancel={() => setOpen(false)}
-          onSearch={(conditions) => {
-            setOpen(false);
-            onSearch({ conditions });
-          }}
-        />
-      ) : null}
-    </Flex>
-  );
-}
-
-/**
- * 상세 검색 창. 옵션마다 칸이 세로로 쌓이고, 칸마다 값을 넣는다. 아래 단추로 옵션 칸을 더한다.
- * 고친 것은 검색을 누를 때만 입력칸에 들어가고, 취소하면 버려진다.
- */
-function DetailSearchModal({
-  initial,
-  catalog,
-  names,
-  category,
-  onCancel,
-  onSearch,
-}: {
-  initial: Condition[];
-  catalog: CatalogEntry[];
-  names: OptionNames | null | undefined;
-  category: string;
-  onCancel: () => void;
-  onSearch: (conditions: Condition[]) => void;
-}) {
-  const [draft, setDraft] = useState<Condition[]>(initial);
+  const draft = value.conditions;
+  const setDraft = (next: Condition[]) => onChange({ conditions: next });
 
   const update = (id: number, next: Partial<Condition>) =>
-    setDraft((prev) =>
-      prev.map((condition) => (condition.id === id ? ({ ...condition, ...next } as Condition) : condition)),
-    );
-  const removeOne = (id: number) => setDraft((prev) => prev.filter((condition) => condition.id !== id));
-  const removeGroup = (group: GroupKey) =>
-    setDraft((prev) => prev.filter((condition) => groupOf(condition) !== group));
+    setDraft(draft.map((condition) => (condition.id === id ? ({ ...condition, ...next } as Condition) : condition)));
+  const removeOne = (id: number) => setDraft(draft.filter((condition) => condition.id !== id));
+  const removeGroup = (group: GroupKey) => setDraft(draft.filter((condition) => groupOf(condition) !== group));
 
   // 카테고리에 붙는 옵션만 더하게 한다. 무리아스 유물에 세공은 쓸모가 없다.
   const offered = offeredKinds(
@@ -263,16 +229,15 @@ function DetailSearchModal({
     .filter((entry) => !ALL_QUICK_KINDS.has(entry.kind) && !usedExtras.has(entry.optionType))
     .map((entry) => ({ value: entry.label, label: entry.label, count: entry.count }));
 
-  const add = (entry: Pick<CatalogEntry, 'kind' | 'optionType'>) =>
-    setDraft((prev) => {
-      const condition = newCondition(entry);
-      if (condition.kind === 'pet') {
-        // 줄을 더할 때는 아직 쓰지 않은 항목으로 시작한다. 같은 항목을 두 번 걸 일은 드물다.
-        const used = new Set(prev.flatMap((each) => (each.kind === 'pet' ? [each.field] : [])));
-        condition.field = PET_FIELDS.find((field) => !used.has(field)) ?? condition.field;
-      }
-      return [...prev, condition];
-    });
+  const add = (entry: Pick<CatalogEntry, 'kind' | 'optionType'>) => {
+    const condition = newCondition(entry);
+    if (condition.kind === 'pet') {
+      // 줄을 더할 때는 아직 쓰지 않은 항목으로 시작한다. 같은 항목을 두 번 걸 일은 드물다.
+      const used = new Set(draft.flatMap((each) => (each.kind === 'pet' ? [each.field] : [])));
+      condition.field = PET_FIELDS.find((field) => !used.has(field)) ?? condition.field;
+    }
+    setDraft([...draft, condition]);
+  };
 
   const editorFor = (condition: Condition) => (
     <ConditionEditor
@@ -339,74 +304,66 @@ function DetailSearchModal({
   const nothingToAdd = addable.length === 0 && extraOptions.length === 0;
 
   return (
-    <Modal
-      open
-      title="세부 옵션 검색"
-      width="min(640px, calc(100vw - 32px))"
-      onCancel={onCancel}
-      destroyOnHidden
-      footer={
-        <Flex justify="space-between" gap={8} wrap>
-          <Button disabled={draft.length === 0} onClick={() => setDraft([])}>
-            모두 지우기
-          </Button>
-          <Flex gap={8}>
-            <Button onClick={onCancel}>취소</Button>
-            <Button
-              type="primary"
-              icon={<SearchIcon />}
-              onClick={() => onSearch(draft.filter(isConditionActive))}
-            >
-              검색
-            </Button>
+    <Flex vertical gap={12}>
+      {groups.map(blockOf)}
+
+      {groups.length === 0 && nothingToAdd ? (
+        <Text type="secondary">이 카테고리에서는 고를 수 있는 옵션이 없습니다.</Text>
+      ) : null}
+
+      {nothingToAdd ? null : (
+        <Flex vertical gap={8}>
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            옵션 추가
+          </Text>
+          <Flex gap={8} wrap align="center">
+            {addable.map((quick) => (
+              <Button key={quick.kind} size="small" icon={<AddIcon />} onClick={() => add(quick)}>
+                {quick.label}
+              </Button>
+            ))}
+            {extraOptions.length > 0 ? (
+              <Select
+                value={null}
+                size="small"
+                placeholder="그 밖의 옵션"
+                options={extraOptions}
+                showSearch
+                optionFilterProp="label"
+                optionRender={(option) => (
+                  <Flex justify="space-between" gap={12}>
+                    <span>{option.label}</span>
+                    <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                      {formatNumber(option.data.count)}건
+                    </Text>
+                  </Flex>
+                )}
+                onChange={(label: string) => {
+                  const entry = catalog.find((each) => each.label === label);
+                  if (entry) add(entry);
+                }}
+                aria-label="그 밖의 옵션 추가"
+                popupMatchSelectWidth={260}
+                style={{ width: 160 }}
+              />
+            ) : null}
           </Flex>
         </Flex>
-      }
-    >
-      <Flex vertical gap={12}>
-        {groups.map(blockOf)}
+      )}
 
-        {nothingToAdd ? null : (
-          <Flex vertical gap={8}>
-            <Text type="secondary" style={{ fontSize: 13 }}>
-              옵션 추가
-            </Text>
-            <Flex gap={8} wrap align="center">
-              {addable.map((quick) => (
-                <Button key={quick.kind} size="small" icon={<AddIcon />} onClick={() => add(quick)}>
-                  {quick.label}
-                </Button>
-              ))}
-              {extraOptions.length > 0 ? (
-                <Select
-                  value={null}
-                  size="small"
-                  placeholder="그 밖의 옵션"
-                  options={extraOptions}
-                  showSearch
-                  optionFilterProp="label"
-                  optionRender={(option) => (
-                    <Flex justify="space-between" gap={12}>
-                      <span>{option.label}</span>
-                      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                        {formatNumber(option.data.count)}건
-                      </Text>
-                    </Flex>
-                  )}
-                  onChange={(label: string) => {
-                    const entry = catalog.find((each) => each.label === label);
-                    if (entry) add(entry);
-                  }}
-                  aria-label="그 밖의 옵션 추가"
-                  popupMatchSelectWidth={260}
-                  style={{ width: 160 }}
-                />
-              ) : null}
-            </Flex>
-          </Flex>
-        )}
+      <Flex gap={8} justify="space-between" wrap>
+        <Button disabled={draft.length === 0} onClick={() => setDraft([])}>
+          모두 지우기
+        </Button>
+        <Button
+          type="primary"
+          icon={<SearchIcon />}
+          onClick={() => onSearch({ conditions: draft.filter(isConditionActive) })}
+        >
+          검색
+        </Button>
       </Flex>
-    </Modal>
+    </Flex>
   );
 }
 

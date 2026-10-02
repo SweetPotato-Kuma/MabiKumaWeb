@@ -452,8 +452,9 @@ describe('경매장 검색 조건과 주소', () => {
     });
   });
 
-  describe('상세 검색 창', () => {
-    it('창에서 옵션을 더하고 검색을 누르면 조건이 주소에 실리고 입력칸에 배지로 남는다', async () => {
+  describe('상세 옵션 시트', () => {
+    // 테스트 화면(jsdom)은 좁아서 상세 옵션이 아래에서 올라오는 시트로 열린다. 넓은 화면은 왼쪽 칸의 탭이다.
+    it('시트에서 옵션을 더하고 검색을 누르면 조건이 주소에 실리고 배지로 남는다', async () => {
       const router = renderAt('/auction?category=분양 메달');
       await screen.findByRole('button', { name: /상세 옵션/ });
 
@@ -461,7 +462,7 @@ describe('경매장 검색 조건과 주소', () => {
       const dialog = within(await screen.findByRole('dialog'));
       fireEvent.click(dialog.getByRole('button', { name: '펫 정보' }));
       fireEvent.change(dialog.getByLabelText('펫 종족명'), { target: { value: '스쿠터' } });
-      fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
+      fireEvent.click(dialog.getByRole('button', { name: /^검색$/ }));
 
       await waitFor(() => expect(new URLSearchParams(router.search()).get('f')).toContain('스쿠터'));
       expect(new URLSearchParams(router.search()).get('category')).toBe('분양 메달');

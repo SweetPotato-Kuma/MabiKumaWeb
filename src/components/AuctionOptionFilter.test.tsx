@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
-import { DetailSearchBar } from '@/components/AuctionOptionFilter';
+import { DetailConditionBadges, DetailOptionsPanel } from '@/components/AuctionOptionFilter';
+import { hasDetailOptions } from '@/features/auction/optionKinds';
 import {
   buildOptionCatalog,
   EMPTY_OPTION_FILTER,
@@ -40,6 +41,7 @@ const petCatalog = buildOptionCatalog([
 const catalogFor = (category: string) =>
   category === '유물' ? relicCatalog : category === '분양 메달' ? petCatalog : [];
 
+/** 패널과 건 조건 배지를 함께 둔 틀. 경매장 화면에서는 패널이 왼쪽 탭(좁은 화면은 시트)에, 배지가 검색 카드 아래에 선다. */
 function Harness({
   category,
   onSearch = () => {},
@@ -50,10 +52,11 @@ function Harness({
   const [filter, setFilter] = useState<OptionFilter>(EMPTY_OPTION_FILTER);
   return (
     <AppProviders>
-      <DetailSearchBar
+      <DetailConditionBadges value={filter} onChange={setFilter} onOpen={() => {}} />
+      <DetailOptionsPanel
         value={filter}
         onChange={setFilter}
-        onSearch={(next) => {
+        onSearch={(next: OptionFilter) => {
           setFilter(next);
           onSearch(next);
         }}
@@ -65,105 +68,131 @@ function Harness({
   );
 }
 
-const openModal = async () => {
-  fireEvent.click(screen.getByRole('button', { name: /상세 옵션/ }));
-  return within(await screen.findByRole('dialog'));
-};
+/** 옵션 추가 줄의 단추로 옵션 칸을 더한다. */
+const addOption = (label: string) => fireEvent.click(screen.getByRole('button', { name: label }));
 
-/** 창 아래의 옵션 추가 단추로 옵션 칸을 더한다. */
-const addOption = async (label: string) => {
-  const dialog = await openModal();
-  fireEvent.click(dialog.getByRole('button', { name: label }));
-  return dialog;
-};
-
-const chipNames = (dialog: ReturnType<typeof within>) =>
-  dialog
+const OPTION_NAMES = ['세공', '인챈트', '특별 개조', '에르그', '색상', '무리아스 유물', '펫 정보'];
+const chipNames = () =>
+  screen
     .getAllByRole('button')
     .map((button: HTMLElement) => button.textContent ?? '')
-    .filter((text: string) => ['세공', '인챈트', '특별 개조', '에르그', '색상', '무리아스 유물', '펫 정보'].includes(text));
+    .filter((text: string) => OPTION_NAMES.includes(text));
 
-describe('상세 검색 창', () => {
-  it('장비 카테고리에서는 세공, 인챈트, 특별 개조, 에르그, 색상 칸을 더하게 한다', async () => {
+describe('상세 옵션 패널', () => {
+  it('장비 카테고리에서는 세공, 인챈트, 특별 개조, 에르그, 색상 칸을 더하게 한다', () => {
     render(<Harness category="검" />);
 
-    const dialog = await openModal();
-
-    expect(chipNames(dialog)).toEqual(['세공', '인챈트', '특별 개조', '에르그', '색상']);
+    expect(chipNames()).toEqual(['세공', '인챈트', '특별 개조', '에르그', '색상']);
   });
 
-  it('유물에서는 무리아스 유물 옵션만 더하게 한다. 세공은 쓸모가 없다', async () => {
+  it('유물에서는 무리아스 유물 옵션만 더하게 한다. 세공은 쓸모가 없다', () => {
     render(<Harness category="유물" />);
 
-    const dialog = await openModal();
-
-    expect(chipNames(dialog)).toEqual(['무리아스 유물']);
+    expect(chipNames()).toEqual(['무리아스 유물']);
   });
 
-  it('붙는 옵션이 없는 카테고리에서는 열 수 없다', () => {
+  it('붙는 옵션이 없는 카테고리에서는 고를 것이 없다고 알린다', () => {
     render(<Harness category="포션" />);
 
-    expect(screen.getByRole('button', { name: /상세 옵션/ })).toBeDisabled();
+    expect(chipNames()).toEqual([]);
+    expect(screen.getByText('이 카테고리에서는 고를 수 있는 옵션이 없습니다.')).toBeInTheDocument();
   });
 
-  it('더한 옵션은 칸으로 쌓이고 더하는 단추에서는 빠진다', async () => {
+  it('더한 옵션은 칸으로 쌓이고 더하는 단추에서는 빠진다', () => {
     render(<Harness category="검" />);
 
-    const dialog = await addOption('색상');
+    addOption('색상');
 
-    expect(dialog.getByRole('button', { name: '색상 옵션 삭제' })).toBeInTheDocument();
-    expect(chipNames(dialog)).toEqual(['세공', '인챈트', '특별 개조', '에르그']);
+    expect(screen.getByRole('button', { name: '색상 옵션 삭제' })).toBeInTheDocument();
+    expect(chipNames()).toEqual(['세공', '인챈트', '특별 개조', '에르그']);
   });
 
-  it('검색을 누르면 값을 넣은 조건만 넘기고, 입력칸에는 배지로 요약해 보인다', async () => {
+  it('값을 넣는 대로 바로 배지에 요약된다. 검색을 누르지 않아도 걸린다', () => {
+    render(<Harness category="검" />);
+    addOption('색상');
+
+    fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('R 최대'), { target: { value: '200' } });
+
+    expect(screen.getByText(/색상 R 100~200/)).toBeInTheDocument();
+  });
+
+  it('값을 넣지 않은 옵션 칸은 배지가 없다', () => {
+    render(<Harness category="검" />);
+
+    addOption('에르그');
+
+    expect(screen.getByRole('button', { name: '에르그 옵션 삭제' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '조건 모두 지우기' })).toBeNull();
+  });
+
+  it('검색을 누르면 값을 넣은 조건만 넘긴다', () => {
     const onSearch = vi.fn();
     render(<Harness category="검" onSearch={onSearch} />);
-
-    const dialog = await addOption('색상');
-    fireEvent.change(dialog.getByLabelText('R 최소'), { target: { value: '100' } });
-    fireEvent.change(dialog.getByLabelText('R 최대'), { target: { value: '200' } });
+    addOption('색상');
+    fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
     // 값을 넣지 않은 옵션 칸은 조건이 아니라서 넘기지 않는다.
-    fireEvent.click(dialog.getByRole('button', { name: '에르그' }));
-    fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
+    addOption('에르그');
 
-    await waitFor(() => expect(onSearch).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: /^검색$/ }));
+
+    expect(onSearch).toHaveBeenCalledTimes(1);
     expect(onSearch.mock.calls[0][0].conditions).toHaveLength(1);
     expect(onSearch.mock.calls[0][0].conditions[0]).toMatchObject({ kind: 'color' });
-    expect(await screen.findByText(/색상 R 100~200/)).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('취소하면 고친 것이 버려진다', async () => {
+  it('칸을 지우면 그 옵션이 빠지고 다시 더할 수 있다', () => {
     render(<Harness category="검" />);
+    addOption('에르그');
 
-    const dialog = await addOption('색상');
-    fireEvent.change(dialog.getByLabelText('R 최소'), { target: { value: '100' } });
-    fireEvent.click(dialog.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '에르그 옵션 삭제' }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(screen.queryByText(/색상 R/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '에르그 옵션 삭제' })).toBeNull();
+    expect(chipNames()).toContain('에르그');
   });
 
-  it('칸을 지우면 그 옵션이 빠지고 다시 더할 수 있다', async () => {
+  it('배지의 모두 지우기로 건 조건을 한꺼번에 뺀다', () => {
     render(<Harness category="검" />);
-
-    const dialog = await addOption('에르그');
-    fireEvent.click(dialog.getByRole('button', { name: '에르그 옵션 삭제' }));
-
-    expect(dialog.queryByRole('button', { name: '에르그 옵션 삭제' })).toBeNull();
-    expect(chipNames(dialog)).toContain('에르그');
-  });
-
-  it('배지의 닫기 단추로 조건을 빼고, 모두 지우기로 한꺼번에 뺀다', async () => {
-    render(<Harness category="검" />);
-    const dialog = await addOption('색상');
-    fireEvent.change(dialog.getByLabelText('R 최소'), { target: { value: '100' } });
-    fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
-    await screen.findByText(/색상 R 100/);
+    addOption('색상');
+    fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
+    expect(screen.getByText(/색상 R 100/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '조건 모두 지우기' }));
 
     expect(screen.queryByText(/색상 R 100/)).toBeNull();
+  });
+
+  it('패널의 모두 지우기는 칸까지 비운다', () => {
+    render(<Harness category="검" />);
+    addOption('색상');
+    addOption('에르그');
+
+    fireEvent.click(screen.getByRole('button', { name: '모두 지우기' }));
+
+    expect(screen.queryByRole('button', { name: /옵션 삭제/ })).toBeNull();
+    expect(screen.getByRole('button', { name: '모두 지우기' })).toBeDisabled();
+  });
+
+  it('걸린 조건이 없으면 배지 줄을 그리지 않는다', () => {
+    render(<Harness category="검" />);
+
+    expect(screen.queryByText('상세 검색')).toBeNull();
+  });
+});
+
+describe('열어 볼 옵션이 있는지', () => {
+  it('장비, 유물, 분양 메달은 있고 포션은 없다. 불러온 매물에 걸 옵션이나 건 조건이 있으면 있다', () => {
+    expect(hasDetailOptions('검', [], EMPTY_OPTION_FILTER)).toBe(true);
+    expect(hasDetailOptions('유물', [], EMPTY_OPTION_FILTER)).toBe(true);
+    expect(hasDetailOptions('분양 메달', [], EMPTY_OPTION_FILTER)).toBe(true);
+    expect(hasDetailOptions('포션', [], EMPTY_OPTION_FILTER)).toBe(false);
+    expect(
+      hasDetailOptions(
+        '포션',
+        buildOptionCatalog([{ item_option: [{ option_type: '내구력', option_value: '5' }] }]),
+        EMPTY_OPTION_FILTER,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -171,15 +200,14 @@ describe('무리아스 유물 상세 검색', () => {
   it('옵션 이름을 고르면 레벨마다 그 옵션의 수치를 붙여 고르게 한다', async () => {
     render(<Harness category="유물" />);
 
-    const dialog = await addOption('무리아스 유물');
-    fireEvent.change(dialog.getByLabelText('무리아스 유물 스킬 옵션'), {
+    addOption('무리아스 유물');
+    fireEvent.change(screen.getByLabelText('무리아스 유물 스킬 옵션'), {
       target: { value: '오버 드라이브 폭발 공격 대미지' },
     });
-    fireEvent.mouseDown(dialog.getByLabelText('무리아스 유물 최소 레벨'));
+    fireEvent.mouseDown(screen.getByLabelText('무리아스 유물 최소 레벨'));
 
     expect(await screen.findByText('7레벨 (490%)')).toBeInTheDocument();
     fireEvent.click(screen.getByText('7레벨 (490%)'));
-    fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
 
     expect(
       await screen.findByText(/무리아스 유물 오버 드라이브 폭발 공격 대미지 7레벨 이상/),
@@ -188,47 +216,44 @@ describe('무리아스 유물 상세 검색', () => {
 });
 
 describe('색상 상세 검색', () => {
-  it('옵션 칸을 더해도 고르기 전에는 값이 들어가지 않는다', async () => {
+  it('옵션 칸을 더해도 고르기 전에는 값이 들어가지 않는다', () => {
     render(<Harness category="검" />);
 
-    const dialog = await addOption('색상');
+    addOption('색상');
 
     // 아무 채널도 채우지 않았으니 조건이 아니다. 배지도 지우기 단추도 없다.
-    expect(dialog.getByLabelText('R 최소')).toHaveValue('');
-    expect(dialog.getByLabelText('G 최대')).toHaveValue('');
+    expect(screen.getByLabelText('R 최소')).toHaveValue('');
+    expect(screen.getByLabelText('G 최대')).toHaveValue('');
     expect(screen.queryByRole('button', { name: /조건 모두 지우기/ })).toBeNull();
   });
 
   it('유사도를 켜면 기준값과 오차를 넣고, 받아들이는 범위를 숫자로 보여 준다', async () => {
     render(<Harness category="검" />);
 
-    const dialog = await addOption('색상');
-    fireEvent.click(dialog.getByLabelText('G 유사도'));
-    fireEvent.change(dialog.getByLabelText('G 기준값'), { target: { value: '120' } });
+    addOption('색상');
+    fireEvent.click(screen.getByLabelText('G 유사도'));
+    fireEvent.change(screen.getByLabelText('G 기준값'), { target: { value: '120' } });
 
     // 오차는 처음에 10% 라 120 ± 25.5 다.
-    expect(await dialog.findByText('94.5~145.5')).toBeInTheDocument();
-    fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
-    expect(await screen.findByText(/색상 G 120 ±10%/)).toBeInTheDocument();
+    expect(await screen.findByText('94.5~145.5')).toBeInTheDocument();
+    expect(screen.getByText(/색상 G 120 ±10%/)).toBeInTheDocument();
   });
 });
 
 describe('펫 정보 상세 검색', () => {
-  it('분양 메달에서는 펫 정보 칸만 더하게 한다', async () => {
+  it('분양 메달에서는 펫 정보 칸만 더하게 한다', () => {
     render(<Harness category="분양 메달" />);
 
-    const dialog = await openModal();
-
-    expect(chipNames(dialog)).toEqual(['펫 정보']);
+    expect(chipNames()).toEqual(['펫 정보']);
   });
 
   it('처음에는 종족명으로 찾고, 매물에 있는 종족명을 자동완성한다', async () => {
     const onSearch = vi.fn();
     render(<Harness category="분양 메달" onSearch={onSearch} />);
 
-    const dialog = await addOption('펫 정보');
-    fireEvent.change(dialog.getByLabelText('펫 종족명'), { target: { value: '스쿠' } });
-    fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
+    addOption('펫 정보');
+    fireEvent.change(screen.getByLabelText('펫 종족명'), { target: { value: '스쿠' } });
+    fireEvent.click(screen.getByRole('button', { name: /^검색$/ }));
 
     await waitFor(() => expect(onSearch).toHaveBeenCalled());
     expect(onSearch.mock.calls[0][0].conditions[0]).toMatchObject({ kind: 'pet', field: '종족명', text: '스쿠' });
@@ -239,14 +264,14 @@ describe('펫 정보 상세 검색', () => {
     const onSearch = vi.fn();
     render(<Harness category="분양 메달" onSearch={onSearch} />);
 
-    const dialog = await addOption('펫 정보');
-    fireEvent.mouseDown(dialog.getByRole('combobox', { name: '펫 정보 항목' }));
+    addOption('펫 정보');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '펫 정보 항목' }));
     fireEvent.click(await screen.findByTitle('레벨'));
-    fireEvent.change(dialog.getByLabelText('펫 레벨 최솟값'), { target: { value: '120' } });
-    fireEvent.click(dialog.getByRole('button', { name: '펫 조건 추가' }));
+    fireEvent.change(screen.getByLabelText('펫 레벨 최솟값'), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: '펫 조건 추가' }));
     // 더한 줄은 쓰지 않은 항목(종족명)으로 시작한다.
-    fireEvent.change(dialog.getByLabelText('펫 종족명'), { target: { value: '잭' } });
-    fireEvent.click(dialog.getByRole('button', { name: /검색/ }));
+    fireEvent.change(screen.getByLabelText('펫 종족명'), { target: { value: '잭' } });
+    fireEvent.click(screen.getByRole('button', { name: /^검색$/ }));
 
     await waitFor(() => expect(onSearch).toHaveBeenCalled());
     expect(onSearch.mock.calls[0][0].conditions).toEqual([
