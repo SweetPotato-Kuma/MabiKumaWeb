@@ -58,7 +58,7 @@ import { ServerSelect } from '@/components/ServerSelect';
 import { useServerParam } from '@/lib/useServerParam';
 import { formatNumber } from '@/lib/format';
 import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
-import { useListPagination } from '@/lib/useListPagination';
+import { PAGE_SIZE_OPTIONS, useListPagination } from '@/lib/useListPagination';
 import { useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
 import { ArrowDownIcon, GridIcon, ListIcon, SearchIcon } from '@/components/icons';
@@ -435,7 +435,9 @@ export function BagsPage() {
     minRows: 2,
     layoutKey: `${view}|${loading}|${failed}|${expired}|${state.status}|${listings.length > 0}|${showTabs}`,
   });
-  const gridPageSize = wide ? (fitted ?? MOBILE_PAGE_SIZE) : MOBILE_PAGE_SIZE;
+  // 쪽 크기를 직접 고르면 그 값을 쓰고, 고르지 않았으면 화면에 맞춘 개수를 쓴다. 표와 경매장처럼 같은 선택지다.
+  const [gridSizeChoice, setGridSizeChoice] = useState<number | null>(null);
+  const gridPageSize = gridSizeChoice ?? (wide ? (fitted ?? MOBILE_PAGE_SIZE) : MOBILE_PAGE_SIZE);
   const [gridPage, setGridPage] = useState(1);
   useEffect(() => {
     setGridPage(1);
@@ -613,13 +615,22 @@ export function BagsPage() {
             book={dyeBook}
           />
         </div>
-        <Flex justify="flex-end">
+        <Flex justify="flex-end" align="center" gap={8} wrap>
+          {gridSizeChoice !== null ? (
+            <Button size="small" type="link" onClick={() => setGridSizeChoice(null)}>
+              화면에 맞춤
+            </Button>
+          ) : null}
           <Pagination
             current={gridPage}
             pageSize={gridPageSize}
             total={visible.length}
-            onChange={setGridPage}
-            showSizeChanger={false}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            showSizeChanger
+            onChange={(page, size) => {
+              if (size !== gridPageSize) setGridSizeChoice(size);
+              else setGridPage(page);
+            }}
             size="small"
           />
         </Flex>

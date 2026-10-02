@@ -119,3 +119,65 @@ describe('튼튼한 주머니 상점 교체', () => {
     expect(screen.getByText(/상점 교체까지 (\d+분 )?\d+초 남음/)).toBeInTheDocument();
   });
 });
+
+describe('튼튼한 주머니 그림 보기의 쪽 크기', () => {
+  /** 주머니 35개가 든 한 채널. 이름과 색을 모두 다르게 둔다. */
+  const bags = Array.from({ length: 35 }, (_, index) => ({
+    n: `튼튼한 주머니 ${index + 1}`,
+    c: [index.toString(16).padStart(2, '0').repeat(3)],
+    p: 1000 + index,
+    t: '골드',
+  }));
+  const done = {
+    server: '울프',
+    status: 'done' as const,
+    done: 1,
+    total: 1,
+    channels: [
+      {
+        server: '울프',
+        channel: 1,
+        nextUpdate: new Date(Date.now() + 10 * 60_000).toISOString(),
+        npcs: [{ npc: '상인 라누', bags }],
+      },
+    ],
+    failedChannels: [],
+    nextUpdate: Date.now() + 10 * 60_000,
+  };
+
+  it('쪽 크기를 직접 고를 수 있고, 고르면 그 개수로 쪽이 나뉘며, 화면에 맞춤으로 돌아간다', async () => {
+    vi.resetModules();
+    vi.doMock('@/features/bags/useBagSearch', () => ({
+      useBagSearch: () => ({ state: done, search: vi.fn() }),
+    }));
+    const { BagsPage: Page } = await import('@/pages/BagsPage');
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(
+      <AppProviders>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/bags?server=울프']}>
+            <Page />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AppProviders>,
+    );
+
+    // 쪽 크기 고르기가 보인다. 아직 고르지 않았으니 화면에 맞춤 단추는 없다.
+    const sizeChanger = await screen.findByRole('combobox', { name: /쪽당|페이지|개씩|page size/i });
+    expect(screen.queryByRole('button', { name: '화면에 맞춤' })).toBeNull();
+
+    fireEvent.mouseDown(sizeChanger);
+    // 선택지는 10, 20, 30, 50, 100 이다. 10 은 100 과 앞이 같아 정확히 맞춘다.
+    const options = await screen.findAllByTitle(/^\d+/);
+    fireEvent.click(options.find((option) => /^10(\D|$)/.test(option.getAttribute('title') ?? '')) as HTMLElement);
+
+    // 10개씩이라 35개가 4쪽이다.
+    expect(await screen.findByRole('button', { name: '화면에 맞춤' })).toBeInTheDocument();
+    expect(screen.getByTitle('4')).toBeInTheDocument();
+    expect(screen.queryByTitle('5')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '화면에 맞춤' }));
+    expect(screen.queryByRole('button', { name: '화면에 맞춤' })).toBeNull();
+    vi.doUnmock('@/features/bags/useBagSearch');
+  });
+});
