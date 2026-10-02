@@ -1,0 +1,61 @@
+/*
+ * 인기 거래 아이템 한 줄 띠. 1위부터 10위까지 아래에서 위로 한 칸씩 밀려 올라가며 바뀐다.
+ *
+ * 움직이는 것은 transform 과 opacity 뿐이다. 움직임 줄이기 설정이면 컴포넌트가 돌리지 않고,
+ * 여기서도 한 번 더 끈다.
+ */
+
+.pt-ticker {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  overflow: hidden;
+}
+
+.pt-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pt-in {
+  animation: pt-in 420ms cubic-bezier(0.22, 0.8, 0.3, 1) both;
+}
+
+.pt-out {
+  animation: pt-out 420ms cubic-bezier(0.22, 0.8, 0.3, 1) both;
+  pointer-events: none;
+}
+
+@keyframes pt-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pt-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pt-in,
+  .pt-out {
+    animation: none;
+  }
+}
