@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -12,8 +12,10 @@ import {
   Skeleton,
   Spin,
   Statistic,
+  Switch,
   Table,
   Tabs,
+  Tooltip,
   Typography,
   theme,
   type TableColumnsType,
@@ -22,7 +24,8 @@ import { SkillIcon } from '@/components/crafting/RecipeInfo';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
-import { RefreshIcon, SearchIcon } from '@/components/icons';
+import { HistoryIcon, RefreshIcon, SearchIcon, WarningIcon } from '@/components/icons';
+import { RelicTrendModal } from '@/components/relics/RelicTrendModal';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
 import {
@@ -39,7 +42,6 @@ import {
   MURIAS_RELIC_NAME,
   muriasAuctionPath,
   RELIC_CATEGORY,
-  RELIC_LEVELS,
   RELIC_MAX_LEVEL,
   relicAuctionPath,
   relicValueAt,
@@ -52,6 +54,7 @@ import {
   summarizeOtherRelics,
   type IdeaOdds,
   type LastTrade,
+  type MuriasRow,
   type OtherRelicRow,
   type PriceCell,
 } from '@/features/relics/prices';
@@ -197,7 +200,7 @@ const ARCANA_COLUMN = 136;
  * 양옆을 글자만큼(max-content)으로 두면 "4건" 과 "12건" 줄의 가격 끝이 어긋났다. 폭을 박아 두면
  * 가격 끝이 세로로 한 줄에 선다.
  */
-const LEVEL_GRID = '40px minmax(max-content, 1fr) 28px';
+const LEVEL_GRID = '40px minmax(max-content, 1fr) auto';
 /**
  * 레벨 단의 최소 폭. "10레벨"(39px), "4억 4,500만"(굵게 83px), "12건"(25px) 이 칸 사이 4px 씩과
  * 함께 한 줄에 드는 폭이다. 드물게 "21억 7,000만"(93px) 처럼 더 긴 가격은 단 사이 여백으로 조금 넘친다.
@@ -213,27 +216,153 @@ const OPTION_CARD_MIN = LEVEL_COLUMN_MIN * 2 + LEVEL_COLUMN_GAP + 24;
  */
 const LEVEL_ROW_MAX = 240;
 
+/** 레벨 단 둘. 높은 레벨이 왼쪽이다. 단 머리에 범위를 적어 어디서 어디까지인지 읽게 한다. */
+const LEVEL_BLOCKS = [
+  { label: '10~6레벨', levels: [10, 9, 8, 7, 6] },
+  { label: '5~1레벨', levels: [5, 4, 3, 2, 1] },
+];
+
+/** 설명을 띄우는 작은 아이콘 단추. 마우스를 올리거나 눌러서 열고, 휴대폰에서도 눌러서 볼 수 있다. */
+function InfoButton({ title, label, children }: { title: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <Tooltip title={title} trigger={['hover', 'click']}>
+      <Button
+        type="text"
+        size="small"
+        aria-label={label}
+        icon={children}
+        style={{ width: 22, height: 22, minWidth: 22, padding: 0 }}
+      />
+    </Tooltip>
+  );
+}
+
 /**
- * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다의 최저가를 두 단 다섯 줄로
- * 적는다(왼쪽 단 10~6, 오른쪽 단 5~1). 한 줄에 한 레벨씩 열 줄이면 아르카나 하나가 화면을 다 채워
- * 여러 아르카나를 견줄 수 없었다. 레벨마다의 수치는 머리의 10레벨 수치를 10으로 나누면 되고,
- * 레벨 글자에 마우스를 올려도 보인다.
+ * 스킬 옵션 하나. 스킬 그림과 옵션 이름을 머리에 두고, 레벨마다의 최저가를 두 단 다섯 줄로 적는다.
+ * 한 줄에 한 레벨씩 열 줄이면 아르카나 하나가 화면을 다 채워 여러 아르카나를 견줄 수 없었다. 레벨마다의 수치는
+ * 머리의 10레벨 수치를 10으로 나누면 되고, 레벨 글자에 마우스를 올려도 보인다.
+ *
+ * 가격을 누르면 그 레벨의 거래가 추이 창이 열리고, 경매장으로 가는 길은 창 안 단추에 있다. 레벨이 낮은데 더 높은
+ * 레벨보다 비싼 칸은 값을 낮춰 적고 사기 위험 표시를 붙인다(guardLevels).
  */
 function OptionCard({
   option,
   lastTrades,
   ideaPrice,
+  listedOnly,
+  onOpen,
 }: {
   option: ArcanaOption;
   /** 이 옵션의 레벨마다 최종 거래. 1레벨부터. 기록이 없으면 undefined. */
   lastTrades: (LastTrade | null)[] | undefined;
   /** 이데아 최저가. 이 값 이상인 가격을 굵게 적는다. 매물이 없으면 null. */
   ideaPrice: number | null;
+  /** 매물이 있는 레벨만 적는다. */
+  listedOnly: boolean;
+  /** 레벨 칸을 눌렀을 때. 그 레벨의 거래가 추이 창을 연다. */
+  onOpen: (level: number) => void;
 }) {
   const formatGold = useGoldFormatter();
   const { row, skill } = option;
   const { token } = theme.useToken();
   const aboveIdea = (price: number) => ideaPrice !== null && price >= ideaPrice;
+
+  const blocks = LEVEL_BLOCKS.map((block) => ({
+    ...block,
+    levels: listedOnly ? block.levels.filter((level) => row.levels[level - 1]) : block.levels,
+  })).filter((block) => block.levels.length > 0);
+  if (blocks.length === 0) return null;
+
+  const levelRow = (level: number) => {
+    const cell = row.levels[level - 1];
+    // 지금 매물이 없는 레벨은 최종 거래가를 흐리게 적고 옆에 기록 아이콘을 둔다. 언제 팔린 값인지는 아이콘을 누르면 보인다.
+    const trade = cell ? null : (lastTrades?.[level - 1] ?? null);
+    const open = (kind: string) => ({
+      onClick: () => onOpen(level),
+      'aria-label': `${row.name} ${level}레벨 ${kind} 거래가 추이 보기`,
+    });
+    return (
+      <div
+        key={level}
+        role="listitem"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: LEVEL_GRID,
+          alignItems: 'center',
+          columnGap: 4,
+          maxWidth: LEVEL_ROW_MAX,
+          paddingBlock: 1,
+        }}
+      >
+        {/* 레벨은 보조 글자색이면 가격 옆에서 묻혔다. 본문색 굵은 글자로 가격과 짝을 이루게 한다. */}
+        <Text
+          className="tnum"
+          title={formatRelicValue(row, relicValueAt(row, level))}
+          style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}
+        >
+          {level}레벨
+        </Text>
+        <Flex justify="flex-end">
+          {cell ? (
+            <Button
+              type="text"
+              size="small"
+              className="tnum"
+              {...open(formatGold(cell.lowest))}
+              style={{ paddingInline: 4, fontWeight: aboveIdea(cell.lowest) ? 700 : undefined, whiteSpace: 'nowrap' }}
+            >
+              {formatGold(cell.lowest, false)}
+            </Button>
+          ) : trade ? (
+            <Button
+              type="text"
+              size="small"
+              className="tnum"
+              {...open(`최종 ${formatGold(trade.price)}`)}
+              style={{
+                paddingInline: 4,
+                whiteSpace: 'nowrap',
+                color: token.colorTextTertiary,
+                fontWeight: aboveIdea(trade.price) ? 700 : undefined,
+              }}
+            >
+              {formatGold(trade.price, false)}
+            </Button>
+          ) : (
+            // 거래 기록은 모으기 시작한 뒤의 것만 있다. 그 뒤로 팔린 적이 없으면 적을 값이 없다.
+            <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+              기록 없음
+            </Text>
+          )}
+        </Flex>
+        <Flex justify="flex-end" align="center" gap={2}>
+          {cell ? (
+            <>
+              {cell.risky && cell.actual !== undefined ? (
+                <InfoButton
+                  label={`${row.name} ${level}레벨 사기 위험 설명`}
+                  title={`(사기 위험) 실제 최저가는 ${formatGold(cell.actual)} 입니다. 더 높은 레벨의 최저가보다 비싸서 ${formatGold(cell.lowest)} 로 낮춰 적었습니다.`}
+                >
+                  <WarningIcon style={{ color: token.colorWarning }} />
+                </InfoButton>
+              ) : null}
+              <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                {formatNumber(cell.count)}건
+              </Text>
+            </>
+          ) : trade ? (
+            <InfoButton
+              label={`${row.name} ${level}레벨 최종 거래가 설명`}
+              title={`최종 거래가 ${formatGold(trade.price)}, ${tradeDay(trade.at)}. 지금 판매 중인 매물은 없습니다.`}
+            >
+              <HistoryIcon style={{ color: token.colorTextTertiary }} />
+            </InfoButton>
+          ) : null}
+        </Flex>
+      </div>
+    );
+  };
+
   return (
     <Card type="inner" size="small" variant="outlined">
       <Flex vertical gap={8}>
@@ -250,92 +379,25 @@ function OptionCard({
           </Flex>
         </Flex>
         {/*
-          두 단. 다단 배치는 위에서 아래로 먼저 채우므로 왼쪽 단이 10~6, 오른쪽 단이 5~1 이다.
-          레벨이 차례대로 세로로 이어져 지그재그로 읽지 않아도 되고, 값이 큰 높은 레벨이 왼쪽 단에 모인다.
-          카드가 두 단을 담지 못하는 폭(휴대폰)에서는 한 단 열 줄로 떨어진다.
+          두 단. 왼쪽이 10~6, 오른쪽이 5~1 이고 단마다 범위를 머리에 적는다. 카드가 두 단을 담지 못하는 폭(휴대폰)에서는
+          위아래로 쌓인다.
         */}
         <div
-          role="list"
-          aria-label={`${row.name} 레벨별 최저가(골드)`}
           style={{
-            columnCount: 2,
-            columnWidth: LEVEL_COLUMN_MIN,
+            display: 'grid',
+            gridTemplateColumns: `repeat(auto-fit, minmax(${LEVEL_COLUMN_MIN}px, 1fr))`,
             columnGap: LEVEL_COLUMN_GAP,
-            // 단 사이 선. 없으면 왼쪽 단의 "4건" 과 오른쪽 단의 "5레벨" 이 한 줄로 이어 읽혔다.
-            columnRule: `1px solid ${token.colorBorderSecondary}`,
+            rowGap: 8,
           }}
         >
-          {[...RELIC_LEVELS].reverse().map((level) => {
-            const cell = row.levels[level - 1];
-            // 지금 매물이 없는 레벨은 최종 거래가를 흐리게 적고 매물 수 자리에 "최종" 을 붙인다.
-            // 두 줄로 적으니 그 칸만 높아져 줄이 들쭉날쭉했다. 언제 팔린 값인지는 올리면 보인다.
-            const trade = cell ? null : (lastTrades?.[level - 1] ?? null);
-            const tradeTitle = trade
-              ? `최종 거래가 ${formatGold(trade.price)}, ${tradeDay(trade.at)}`
-              : undefined;
-            return (
-              <div
-                key={level}
-                role="listitem"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: LEVEL_GRID,
-                  alignItems: 'baseline',
-                  columnGap: 4,
-                  maxWidth: LEVEL_ROW_MAX,
-                  paddingBlock: 2,
-                  // 다단 배치에서 한 줄이 두 단에 걸쳐 쪼개지지 않게 한다.
-                  breakInside: 'avoid',
-                }}
-              >
-                {/* 레벨은 보조 글자색이면 가격 옆에서 묻혔다. 본문색 굵은 글자로 가격과 짝을 이루게 한다. */}
-                <Text
-                  className="tnum"
-                  title={formatRelicValue(row, relicValueAt(row, level))}
-                  style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}
-                >
-                  {level}레벨
-                </Text>
-                <Flex justify="flex-end">
-                  {trade ? (
-                    <Text
-                      type="secondary"
-                      className="tnum"
-                      title={tradeTitle}
-                      style={{
-                        whiteSpace: 'nowrap',
-                        fontWeight: aboveIdea(trade.price) ? 700 : undefined,
-                      }}
-                    >
-                      {formatGold(trade.price, false)}
-                    </Text>
-                  ) : !cell ? (
-                    // 거래 기록은 모으기 시작한 뒤의 것만 있다. 그 뒤로 팔린 적이 없으면 적을 값이 없다.
-                    <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                      기록 없음
-                    </Text>
-                  ) : (
-                    <PriceLink
-                      cell={cell}
-                      to={muriasAuctionPath(row.name, level)}
-                      label={`${row.name} ${level}레벨`}
-                      showCount={false}
-                      unit={false}
-                      strong={cell !== null && aboveIdea(cell.lowest)}
-                    />
-                  )}
-                </Flex>
-                <Text
-                  type="secondary"
-                  className="tnum"
-                  title={tradeTitle}
-                  style={{ fontSize: 12, whiteSpace: 'nowrap', textAlign: 'right' }}
-                >
-                  {cell ? `${formatNumber(cell.count)}건` : trade ? '최종' : ''}
-                </Text>
-              </div>
-            );
-          })}
+          {blocks.map((block) => (
+            <div key={block.label} role="list" aria-label={`${row.name} ${block.label} 최저가(골드)`}>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 2 }}>
+                {block.label}
+              </Text>
+              {block.levels.map(levelRow)}
+            </div>
+          ))}
         </div>
       </Flex>
     </Card>
@@ -354,12 +416,23 @@ function ArcanaSection({
   wide,
   lastTrades,
   ideaPrice,
+  listedOnly,
+  onOpen,
 }: {
   group: ArcanaGroup;
   wide: boolean;
   lastTrades: ReadonlyMap<string, (LastTrade | null)[]>;
   ideaPrice: number | null;
+  listedOnly: boolean;
+  onOpen: (row: MuriasRow, level: number) => void;
 }) {
+  const formatGold = useGoldFormatter();
+  // 이 아르카나의 옵션을 10레벨로 모두 맞추는 데 드는 값. 10레벨 매물이 있는 옵션만 더한다.
+  const tens = group.options.flatMap((option) => {
+    const cell = option.row.levels[RELIC_MAX_LEVEL - 1];
+    return cell ? [cell.lowest] : [];
+  });
+  const tenTotal = tens.reduce((sum, price) => sum + price, 0);
   const title = (
     <Flex gap={10} align="center" vertical={wide} style={wide ? { textAlign: 'center' } : undefined}>
       {group.arcana ? <SkillIcon skillId={group.arcana.awakening} size={ARCANA_ICON} /> : null}
@@ -370,6 +443,14 @@ function ArcanaSection({
         <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
           옵션 {formatNumber(group.options.length)}종, 매물 {formatNumber(group.count)}건
         </Text>
+        {tens.length > 0 ? (
+          <Text className="tnum" style={{ fontSize: 12, fontWeight: 600 }}>
+            {RELIC_MAX_LEVEL}레벨 합계 {formatGold(tenTotal)}
+            {tens.length < group.options.length
+              ? ` (${formatNumber(tens.length)}/${formatNumber(group.options.length)}종)`
+              : ''}
+          </Text>
+        ) : null}
       </Flex>
     </Flex>
   );
@@ -398,6 +479,8 @@ function ArcanaSection({
               option={option}
               lastTrades={lastTrades.get(option.row.key)}
               ideaPrice={ideaPrice}
+              listedOnly={listedOnly}
+              onOpen={(level) => onOpen(option.row, level)}
             />
           ))}
         </div>
@@ -414,16 +497,20 @@ function ArcanaPicker({
   groups,
   selected,
   onSelect,
+  scroll,
 }: {
   groups: ArcanaGroup[];
   selected: number | null;
   onSelect: (id: number | null) => void;
+  /** 좁은 화면. 칩이 여러 줄로 넘치지 않고 한 줄에서 가로로 민다. */
+  scroll: boolean;
 }) {
   const arcanas = groups.flatMap((group) => (group.arcana ? [group.arcana] : []));
   if (arcanas.length === 0) return null;
   const buttonProps = (on: boolean) =>
     ({
       size: 'small',
+      style: scroll ? { flex: '0 0 auto' } : undefined,
       color: on ? 'primary' : 'default',
       variant: on ? 'solid' : 'outlined',
       'aria-pressed': on,
@@ -433,7 +520,13 @@ function ArcanaPicker({
       <Text strong style={{ fontSize: 13 }} id="relic-arcana-label">
         아르카나
       </Text>
-      <Flex gap={6} wrap role="group" aria-labelledby="relic-arcana-label">
+      <Flex
+        gap={6}
+        wrap={!scroll}
+        role="group"
+        aria-labelledby="relic-arcana-label"
+        style={scroll ? { overflowX: 'auto', paddingBottom: 4 } : undefined}
+      >
         <Button {...buttonProps(selected === null)} onClick={() => onSelect(null)}>
           전체
         </Button>
@@ -484,6 +577,7 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
   const screens = Grid.useBreakpoint();
   // 아르카나 이름을 왼쪽 칸에 두는 폭. 까닭은 ArcanaSection 에 있다.
   const wide = screens.xxl ?? true;
+  const narrow = !(screens.md ?? true);
   const summary = useMemo(() => summarizeMurias(items), [items]);
   const arcanaQuery = useArcanaQuery();
   const groups = useMemo(
@@ -521,24 +615,38 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
 
   const [query, setQuery] = useQueryTextParam('q');
   const needle = normalizeForSearch(query);
+  // 매물 있는 것만 보기. 고른 것은 주소에 남아 새로 고쳐도 그대로다.
+  const listedOnly = params.get('listed') === '1';
+  const setListedOnly = (on: boolean) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (on) next.set('listed', '1');
+        else next.delete('listed');
+        return next;
+      },
+      { replace: true },
+    );
+  // 레벨 칸을 눌러 연 거래가 추이 창.
+  const [trend, setTrend] = useState<{ row: MuriasRow; level: number } | null>(null);
   // 옵션 이름이나 아르카나 이름에 들어 있으면 남긴다. "블래스트" 로 치면 그 아르카나가 통째로 남는다.
   const shown = groups
     .filter((group) => selected === null || group.arcana?.id === selected)
     .map((group) => ({
       ...group,
-      options:
-        needle && !normalizeForSearch(group.arcana?.name ?? '').includes(needle)
-          ? group.options.filter((option) => normalizeForSearch(option.row.name).includes(needle))
-          : group.options,
+      options: (needle && !normalizeForSearch(group.arcana?.name ?? '').includes(needle)
+        ? group.options.filter((option) => normalizeForSearch(option.row.name).includes(needle))
+        : group.options
+      ).filter((option) => !listedOnly || option.row.levels.some(Boolean)),
     }))
     .filter((group) => group.options.length > 0);
 
   return (
     <Flex vertical gap={16} style={SHRINK}>
       <Card variant="outlined">
-        {/* 네 칸. 768px 미만에서는 두 칸, 576px 미만에서는 한 칸으로 떨어진다. */}
-        <Row gutter={[24, 16]} align="top">
-          <Col xs={24} sm={12} md={6}>
+        {/* 네 칸. 768px 미만에서는 2x2 로 둔다. 한 칸씩 쌓으면 요약만으로 한 화면을 다 차지했다. */}
+        <Row gutter={[16, 16]} align="top">
+          <Col xs={12} md={6}>
             <Flex gap={12} align="center">
               <ItemIcon category={RELIC_CATEGORY} name={MURIAS_RELIC_NAME} size={40} />
               <Statistic
@@ -549,7 +657,7 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
               />
             </Flex>
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={12} md={6}>
             <Statistic
               title="스킬 옵션"
               value={formatNumber(summary.rows.length)}
@@ -557,7 +665,7 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
               styles={{ content: { fontVariantNumeric: 'tabular-nums' } }}
             />
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={12} md={6}>
             <Statistic
               title={
                 <>
@@ -572,7 +680,7 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
               styles={{ content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}
             />
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={12} md={6}>
             <IdeaOddsStat odds={odds} ideaListed={ideaPrice !== null} />
           </Col>
         </Row>
@@ -592,14 +700,22 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
         <EmptyState description="지금 경매장에 옵션이 붙은 무리아스의 유물 매물이 없습니다. 잠시 뒤 다시 열어 보세요." />
       ) : (
         <>
-          <ArcanaPicker groups={groups} selected={selected} onSelect={select} />
-          <NameFilter
-            id="relic-option-filter"
-            label="스킬 이름으로 좁히기"
-            value={query}
-            onChange={setQuery}
-            placeholder="예: 오버 드라이브"
-          />
+          <ArcanaPicker groups={groups} selected={selected} onSelect={select} scroll={narrow} />
+          <Flex gap={16} wrap align="flex-end" justify="space-between">
+            <NameFilter
+              id="relic-option-filter"
+              label="스킬 이름으로 좁히기"
+              value={query}
+              onChange={setQuery}
+              placeholder="예: 오버 드라이브"
+            />
+            <Flex gap={8} align="center">
+              <Switch id="relic-listed-only" checked={listedOnly} onChange={setListedOnly} />
+              <label htmlFor="relic-listed-only" className="no-select">
+                매물 있는 것만 보기
+              </label>
+            </Flex>
+          </Flex>
           {shown.length === 0 ? (
             <EmptyState
               variant="search"
@@ -613,11 +729,22 @@ function MuriasView({ items }: { items: AuctionItem[] }) {
                 wide={wide}
                 lastTrades={lastTrades}
                 ideaPrice={ideaPrice}
+                listedOnly={listedOnly}
+                onOpen={(row, level) => setTrend({ row, level })}
               />
             ))
           )}
         </>
       )}
+      {trend ? (
+        <RelicTrendModal
+          key={trend.row.key}
+          row={trend.row}
+          level={trend.level}
+          lastTrades={lastTrades.get(trend.row.key)}
+          onClose={() => setTrend(null)}
+        />
+      ) : null}
     </Flex>
   );
 }

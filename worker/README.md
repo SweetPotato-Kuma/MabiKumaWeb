@@ -315,6 +315,8 @@ curl -X DELETE "https://<워커주소>/item-card?name=<이름>&category=<카테�
 | `GET /market/item?name=&days=30` | 공개 | 아이템 하나의 최근 1일 통계와 날짜별 요약 |
 | `POST /market/recent` `{ names }` | 공개 | 이름 여럿(60개까지)의 최근 1일 통계 |
 | `GET /market/popular?window=1h\|24h\|7d\|30d` | 공개 | 인기 거래 아이템 순위(거래 횟수순, 총 거래 금액순 각 30위)와 집계 기간(`from`, `to`), 기록을 모은 날(`since`, `partial`). 1시간과 24시간은 거래 원본에서, 7일과 30일은 하루 요약에서 셈. 경매장 화면의 "인기 거래 아이템" 이 씀 |
+| `GET /market/relic-series?option=&days=30` | 공개 | 무리아스의 유물 옵션 하나의 문장(레벨)별 날짜별 거래가(건수, 최저, 중위, 최고)와 최근 거래 40건. 유물 시세의 레벨 창이 씀 |
+| `GET /market/relic-recent` | 공개 | 무리아스의 유물 옵션 문장(레벨)마다 최근 1일 통계. 경매장이 유물 줄에 그 레벨의 시세를 붙일 때 씀 |
 | `GET /market/history?category=&name=&cursor=&limit=` | 공개 | 카테고리나 이름(쉼표로 여럿)으로 거래 목록을 새것부터 훑기. 경매장 화면의 "거래 내역" 탭이 씀. 둘 다 비우면 서버 전체 최근 거래(첫 화면 미리보기가 씀) |
 | `POST /market/collect` | 운영자 | 크론을 기다리지 않고 지금 한 번 받기 |
 

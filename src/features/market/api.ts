@@ -58,6 +58,28 @@ export interface MarketRecentResponse {
   updated: string | null;
 }
 
+/**
+ * 무리아스의 유물 옵션 하나의 거래가 추이(worker/market.js 의 marketRelicSeries). 문장 하나가 레벨 하나라
+ * 문장마다 날짜별 거래가를 준다. 문장을 레벨로 읽는 일은 화면이 한다(features/relics/trend.ts).
+ */
+export interface RelicSeriesResponse {
+  option: string;
+  days: number;
+  /** [문장, 날짜, 거래 건수, 수량, 최저, 중위, 최고, 거래 금액 합] */
+  daily: [string, string, number, number, number, number, number, number][];
+  /** [문장, 개당 가격, 수량, 거래 시각(ISO)] 새것부터 */
+  recent: [string, number, number, string][];
+  since: string | null;
+  updated: string | null;
+}
+
+/** 무리아스의 유물 문장(레벨)마다 최근 1일 통계(marketRelicRecent). */
+export interface RelicRecentResponse {
+  items: Record<string, RecentSummary>;
+  since: string | null;
+  updated: string | null;
+}
+
 /** 인기 거래 아이템의 집계 기간. 워커의 POPULAR_WINDOWS 와 같다. */
 export type PopularWindow = '1h' | '24h' | '7d' | '30d';
 
@@ -139,6 +161,35 @@ export async function fetchMarketPopular(
     signal,
   });
   return readJson<PopularResponse>(response);
+}
+
+/** 유물 옵션 하나의 레벨별 거래가 추이. 창을 열 때만 묻는다(enabled). */
+export function useRelicSeriesQuery(option: string, enabled = true) {
+  return useQuery({
+    queryKey: ['market', 'relicSeries', option],
+    queryFn: async ({ signal }) => {
+      const url = new URL(`${getProxyUrl()}/market/relic-series`);
+      url.searchParams.set('option', option);
+      return readJson<RelicSeriesResponse>(await fetch(url, { headers: { accept: 'application/json' }, signal }));
+    },
+    enabled: enabled && canLookupMarket() && option !== '',
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
+}
+
+/** 유물 문장(레벨)마다 최근 1일 통계. 경매장이 유물 줄에 그 레벨의 시세를 붙일 때 쓴다. */
+export function useRelicRecentQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['market', 'relicRecent'],
+    queryFn: async ({ signal }) =>
+      readJson<RelicRecentResponse>(
+        await fetch(`${getProxyUrl()}/market/relic-recent`, { headers: { accept: 'application/json' }, signal }),
+      ),
+    enabled: enabled && canLookupMarket(),
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
 }
 
 /** 인기 거래 아이템 순위. 펼쳤을 때만 묻는다(enabled). */

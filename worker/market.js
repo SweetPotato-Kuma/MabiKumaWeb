@@ -22,6 +22,8 @@ export const MARKET_RECENT_PATH = '/market/recent';
 export const MARKET_OPTION_TRADES_PATH = '/market/option-trades';
 export const MARKET_HISTORY_PATH = '/market/history';
 export const MARKET_POPULAR_PATH = '/market/popular';
+export const MARKET_RELIC_SERIES_PATH = '/market/relic-series';
+export const MARKET_RELIC_RECENT_PATH = '/market/relic-recent';
 export const MARKET_COLLECT_PATH = '/market/collect';
 
 const KST_OFFSET_SECONDS = 9 * 3600;
@@ -125,6 +127,61 @@ const OPTION_TRADES_SQL = `WITH picked AS (
   WHERE text IS NOT NULL
 )
 SELECT text, price, ts FROM ranked WHERE rn = 1 ORDER BY text`;
+
+/**
+ * 무리아스의 유물. 옵션 문장 하나가 레벨 하나라서(수치가 레벨마다 다르다) 시세는 이름이 아니라 문장으로 센다.
+ * 이름("무리아스의 유물")으로 세면 모든 옵션, 모든 레벨이 한 통계에 섞여 뜻이 없다.
+ * 화면의 MURIAS_RELIC_NAME, MURIAS_OPTION_TYPE(src/features/relics/murias.ts)과 같다.
+ */
+const RELIC_NAME = '무리아스의 유물';
+const RELIC_OPTION_TYPE = '무리아스 유물';
+
+/** 옵션 하나의 시세 그래프에 담을 날 수의 기본값과 상한. 거래 원본(RAW_DAYS)보다 길 수 없다. */
+const RELIC_SERIES_DAYS = 30;
+/** 옵션 하나의 최근 거래 목록 줄 수. */
+const RELIC_RECENT_TRADES = 40;
+const OPTION_MAX = 120;
+
+/** 유물 거래의 옵션 문장 한 줄. 문장에 들어 있는 값(수치)이 레벨을 가른다. */
+const RELIC_PICK = `SELECT t.id, t.ts, t.price, t.count, json_extract(o.value, '$[2]') AS text
+  FROM trades t, json_each(t.options) o
+  WHERE t.name = '${RELIC_NAME}' AND json_extract(o.value, '$[0]') = '${RELIC_OPTION_TYPE}'`;
+
+/**
+ * 옵션 하나(이름이 같은 문장 모두)의 문장별, 날짜별 거래가. 문장은 "옵션 이름 수치 증가 (최대 N)" 모양이라
+ * 이름 뒤에 공백이 오는 것만 고른다. 이름이 다른 옵션의 앞부분과 겹치는 것은 화면이 문장을 읽어 걸러낸다.
+ * 중위는 거래 건수 기준이다(STATS_SQL 과 같다).
+ */
+const RELIC_SERIES_SQL = `WITH picked AS (
+  SELECT text, (ts + ${KST_OFFSET_SECONDS}) / ${DAY_SECONDS} AS day, count, price,
+    ROW_NUMBER() OVER (PARTITION BY text, (ts + ${KST_OFFSET_SECONDS}) / ${DAY_SECONDS} ORDER BY price) AS rn,
+    COUNT(*) OVER (PARTITION BY text, (ts + ${KST_OFFSET_SECONDS}) / ${DAY_SECONDS}) AS c
+  FROM (${RELIC_PICK} AND ts >= ?1) WHERE text LIKE ?2 ESCAPE '\\'
+)
+SELECT text, day, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total, MIN(price) AS lo, MAX(price) AS hi,
+  CAST(ROUND(AVG(CASE WHEN rn IN ((c + 1) / 2, (c + 2) / 2) THEN price END)) AS INTEGER) AS mid
+FROM picked
+GROUP BY text, day
+ORDER BY text, day`;
+
+const RELIC_RECENT_TRADES_SQL = `SELECT text, price, count, ts FROM (${RELIC_PICK}) WHERE text LIKE ?1 ESCAPE '\\'
+ORDER BY ts DESC, id DESC LIMIT ${RELIC_RECENT_TRADES}`;
+
+/** 모든 유물 문장의 최근 1일 통계. 줄마다 그 문장(그 레벨) 값을 붙이는 데 쓴다. */
+const RELIC_RECENT_SQL = `WITH picked AS (
+  SELECT text, ts, count, price,
+    ROW_NUMBER() OVER (PARTITION BY text ORDER BY price) AS rn,
+    COUNT(*) OVER (PARTITION BY text) AS c
+  FROM (${RELIC_PICK} AND ts >= ?1 AND ts < ?2) WHERE text IS NOT NULL
+)
+SELECT text, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total, MIN(price) AS lo,
+  MAX(price) AS hi, MAX(ts) AS last,
+  CAST(ROUND(AVG(CASE WHEN rn IN ((c + 1) / 2, (c + 2) / 2) THEN price END)) AS INTEGER) AS mid
+FROM picked
+GROUP BY text`;
+
+/** LIKE 의 특수문자(%, _, \\)를 글자 그대로 찾게 한다. */
+const likeEscape = (text) => text.replace(/[\\%_]/g, (char) => `\\${char}`);
 
 /** 한국 시각 기준 날짜 번호. 1970-01-01 이 0 이다. */
 export function kstDay(ts) {
@@ -818,6 +875,122 @@ export async function marketPopular(request, url, env, cors, now = Date.now()) {
       'x-market-cache': hit ? 'hit' : 'miss',
     },
   });
+}
+
+/**
+ * 유물 옵션 하나의 거래가 추이. 문장(레벨)마다 날짜별 거래 건수, 최저, 중위, 최고가와, 최근 거래 목록을 준다.
+ * days 일은 거래 원본이 있는 만큼만 의미가 있다. 기록을 늦게 모았으면 화면이 since 로 밝힌다.
+ */
+export async function relicSeries(db, option, days = RELIC_SERIES_DAYS, now = Date.now()) {
+  const today = kstDay(Math.floor(now / 1000));
+  const since = dayStart(today - days + 1);
+  const pattern = `${likeEscape(option)} %`;
+  const [daily, recent] = await Promise.all([
+    db.prepare(RELIC_SERIES_SQL).bind(since, pattern).all(),
+    db.prepare(RELIC_RECENT_TRADES_SQL).bind(pattern).all(),
+  ]);
+  return {
+    option,
+    days,
+    // [문장, 날짜, 거래 건수, 수량, 최저, 중위, 최고, 거래 금액 합]
+    daily: (daily.results ?? []).map((row) => [
+      row.text,
+      dayLabel(row.day),
+      row.n,
+      row.qty,
+      row.lo,
+      row.mid,
+      row.hi,
+      row.total,
+    ]),
+    // [문장, 개당 가격, 수량, 거래 시각(ISO)] 새것부터
+    recent: (recent.results ?? []).map((row) => [
+      row.text,
+      row.price,
+      row.count,
+      new Date(row.ts * 1000).toISOString(),
+    ]),
+  };
+}
+
+/** 유물 문장마다 최근 1일 통계. 문장이 없던 레벨은 빠진다. */
+export async function relicRecentStats(db, now = Date.now()) {
+  const end = Math.floor(now / 1000) + 1;
+  const { results } = await db
+    .prepare(RELIC_RECENT_SQL)
+    .bind(end - 1 - DAY_SECONDS, end)
+    .all();
+  const items = {};
+  for (const row of results ?? []) {
+    items[row.text] = {
+      n: row.n,
+      qty: row.qty,
+      lo: row.lo,
+      hi: row.hi,
+      mid: row.mid,
+      avg: row.qty > 0 ? Math.round(row.total / row.qty) : 0,
+      last: new Date(row.last * 1000).toISOString(),
+    };
+  }
+  return items;
+}
+
+function cachedJson(body, hit, cors, seconds = CACHE_SECONDS) {
+  return new Response(body, {
+    headers: {
+      ...cors,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': `public, max-age=${seconds}`,
+      'x-market-cache': hit ? 'hit' : 'miss',
+    },
+  });
+}
+
+/** GET /market/relic-series?option=...&days=30 → 유물 옵션 하나의 레벨별 거래가 추이와 최근 거래. 유물 시세의 창이 쓴다. */
+export async function marketRelicSeries(request, url, env, cors, now = Date.now()) {
+  if (!env.MARKET)
+    return marketError('MARKET_NOT_CONFIGURED', '시세 기록이 아직 없습니다.', 503, cors);
+  const option = String(url.searchParams.get('option') ?? '')
+    .trim()
+    .slice(0, OPTION_MAX);
+  if (!option) return marketError('MARKET_NAME_REQUIRED', '옵션 이름이 없습니다.', 400, cors);
+  const requested = Number(url.searchParams.get('days'));
+  const days =
+    Number.isInteger(requested) && requested > 0
+      ? Math.min(requested, SERIES_MAX_DAYS)
+      : RELIC_SERIES_DAYS;
+
+  if (await rateLimited(request, env)) {
+    return marketError('MARKET_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
+  }
+
+  const cacheKey = `https://market.cache${MARKET_RELIC_SERIES_PATH}?option=${encodeURIComponent(option)}&days=${days}`;
+  const { body, hit } = await withEdgeCache(
+    cacheKey,
+    async () => {
+      const [series, info] = await Promise.all([
+        relicSeries(env.MARKET, option, days, now),
+        collectionInfo(env.MARKET),
+      ]);
+      return { ...series, ...info };
+    },
+    900,
+  );
+  return cachedJson(body, hit, cors, 900);
+}
+
+/** GET /market/relic-recent → 유물 문장(레벨)마다 최근 1일 통계. 경매장 목록과 상세가 유물의 레벨별 시세를 붙일 때 쓴다. */
+export async function marketRelicRecent(request, env, cors, now = Date.now()) {
+  if (!env.MARKET)
+    return marketError('MARKET_NOT_CONFIGURED', '시세 기록이 아직 없습니다.', 503, cors);
+  if (await rateLimited(request, env)) {
+    return marketError('MARKET_RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429, cors);
+  }
+  const { body, hit } = await withEdgeCache(`https://market.cache${MARKET_RELIC_RECENT_PATH}`, async () => {
+    const [items, info] = await Promise.all([relicRecentStats(env.MARKET, now), collectionInfo(env.MARKET)]);
+    return { items, ...info };
+  });
+  return cachedJson(body, hit, cors);
 }
 
 /** POST /market/collect → 지금 한 번 받는다. 운영자 전용. 배포 직후 첫 수집을 확인할 때 쓴다. */

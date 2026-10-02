@@ -49,6 +49,8 @@ import {
   MARKET_OPTION_TRADES_PATH,
   MARKET_HISTORY_PATH,
   MARKET_POPULAR_PATH,
+  MARKET_RELIC_RECENT_PATH,
+  MARKET_RELIC_SERIES_PATH,
   collectTrades,
   marketCollect,
   marketItem,
@@ -56,6 +58,8 @@ import {
   marketOptionTrades,
   marketHistory,
   marketPopular,
+  marketRelicRecent,
+  marketRelicSeries,
 } from './market.js';
 import { PRICE_COLLECT_PATH, PRICE_CRON, collectPrices, pricesCollect } from './priceSnapshot.js';
 import { SERVER_CHANNELS } from './servers.js';
@@ -1370,6 +1374,18 @@ export default {
         return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
       }
       return marketPopular(request, url, env, cors);
+    }
+    if (url.pathname === MARKET_RELIC_SERIES_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return marketRelicSeries(request, url, env, cors);
+    }
+    if (url.pathname === MARKET_RELIC_RECENT_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('MARKET_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return marketRelicRecent(request, env, cors);
     }
 
     // 뿔피리 찾기. 서버 하나, 기간 하나에서 검색어로 거른다.

@@ -26,6 +26,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
   type TableColumnsType,
 } from 'antd';
 import { ApiKeyNotice } from '@/components/ApiKeyNotice';
@@ -84,7 +85,9 @@ import {
   type AuctionTab,
 } from '@/features/auction/searchParams';
 import { scanCategoriesFor, useOptionNamesQuery } from '@/features/auction/optionNames';
-import { useMarketRecentQuery } from '@/features/market/api';
+import { useMarketRecentQuery, useRelicRecentQuery } from '@/features/market/api';
+import { isRelicOption, parseRelicOption, relicOptionOf } from '@/features/relics/murias';
+import { riskThresholds, rowKeyOf, summarizeMurias } from '@/features/relics/prices';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { useIconMaps } from '@/features/itemcard/iconMap';
 import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
@@ -95,7 +98,7 @@ import { useCanQuery } from '@/lib/settings';
 import { useAutoLoadMore } from '@/lib/useAutoLoadMore';
 import { useControlledPagination } from '@/lib/useListPagination';
 import { useUserSettings } from '@/lib/userSettings';
-import { HelpIcon, RefreshIcon, SearchIcon } from '@/components/icons';
+import { HelpIcon, RefreshIcon, SearchIcon, WarningIcon } from '@/components/icons';
 
 const { Text } = Typography;
 
@@ -147,14 +150,18 @@ function ItemNameCell({
   notes,
   matches,
   partial,
+  warning,
 }: {
   displayName: string;
+  /** 믿기 어려운 값이라는 경고. 이름 옆 아이콘에 올리거나 눌러서 읽는다. */
+  warning?: string;
   notes?: string[];
   /** 상세 검색 조건에 걸린 옵션. 조각(배지)으로 보이고, 조건을 채운 조각은 강조한다. */
   matches?: MatchNote[];
   /** 검색어가 이름에 그대로 들어맞지 않고 일부만 걸려 나온 줄. */
   partial?: boolean;
 }) {
+  const { token } = theme.useToken();
   return (
     <Flex vertical gap={2}>
       <Flex gap={6} align="center" wrap>
@@ -162,6 +169,17 @@ function ItemNameCell({
           {displayName}
         </Text>
         {partial ? <Tag style={{ margin: 0 }}>부분 일치</Tag> : null}
+        {warning ? (
+          <Tooltip title={warning} trigger={['hover', 'click']}>
+            <Button
+              type="text"
+              size="small"
+              aria-label={warning}
+              icon={<WarningIcon style={{ color: token.colorWarning }} />}
+              style={{ width: 22, height: 22, minWidth: 22, padding: 0 }}
+            />
+          </Tooltip>
+        ) : null}
       </Flex>
       {notes?.map((note) => (
         <Text key={note} type="secondary" style={{ fontSize: 12 }}>
@@ -606,6 +624,56 @@ export function AuctionPage() {
   const recent = useMarketRecentQuery(itemNames, enabled && tab === 'items' && itemNames.length > 0);
   const recentByName = itemNames.length > 1 ? recent.items : null;
 
+  /**
+   * 무리아스의 유물은 이름이 모두 같고 옵션 문장 하나가 레벨 하나다. 이름으로 시세를 내면 모든 옵션과 레벨이 한 통계에
+   * 섞여 뜻이 없다. 유물 줄에는 그 줄의 옵션 문장(레벨)으로 센 시세를 붙인다.
+   */
+  const hasRelicRows = useMemo(
+    () => visibleItems.some((item) => (item.item_option ?? []).some(isRelicOption)),
+    [visibleItems],
+  );
+  const relicRecent = useRelicRecentQuery(enabled && tab === 'items' && hasRelicRows);
+  const recentFor = useCallback(
+    (record: AuctionItem) => {
+      const relic = (record.item_option ?? []).find(isRelicOption);
+      if (relic) return relicRecent.data?.items[relic.option_value ?? ''] ?? null;
+      return recentByName?.[record.item_name] ?? null;
+    },
+    [recentByName, relicRecent.data],
+  );
+  const showRecent = recentByName !== null || hasRelicRows;
+
+  /**
+   * 사기 위험. 레벨이 낮은 유물이 같은 옵션의 더 높은 레벨 최저가보다 비싸면 일반 사용자를 속이려는 올림이다.
+   * 불러온 모든 유물 매물로 레벨마다 기준을 세운다. 일부만 불러왔으면 더 싼 높은 레벨을 놓칠 수 있어 위험을
+   * 덜 잡을 뿐, 없는 위험을 만들지는 않는다.
+   */
+  const relicRisk = useMemo(() => {
+    if (!hasRelicRows) return null;
+    const table = new Map<string, (number | null)[]>();
+    for (const row of summarizeMurias(items).rows) table.set(row.key, riskThresholds(row.levels));
+    return table;
+  }, [hasRelicRows, items]);
+  const riskOf = useCallback(
+    (record: AuctionItem): number | null => {
+      if (!relicRisk) return null;
+      const relic = relicOptionOf(record);
+      if (!relic) return null;
+      const threshold = relicRisk.get(rowKeyOf(relic))?.[relic.level - 1] ?? null;
+      return threshold !== null && record.auction_price_per_unit > threshold ? threshold : null;
+    },
+    [relicRisk],
+  );
+  const riskNote = useCallback(
+    (record: AuctionItem) => {
+      const threshold = riskOf(record);
+      return threshold === null
+        ? undefined
+        : `(사기 위험) 같은 옵션의 더 높은 레벨 최저가 ${formatGold(threshold)} 보다 비쌉니다.`;
+    },
+    [riskOf, formatGold],
+  );
+
   const itemsLoaded = itemsQuery.data?.loadedCount ?? 0;
   const historyLoaded = historyQuery.data?.loadedCount ?? 0;
   /** 워커가 쌓아 둔 기록으로 찾을 때만 있다. 최근 1시간짜리 라이브 조회에는 없다. */
@@ -952,6 +1020,7 @@ export function AuctionPage() {
         <ItemNameCell
           displayName={record.item_display_name}
           partial={itemIsPartial(record)}
+          warning={riskNote(record)}
           matches={filtering ? describeMatch(record, deferredFilter) : undefined}
         />
       ),
@@ -967,7 +1036,7 @@ export function AuctionPage() {
       render: (value: number) => <span className="tnum">{formatNumber(value)}</span>,
     },
     // 여러 아이템이 섞인 목록에서만. 호가 옆에 최근에 실제로 팔린 값을 두어 비싼지 싼지 바로 보이게 한다.
-    ...(recentByName
+    ...(showRecent
       ? [
           {
             title: <MedianTitle />,
@@ -977,7 +1046,7 @@ export function AuctionPage() {
             align: 'right' as const,
             onCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
             render: (_value: unknown, record: AuctionItem) => {
-              const summary = recentByName[record.item_name];
+              const summary = recentFor(record);
               if (!summary) return <Text type="secondary">-</Text>;
               const gap = medianGap(record.auction_price_per_unit, summary.mid);
               return (
@@ -1038,12 +1107,13 @@ export function AuctionPage() {
       title: '이름',
       dataIndex: 'item_display_name',
       render: (_value, record) => {
-        const summary = recentByName?.[record.item_name];
+        const summary = recentFor(record);
         const remaining = formatRemaining(record.date_auction_expire);
         return (
           <ItemNameCell
             displayName={record.item_display_name}
             partial={itemIsPartial(record)}
+            warning={riskNote(record)}
             notes={[
               `${formatNumber(record.item_count)}개, ${remaining === '만료' ? remaining : `${remaining} 남음`}`,
               ...(summary
@@ -1073,7 +1143,7 @@ export function AuctionPage() {
         <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
       ),
     },
-  ], [isWide, recentByName, filtering, deferredFilter, sortOrderOf, tiered, priceOf, itemIsPartial, formatGold]);
+  ], [isWide, showRecent, recentFor, riskNote, filtering, deferredFilter, sortOrderOf, tiered, priceOf, itemIsPartial, formatGold]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => isWide ? [
@@ -1167,10 +1237,29 @@ export function AuctionPage() {
    * 한 글자 칠 때마다 500줄짜리 표까지 다시 그리면 입력이 밀린다. 패널이 쓰는 값에는
    * form 이 없으므로, 메모해 두면 타이핑 중에는 이 아래가 통째로 멈춰 있는다.
    */
+  /**
+   * 무리아스의 유물을 옵션과 레벨 하나로 좁혀 봤을 때(보이는 줄의 옵션 문장이 하나) 그 레벨의 최근 1일 거래를 위에 보인다.
+   * 문장이 여럿이면 줄마다의 시세 칸으로 충분하고, 모든 유물을 한 통계로 묶어 보이지 않는다.
+   */
+  const relicSummary = useMemo(() => {
+    const sentences = new Set<string>();
+    for (const item of visibleItems) {
+      const option = (item.item_option ?? []).find(isRelicOption);
+      if (option?.option_value) sentences.add(option.option_value);
+    }
+    if (sentences.size !== 1) return null;
+    const [sentence] = [...sentences];
+    const relic = parseRelicOption(sentence);
+    return {
+      label: relic ? `${relic.name} ${relic.level}레벨` : sentence,
+      summary: relicRecent.data?.items[sentence] ?? null,
+    };
+  }, [visibleItems, relicRecent.data]);
+
   const itemsPanel = useMemo(() => (
     <Flex vertical gap={16}>
       <SymbolNotice count={itemsSymbolCount} showing={showSymbols} onToggle={() => setShowSymbols((prev) => !prev)} />
-      {singleItem ? (
+      {singleItem && !(singleItem.item_option ?? []).some(isRelicOption) ? (
         <Card
           variant="outlined"
           size="small"
@@ -1187,6 +1276,18 @@ export function AuctionPage() {
             <RecentTradeStats summary={recent.items[singleItem.item_name]} label="최근 1일 개당 가격" />
           ) : (
             <Text type="secondary">최근 1일 동안 거래된 기록이 없습니다.</Text>
+          )}
+        </Card>
+      ) : null}
+
+      {relicSummary ? (
+        <Card variant="outlined" size="small" title={`최근 1일 거래, ${relicSummary.label}`}>
+          {relicRecent.isLoading ? (
+            <Skeleton active title={false} paragraph={{ rows: 2 }} />
+          ) : relicSummary.summary ? (
+            <RecentTradeStats summary={relicSummary.summary} label="최근 1일 개당 가격" />
+          ) : (
+            <Text type="secondary">최근 1일 동안 이 레벨이 거래된 기록이 없습니다.</Text>
           )}
         </Card>
       ) : null}
@@ -1238,7 +1339,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, changeSort, changeBasis, byTotal, itemsHaveBundle, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, changeBasis, byTotal, itemsHaveBundle, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, relicSummary, relicRecent.isLoading, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <Flex vertical gap={12}>

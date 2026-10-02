@@ -46,12 +46,37 @@ const SYMBOL_ITEMS = ['전투 검', '전투 방패', '전투 심볼', '전투 �
   date_auction_expire: new Date(Date.now() + 3_600_000).toISOString(),
 }));
 
+/** 무리아스의 유물 매물. 이름이 모두 같고 옵션 문장이 레벨을 가른다. 1레벨 10억은 2레벨 천만 원보다 비싸 사기 위험이다. */
+const RELIC_TEXT = (value: string) => `오버 드라이브 폭발 공격 대미지 ${value} 증가 (최대 700%)`;
+const RELIC_ITEMS = [
+  ['70%', 1_000_000_000],
+  ['140%', 10_000_000],
+  ['210%', 30_000_000],
+].map(([value, price]) => ({
+  item_name: '무리아스의 유물',
+  item_display_name: '무리아스의 유물',
+  item_count: 1,
+  auction_item_category: '유물',
+  auction_price_per_unit: price as number,
+  date_auction_expire: new Date(Date.now() + 3_600_000).toISOString(),
+  item_option: [{ option_type: '무리아스 유물', option_value: RELIC_TEXT(value as string) }],
+}));
+
 vi.mock('@/features/auction/hooks', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useAuctionItemsQuery: (input: { keyword: string }, enabled: boolean) => ({
     data: enabled
       ? (() => {
-          const items = input.keyword === '소울 보우' ? TIER_ITEMS : input.keyword.includes('전투') ? SYMBOL_ITEMS : FAKE_ITEMS;
+          const items =
+            input.keyword === '소울 보우'
+              ? TIER_ITEMS
+              : input.keyword.includes('전투')
+                ? SYMBOL_ITEMS
+                : input.keyword === '유물시험'
+                  ? RELIC_ITEMS
+                  : input.keyword === '유물한줄'
+                    ? RELIC_ITEMS.slice(1, 2)
+                    : FAKE_ITEMS;
           return { items, loadedCount: items.length };
         })()
       : undefined,
@@ -74,9 +99,18 @@ vi.mock('@/features/auction/hooks', async (importOriginal) => ({
   }),
 }));
 
-// 1일 중위는 모든 아이템이 10,000 G 로 답한다.
+// 1일 중위는 모든 아이템이 10,000 G 로 답한다. 유물은 옵션 문장(레벨)마다 따로 답한다.
 vi.mock('@/features/market/api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  useRelicRecentQuery: () => ({
+    isLoading: false,
+    data: {
+      items: {
+        [RELIC_TEXT('70%')]: { n: 2, qty: 2, lo: 1000, hi: 2000, mid: 1500, avg: 1500, last: '2026-09-30T00:00:00Z' },
+        [RELIC_TEXT('140%')]: { n: 3, qty: 3, lo: 9_000_000, hi: 12_000_000, mid: 10_500_000, avg: 10_500_000, last: '2026-09-30T00:00:00Z' },
+      },
+    },
+  }),
   useMarketRecentQuery: (names: readonly string[]) => ({
     items: Object.fromEntries(
       names.map((name) => [name, { n: 5, qty: 5, lo: 9000, hi: 11000, mid: 10_000, avg: 10_000, last: '2026-09-30T00:00:00Z' }]),
@@ -405,6 +439,38 @@ describe('경매장 검색 조건과 주소', () => {
 
       expect(await screen.findByText('조건에 맞는 매물이 없습니다. 조건을 넓혀 보세요.')).toBeInTheDocument();
       expect(screen.queryByText(/불러온 .*건/)).toBeNull();
+    });
+  });
+
+  describe('무리아스의 유물 줄', () => {
+    it('이름이 같은 유물이라도 줄마다 그 옵션 문장(레벨)의 1일 중위를 붙인다', async () => {
+      renderAt('/auction?keyword=유물시험');
+
+      // 2레벨(140%) 줄의 중위는 10,500,000 이다. 모든 유물을 한 통계로 묶은 값이 아니다.
+      // 테스트 화면은 좁아 중위가 이름 아래 글로 붙는다.
+      expect(await screen.findByText(/1일 중위 10,500,000 G/)).toBeInTheDocument();
+      expect(screen.getByText(/1일 중위 1,500 G/)).toBeInTheDocument();
+      // 문장이 여럿이면 이름 하나로 센 "최근 1일 거래" 카드는 두지 않는다.
+      expect(screen.queryByText('최근 1일 거래')).toBeNull();
+    });
+
+    it('옵션과 레벨 하나로 좁혀 보면 그 레벨의 최근 1일 거래를 위에 보인다', async () => {
+      renderAt('/auction?keyword=유물한줄');
+
+      expect(await screen.findByText('최근 1일 거래, 오버 드라이브 폭발 공격 대미지 2레벨')).toBeInTheDocument();
+    });
+
+    it('더 높은 레벨 최저가보다 비싼 낮은 레벨 매물에 사기 위험 표시를 단다', async () => {
+      renderAt('/auction?keyword=유물시험');
+      await screen.findByText(/1일 중위 10,500,000 G/);
+
+      const warnings = screen.getAllByRole('button', { name: /^\(사기 위험\)/ });
+
+      // 1레벨 10억만 위험이다. 2레벨 천만 원과 3레벨 3천만 원은 아니다.
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].getAttribute('aria-label')).toContain('10,000,000 G');
+      fireEvent.click(warnings[0]);
+      expect(await screen.findByText(/보다 비쌉니다/)).toBeInTheDocument();
     });
   });
 

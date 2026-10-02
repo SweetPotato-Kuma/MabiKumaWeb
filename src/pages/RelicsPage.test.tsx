@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import type * as Settings from '@/lib/settings';
@@ -11,9 +11,31 @@ import { readRelicCache, writeRelicCache } from '@/features/relics/hooks';
 import { RelicsPage } from '@/pages/RelicsPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
+const SERIES = vi.hoisted(() => ({
+  option: '오버 드라이브 폭발 공격 대미지',
+  days: 30,
+  daily: [
+    ['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', '2026-09-24', 1, 1, 70_000_000, 70_000_000, 70_000_000, 70_000_000],
+    ['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', '2026-09-25', 2, 2, 75_000_000, 78_000_000, 81_000_000, 156_000_000],
+  ],
+  recent: [
+    ['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 75_000_000, 1, '2026-09-25T03:30:00.000Z'],
+    ['오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 81_000_000, 1, '2026-09-25T02:30:00.000Z'],
+  ],
+  since: '2026-09-23',
+  updated: '2026-09-25T03:40:00.000Z',
+}));
+
 // 워커의 거래 기록 대신 8레벨의 최종 거래 하나를 돌려준다. 8레벨은 지금 매물이 없다.
 vi.mock('@/features/market/api', async (importOriginal) => ({
   ...(await importOriginal<typeof MarketApi>()),
+  canLookupMarket: () => true,
+  useRelicSeriesQuery: () => ({
+    isPending: false,
+    error: null,
+    data: SERIES,
+    dataUpdatedAt: Date.parse('2026-09-25T04:00:00.000Z'),
+  }),
   useOptionTradesQuery: () => ({
     isLoading: false,
     data: {
@@ -82,12 +104,26 @@ const ARCANA_DATA = {
   ],
 };
 
+let location = '';
+function Watcher() {
+  const current = useLocation();
+  location = current.pathname + current.search;
+  return null;
+}
+
+/** 레벨 칸 단추. 가격을 누르면 그 레벨의 거래가 추이 창이 열린다. */
+const levelButton = (level: number) =>
+  screen.findByRole('button', {
+    name: new RegExp(`오버 드라이브 폭발 공격 대미지 ${level}레벨 .*거래가 추이 보기`),
+  });
+
 function renderPage(path = '/relics') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <AppProviders>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
+          <Watcher />
           <RelicsPage />
         </MemoryRouter>
       </QueryClientProvider>
@@ -128,9 +164,7 @@ describe('유물 시세', () => {
     vi.mocked(fetchAuctionList).mockImplementation(() => new Promise(() => {}));
     renderPage();
 
-    const cell = await screen.findByRole('link', {
-      name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기',
-    });
+    const cell = await levelButton(7);
     expect(within(cell).getByText('80,000,000')).toBeInTheDocument();
     expect(screen.getByText(/5분 전에 받은 판매 중 매물/)).toBeInTheDocument();
     expect(screen.getByText('새 매물을 받는 중입니다.')).toBeInTheDocument();
@@ -138,44 +172,80 @@ describe('유물 시세', () => {
 
   it('새 매물을 다 받으면 다음에 열 때 쓰도록 남긴다', async () => {
     renderPage();
-    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+    await levelButton(7);
     expect(screen.queryByText('새 매물을 받는 중입니다.')).toBeNull();
     expect(readRelicCache()?.items).toHaveLength(PAGES.flat().length);
   });
 
-  it('무리아스의 유물을 옵션과 레벨별 최저가로 모으고, 칸을 누르면 그 레벨 매물로 간다', async () => {
+  it('무리아스의 유물을 옵션과 레벨별 최저가로 모으고, 두 단 머리에 레벨 범위를 적는다', async () => {
     renderPage();
 
-    const cell = await screen.findByRole('link', {
-      name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기',
-    });
+    const cell = await levelButton(7);
     // 두 번째 쪽의 8,000만이 첫 쪽의 9,500만보다 싸다.
     expect(within(cell).getByText('80,000,000')).toBeInTheDocument();
-    expect(cell).toHaveAttribute('title', '80,000,000 G');
     // 같은 칸에 레벨과 매물 수가 있고, 레벨 글자는 그 레벨의 수치(700% 의 10분의 7)를 품는다.
     const line = cell.closest('[role="listitem"]') as HTMLElement;
     expect(within(line).getByTitle('490%')).toHaveTextContent('7레벨');
     expect(within(line).getByText('2건')).toBeInTheDocument();
-    const url = new URL(cell.getAttribute('href') ?? '', 'https://example.com');
+    expect((await levelButton(10)).textContent).toBe('300,000,000');
+    expect(screen.getByText('134,000,000 G')).toBeInTheDocument();
+    // 두 단이 어디서 어디까지인지 머리에 적는다.
+    expect(screen.getByText('10~6레벨')).toBeInTheDocument();
+    expect(screen.getByText('5~1레벨')).toBeInTheDocument();
+  });
+
+  it('가격 칸을 누르면 그 레벨의 거래가 추이 창이 열리고, 경매장 매물 보기로 그 레벨 매물에 간다', async () => {
+    renderPage();
+
+    fireEvent.click(await levelButton(7));
+
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText('오버 드라이브 폭발 공격 대미지')).toBeInTheDocument();
+    expect(dialog.getByText('7레벨 490% 증가')).toBeInTheDocument();
+    // 지금 최저가와, 거래 기록의 가장 최근 거래가를 함께 적는다.
+    expect(dialog.getByText('80,000,000 G')).toBeInTheDocument();
+    expect(dialog.getByText('75,000,000 G', { selector: 'strong, .ant-typography' })).toBeInTheDocument();
+    expect(dialog.getByRole('img', { name: /7레벨 최근 7일 거래가 그래프/ })).toBeInTheDocument();
+    // 최근 거래 목록에 두 건.
+    expect(dialog.getAllByRole('row').length).toBeGreaterThanOrEqual(3);
+
+    fireEvent.click(dialog.getByRole('button', { name: /경매장 매물 보기/ }));
+
+    await waitFor(() => expect(location).toContain('/auction'));
+    const url = new URL(location, 'https://example.com');
     expect(Object.fromEntries(url.searchParams)).toEqual({
       category: '유물',
       relic: '오버 드라이브 폭발 공격 대미지',
       relicMin: '7',
       relicMax: '7',
     });
-    expect(
-      screen.getByRole('link', { name: '오버 드라이브 폭발 공격 대미지 10레벨 매물 보기' }),
-    ).toHaveTextContent('300,000,000');
-    expect(screen.getByText('134,000,000 G')).toBeInTheDocument();
   });
 
-  it('매물이 없는 레벨은 최종 거래가를 한 줄로 적고, 본전 확률을 센다', async () => {
+  it('창 안에서 레벨을 옮기면 그 레벨의 값과 경매장 이동이 따라온다', async () => {
     renderPage();
-    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+    fireEvent.click(await levelButton(7));
+    const dialog = within(await screen.findByRole('dialog'));
 
-    const [eight, mark] = screen.getAllByTitle('최종 거래가 200,000,000 G, 9월 25일');
-    expect(eight).toHaveTextContent('200,000,000');
-    expect(mark).toHaveTextContent('최종');
+    // 테스트 화면은 좁은 화면(폭 조건이 모두 거짓)이라 레벨 고르기가 목록 칸이다.
+    fireEvent.mouseDown(dialog.getByRole('combobox', { name: '레벨' }));
+    fireEvent.click(await screen.findByTitle('10레벨'));
+
+    expect(await dialog.findByText('10레벨 700% 증가')).toBeInTheDocument();
+    expect(dialog.getByText('300,000,000 G')).toBeInTheDocument();
+    fireEvent.click(dialog.getByRole('button', { name: /경매장 매물 보기/ }));
+    await waitFor(() => expect(location).toContain('relicMin=10'));
+  });
+
+  it('매물이 없는 레벨은 최종 거래가를 적고 기록 아이콘을 눌러 설명을 보며, 본전 확률을 센다', async () => {
+    renderPage();
+    await levelButton(7);
+
+    expect((await levelButton(8)).textContent).toBe('200,000,000');
+    // "최종" 글자 대신 아이콘이다. 마우스를 올리지 않아도 눌러서 설명이 열린다(휴대폰).
+    const info = screen.getByRole('button', { name: '오버 드라이브 폭발 공격 대미지 8레벨 최종 거래가 설명' });
+    fireEvent.click(info);
+    expect(await screen.findByText(/최종 거래가 200,000,000 G, 9월 25일/)).toBeInTheDocument();
+    expect(screen.queryByText('최종')).toBeNull();
     // 매물도 거래 기록도 없는 레벨은 기록이 없다고 적는다.
     expect(screen.getAllByText('기록 없음')).toHaveLength(7);
 
@@ -185,9 +255,53 @@ describe('유물 시세', () => {
     expect(screen.getByText('66.7%')).toBeInTheDocument();
   });
 
+  it('낮은 레벨이 더 높은 레벨보다 비싸면 값을 낮추고 사기 위험을 알린다', async () => {
+    vi.mocked(fetchAuctionList).mockImplementation(async ({ category }) => ({
+      auction_item:
+        category === '유물'
+          ? [
+              // 1레벨 10억, 2레벨 천만 원. 1레벨 값은 믿을 수 없다.
+              murias('오버 드라이브 폭발 공격 대미지 70% 증가 (최대 700%)', 1_000_000_000),
+              murias('오버 드라이브 폭발 공격 대미지 140% 증가 (최대 700%)', 10_000_000),
+            ]
+          : [],
+      next_cursor: null,
+    }));
+    renderPage();
+
+    const one = await levelButton(1);
+    expect(one.textContent).toBe('10,000,000');
+    fireEvent.click(screen.getByRole('button', { name: '오버 드라이브 폭발 공격 대미지 1레벨 사기 위험 설명' }));
+    expect(await screen.findByText(/\(사기 위험\) 실제 최저가는 1,000,000,000 G/)).toBeInTheDocument();
+    // 2레벨 값은 그대로이고 경고도 없다.
+    expect(screen.queryByRole('button', { name: '오버 드라이브 폭발 공격 대미지 2레벨 사기 위험 설명' })).toBeNull();
+  });
+
+  it('아르카나 제목 옆에 10레벨 합계를 적는다', async () => {
+    renderPage();
+    await levelButton(7);
+
+    // 10레벨 매물이 있는 옵션은 오버 드라이브 하나(3억).
+    expect(screen.getByText('10레벨 합계 300,000,000 G')).toBeInTheDocument();
+  });
+
+  it('매물 있는 것만 보기를 켜면 매물 없는 레벨이 숨고 주소에 남는다', async () => {
+    renderPage();
+    await levelButton(7);
+    expect(screen.getAllByText('기록 없음')).toHaveLength(7);
+
+    fireEvent.click(screen.getByRole('switch', { name: '매물 있는 것만 보기' }));
+
+    await waitFor(() => expect(screen.queryAllByText('기록 없음')).toHaveLength(0));
+    expect(location).toContain('listed=1');
+    // 매물이 있는 레벨은 그대로이고, 8레벨 최종 거래가(매물 없음)는 숨는다.
+    expect(await levelButton(7)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /8레벨 .*거래가 추이 보기/ })).toBeNull();
+  });
+
   it('그 밖의 유물은 일반, 특급, 이데아로 나눠 보여 준다', async () => {
     renderPage();
-    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+    await levelButton(7);
 
     fireEvent.click(screen.getByRole('tab', { name: '그 밖의 유물' }));
 
@@ -201,7 +315,7 @@ describe('유물 시세', () => {
 
   it('옵션을 아르카나로 묶고, 아르카나를 고르면 그 아르카나만 보인다', async () => {
     renderPage();
-    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+    await levelButton(7);
 
     // 매물이 있는 아르카나만 묶음과 단추가 생긴다. 알케믹 스팅어는 매물이 없다.
     expect(screen.getAllByText('블래스트 랜서').length).toBeGreaterThanOrEqual(2);
@@ -211,14 +325,12 @@ describe('유물 시세', () => {
 
     fireEvent.click(lancer);
     expect(lancer).toHaveAttribute('aria-pressed', 'true');
-    expect(
-      screen.getByRole('link', { name: '오버 드라이브 폭발 공격 대미지 10레벨 매물 보기' }),
-    ).toBeInTheDocument();
+    expect(await levelButton(10)).toBeInTheDocument();
   });
 
   it('스킬 이름으로 줄을 좁힌다', async () => {
     renderPage();
-    await screen.findByRole('link', { name: '오버 드라이브 폭발 공격 대미지 7레벨 매물 보기' });
+    await levelButton(7);
 
     fireEvent.change(screen.getByLabelText('스킬 이름으로 좁히기'), { target: { value: '플레임' } });
 

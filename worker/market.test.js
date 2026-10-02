@@ -478,6 +478,86 @@ describe('인기 거래 아이템', () => {
   });
 });
 
+describe('무리아스의 유물 레벨별 시세', () => {
+  const OVER7 = '오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)';
+  const OVER10 = '오버 드라이브 폭발 공격 대미지 700% 증가 (최대 700%)';
+  const OTHER = '오버 드라이브 쿨타임 감소 35초 (최대 50초)';
+  const relic = (id, secondsAgo, price, text) =>
+    trade(id, secondsAgo, {
+      name: '무리아스의 유물',
+      category: '유물',
+      price,
+      options: [{ option_type: '무리아스 유물', option_value: text }],
+    });
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    pages = [
+      [
+        relic(1, 60, 1_000_000, OVER7),
+        relic(2, 120, 3_000_000, OVER7),
+        relic(3, 7200, 5_000_000, OVER7),
+        relic(4, 90, 9_000_000, OVER10),
+        // 이틀 전. 24시간 밖이다.
+        relic(5, 2 * 86400, 800_000, OVER7),
+        relic(6, 60, 100, OTHER),
+        // 유물이 아닌 거래에 우연히 같은 옵션 종류가 있어도 세지 않는다.
+        trade(7, 60, { name: '싱싱한 풀', price: 1, options: [{ option_type: '무리아스 유물', option_value: OVER7 }] }),
+      ],
+    ];
+    stubHistory();
+    await collectTrades(env, NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('최근 1일 통계는 이름이 아니라 옵션 문장(레벨)마다 센다', async () => {
+    const body = await (await call('/market/relic-recent')).json();
+
+    expect(Object.keys(body.items).sort()).toEqual([OTHER, OVER10, OVER7].sort());
+    // 7레벨 문장: 24시간 안 3건(1, 3, 5백만 가운데 100만, 300만, 500만). 이틀 전 거래와 유물이 아닌 거래는 뺀다.
+    expect(body.items[OVER7]).toMatchObject({ n: 3, qty: 3, lo: 1_000_000, hi: 5_000_000, mid: 3_000_000, avg: 3_000_000 });
+    expect(body.items[OVER10]).toMatchObject({ n: 1, mid: 9_000_000 });
+    expect(body.updated).toBe(new Date(NOW).toISOString());
+  });
+
+  it('옵션 하나의 문장마다 날짜별 거래가와 최근 거래를 준다', async () => {
+    const response = await call(`/market/relic-series?option=${encodeURIComponent('오버 드라이브 폭발 공격 대미지')}`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    // 이름이 다른 옵션(쿨타임 감소)은 섞이지 않는다.
+    expect(new Set(body.daily.map((row) => row[0]))).toEqual(new Set([OVER7, OVER10]));
+    const over7 = body.daily.filter((row) => row[0] === OVER7);
+    expect(over7.map((row) => row[1])).toEqual(['2026-09-23', '2026-09-25']);
+    // [문장, 날짜, 건수, 수량, 최저, 중위, 최고, 거래 금액 합]
+    expect(over7[1]).toEqual([OVER7, '2026-09-25', 3, 3, 1_000_000, 3_000_000, 5_000_000, 9_000_000]);
+    // 새것부터. [문장, 개당 가격, 수량, 거래 시각]
+    expect(body.recent[0]).toEqual([OVER7, 1_000_000, 1, new Date(NOW - 60_000).toISOString()]);
+    expect(body.recent.map((row) => row[1])).toEqual([1_000_000, 9_000_000, 3_000_000, 5_000_000, 800_000]);
+  });
+
+  it('옵션 이름의 특수문자는 글자 그대로 찾는다', async () => {
+    const body = await (await call(`/market/relic-series?option=${encodeURIComponent('오버 %')}`)).json();
+
+    expect(body.daily).toEqual([]);
+    expect(body.recent).toEqual([]);
+  });
+
+  it('옵션 이름이 없으면 거절하고, 조회 제한과 저장소 없음도 알린다', async () => {
+    expect((await call('/market/relic-series')).status).toBe(400);
+    expect((await call('/market/relic-series?option=x', { method: 'POST', body: {} })).status).toBe(405);
+    env.MARKET_RATE_LIMIT = { limit: async () => ({ success: false }) };
+    expect((await call('/market/relic-recent')).status).toBe(429);
+    env.MARKET_RATE_LIMIT = undefined;
+    env.MARKET = undefined;
+    expect((await call('/market/relic-recent')).status).toBe(503);
+  });
+});
+
 describe('시세 경로', () => {
   beforeEach(async () => {
     vi.useFakeTimers({ toFake: ['Date'] });

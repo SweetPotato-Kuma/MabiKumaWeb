@@ -19,10 +19,19 @@ interface PricedItem {
   item_option?: ItemOption[] | null;
 }
 
-/** 한 칸의 값. 그 칸에 든 매물 중 가장 싼 개당 가격과 매물 수. */
+/**
+ * 한 칸의 값. 그 칸에 든 매물 중 가장 싼 개당 가격과 매물 수.
+ *
+ * 레벨이 낮은 칸이 높은 레벨 칸보다 비싸면 믿을 수 없는 값이다(guardLevels). 그때 lowest 는 높은 레벨의 값으로 낮춰
+ * 둔 것이고, 실제 값은 actual 에, 낮춰 둔 칸이라는 표시는 risky 에 있다.
+ */
 export interface PriceCell {
   lowest: number;
   count: number;
+  /** 낮추기 전 실제 최저가. risky 일 때만 있다. */
+  actual?: number;
+  /** 더 높은 레벨의 최저가보다 비싸 값을 낮춰 둔 칸. */
+  risky?: boolean;
 }
 
 export interface MuriasRow extends RelicScale {
@@ -100,12 +109,42 @@ export function summarizeMurias(items: readonly PricedItem[]): MuriasSummary {
     row.levels[relic.level - 1] = addTo(row.levels[relic.level - 1], price);
   }
 
-  return {
-    rows: [...rows.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko')),
-    listed,
-    unread,
-    idea,
-  };
+  const sorted = [...rows.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  for (const row of sorted) row.levels = guardLevels(row.levels);
+  return { rows: sorted, listed, unread, idea };
+}
+
+/**
+ * 높은 레벨은 낮은 레벨보다 싸지 않다. 1레벨이 10억인데 2레벨이 천만 원이면 1레벨 값은 믿을 수 없다. 일반 사용자를
+ * 속여 비싸게 팔려는 올림이라, 각 레벨의 값이 그보다 높은 레벨의 최저가를 넘지 않게 낮춰 보인다. 낮춘 칸에는
+ * 실제 값(actual)과 표시(risky)를 남겨 화면이 "사기 위험" 을 알린다. 높은 레벨부터 내려오며 실제 값 기준으로 센다.
+ */
+export function guardLevels(levels: readonly (PriceCell | null)[]): (PriceCell | null)[] {
+  const guarded = [...levels];
+  let higher = Number.POSITIVE_INFINITY;
+  for (let index = levels.length - 1; index >= 0; index -= 1) {
+    const cell = levels[index];
+    if (!cell) continue;
+    const raw = cell.actual ?? cell.lowest;
+    if (raw > higher) guarded[index] = { ...cell, lowest: higher, actual: raw, risky: true };
+    higher = Math.min(higher, raw);
+  }
+  return guarded;
+}
+
+/**
+ * 레벨마다, 그보다 높은 레벨 가운데 가장 싼 실제 최저가. 이 값을 넘는 매물은 사기 위험이다.
+ * 더 높은 레벨에 매물이 없으면 null(견줄 곳이 없다).
+ */
+export function riskThresholds(levels: readonly (PriceCell | null)[]): (number | null)[] {
+  const thresholds: (number | null)[] = levels.map(() => null);
+  let higher = Number.POSITIVE_INFINITY;
+  for (let index = levels.length - 1; index >= 0; index -= 1) {
+    thresholds[index] = Number.isFinite(higher) ? higher : null;
+    const cell = levels[index];
+    if (cell) higher = Math.min(higher, cell.actual ?? cell.lowest);
+  }
+  return thresholds;
 }
 
 /** 한 레벨의 가장 최근 거래. 지금 매물이 없는 레벨에 적는다. */
