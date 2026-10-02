@@ -385,11 +385,13 @@ export function parseExcludes(text) {
   ].slice(0, MAX_EXCLUDES);
 }
 
-function likePattern(term) {
-  return `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-}
-
-/** 찾기 조건을 SQL 로. 값은 모두 바인딩으로 넘긴다. */
+/**
+ * 찾기 조건을 SQL 로. 값은 모두 바인딩으로 넘긴다.
+ *
+ * 글에 검색어가 들어 있는지는 LIKE 가 아니라 instr 로 본다. D1 은 LIKE 패턴을 50바이트로 막는데 한글은 글자당
+ * 3바이트라, 검색어가 17글자를 넘으면 "LIKE or GLOB pattern too complex" 로 터진다(검색어는 40자까지 받는다).
+ * instr 은 길이 한도가 없고 %, _ 를 따로 가릴 필요도 없다. 글과 검색어는 둘 다 normalize 로 소문자에 공백이 없다.
+ */
 export function buildSearch({ server, since, character, kinds, groups, excludes, limit }) {
   const where = ['server = ?1', 'last_ts >= ?2'];
   const params = [server, since];
@@ -400,11 +402,11 @@ export function buildSearch({ server, since, character, kinds, groups, excludes,
   if (character) where.push(`character = ${bind(character)}`);
   if (kinds) where.push(`kind IN (${kinds.map(bind).join(', ')})`);
   for (const group of groups) {
-    where.push(`(${group.map((term) => `norm LIKE ${bind(likePattern(term))} ESCAPE '\\'`).join(' OR ')})`);
+    where.push(`(${group.map((term) => `instr(norm, ${bind(term)}) > 0`).join(' OR ')})`);
   }
   if (excludes.length > 0) {
     where.push(
-      `NOT (${excludes.map((term) => `norm LIKE ${bind(likePattern(term))} ESCAPE '\\'`).join(' OR ')})`,
+      `NOT (${excludes.map((term) => `instr(norm, ${bind(term)}) > 0`).join(' OR ')})`,
     );
   }
   const sql = `SELECT id, character, body, kind, channel, members, times, first_ts, last_ts

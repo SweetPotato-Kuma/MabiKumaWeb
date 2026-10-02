@@ -247,17 +247,38 @@ describe('검색어 읽기', () => {
     expect(parseExcludes('파티, 구함 구함')).toEqual(['파티', '구함']);
   });
 
-  it('LIKE 의 특수 문자는 글자 그대로 찾는다', () => {
-    const { params } = buildSearch({
+  it('%, _ 같은 특수 문자는 글자 그대로 찾는다', () => {
+    const { sql, params } = buildSearch({
       server: '류트',
       since: 0,
       character: '',
       kinds: null,
       groups: [['100%']],
-      excludes: [],
+      excludes: ['a_b'],
       limit: 10,
     });
-    expect(params).toContain('%100\\%%');
+
+    expect(params).toContain('100%');
+    expect(params).toContain('a_b');
+    expect(sql).not.toMatch(/LIKE/i);
+  });
+
+  it('D1 의 LIKE 한도(패턴 50바이트)를 넘는 긴 한글 검색어는 LIKE 없이 찾는다', () => {
+    const long = parseTerms('탈라가흐트라이팟딜러구함고수만환영합니다많이와주세요')[0][0];
+    expect(Buffer.byteLength(long)).toBeGreaterThan(50);
+
+    const { sql, params } = buildSearch({
+      server: '류트',
+      since: 0,
+      character: '',
+      kinds: null,
+      groups: [[long]],
+      excludes: [long],
+      limit: 10,
+    });
+
+    expect(sql).not.toMatch(/LIKE/i);
+    expect(params).toContain(long);
   });
 });
 
@@ -335,5 +356,33 @@ describe('GET /horn/search', () => {
     const { status, body } = await search({ server: '울프' });
     expect(status).toBe(200);
     expect(body.posts).toHaveLength(1);
+  });
+
+  it('긴 한글 검색어도 찾고, D1 의 LIKE 한도에 걸리지 않는다', async () => {
+    // 로컬 SQLite 에는 없는 D1 의 한도를 흉내 낸다. LIKE 패턴이 50바이트를 넘으면 터진다.
+    const real = env.MARKET.prepare.bind(env.MARKET);
+    env.MARKET.prepare = (sql) => {
+      const statement = real(sql);
+      return {
+        ...statement,
+        bind: (...args) => {
+          if (/ LIKE /i.test(sql) && args.some((arg) => typeof arg === 'string' && Buffer.byteLength(arg) > 50))
+            throw new Error('LIKE or GLOB pattern too complex');
+          return statement.bind(...args);
+        },
+      };
+    };
+
+    // 긴 글을 하나 더 두고 한 번 찾아 받아 둔 뒤, 저장된 줄임 글(norm)을 그대로 검색어로 쓴다. 한글 글자당 3바이트다.
+    horns['류트'].push(horn('긴글', '탈라가흐 트라이팟 딜러 고수만 구합니다 많이 와주세요', 3));
+    await search({ server: '류트' });
+    const { norm } = env.MARKET.sqlite.prepare("SELECT norm FROM horn_posts WHERE character = '긴글'").get();
+    const long = norm;
+    expect(Buffer.byteLength(long)).toBeGreaterThan(50);
+
+    const { status, body } = await search({ server: '류트', q: long });
+
+    expect(status).toBe(200);
+    expect(body.posts.map((post) => post.character)).toEqual(['긴글']);
   });
 });

@@ -41,6 +41,8 @@ vi.mock('@/features/market/api', async (importOriginal) => ({
     data: {
       trades: [
         ['오버 드라이브 폭발 공격 대미지 560% 증가 (최대 700%)', 200_000_000, '2026-09-25T03:00:00.000Z'],
+        // 지금 매물이 없는 옵션의 10레벨 최종 거래. 10레벨 합계가 이 값으로 센다.
+        ['플레임 버스트 대미지 450% 증가 (최대 450%)', 50_000_000, '2026-09-26T03:00:00.000Z'],
       ],
     },
   }),
@@ -283,6 +285,37 @@ describe('유물 시세', () => {
 
     // 10레벨 매물이 있는 옵션은 오버 드라이브 하나(3억).
     expect(screen.getByText('10레벨 합계 300,000,000 G')).toBeInTheDocument();
+  });
+
+  it('10레벨 매물이 없는 옵션은 최종 거래가로 세어 합계에 넣고, 몇 종 기준인지는 적지 않는다', async () => {
+    vi.mocked(fetchAuctionList).mockImplementation(async ({ category }) => ({
+      auction_item:
+        category === '유물'
+          ? [
+              // 플레임 버스트는 3레벨 매물만 있다. 10레벨은 최종 거래가 5천만으로 센다.
+              murias('플레임 버스트 대미지 135% 증가 (최대 450%)', 9_000_000),
+              murias('오버 드라이브 폭발 공격 대미지 700% 증가 (최대 700%)', 300_000_000),
+            ]
+          : [],
+      next_cursor: null,
+    }));
+    renderPage();
+    await levelButton(10);
+
+    expect(screen.getByText('10레벨 합계 50,000,000 G')).toBeInTheDocument();
+    expect(screen.getByText('10레벨 합계 300,000,000 G')).toBeInTheDocument();
+    expect(screen.queryByText(/\d+\/\d+종/)).toBeNull();
+  });
+
+  it('아르카나 이름 옆에 옵션 수와 매물 수를 한 줄로 잇는다', async () => {
+    renderPage();
+    await levelButton(7);
+
+    const counts = screen.getByText(/옵션 1종, 매물 3건/);
+    const name = counts.parentElement?.querySelector('.ant-typography strong, strong');
+    // 이름과 같은 줄(같은 부모)에 있다. 이름 아래 줄이 아니다.
+    expect(counts.parentElement).toContainElement(within(counts.parentElement as HTMLElement).getByText('블래스트 랜서'));
+    expect(name).toBeTruthy();
   });
 
   it('매물 있는 것만 보기를 켜면 매물 없는 레벨이 숨고 주소에 남는다', async () => {

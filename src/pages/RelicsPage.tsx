@@ -427,30 +427,47 @@ function ArcanaSection({
   onOpen: (row: MuriasRow, level: number) => void;
 }) {
   const formatGold = useGoldFormatter();
-  // 이 아르카나의 옵션을 10레벨로 모두 맞추는 데 드는 값. 10레벨 매물이 있는 옵션만 더한다.
-  const tens = group.options.flatMap((option) => {
-    const cell = option.row.levels[RELIC_MAX_LEVEL - 1];
-    return cell ? [cell.lowest] : [];
-  });
-  const tenTotal = tens.reduce((sum, price) => sum + price, 0);
-  const title = (
-    <Flex gap={10} align="center" vertical={wide} style={wide ? { textAlign: 'center' } : undefined}>
+  // 이 아르카나의 옵션을 10레벨로 모두 맞추는 데 드는 값. 10레벨 매물이 없는 옵션은 최종 거래가로 센다.
+  // 매물도 거래 기록도 없는 옵션은 값을 몰라 뺀다.
+  const top = RELIC_MAX_LEVEL - 1;
+  const tenTotal = group.options.reduce((sum, option) => {
+    const price = option.row.levels[top]?.lowest ?? lastTrades.get(option.row.key)?.[top]?.price;
+    return sum + (price ?? 0);
+  }, 0);
+  const name = (
+    <Text strong style={{ fontSize: 15 }}>
+      {group.arcana?.name ?? '아르카나를 찾지 못한 옵션'}
+    </Text>
+  );
+  const counts = (
+    <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+      옵션 {formatNumber(group.options.length)}종, 매물 {formatNumber(group.count)}건
+    </Text>
+  );
+  const total =
+    tenTotal > 0 ? (
+      <Text className="tnum" style={{ fontSize: 12, fontWeight: 600 }}>
+        {RELIC_MAX_LEVEL}레벨 합계 {formatGold(tenTotal)}
+      </Text>
+    ) : null;
+  // 이름 왼쪽 칸이 따로 있는 넓은 화면은 세 줄로 쌓아도 옵션 카드보다 키가 커지지 않는다. 그보다 좁으면 옵션 카드 위에
+  // 한 줄을 차지하므로, 이름 오른쪽에 개수와 합계를 이어 붙여 아르카나 구획이 그만큼 높아지지 않게 한다.
+  const title = wide ? (
+    <Flex gap={10} align="center" vertical style={{ textAlign: 'center' }}>
       {group.arcana ? <SkillIcon skillId={group.arcana.awakening} size={ARCANA_ICON} /> : null}
-      <Flex vertical gap={0} align={wide ? 'center' : 'flex-start'}>
-        <Text strong style={{ fontSize: 15 }}>
-          {group.arcana?.name ?? '아르카나를 찾지 못한 옵션'}
-        </Text>
-        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-          옵션 {formatNumber(group.options.length)}종, 매물 {formatNumber(group.count)}건
-        </Text>
-        {tens.length > 0 ? (
-          <Text className="tnum" style={{ fontSize: 12, fontWeight: 600 }}>
-            {RELIC_MAX_LEVEL}레벨 합계 {formatGold(tenTotal)}
-            {tens.length < group.options.length
-              ? ` (${formatNumber(tens.length)}/${formatNumber(group.options.length)}종)`
-              : ''}
-          </Text>
-        ) : null}
+      <Flex vertical gap={0} align="center">
+        {name}
+        {counts}
+        {total}
+      </Flex>
+    </Flex>
+  ) : (
+    <Flex gap={10} align="center">
+      {group.arcana ? <SkillIcon skillId={group.arcana.awakening} size={ARCANA_ICON} /> : null}
+      <Flex align="baseline" wrap style={{ columnGap: 12, rowGap: 0 }}>
+        {name}
+        {counts}
+        {total}
       </Flex>
     </Flex>
   );
