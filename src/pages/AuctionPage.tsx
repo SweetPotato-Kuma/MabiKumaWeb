@@ -18,7 +18,6 @@ import {
   Flex,
   Grid,
   Input,
-  Segmented,
   Skeleton,
   Spin,
   Table,
@@ -323,28 +322,8 @@ function SymbolNotice({
   );
 }
 
-/**
- * 가격 열을 무엇으로 정렬할지. 묶음 매물이 있을 때만 나타난다. 묶음이 없으면 개당과 전체가 같아 고를 것이 없다.
- */
-function PriceBasis({ byTotal, onChange }: { byTotal: boolean; onChange: (byTotal: boolean) => void }) {
-  return (
-    <Flex gap={8} align="center" wrap>
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        가격순
-      </Text>
-      <Segmented
-        size="small"
-        aria-label="가격 정렬 기준"
-        value={byTotal ? 'total' : 'unit'}
-        onChange={(value) => onChange(value === 'total')}
-        options={[
-          { value: 'unit', label: '개당' },
-          { value: 'total', label: '전체' },
-        ]}
-      />
-    </Flex>
-  );
-}
+/** 가격 열 정렬 값. 묶음이어도 늘 개당 가격이다. 묶음 전체 값으로는 정렬하지 않는다. */
+const priceOf = (row: { auction_price_per_unit: number }) => row.auction_price_per_unit;
 
 /** 거래 내역 한 줄을 상세 모달이 받는 모양으로. 거래 내역 탭과 첫 화면 미리보기가 같이 쓴다. */
 function historyItemDetail(record: AuctionHistoryItem): AuctionItemDetail {
@@ -380,7 +359,7 @@ export function AuctionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlSearch = useMemo(() => readSearchState(searchParams), [searchParams]);
   const view = useMemo(() => readViewState(searchParams), [searchParams]);
-  const { tab, sort, exact, byTotal } = view;
+  const { tab, sort, exact } = view;
   const searchKey = JSON.stringify([urlSearch.category, urlSearch.keyword, urlSearch.filterKey]);
 
   /**
@@ -565,8 +544,6 @@ export function AuctionPage() {
     [itemsHaveClose, tierOf],
   );
   /** 묶음(2개 이상) 매물이 있을 때만 가격순 기준을 고르게 한다. 없으면 개당과 전체가 같다. */
-  const itemsHaveBundle = useMemo(() => visibleItems.some((item) => item.item_count > 1), [visibleItems]);
-  const historyHaveBundle = useMemo(() => visibleHistory.some((item) => item.item_count > 1), [visibleHistory]);
   const historyIsPartial = useCallback(
     (row: { item_name: string }) => historyHaveClose && tierOf(row) >= PARTIAL_TIER,
     [historyHaveClose, tierOf],
@@ -575,27 +552,6 @@ export function AuctionPage() {
    * 열 정렬에 등급을 앞세운다. antd 는 내림차순일 때 비교 결과를 뒤집으므로 그때는 등급도 뒤집어 두어야
    * 결과적으로 등급이 늘 앞이다.
    */
-  /** 가격 열 정렬 값. 묶음 매물이 섞인 목록에서는 개당과 전체가 다르다. */
-  const priceOf = useCallback(
-    (row: { auction_price_per_unit: number; item_count: number }) =>
-      byTotal ? row.auction_price_per_unit * Math.max(row.item_count, 1) : row.auction_price_per_unit,
-    [byTotal],
-  );
-  /**
-   * 가격순 기준을 바꾼다. 바꾸면 그 기준이 바로 보이게 가격 열로 정렬을 옮기고, 이미 가격으로 정렬 중이면 방향은 둔다.
-   */
-  const changeBasis = useCallback(
-    (nextByTotal: boolean) =>
-      mutateParams((params) => {
-        const current = readViewState(params);
-        writeViewState(params, {
-          byTotal: nextByTotal,
-          sort: { key: 'price', order: current.sort.key === 'price' ? current.sort.order : 'ascend' },
-        });
-        params.delete('page');
-      }, true),
-    [mutateParams],
-  );
   const tiered = useCallback(
     <T extends { item_name: string }>(compare: (a: T, b: T) => number) =>
       (a: T, b: T, order?: AuctionSort['order'] | null) => {
@@ -1070,10 +1026,10 @@ export function AuctionPage() {
       width: 170,
       align: 'right',
       sortOrder: sortOrderOf('price'),
-      // 기본은 개당 가격이다. 묶음 크기가 달라도 이쪽이 비교가 된다. 묶음 전체 값으로도 갈 수 있다(byTotal).
+      // 가격은 늘 개당 가격이다. 묶음 크기가 달라도 이쪽이 비교가 된다.
       sorter: tiered<AuctionItem>((a, b) => priceOf(a) - priceOf(b)),
       render: (_value, record) => (
-        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} />
       ),
     },
     {
@@ -1140,10 +1096,10 @@ export function AuctionPage() {
       sorter: tiered<AuctionItem>((a, b) => priceOf(a) - priceOf(b)),
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
-        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} />
       ),
     },
-  ], [isWide, showRecent, recentFor, riskNote, filtering, deferredFilter, sortOrderOf, tiered, priceOf, itemIsPartial, formatGold]);
+  ], [isWide, showRecent, recentFor, riskNote, filtering, deferredFilter, sortOrderOf, tiered, itemIsPartial, formatGold]);
 
   /** 열 정의는 렌더마다 새로 만들 이유가 없다. 아래 패널 메모의 의존성이기도 하다. */
   const historyColumns = useMemo<TableColumnsType<AuctionHistoryItem>>(() => isWide ? [
@@ -1183,7 +1139,7 @@ export function AuctionPage() {
       sortOrder: sortOrderOf('price'),
       sorter: tiered<AuctionHistoryItem>((a, b) => priceOf(a) - priceOf(b)),
       render: (_value, record) => (
-        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} />
       ),
     },
     {
@@ -1226,10 +1182,10 @@ export function AuctionPage() {
       sorter: tiered<AuctionHistoryItem>((a, b) => priceOf(a) - priceOf(b)),
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_value, record) => (
-        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} count={record.item_count} />
+        <AuctionPriceCell pricePerUnit={record.auction_price_per_unit} />
       ),
     },
-  ], [isWide, filtering, deferredFilter, sortOrderOf, tiered, priceOf, historyIsPartial]);
+  ], [isWide, filtering, deferredFilter, sortOrderOf, tiered, historyIsPartial]);
 
   /**
    * 결과 영역은 검색어 타이핑과 분리한다.
@@ -1305,7 +1261,6 @@ export function AuctionPage() {
         }
       >
         <Flex vertical gap={12}>
-          {itemsHaveBundle ? <PriceBasis byTotal={byTotal} onChange={changeBasis} /> : null}
           <Table<AuctionItem>
             columns={itemColumns}
             dataSource={visibleItems}
@@ -1339,7 +1294,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, changeSort, changeBasis, byTotal, itemsHaveBundle, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, relicSummary, relicRecent.isLoading, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, relicSummary, relicRecent.isLoading, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <Flex vertical gap={12}>
@@ -1371,7 +1326,6 @@ export function AuctionPage() {
             거래 기록은 {historySince}부터 모았습니다.
           </Text>
         ) : null}
-        {historyHaveBundle ? <PriceBasis byTotal={byTotal} onChange={changeBasis} /> : null}
         <Table<AuctionHistoryItem>
           columns={historyColumns}
           dataSource={visibleHistory}
@@ -1393,7 +1347,7 @@ export function AuctionPage() {
       </Flex>
     </QueryState>
     </Flex>
-  ), [enabled, changeSort, changeBasis, byTotal, historyHaveBundle, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, loadEverything, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
+  ), [enabled, changeSort, singleItem, visibleHistory, historySymbolCount, showSymbols, historyColumns, historyLoaded, historySince, historyMore, loadEverything, historyPaging.pagination, historyQuery, isWide, rowInteraction, stickyHeader]);
 
   /**
    * 검색 카드에 보이는 한 줄 상태. 지금 하는 일이 있을 때만 적고, 평소에는 비운다.

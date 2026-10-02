@@ -49,8 +49,6 @@ export interface AuctionViewState {
   size: number;
   /** 검색어와 이름이 정확히 같은 매물만 보인다. 새로 찾지 않고 불러온 것을 거른다. */
   exact: boolean;
-  /** 가격 열을 묶음 전체 값으로 정렬한다. 아니면 개당 가격으로 정렬한다. */
-  byTotal: boolean;
 }
 
 const MAX_TEXT = 200;
@@ -104,7 +102,6 @@ export function readViewState(params: URLSearchParams): AuctionViewState {
     page: Number.isInteger(page) && page >= 1 && page <= MAX_PAGE ? page : 1,
     size: PAGE_SIZE_OPTIONS.includes(size) ? size : DEFAULT_PAGE_SIZE,
     exact: params.get('exact') === '1',
-    byTotal: params.get('by') === 'total',
   };
 }
 
@@ -141,7 +138,6 @@ export function writeViewState(params: URLSearchParams, view: Partial<AuctionVie
   if (view.page !== undefined) put(params, 'page', String(view.page), '1');
   if (view.size !== undefined) put(params, 'size', String(view.size), String(DEFAULT_PAGE_SIZE));
   if (view.exact !== undefined) put(params, 'exact', view.exact ? '1' : '');
-  if (view.byTotal !== undefined) put(params, 'by', view.byTotal ? 'total' : '');
 }
 
 /** 새로 찾을 때의 주소. 쪽과 정렬은 처음으로 돌아가고, 쪽 크기와 탭은 그대로다. */
@@ -153,6 +149,8 @@ export function searchParamsFor(
   writeSearchState(next, search);
   next.delete('page');
   next.delete('sort');
+  // 예전 링크의 가격순 기준(by=total). 가격은 늘 개당으로 센다.
+  next.delete('by');
   return next;
 }
 

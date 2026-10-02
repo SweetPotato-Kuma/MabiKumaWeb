@@ -360,50 +360,28 @@ describe('경매장 검색 조건과 주소', () => {
   });
 
   describe('가격 열', () => {
-    /** 매물 수량과 개당 가격은 위 FAKE_ITEMS 규칙과 같다. */
-    const totalOf = (index: number) => (25 - index) * 1000 * (((index * 7) % 9) + 1);
-
-    it('묶음 매물에는 개당 가격이 전체 가격 아래에 보이고, 한 개짜리에는 없다', async () => {
+    it('묶음 매물이어도 가격 칸은 개당 가격 하나다. 전체 값과 가격순 기준 고르기는 없다', async () => {
       renderAt('/auction?keyword=시험');
       await screen.findByText('시험 검 25');
 
-      // 수량이 2 이상인 줄에만 전체와 개당이 함께 붙는다.
-      expect(screen.getAllByText(/^개당 /).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/^전체 /).length).toBe(screen.getAllByText(/^개당 /).length);
-    });
-
-    it('묶음이 있으면 가격순 기준(개당, 전체)을 고를 수 있다', async () => {
-      renderAt('/auction?keyword=시험');
-      await screen.findByText('시험 검 25');
-
-      expect(screen.getByRole('radiogroup', { name: '가격 정렬 기준' })).toBeInTheDocument();
-    });
-
-    it('묶음이 하나도 없으면 가격순 기준은 나오지 않는다', async () => {
-      renderAt('/auction?keyword=소울 보우');
-      await screen.findByText('소울 보우 강화형');
-
+      expect(screen.queryByText(/^전체 /)).toBeNull();
+      expect(screen.queryByText(/^개당 /)).toBeNull();
       expect(screen.queryByRole('radiogroup', { name: '가격 정렬 기준' })).toBeNull();
+      expect(screen.queryByText('가격순')).toBeNull();
     });
 
-    it('전체로 바꾸면 주소에 실리고 묶음 전체 값이 싼 순으로 정렬된다', async () => {
-      const router = renderAt('/auction?keyword=시험');
+    it('가격순은 개당 가격이다. 가장 싼 것이 맨 위다', async () => {
+      renderAt('/auction?keyword=시험');
       await screen.findByText('시험 검 25');
 
-      fireEvent.click(screen.getByRole('radio', { name: '전체' }));
-
-      await waitFor(() => expect(router.search()).toContain('by=total'));
-      const cheapest = Array.from({ length: 25 }, (_, index) => index).sort((a, b) => totalOf(a) - totalOf(b))[0];
-      await waitFor(() =>
-        expect(screen.getAllByText(/^시험 검 \d+$/)[0].textContent).toBe(`시험 검 ${cheapest + 1}`),
-      );
+      // FAKE_ITEMS 는 25번이 가장 싸다.
+      expect(screen.getAllByText(/^시험 검 \d+$/)[0].textContent).toBe('시험 검 25');
     });
 
-    it('주소의 by=total 이 기준 선택에 나타난다', async () => {
+    it('예전 링크의 by=total 은 무시한다', async () => {
       renderAt('/auction?keyword=시험&by=total');
-      await screen.findAllByText(/^시험 검 \d+$/);
 
-      expect(screen.getByRole('radio', { name: '전체' }).closest('label')?.classList.contains('ant-segmented-item-selected')).toBe(true);
+      expect((await screen.findAllByText(/^시험 검 \d+$/))[0].textContent).toBe('시험 검 25');
     });
 
     it('중위가와 견준 %를 이름 아래에 적는다', async () => {
