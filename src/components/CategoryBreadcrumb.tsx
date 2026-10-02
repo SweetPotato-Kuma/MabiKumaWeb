@@ -26,6 +26,7 @@ export function CategoryBreadcrumb({
           <Fragment key={crumb.value || 'all'}>
             {index > 0 ? <ChevronRightIcon style={{ color: token.colorTextTertiary }} /> : null}
             <Tag
+              className="no-select"
               role={current ? undefined : 'button'}
               tabIndex={current ? undefined : 0}
               aria-current={current ? 'true' : undefined}

@@ -235,6 +235,7 @@ export function PopularTrades({
    * 키보드로도 Enter 와 Space 로 연다.
    */
   const toggleProps = {
+    className: 'no-select',
     role: 'button',
     tabIndex: 0,
     'aria-expanded': open,

@@ -63,6 +63,30 @@ body {
   font-feature-settings: 'tnum';
 }
 
+/*
+ * 조작하는 곳(메뉴, 단추, 탭, 표 머리, 고르기, 헤더)은 글자가 선택되지 않게 한다. 자주 누르거나 두 번 누르는 곳이라
+ * 글자가 파랗게 칠해져 보기 좋지 않았다. 가격, 이름, 옵션 같은 실제 정보는 그대로 선택되고 복사된다.
+ * 입력칸 안의 글자는 건드리지 않는다(.ant-select-selector 는 고른 값 표시줄이라 입력칸이 아니다).
+ * 새로 만든 조작 요소는 .no-select 를 붙인다.
+ */
+.no-select,
+.ant-layout-header,
+.ant-btn,
+.ant-segmented,
+.ant-tabs-nav,
+.ant-menu,
+.ant-tree,
+.ant-table-thead,
+.ant-checkbox-wrapper,
+.ant-radio-wrapper,
+.ant-pagination,
+.ant-select-selector,
+.ant-dropdown-menu,
+.ant-popover-title {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /**
  * 스크롤바는 브라우저가 페이지 배경을 보고 그린다.
  * color-scheme 은 theme.ts 가 html 에 직접 세팅한다.
