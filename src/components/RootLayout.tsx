@@ -132,21 +132,13 @@ function SearchButton({ onOpen, showShortcut }: { onOpen: () => void; showShortc
 }
 
 /**
- * 조회가 평소와 다를 때만 알린다. 프록시를 거치는 것은 방문자 대부분이 늘 보는 기본 상태라
- * 배지로 띄워도 알려 주는 것이 없다. 그때는 아무것도 그리지 않는다.
- * 설정 화면이 없으므로 키를 직접 넣는 경로는 없다. 상태만 알린다.
+ * 조회를 할 수 없을 때만 알린다. 프록시를 거치는 것은 방문자 대부분이 늘 보는 기본 상태이고, 개발할 때 쓰는 내 API 키도
+ * 알려 줄 것이 없어서 둘 다 아무것도 그리지 않는다. 설정 화면이 없으므로 키를 직접 넣는 경로는 없다.
  */
 function EndpointTag() {
   const endpoint = useEndpointMode();
 
-  if (endpoint.apiKey) {
-    return (
-      <Tag icon={<KeyIcon />} color="success" style={{ marginInlineEnd: 0 }}>
-        내 API 키
-      </Tag>
-    );
-  }
-  if (endpoint.viaProxy) return null;
+  if (endpoint.apiKey || endpoint.viaProxy) return null;
   return (
     <Tag icon={<KeyIcon />} color="warning" style={{ marginInlineEnd: 0 }}>
       조회 불가
