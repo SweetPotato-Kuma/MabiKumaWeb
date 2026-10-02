@@ -25,6 +25,8 @@ export interface BagNpc {
   bags?: BagRow[];
   /** 이 NPC 를 받지 못했으면 넥슨이 돌려준 상태 코드. 연결 자체가 안 됐으면 0. */
   error?: number;
+  /** 넥슨이 "데이터 준비 중" 이라 답했다. 상점이 바뀐 직후 몇 분 동안 나오고 곧 풀린다. */
+  notReady?: boolean;
   nextUpdate?: string | null;
 }
 
@@ -33,6 +35,8 @@ export interface BagChannelResult {
   channel: number;
   /** 다음 상점 갱신 시각. 이 시각까지 결과가 유효하다. */
   nextUpdate: string | null;
+  /** 모든 NPC 가 "데이터 준비 중" 이다. 이 채널에 주머니가 없다는 뜻이 아니다. */
+  notReady?: boolean;
   npcs: BagNpc[];
 }
 

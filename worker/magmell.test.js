@@ -46,15 +46,23 @@ const passPath = (server) => `/npcshop/magmell-pass?server=${encodeURIComponent(
 
 let calls;
 let failFor;
+let notReady;
 
 beforeEach(() => {
   calls = [];
   failFor = new Set();
+  notReady = false;
   const nextUpdate = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   vi.stubGlobal('fetch', async (input, init) => {
     const url = new URL(String(input));
     calls.push({ url, key: init?.headers?.['x-nxopen-api-key'] });
     const channel = Number(url.searchParams.get('channel'));
+    if (notReady) {
+      return new Response(
+        JSON.stringify({ error: { name: 'OPENAPI00009', message: 'Please wait until the data is ready' } }),
+        { status: 400 },
+      );
+    }
     if (failFor.has(channel)) return new Response('{}', { status: 500 });
     // 채널마다 값을 달리 둔다. 워커가 채널 번호와 가격을 제자리에 붙이는지 본다.
     return new Response(JSON.stringify(shop({ nextUpdate, price: channel * 10000 })), {
@@ -106,6 +114,26 @@ describe('마그 멜 통행증 찾기', () => {
 
     expect(body.channels.find((entry) => entry.channel === 7)).toEqual({ channel: 7, error: 500 });
     expect(body.channels.filter((entry) => entry.passes)).toHaveLength(24);
+  });
+
+  it('상점이 바뀐 직후 넥슨이 데이터 준비 중이라 답하면 notReady 로 알려 "없음" 과 가른다', async () => {
+    notReady = true;
+    // 서버별 결과를 모듈 메모리에 들고 있어, 다른 시험이 채운 서버를 피해 새 모듈로 부른다.
+    vi.resetModules();
+    const { default: fresh } = await import('./worker.js');
+    const body = await (await fresh.fetch(request(passPath('울프')), env)).json();
+
+    expect(body.notReady).toBe(true);
+    expect(body.channels.every((entry) => entry.error === 400 && entry.notReady === true)).toBe(true);
+  });
+
+  it('일부 채널만 실패한 것은 notReady 가 아니다', async () => {
+    failFor.add(2);
+    vi.resetModules();
+    const { default: fresh } = await import('./worker.js');
+    const body = await (await fresh.fetch(request(passPath('만돌린')), env)).json();
+
+    expect(body.notReady).toBe(false);
   });
 
   it('류트 44채널도 요청 하나의 외부 호출 한도(50번) 안에서 끝난다', async () => {

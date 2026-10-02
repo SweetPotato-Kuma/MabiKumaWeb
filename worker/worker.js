@@ -212,6 +212,21 @@ function extractBags(shop) {
   return bags;
 }
 
+/**
+ * 넥슨 NPC 상점 조회가 실패했을 때의 모양. 상점이 바뀐 직후 몇 분 동안은 넥슨이 모든 조회에 400
+ * OPENAPI00009("데이터가 준비될 때까지 기다리세요")를 돌려준다(36분마다 되풀이). 잘못된 요청이 아니라 잠시 기다리면
+ * 풀리는 일이라, 화면이 "없다" 와 "아직 못 받는다" 를 가를 수 있게 notReady 를 붙인다.
+ */
+async function shopFailure(response) {
+  let notReady = false;
+  try {
+    notReady = (await response.json())?.error?.name === 'OPENAPI00009';
+  } catch {
+    // 본문이 JSON 이 아니면 상태 코드만 알린다.
+  }
+  return notReady ? { error: response.status, notReady: true } : { error: response.status };
+}
+
 async function findBags(url, env, cors) {
   const server = url.searchParams.get('server') ?? '';
   const channel = Number(url.searchParams.get('channel'));
@@ -242,7 +257,7 @@ async function findBags(url, env, cors) {
         const response = await fetch(upstream.toString(), {
           headers: { accept: 'application/json', 'x-nxopen-api-key': env.NEXON_API_KEY },
         });
-        if (!response.ok) return { npc, error: response.status };
+        if (!response.ok) return { npc, ...(await shopFailure(response)) };
         const shop = await response.json();
         return { npc, nextUpdate: shop.date_shop_next_update ?? null, bags: extractBags(shop) };
       } catch {
@@ -262,6 +277,8 @@ async function findBags(url, env, cors) {
     server,
     channel,
     nextUpdate: nextUpdate ? new Date(nextUpdate).toISOString() : null,
+    // 모든 NPC 가 "데이터 준비 중" 이면 true. 상점이 바뀐 직후라 잠시 뒤 다시 받으면 된다.
+    notReady: npcs.length > 0 && npcs.every((entry) => entry.notReady),
     npcs,
   });
 
@@ -350,7 +367,7 @@ async function findPasses(url, env, cors) {
         const response = await fetch(upstream.toString(), {
           headers: { accept: 'application/json', 'x-nxopen-api-key': env.NEXON_API_KEY },
         });
-        if (!response.ok) return { channel, error: response.status };
+        if (!response.ok) return { channel, ...(await shopFailure(response)) };
         const shop = await response.json();
         return {
           channel,
@@ -372,6 +389,8 @@ async function findPasses(url, env, cors) {
   const body = JSON.stringify({
     server,
     nextUpdate: nextUpdate ? new Date(nextUpdate).toISOString() : null,
+    // 모든 채널이 "데이터 준비 중" 이면 true. 상점이 바뀐 직후라 잠시 뒤 다시 받으면 된다.
+    notReady: channels.length > 0 && channels.every((entry) => entry.notReady),
     channels,
   });
 

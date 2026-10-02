@@ -27,6 +27,7 @@ import {
 } from '@/features/magmell/ranking';
 import { usePassSearch } from '@/features/magmell/usePassSearch';
 import { ShopResetCountdown } from '@/components/ErinnClock';
+import { NpcShopNotReady } from '@/components/NpcShopNotReady';
 import { ServerSelect } from '@/components/ServerSelect';
 import { ALL_SERVERS, useServerParam } from '@/lib/useServerParam';
 import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
@@ -349,6 +350,8 @@ export function MagmellPassPage() {
             <EmptyState description="조회 서버가 연결되면 이곳에 채널별 통행증 값이 나옵니다." />
           </Card>
         )
+      ) : state.status === 'notReady' ? (
+        <NpcShopNotReady what="통행증 값" onRetry={() => void search()} />
       ) : state.status === 'error' ? (
         <Alert
           type="error"

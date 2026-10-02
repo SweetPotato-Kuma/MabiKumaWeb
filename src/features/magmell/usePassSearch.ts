@@ -13,7 +13,15 @@ import { fetchPassServer, type PassServerResult } from './api';
  * 결과를 그대로 쓴다. 상점은 에린 하루(현실 36분)마다 바뀌므로 그 전에는 결과가 같다.
  */
 
-export type PassSearchStatus = 'idle' | 'loading' | 'done' | 'error';
+/**
+ * notReady: 넥슨이 모든 서버에서 "데이터 준비 중" 이라 답했다. 상점이 바뀐 직후 몇 분 동안(36분마다) 나온다.
+ * 통행증이 없다는 뜻이 아니라 아직 못 받는 것이라, 화면이 그렇게 알리고 잠시 뒤 스스로 다시 받는다.
+ */
+export type PassSearchStatus = 'idle' | 'loading' | 'done' | 'error' | 'notReady';
+
+/** 준비 중일 때 스스로 다시 받는 간격과 횟수. 합쳐 3분 남짓이면 상점이 열린다. */
+export const RETRY_MS = 20_000;
+export const MAX_RETRIES = 9;
 
 export interface FailedChannel {
   server: string;
@@ -65,18 +73,31 @@ function failedChannelsOf(result: PassServerResult): number[] {
 export function usePassSearch() {
   const [state, setState] = useState<PassSearchState>(IDLE);
   const abortRef = useRef<AbortController | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const attemptsRef = useRef(0);
+  const searchRef = useRef<(retry?: boolean) => Promise<void>>(async () => {});
 
-  // 화면을 떠나면 받던 것을 멈춘다.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // 화면을 떠나면 받던 것과 기다리던 재시도를 멈춘다.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      clearTimeout(retryRef.current);
+    },
+    [],
+  );
 
-  const search = useCallback(async () => {
+  const search = useCallback(async (retry = false) => {
     abortRef.current?.abort();
+    clearTimeout(retryRef.current);
+    // 사용자가 직접 불러올 때만 재시도 횟수를 처음으로 돌린다. 스스로 다시 받는 것은 이어 센다.
+    if (!retry) attemptsRef.current = 0;
     const controller = new AbortController();
     abortRef.current = controller;
 
     const servers = [...SERVER_NAMES];
     const results: PassServerResult[] = [];
     const failed: FailedChannel[] = [];
+    let notReady = 0;
     setState({ ...IDLE, status: 'loading', total: servers.length });
 
     const publish = () => {
@@ -108,6 +129,13 @@ export function usePassSearch() {
         }
         if (controller.signal.aborted) return;
 
+        if (result.notReady) {
+          // 준비 중인 서버는 "통행증 없음" 으로 세지 않는다. 결과에 넣지 않고 서버 전체를 못 받은 곳으로 둔다.
+          notReady += 1;
+          failed.push({ server, channels: [] });
+          publish();
+          return;
+        }
         results.push(result);
         const missing = failedChannelsOf(result);
         if (missing.length > 0) {
@@ -121,8 +149,22 @@ export function usePassSearch() {
     );
     if (controller.signal.aborted) return;
 
-    setState((prev) => ({ ...prev, status: results.length === 0 ? 'error' : 'done' }));
-  }, []);
+    // 받은 서버가 하나도 없고 전부 "준비 중" 이면 곧 풀리는 일이다. 몇 번까지 스스로 다시 받는다.
+    const allNotReady = results.length === 0 && notReady === servers.length;
+    if (allNotReady && attemptsRef.current < MAX_RETRIES) {
+      attemptsRef.current += 1;
+      retryRef.current = setTimeout(() => void searchRef.current(true), RETRY_MS);
+    }
 
-  return { state, search };
+    setState((prev) => ({
+      ...prev,
+      status: allNotReady ? 'notReady' : results.length === 0 ? 'error' : 'done',
+    }));
+  }, []);
+  // 스스로 다시 받을 때 가장 새 찾기 함수를 부르려고 담아 둔다.
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
+
+  return { state, search: useCallback(() => search(), [search]) };
 }

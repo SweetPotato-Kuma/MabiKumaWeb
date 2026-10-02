@@ -53,6 +53,7 @@ import {
 } from '@/features/bags/searchParams';
 import { useBagSearch } from '@/features/bags/useBagSearch';
 import { useGridFit } from '@/features/bags/useGridFit';
+import { NpcShopNotReady } from '@/components/NpcShopNotReady';
 import { ServerSelect } from '@/components/ServerSelect';
 import { useServerParam } from '@/lib/useServerParam';
 import { formatNumber } from '@/lib/format';
@@ -587,6 +588,8 @@ export function BagsPage() {
           description="서버를 고르고 찾기를 누르세요. 주머니와 색은 찾은 뒤에 바꿔도 다시 받지 않습니다."
         />
       </Card>
+    ) : state.status === 'notReady' ? (
+      <NpcShopNotReady what="주머니" onRetry={() => void search(server)} />
     ) : state.status === 'error' ? (
       <Alert
         type="error"

@@ -68,15 +68,23 @@ const bagsPath = (server, channel) =>
 
 let calls;
 let failFor;
+let notReady;
 
 beforeEach(() => {
   calls = [];
   failFor = new Set();
+  notReady = false;
   const nextUpdate = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   vi.stubGlobal('fetch', async (input, init) => {
     const url = new URL(String(input));
     calls.push({ url, key: init?.headers?.['x-nxopen-api-key'] });
     const npc = url.searchParams.get('npc_name');
+    if (notReady) {
+      return new Response(
+        JSON.stringify({ error: { name: 'OPENAPI00009', message: 'Please wait until the data is ready' } }),
+        { status: 400 },
+      );
+    }
     if (failFor.has(npc)) return new Response('{}', { status: 500 });
     return new Response(JSON.stringify(shop({ nextUpdate })), { status: 200 });
   });
@@ -121,6 +129,26 @@ describe('튼튼한 주머니 찾기', () => {
     const ranu = body.npcs.find((entry) => entry.npc === '상인 라누');
     expect(ranu).toEqual({ npc: '상인 라누', error: 500 });
     expect(body.npcs.filter((entry) => entry.bags)).toHaveLength(16);
+  });
+
+  it('상점이 바뀐 직후 넥슨이 데이터 준비 중이라 답하면 notReady 로 알려 "없음" 과 가른다', async () => {
+    notReady = true;
+    const body = await (await worker.fetch(request(bagsPath('울프', 4)), env)).json();
+
+    expect(body.notReady).toBe(true);
+    expect(body.npcs.every((entry) => entry.error === 400 && entry.notReady === true)).toBe(true);
+    // 준비 중 결과는 짧게(30초) 붙든다. 모든 채널을 다시 두드려 넥슨 호출이 몰리지 않게 하려는 것이다.
+    calls = [];
+    const again = await worker.fetch(request(bagsPath('울프', 4)), env);
+    expect(again.headers.get('x-bag-cache')).toBe('hit');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('일부 NPC 만 실패한 것은 notReady 가 아니다', async () => {
+    failFor.add('상인 누누');
+    const body = await (await worker.fetch(request(bagsPath('울프', 5)), env)).json();
+
+    expect(body.notReady).toBe(false);
   });
 
   it('서버에 없는 채널은 넥슨을 부르지 않고 거절한다', async () => {
