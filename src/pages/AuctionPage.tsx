@@ -1526,6 +1526,15 @@ export function AuctionPage() {
                   {savedControls}
                   {resetButton}
                   <Flex gap={12} wrap align="center" style={{ minWidth: 0 }}>
+                    <Button
+                      size="small"
+                      icon={<AddIcon />}
+                      type={sideTab === 'options' ? 'primary' : 'default'}
+                      disabled={!optionsAvailable}
+                      onClick={() => setSideTab('options')}
+                    >
+                      {optionsLabel}
+                    </Button>
                     {breadcrumb}
                     {statusText}
                   </Flex>
