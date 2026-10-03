@@ -1,0 +1,472 @@
+/*
+ * 주화 창의 연출. 주화 시뮬레이터 한 화면만 쓴다.
+ *
+ * 성수 창(holyWater/holyWaterFx.css)과 같은 규칙을 따른다. 색은 컴포넌트가 테마 토큰을 CSS 변수(--fx-*)로
+ * 넘겨 주고, 움직이는 것은 transform 과 opacity 뿐이며, 크기는 모두 --rf 배율을 곱한다.
+ * 연출은 .cn-play 와 .cn-reveal 이 붙은 곳에서만 돈다. "연출 끄기" 면 붙지 않는다. 움직임 줄이기 설정과는 무관하다.
+ *
+ * 만들기: 원판이 돌고 잔흔석 세 개가 둘레에서 가운데로 모이면, 주화가 뒤집히며 사라지고 점수가 튀어나온다.
+ * 점수가 그 토템 만점의 몇 % 이상인지에 따라 위로 갈수록 더해진다.
+ *  - 50% 이상(.cn-t50): 가운데가 번쩍인다.
+ *  - 75% 이상(.cn-t75): 빛살이 뻗는다.
+ *  - 90% 이상(.cn-t90): 둘레가 반짝이고 판이 흔들린다.
+ *  - 95% 이상(.cn-t95): 금빛이 두 번 번쩍이고, 빛살이 돌며 퍼지고, 별빛이 튄다.
+ */
+
+.cn-stage {
+  position: relative;
+  width: calc(var(--rf, 1) * 208px);
+  height: calc(var(--rf, 1) * 208px);
+  margin-inline: auto;
+}
+
+.cn-stage-body {
+  position: absolute;
+  inset: 0;
+}
+
+.cn-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--fx-line);
+}
+
+.cn-ring--inner {
+  inset: calc(var(--rf, 1) * 18px);
+  border-style: dashed;
+}
+
+.cn-ring--core {
+  inset: calc(var(--rf, 1) * 44px);
+  opacity: 0.6;
+}
+
+/* 가운데 칸. 주화가 놓이고, 만들면 점수로 바뀐다. */
+.cn-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 92px);
+  height: calc(var(--rf, 1) * 92px);
+  margin: calc(var(--rf, 1) * -46px) 0 0 calc(var(--rf, 1) * -46px);
+  border-radius: 50%;
+  border: 1px solid var(--fx-line);
+  background: var(--fx-surface);
+}
+
+.cn-coin,
+.cn-result {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6px;
+}
+
+.cn-stone,
+.cn-flash,
+.cn-ray,
+.cn-spark,
+.cn-glint,
+.cn-gold-layer,
+.cn-gold-ray {
+  position: absolute;
+  pointer-events: none;
+}
+
+.cn-stone,
+.cn-flash,
+.cn-ray,
+.cn-spark,
+.cn-glint {
+  opacity: 0;
+}
+
+/* 둘레에서 가운데로 모이는 잔흔석. --a 가 들어오는 각도, --i 가 순번이다. */
+.cn-stone {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 28px);
+  height: calc(var(--rf, 1) * 28px);
+  margin: calc(var(--rf, 1) * -14px) 0 0 calc(var(--rf, 1) * -14px);
+}
+
+/* 50% 이상: 가운데가 번쩍인다. */
+.cn-flash {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 160px);
+  height: calc(var(--rf, 1) * 160px);
+  margin: calc(var(--rf, 1) * -80px) 0 0 calc(var(--rf, 1) * -80px);
+  border-radius: 50%;
+  border: 2px solid var(--fx-accent);
+  background: var(--fx-soft);
+}
+
+/* 75% 이상: 빛살. --a 가 각도다. */
+.cn-ray {
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: calc(var(--rf, 1) * 64px);
+  margin: calc(var(--rf, 1) * -64px) 0 0 -1px;
+  border-radius: 1px;
+  background: var(--fx-accent);
+  transform-origin: 50% 100%;
+}
+
+/* 90% 이상: 원판 둘레의 반짝임. --a 가 각도, --i 가 순번이다. */
+.cn-spark {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 12px);
+  height: calc(var(--rf, 1) * 12px);
+  margin: calc(var(--rf, 1) * -6px) 0 0 calc(var(--rf, 1) * -6px);
+  font-size: calc(var(--rf, 1) * 12px);
+  line-height: 1;
+  color: var(--fx-accent);
+}
+
+/* 95% 이상: 가운데 칸 오른쪽 위에 튀는 별빛 */
+.cn-glint {
+  left: 50%;
+  top: 50%;
+  margin: calc(var(--rf, 1) * -58px) 0 0 calc(var(--rf, 1) * 26px);
+  font-size: calc(var(--rf, 1) * 30px);
+  line-height: 1;
+  color: var(--fx-gold);
+}
+
+/* 95% 이상: 금빛. 원판보다 조금 넓은 원 안에서만 보인다. */
+.cn-gold-layer {
+  inset: -6%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.cn-gold-flash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 280px);
+  height: calc(var(--rf, 1) * 280px);
+  margin: calc(var(--rf, 1) * -140px) 0 0 calc(var(--rf, 1) * -140px);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--fx-gold) 0%, transparent 62%);
+  filter: brightness(1.25) saturate(1.1);
+  opacity: 0;
+}
+
+.cn-gold-ray {
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: calc(var(--rf, 1) * 110px);
+  margin: calc(var(--rf, 1) * -110px) 0 0 -1.5px;
+  border-radius: 2px;
+  background: var(--fx-gold);
+  transform-origin: 50% 100%;
+  opacity: 0;
+}
+
+/* ---------- 연출 ---------- */
+
+.cn-play .cn-ring--inner {
+  animation: cn-spin var(--fx-dur) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.cn-play .cn-stone {
+  animation: cn-gather var(--fx-dur) ease-in both;
+  animation-delay: calc(var(--i) * 90ms);
+}
+
+.cn-play .cn-coin {
+  animation: cn-coin-out var(--fx-dur) ease-in-out both;
+}
+
+.cn-play .cn-result {
+  animation: cn-result-in var(--fx-dur) ease-out both;
+}
+
+.cn-play.cn-t50 .cn-flash {
+  animation: cn-flash var(--fx-dur) ease-out both;
+}
+
+.cn-play.cn-t75 .cn-ray {
+  animation: cn-ray var(--fx-dur) ease-out both;
+}
+
+.cn-play.cn-t90 .cn-spark {
+  animation: cn-twinkle var(--fx-dur) ease-out both;
+  animation-delay: calc(var(--i) * 45ms);
+}
+
+.cn-play.cn-t90 .cn-stage-body {
+  animation: cn-shake var(--fx-dur) linear both;
+}
+
+.cn-play.cn-t95 .cn-gold-flash {
+  animation: cn-gold-flash 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.62);
+}
+
+.cn-play.cn-t95 .cn-gold-ray {
+  animation: cn-gold-ray 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.62 + var(--i) * 15ms);
+}
+
+.cn-play.cn-t95 .cn-glint {
+  animation: cn-glint 900ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.62);
+}
+
+/* 방금 만든 주화 칸은 연출이 끝난 뒤 드러난다. */
+.cn-reveal .cn-line {
+  animation: cn-reveal 360ms ease-out both;
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms) + var(--i, 0) * 60ms);
+}
+
+/* 95% 이상 줄은 드러난 뒤 금빛 줄기가 한 번 훑고 지나간다. */
+.cn-line--max {
+  position: relative;
+  overflow: hidden;
+}
+
+.cn-reveal .cn-line--max::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, var(--fx-gold) 50%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  animation: cn-shine 900ms ease-in-out both;
+  animation-delay: calc(var(--fx-dur, 0ms) + var(--fx-extra, 0ms) + var(--i, 0) * 60ms + 360ms);
+}
+
+@keyframes cn-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(var(--fx-spin));
+  }
+}
+
+@keyframes cn-gather {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -92px)) rotate(calc(var(--a) * -1))
+      scale(0.7);
+  }
+  12% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -10px)) rotate(calc(var(--a) * -1))
+      scale(1);
+  }
+  48%,
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(0) rotate(calc(var(--a) * -1)) scale(0.3);
+  }
+}
+
+@keyframes cn-coin-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  48% {
+    opacity: 1;
+    transform: scaleX(0.1) scaleY(1.12);
+  }
+  56% {
+    opacity: 1;
+    transform: scaleX(1) scaleY(1.12);
+  }
+  62%,
+  100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes cn-result-in {
+  0%,
+  60% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  74% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cn-flash {
+  0%,
+  58% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  64% {
+    opacity: 0.85;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+@keyframes cn-ray {
+  0%,
+  60% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -30px)) scaleY(0);
+  }
+  70% {
+    opacity: 0.9;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -40px)) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -56px)) scaleY(1.2);
+  }
+}
+
+@keyframes cn-twinkle {
+  0%,
+  45% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -88px)) scale(0);
+  }
+  68% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -96px)) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -104px)) scale(0.4);
+  }
+}
+
+@keyframes cn-shake {
+  0%,
+  60% {
+    transform: translate(0, 0);
+  }
+  63% {
+    transform: translate(-4px, 2px);
+  }
+  66% {
+    transform: translate(4px, -2px);
+  }
+  69% {
+    transform: translate(-3px, -1px);
+  }
+  72% {
+    transform: translate(2px, 1px);
+  }
+  76%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes cn-gold-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  35% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes cn-gold-ray {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -20px)) scaleY(0);
+  }
+  25% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -46px)) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(calc(var(--a) + 30deg)) translateY(calc(var(--rf, 1) * -90px)) scaleY(1.3);
+  }
+}
+
+@keyframes cn-glint {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.5) rotate(90deg);
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(0.9) rotate(150deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7) rotate(220deg);
+  }
+}
+
+@keyframes cn-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cn-shine {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  20% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}

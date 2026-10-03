@@ -12,6 +12,9 @@ vi.setConfig({ testTimeout: 20_000 });
 
 const STONE = '브리 레흐의 잔흔석';
 
+/** 연출이 끝나 통계가 올라갈 때까지 기다리는 시간. 금빛까지 더해도 넉넉하다. */
+const FX_WAIT = 4000;
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -54,6 +57,8 @@ describe('주화 시뮬레이터', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    // "주화 연출" 끄기는 브라우저에 남는다. 다음 테스트는 켠 채로 시작한다.
+    window.localStorage.clear();
   });
 
   it('던전 탭이 있고, 아직 나오지 않은 던전은 고를 수 없다', () => {
@@ -65,7 +70,7 @@ describe('주화 시뮬레이터', () => {
     );
   });
 
-  it('만들면 옵션 세 줄이 붙고 잔흔석 세 개 값을 쓴 골드로 센다', async () => {
+  it('만들면 옵션 세 줄과 점수가 붙고, 연출이 끝나면 잔흔석 세 개 값을 쓴 골드로 센다', async () => {
     renderPage();
     vi.spyOn(Math, 'random').mockReturnValue(0.999);
     fireEvent.click(screen.getByRole('button', { name: '만들기' }));
@@ -74,9 +79,34 @@ describe('주화 시뮬레이터', () => {
     expect(within(region).getByText('20')).toBeInTheDocument();
     expect(within(region).getByText('3.00%')).toBeInTheDocument();
     expect(within(region).getAllByText('최대')).toHaveLength(3);
+    // 20 x 1 + 10 x 6 + 20 x 4 = 160, 물리 토템 만점이다.
+    expect(within(region).getByText('160점')).toBeInTheDocument();
+    expect(within(region).getByText('95% 이상')).toBeInTheDocument();
+
+    // 연출이 도는 동안에는 통계에 넣지 않는다.
+    const statistic = (title: string) =>
+      screen
+        .getByText(title, { selector: '.ant-statistic-title' })
+        .closest('.ant-statistic') as HTMLElement;
+    expect(within(statistic('95% 이상')).getByText('0')).toBeInTheDocument();
+    expect(
+      await within(statistic('95% 이상')).findByText('1', {}, { timeout: FX_WAIT }),
+    ).toBeInTheDocument();
     expect(await screen.findByText(/브리 레흐의 잔흔석 최저가/)).toBeInTheDocument();
-    const spentGold = screen.getByText('쓴 골드').closest('.ant-statistic') as HTMLElement;
-    expect(within(spentGold).getByText(/300만|3,000,000/)).toBeInTheDocument();
+    expect(within(statistic('쓴 골드')).getByText(/300만|3,000,000/)).toBeInTheDocument();
+  });
+
+  it('연출을 끄면 만들자마자 통계에 넣는다', () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('switch', { name: '주화 연출' }));
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    fireEvent.click(screen.getByRole('button', { name: '만들기' }));
+    // 1 + 6 + 4 = 11점, 만점의 50% 에 못 미쳐 등급이 없다.
+    expect(within(latest()).getByText('11점')).toBeInTheDocument();
+    const made = screen
+      .getByText('만든 주화', { selector: '.ant-statistic-title' })
+      .closest('.ant-statistic') as HTMLElement;
+    expect(within(made).getByText('1')).toBeInTheDocument();
   });
 
   it('토템을 바꾸면 그 토템의 옵션으로 만든다', () => {

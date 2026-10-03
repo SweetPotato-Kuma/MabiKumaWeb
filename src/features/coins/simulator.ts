@@ -12,9 +12,11 @@ export interface CoinOption {
   name: string;
   min: number;
   max: number;
-  /** 수치 간격. */
+  /** 수치 간격. 모든 옵션이 최소가 간격과 같아, 수치를 간격으로 나누면 몇 번째 칸인지(1부터) 나온다. */
   step: number;
   unit: string;
+  /** 칸 하나에 매기는 점수. 주화의 쓸모를 가르지 않는 옵션은 0. */
+  points: number;
 }
 
 export interface CoinTotem {
@@ -44,12 +46,18 @@ export interface UpcomingCoinDungeon {
   label: string;
 }
 
+/*
+ * 점수. 공격 토템은 공격 수치 1 에 1점, 크리티컬 대미지 1% 에 6점, 아르카나 스킬 보너스 대미지 0.15% 에 4점이다.
+ * 지원 토템은 힐링 효과 1% 에 1점, 전장의 서곡과 비바체 공격력 0.1% 에 1점이고, 음악 버프 지속 시간은 주화의
+ * 쓸모를 가르지 않아 점수에 넣지 않는다.
+ */
 const CRITICAL_DAMAGE: CoinOption = {
   name: '크리티컬 대미지',
   min: 1,
   max: 10,
   step: 1,
   unit: '%',
+  points: 6,
 };
 const ARCANA_BONUS: CoinOption = {
   name: '아르카나 스킬 보너스 대미지',
@@ -57,6 +65,7 @@ const ARCANA_BONUS: CoinOption = {
   max: 3,
   step: 0.15,
   unit: '%',
+  points: 4,
 };
 
 export const COIN_DUNGEONS: readonly CoinDungeon[] = [
@@ -71,7 +80,7 @@ export const COIN_DUNGEONS: readonly CoinDungeon[] = [
         label: '물리 토템',
         itemName: '브리 레흐의 주화(물리 토템)',
         options: [
-          { name: '최대 대미지', min: 1, max: 20, step: 1, unit: '' },
+          { name: '최대 대미지', min: 1, max: 20, step: 1, unit: '', points: 1 },
           CRITICAL_DAMAGE,
           ARCANA_BONUS,
         ],
@@ -80,7 +89,7 @@ export const COIN_DUNGEONS: readonly CoinDungeon[] = [
         label: '마법 토템',
         itemName: '브리 레흐의 주화(마법 토템)',
         options: [
-          { name: '마법 공격력', min: 1, max: 20, step: 1, unit: '' },
+          { name: '마법 공격력', min: 1, max: 20, step: 1, unit: '', points: 1 },
           CRITICAL_DAMAGE,
           ARCANA_BONUS,
         ],
@@ -89,7 +98,7 @@ export const COIN_DUNGEONS: readonly CoinDungeon[] = [
         label: '연금 토템',
         itemName: '브리 레흐의 주화(연금 토템)',
         options: [
-          { name: '모든 속성 연금술 대미지', min: 1, max: 20, step: 1, unit: '' },
+          { name: '모든 속성 연금술 대미지', min: 1, max: 20, step: 1, unit: '', points: 1 },
           CRITICAL_DAMAGE,
           ARCANA_BONUS,
         ],
@@ -98,9 +107,9 @@ export const COIN_DUNGEONS: readonly CoinDungeon[] = [
         label: '지원 토템',
         itemName: '브리 레흐의 주화(지원 토템)',
         options: [
-          { name: '전장의 서곡, 비바체 공격력', min: 0.1, max: 1, step: 0.1, unit: '%' },
-          { name: '음악 버프 지속 시간', min: 1, max: 20, step: 1, unit: '' },
-          { name: '힐링 효과', min: 1, max: 20, step: 1, unit: '%' },
+          { name: '전장의 서곡, 비바체 공격력', min: 0.1, max: 1, step: 0.1, unit: '%', points: 1 },
+          { name: '음악 버프 지속 시간', min: 1, max: 20, step: 1, unit: '', points: 0 },
+          { name: '힐링 효과', min: 1, max: 20, step: 1, unit: '%', points: 1 },
         ],
       },
     ],
@@ -149,6 +158,68 @@ export const coinTargetChance = (totem: CoinTotem, minValues: readonly number[])
     (chance, option, index) => chance * atLeastChance(option, minValues[index] ?? option.min),
     1,
   );
+
+/** 그 수치 칸(0부터)의 점수. */
+export const stepPoints = (option: CoinOption, step: number) => (step + 1) * option.points;
+
+/** 주화 하나의 점수. 옵션마다 칸 점수를 더한다. */
+export const coinScore = (totem: CoinTotem, steps: readonly number[]) =>
+  totem.options.reduce((sum, option, index) => sum + stepPoints(option, steps[index] ?? 0), 0);
+
+/** 그 토템이 낼 수 있는 가장 높은 점수. */
+export const maxScore = (totem: CoinTotem) =>
+  totem.options.reduce((sum, option) => sum + stepCount(option) * option.points, 0);
+
+/**
+ * 연출과 표시를 가르는 등급. 점수가 그 토템 만점의 몇 % 이상인지다. 95% 이상은 최상위라 금빛으로 강조한다.
+ */
+export const COIN_TIERS = [50, 75, 90, 95] as const;
+export type CoinTier = (typeof COIN_TIERS)[number];
+export const TOP_COIN_TIER: CoinTier = 95;
+
+/** 점수의 등급. 50% 에 못 미치면 null. */
+export function coinTierOf(totem: CoinTotem, score: number): CoinTier | null {
+  const ratio = score / maxScore(totem);
+  for (let index = COIN_TIERS.length - 1; index >= 0; index -= 1)
+    if (ratio >= COIN_TIERS[index] / 100 - 1e-9) return COIN_TIERS[index];
+  return null;
+}
+
+/**
+ * 점수마다 나올 확률. 옵션마다 수치 칸을 고르게 고르므로, 칸마다 점수를 펼쳐 차례로 겹쳐 센다(합성곱).
+ * 칸이 많아야 20 x 10 x 20 이라 바로 센다. 토템마다 한 번만 센다.
+ */
+const distributions = new WeakMap<CoinTotem, number[]>();
+export function scoreDistribution(totem: CoinTotem): number[] {
+  const cached = distributions.get(totem);
+  if (cached) return cached;
+  let dist = [1];
+  for (const option of totem.options) {
+    const count = stepCount(option);
+    const next = new Array<number>(dist.length + count * option.points).fill(0);
+    for (let score = 0; score < dist.length; score += 1) {
+      if (dist[score] === 0) continue;
+      for (let step = 0; step < count; step += 1)
+        next[score + stepPoints(option, step)] += dist[score] / count;
+    }
+    dist = next;
+  }
+  distributions.set(totem, dist);
+  return dist;
+}
+
+/** 한 번에 점수가 minScore 이상 나올 확률. */
+export function scoreAtLeastChance(totem: CoinTotem, minScore: number): number {
+  const dist = scoreDistribution(totem);
+  let chance = 0;
+  for (let score = Math.max(0, Math.ceil(minScore - 1e-9)); score < dist.length; score += 1)
+    chance += dist[score];
+  return Math.min(1, chance);
+}
+
+/** 한 번에 그 등급 이상이 나올 확률. */
+export const tierChance = (totem: CoinTotem, tier: CoinTier) =>
+  scoreAtLeastChance(totem, (maxScore(totem) * tier) / 100);
 
 export interface CoinDraw {
   /** 몇 번째로 만든 것인지. 1부터. 표의 키로도 쓴다. */
