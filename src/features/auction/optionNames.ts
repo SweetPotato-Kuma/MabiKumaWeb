@@ -3,6 +3,7 @@ import { EQUIPMENT_CATEGORIES } from '@/features/equipment/api';
 import { RELIC_CATEGORY } from '@/features/relics/murias';
 import { findGroupOf } from './categoryTree';
 import { isConditionActive, PET_CATEGORY, type OptionFilter } from './optionFilter';
+import { categoriesWithOptionTypes } from './optionTypes';
 
 /**
  * 상세 검색 자동완성의 기본 이름. 게임 데이터의 세공 능력 이름과 인챈트 이름이다.
@@ -102,6 +103,8 @@ export function reforgeLevelSuggestions(
  * 세공이 여럿이면 모두 붙을 수 있는 카테고리만 훑는다. 그 밖에는 장비 카테고리 전체다.
  * 무리아스 유물 조건이 있으면 유물 카테고리 하나, 펫 정보 조건이 있으면 분양 메달 하나다. 그 옵션은 거기에만 붙는다.
  * 둘을 함께 걸면 둘 다 채울 수 있는 카테고리가 없다.
+ * 장비 옵션(세공, 인챈트, 특별 개조, 에르그, 색상) 없이 그 밖의 옵션(토템 효과, 에코스톤 고유 능력, 밸런스 등)만 걸면
+ * 그 옵션이 붙는 카테고리를 훑고, 함께 걸면 그 옵션이 붙는 장비 카테고리만 훑는다.
  * 빈 배열이면 조건을 모두 채울 수 있는 카테고리가 없다는 뜻이다.
  */
 export function scanCategoriesFor(
@@ -115,7 +118,28 @@ export function scanCategoriesFor(
     (condition) => condition.kind === 'pet' && isConditionActive(condition),
   );
   if (relic && pet) return [];
-  let categories: string[] = relic ? [RELIC_CATEGORY] : pet ? [PET_CATEGORY] : [...EQUIPMENT_CATEGORIES];
+  const active = filter.conditions.filter(isConditionActive);
+  // 옵션 이름이 따로 있는 조건. 그 옵션이 붙는 카테고리로 좁힌다.
+  const typed = active.flatMap((condition) =>
+    (condition.kind === 'sub' || condition.kind === 'named' || condition.kind === 'number' || condition.kind === 'text') &&
+    condition.optionType
+      ? [condition.optionType]
+      : [],
+  );
+  const equipmentOnly = active.some((condition) =>
+    ['reforge', 'enchant', 'special', 'erg', 'color'].includes(condition.kind),
+  );
+  let categories: string[] = relic
+    ? [RELIC_CATEGORY]
+    : pet
+      ? [PET_CATEGORY]
+      : equipmentOnly || typed.length === 0
+        ? [...EQUIPMENT_CATEGORIES]
+        : categoriesWithOptionTypes([typed[0]]);
+  for (const type of typed) {
+    const carrying = new Set(categoriesWithOptionTypes([type]));
+    categories = categories.filter((category) => carrying.has(category));
+  }
   for (const condition of filter.conditions) {
     if (condition.kind !== 'reforge' || !isConditionActive(condition)) continue;
     const allowed = names?.reforgeCategories?.[condition.name.trim()];

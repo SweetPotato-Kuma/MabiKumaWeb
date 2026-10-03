@@ -126,6 +126,22 @@ function parseCondition(raw: unknown): Condition | null {
       if (!PET_FIELDS.includes(field)) return null;
       return { id: nextConditionId(), kind: 'pet', field, text: text(raw.text), min: numberOrNull(raw.min) };
     }
+    case 'sub': {
+      const optionType = text(raw.optionType);
+      if (!optionType) return null;
+      return { id: nextConditionId(), kind: 'sub', optionType, sub: text(raw.sub), min: numberOrNull(raw.min) };
+    }
+    case 'named': {
+      const optionType = text(raw.optionType);
+      if (!optionType) return null;
+      return {
+        id: nextConditionId(),
+        kind: 'named',
+        optionType,
+        name: text(raw.name),
+        minLevel: numberOrNull(raw.minLevel),
+      };
+    }
     case 'number': {
       const optionType = text(raw.optionType);
       if (!optionType) return null;

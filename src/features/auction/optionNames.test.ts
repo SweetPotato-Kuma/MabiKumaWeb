@@ -80,4 +80,24 @@ describe('scanCategoriesFor', () => {
     };
     expect(scanCategoriesFor(filter, names)).toEqual([]);
   });
+
+  it('토템 효과처럼 장비가 아닌 옵션만 걸면 그 옵션이 붙는 카테고리를 훑는다', () => {
+    const filter = {
+      conditions: [{ id: 1, kind: 'sub' as const, optionType: '토템 효과', sub: '지력', min: 5 }],
+    };
+    expect(scanCategoriesFor(filter, names)).toEqual(expect.arrayContaining(['애뮬릿', '토템']));
+    expect(scanCategoriesFor(filter, names)).not.toContain('검');
+  });
+
+  it('장비 옵션과 함께 걸면 그 옵션이 붙는 장비 카테고리만 훑는다', () => {
+    const filter = {
+      conditions: [
+        { id: 1, kind: 'erg' as const, grade: '', minLevel: 30 },
+        { id: 2, kind: 'number' as const, optionType: '부상률', min: 50 },
+      ],
+    };
+    const scan = scanCategoriesFor(filter, names);
+    expect(scan).toContain('활');
+    expect(scan).not.toContain('스태프');
+  });
 });

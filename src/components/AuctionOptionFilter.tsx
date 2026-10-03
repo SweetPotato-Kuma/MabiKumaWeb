@@ -3,7 +3,8 @@ import { AutoComplete, Button, Card, Flex, Modal, Select, Tag, Typography } from
 import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { AddIcon, DeleteIcon, SearchIcon } from '@/components/icons';
 import { normalizeForSearch } from '@/features/auction/dictionary';
-import { offeredKinds } from '@/features/auction/optionKinds';
+import { optionChoices, type OptionChoice } from '@/features/auction/optionKinds';
+import { OPTION_SUB_TYPES } from '@/features/auction/optionTypes';
 import {
   COLOR_OPTION_LABEL,
   conditionLabel,
@@ -13,10 +14,7 @@ import {
   newCondition,
   numberLabel,
   PET_FIELDS,
-  PET_QUICK_CONDITION,
   PET_SPECIES_FIELD,
-  QUICK_CONDITIONS,
-  RELIC_QUICK_CONDITION,
   summarizeCondition,
   thresholdSuggestions,
   type CatalogEntry,
@@ -113,22 +111,32 @@ function mergeNames(
   ];
 }
 
-/** 창 안에서 한 칸이 맡는 조건 묶음. 자주 쓰는 옵션은 종류별로, 그 밖의 옵션은 조건마다 하나. */
-type GroupKey = ConditionKind | `extra:${number}`;
-
-const groupOf = (condition: Condition): GroupKey =>
+/**
+ * 창 안에서 한 칸이 맡는 조건 묶음. 옵션 하나가 칸 하나다. 숫자, 문구 옵션은 조건마다 칸 하나이고,
+ * 줄을 더할 수 있는 옵션(세공, 펫 정보, 토템 효과 등)은 칸 안에 줄을 쌓는다.
+ */
+const groupOf = (condition: Condition): string =>
   condition.kind === 'number' || condition.kind === 'text'
     ? `extra:${condition.id}`
-    : condition.kind;
-
-/** 자주 쓰는 옵션 전부. 어떤 것을 둘지는 카테고리가 정한다(offeredKinds). */
-const ALL_QUICK_CONDITIONS = [RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS, PET_QUICK_CONDITION];
-const ALL_QUICK_KINDS = new Set<ConditionKind>(ALL_QUICK_CONDITIONS.map((quick) => quick.kind));
+    : condition.kind === 'sub' || condition.kind === 'named'
+      ? `${condition.kind}:${condition.optionType}`
+      : condition.kind;
 
 /** 한 칸 안에 줄을 여러 개 둘 수 있는 옵션과 그 상한. 장비의 세공이 최대 세 줄이다. */
-const MAX_ROWS: Partial<Record<ConditionKind, number>> = { reforge: MAX_REFORGE_CONDITIONS, pet: 6 };
+const MAX_ROWS: Partial<Record<ConditionKind, number>> = {
+  reforge: MAX_REFORGE_CONDITIONS,
+  pet: 6,
+  sub: 6,
+  named: 4,
+};
 
 const ROW_ADD_LABEL: Partial<Record<ConditionKind, string>> = { reforge: '세공 조건 추가', pet: '펫 조건 추가' };
+
+/** 줄을 더할 때 만들 조건의 옵션 이름. 숫자, 문구, 구분 값, 이름 옵션은 옵션 이름이 따로 있다. */
+const optionTypeOf = (condition: Condition, label: string) => ('optionType' in condition ? condition.optionType : label);
+
+/** 옵션 고르기 목록 한 줄. 불러온 매물에 있는 옵션은 건수를 함께 보인다. */
+const choiceOption = (choice: OptionChoice) => ({ value: choice.label, label: choice.label, count: choice.count });
 
 /**
  * 건 조건을 배지로 요약한다. 상세 검색 창이 닫혀 있어도 어떤 조건이 걸려 있는지 보이고, 하나씩 빼거나 모두 지울 수 있다.
@@ -197,30 +205,14 @@ export function DetailOptionsPanel({
   const update = (id: number, next: Partial<Condition>) =>
     setDraft(draft.map((condition) => (condition.id === id ? ({ ...condition, ...next } as Condition) : condition)));
   const removeOne = (id: number) => setDraft(draft.filter((condition) => condition.id !== id));
-  const removeGroup = (group: GroupKey) => setDraft(draft.filter((condition) => groupOf(condition) !== group));
+  const removeGroup = (group: string) => setDraft(draft.filter((condition) => groupOf(condition) !== group));
 
-  // 카테고리에 붙는 옵션만 더하게 한다. 무리아스 유물에 세공은 쓸모가 없다.
-  const offered = offeredKinds(
-    category,
-    catalog.map((entry) => entry.kind),
-    draft.map((condition) => condition.kind),
-  );
-  const quickConditions = ALL_QUICK_CONDITIONS.filter((quick) => offered.includes(quick.kind));
-
-  // 칸의 순서: 자주 쓰는 옵션은 위 목록 순서대로, 그 밖의 옵션은 더한 순서대로.
-  const groups: GroupKey[] = [
-    ...quickConditions.map((quick) => quick.kind).filter((kind) => draft.some((condition) => condition.kind === kind)),
-    ...draft.filter((condition) => condition.kind === 'number' || condition.kind === 'text').map(groupOf),
-  ];
-  const addable = quickConditions.filter((quick) => !draft.some((condition) => condition.kind === quick.kind));
-  const usedExtras = new Set(
-    draft.flatMap((condition) =>
-      condition.kind === 'number' || condition.kind === 'text' ? [condition.optionType] : [],
-    ),
-  );
-  const extraOptions = catalog
-    .filter((entry) => !ALL_QUICK_KINDS.has(entry.kind) && !usedExtras.has(entry.optionType))
-    .map((entry) => ({ value: entry.label, label: entry.label, count: entry.count }));
+  // 고를 수 있는 옵션: 카테고리에 붙는 옵션과 불러온 매물에 있는 옵션. 칸이 이미 있는 옵션은 빠진다.
+  const choices = optionChoices(category, catalog, draft);
+  const mainChoices = choices.filter((choice) => choice.main);
+  const otherChoices = choices.filter((choice) => !choice.main);
+  // 칸은 더한 순서대로 쌓는다.
+  const groups = [...new Set(draft.map(groupOf))];
 
   const add = (entry: Pick<CatalogEntry, 'kind' | 'optionType'>) => {
     const condition = newCondition(entry);
@@ -242,7 +234,7 @@ export function DetailOptionsPanel({
     />
   );
 
-  const blockOf = (group: GroupKey) => {
+  const blockOf = (group: string) => {
     const conditions = draft.filter((condition) => groupOf(condition) === group);
     const first = conditions[0];
     const label = conditionLabel(first);
@@ -284,9 +276,9 @@ export function DetailOptionsPanel({
               size="small"
               icon={<AddIcon />}
               style={{ alignSelf: 'flex-start' }}
-              onClick={() => add({ kind: first.kind, optionType: label })}
+              onClick={() => add({ kind: first.kind, optionType: optionTypeOf(first, label) })}
             >
-              {ROW_ADD_LABEL[first.kind]}
+              {ROW_ADD_LABEL[first.kind] ?? `${label} 조건 추가`}
             </Button>
           ) : null}
         </Flex>
@@ -294,56 +286,47 @@ export function DetailOptionsPanel({
     );
   };
 
-  const nothingToAdd = addable.length === 0 && extraOptions.length === 0;
-
   return (
     <Flex vertical gap={12}>
-      {groups.map(blockOf)}
-
-      {groups.length === 0 && nothingToAdd ? (
+      {/*
+        옵션은 고르기 목록 하나에서 더한다. 목록을 맨 위에 두어 창을 열면 바로 보이게 한다. 단추를 옵션마다
+        늘어놓았더니 그 밖의 옵션이 따로 숨어 있어 무엇을 고를 수 있는지 한눈에 들어오지 않았다.
+      */}
+      {choices.length > 0 ? (
+        <Select<string>
+          value={null}
+          placeholder="세부 옵션 선택"
+          options={[
+            ...(mainChoices.length > 0 ? [{ label: '주요 옵션', options: mainChoices.map(choiceOption) }] : []),
+            ...(otherChoices.length > 0 ? [{ label: '그 밖의 옵션', options: otherChoices.map(choiceOption) }] : []),
+          ]}
+          showSearch
+          optionFilterProp="label"
+          optionRender={(option) => (
+            <Flex justify="space-between" gap={12}>
+              <span>{option.label}</span>
+              {option.data.count !== undefined ? (
+                <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+                  {formatNumber(option.data.count)}건
+                </Text>
+              ) : null}
+            </Flex>
+          )}
+          onChange={(label) => {
+            const choice = choices.find((each) => each.label === label);
+            if (choice) add(choice);
+          }}
+          aria-label="세부 옵션 선택"
+          listHeight={320}
+          // 옵션은 50개 남짓이라 모두 그린다. 가상 목록은 칠 때마다 줄 높이를 다시 재서 목록이 잠깐 비어 보였다.
+          virtual={false}
+          style={{ width: '100%' }}
+        />
+      ) : groups.length === 0 ? (
         <Text type="secondary">이 카테고리에서는 고를 수 있는 옵션이 없습니다.</Text>
       ) : null}
 
-      {nothingToAdd ? null : (
-        <Flex vertical gap={8}>
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            옵션 추가
-          </Text>
-          <Flex gap={8} wrap align="center">
-            {addable.map((quick) => (
-              <Button key={quick.kind} size="small" icon={<AddIcon />} onClick={() => add(quick)}>
-                {quick.label}
-              </Button>
-            ))}
-            {extraOptions.length > 0 ? (
-              <Select
-                value={null}
-                size="small"
-                placeholder="그 밖의 옵션"
-                options={extraOptions}
-                showSearch
-                optionFilterProp="label"
-                optionRender={(option) => (
-                  <Flex justify="space-between" gap={12}>
-                    <span>{option.label}</span>
-                    <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                      {formatNumber(option.data.count)}건
-                    </Text>
-                  </Flex>
-                )}
-                onChange={(label: string) => {
-                  const entry = catalog.find((each) => each.label === label);
-                  if (entry) add(entry);
-                }}
-                aria-label="그 밖의 옵션 추가"
-                popupMatchSelectWidth={260}
-                style={{ width: 160 }}
-              />
-            ) : null}
-          </Flex>
-        </Flex>
-      )}
-
+      {groups.map(blockOf)}
     </Flex>
   );
 }
@@ -429,7 +412,7 @@ function entryFor(catalog: CatalogEntry[], condition: Condition): CatalogEntry |
     case 'color':
       return catalog.find((entry) => entry.label === COLOR_OPTION_LABEL);
     default:
-      return catalog.find((entry) => entry.optionType === condition.optionType);
+      return catalog.find((entry) => entry.optionType === condition.optionType && entry.kind === condition.kind);
   }
 }
 
@@ -784,9 +767,6 @@ function ConditionEditor({
               style={{ flex: '1 1 0', minWidth: 0 }}
             />
           </Flex>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            레벨은 1에서 10까지이고, 한 레벨마다 최대 수치의 10분의 1씩 오릅니다.
-          </Text>
         </Flex>
       );
     }
@@ -822,6 +802,55 @@ function ConditionEditor({
         </div>
       );
     }
+    case 'sub': {
+      const known = OPTION_SUB_TYPES[condition.optionType];
+      return (
+        <Flex gap={6} wrap>
+          <div style={{ flex: `1 1 ${NAME_INPUT_MIN}px`, minWidth: 0 }}>
+            <NameInput
+              value={condition.sub}
+              onChange={(sub) => onChange({ sub })}
+              suggestions={mergeNames(
+                entry?.subTypes.map((value) => ({ value, count: entry.numbers[value]?.length ?? 0 })),
+                known ? [...known] : undefined,
+              )}
+              placeholder="능력, 비우면 아무 능력"
+              label={`${condition.optionType} 능력`}
+            />
+          </div>
+          <NumberInput
+            value={condition.min}
+            onChange={(min) => onChange({ min })}
+            values={entry?.numbers[condition.sub.trim()] ?? entry?.numbers['']}
+            defaults={undefined}
+            unit=""
+            label={`${condition.optionType} 최솟값`}
+          />
+        </Flex>
+      );
+    }
+    case 'named':
+      return (
+        <Flex gap={6} wrap>
+          <div style={{ flex: `1 1 ${NAME_INPUT_MIN}px`, minWidth: 0 }}>
+            <NameInput
+              value={condition.name}
+              onChange={(name) => onChange({ name })}
+              suggestions={mergeNames(entry?.values, undefined)}
+              placeholder="이름, 비우면 아무 효과"
+              label={`${condition.optionType} 이름`}
+            />
+          </div>
+          <NumberInput
+            value={condition.minLevel}
+            onChange={(minLevel) => onChange({ minLevel })}
+            values={entry?.numbers[condition.name.trim()] ?? entry?.numbers['']}
+            defaults={undefined}
+            unit="레벨"
+            label={`${condition.optionType} 최소 레벨`}
+          />
+        </Flex>
+      );
     case 'number':
       return (
         <NumberInput

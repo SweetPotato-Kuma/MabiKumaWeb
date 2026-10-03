@@ -52,7 +52,6 @@ import {
   useAuctionItemsQuery,
   useAuctionScanQuery,
   useAuctionSnapshotQuery,
-  useRecentTradesPreview,
   prefetchAuctionSnapshot,
 } from '@/features/auction/hooks';
 import { canUseSnapshot, isSnapshotCategory, snapshotAgeLabel } from '@/features/auction/snapshot';
@@ -391,17 +390,18 @@ export function AuctionPage() {
     category: urlSearch.category,
     keyword: urlSearch.keyword,
   }));
-  /** 처음 열 때 주소에 검색이 실려 있었는지. 그랬다면 첫 화면 미리보기가 끼어들지 않는다. */
-  const [hadInitialSearch] = useState(
-    () => isAuctionSearchReady(urlSearch) || urlSearch.filterKey !== '',
-  );
   const [submitted, setSubmitted] = useState<AuctionSearchInput | null>(null);
   const [detail, setDetail] = useState<AuctionItemDetail | null>(null);
 
   const query = submitted ?? EMPTY_INPUT;
   /** 카테고리와 검색어 없이 상세 검색 조건만으로 찾는 중. 조건에 맞을 수 있는 카테고리를 차례로 훑는다. */
   const scanning = (query.scan?.length ?? 0) > 0;
-  const enabled = canQuery && submitted !== null && (isAuctionSearchReady(query) || scanning);
+  const enabled = canQuery && submitted !== null;
+  /**
+   * 카테고리도 검색어도 조건도 없는 첫 화면. 넥슨 경매장 API 는 아무것도 주지 않으면 서버 전체에서 최근에 올라온
+   * 매물부터 준다. 그 순서가 곧 등록순이라, 정렬을 고르지 않았으면 받은 순서 그대로 보인다(sortOrderOf).
+   */
+  const recentMode = submitted !== null && !isAuctionSearchReady(query) && !scanning;
 
   /**
    * 전체 이름 인덱스 한 파일. 자동완성뿐 아니라 거래 내역 탭이 카테고리 없이 검색어만으로
@@ -425,30 +425,6 @@ export function AuctionPage() {
     scanning && query.keyword.trim() ? null : nameIndexQuery.data,
     enabled && tab === 'history',
   );
-
-  /**
-   * 첫 화면 미리보기(issue #8). 아직 아무것도 찾지 않았을 때만 서버 전체의 최근 거래를 받는다.
-   * 거래 내역 탭은 이 목록을 그대로 보여주고, 판매 중 매물 탭은 가장 흔한 카테고리를 아래
-   * 효과(autoSelectedRef)에서 한 번 자동으로 골라 채운다.
-   */
-  const preview = useRecentTradesPreview(canQuery && submitted === null);
-  const previewTopCategory = useMemo(() => {
-    const trades = preview.data;
-    if (!trades || trades.length === 0) return null;
-    const counts = new Map<string, number>();
-    for (const trade of trades) {
-      counts.set(trade.auction_item_category, (counts.get(trade.auction_item_category) ?? 0) + 1);
-    }
-    let top: string | null = null;
-    let max = 0;
-    for (const [category, count] of counts) {
-      if (count > max) {
-        top = category;
-        max = count;
-      }
-    }
-    return top;
-  }, [preview.data]);
 
   // 빈 배열을 매 렌더 새로 만들면 아래 통계 useMemo 가 매번 다시 돈다.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
@@ -696,11 +672,15 @@ export function AuctionPage() {
       const key = typeof picked?.columnKey === 'string' ? picked.columnKey : '';
       mutateParams((params) => {
         params.delete('page');
-        if (key && picked?.order) writeViewState(params, { sort: { key, order: picked.order } });
-        else params.delete('sort');
+        if (key && picked?.order) {
+          writeViewState(params, { sort: { key, order: picked.order } });
+          // 첫 화면은 기본 정렬(가격 낮은 순)도 주소에 남긴다. 빠지면 다시 등록순으로 돌아간다.
+          if (recentMode && !params.has('sort'))
+            params.set('sort', `${picked.order === 'descend' ? '-' : ''}${key}`);
+        } else params.delete('sort');
       }, true);
     },
-    [mutateParams],
+    [mutateParams, recentMode],
   );
 
   /**
@@ -851,8 +831,8 @@ export function AuctionPage() {
         setSubmitted({ category: ALL_CATEGORIES, keyword: '', scan });
         return;
       }
-      // 주소에 검색이 없다. 아무것도 찾지 않은 첫 화면이다.
-      setSubmitted(null);
+      // 주소에 검색이 없다. 첫 화면은 서버 전체의 최근 등록 매물과 최근 거래를 보인다(recentMode).
+      setSubmitted((prev) => (prev && JSON.stringify(prev) === JSON.stringify(EMPTY_INPUT) ? prev : EMPTY_INPUT));
       return;
     }
 
@@ -927,25 +907,6 @@ export function AuctionPage() {
   }
 
   /**
-   * 첫 화면 미리보기(issue #8). 아직 아무것도 찾지 않았으면(주소로 온 조건도 없으면) 최근 거래에서
-   * 가장 흔한 카테고리를 한 번만 골라 판매 중 매물 탭을 채운다. "검색 초기화"로 되돌아갔을 때
-   * 다시 끼어들지 않게 한 번 하고 나면 다시 하지 않는다(autoSelectedRef).
-   */
-  const autoSelectedRef = useRef(false);
-  useEffect(() => {
-    if (autoSelectedRef.current) return;
-    if (submitted !== null || hadInitialSearch) {
-      autoSelectedRef.current = true;
-      return;
-    }
-    if (!previewTopCategory) return;
-    autoSelectedRef.current = true;
-    // 첫 화면을 채우는 것이지 사용자가 고른 검색이 아니라서 뒤로 가기 단계로 남기지 않는다.
-    selectCategory(previewTopCategory, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewTopCategory, submitted]);
-
-  /**
    * 트리는 CategoryPicker 하나만 쓴다.
    *
    * 여기에 같은 트리를 따로 들고 있던 탓에 아이템 정보 화면에서 고친 것(묶음을 눌러 펼치기)이
@@ -978,10 +939,14 @@ export function AuctionPage() {
   );
   const loadedForOptions = tab === 'items' ? items : history;
 
-  /** 주소의 정렬을 열에 건다. 표는 스스로 정렬 상태를 두지 않고 주소가 가리키는 대로 그린다. */
+  /**
+   * 주소의 정렬을 열에 건다. 표는 스스로 정렬 상태를 두지 않고 주소가 가리키는 대로 그린다.
+   * 첫 화면의 판매 중 매물은 정렬을 고르기 전까지 등록순(받은 순서)이다.
+   */
+  const unsorted = recentMode && tab === 'items' && !searchParams.has('sort');
   const sortOrderOf = useCallback(
-    (key: string): AuctionSort['order'] | null => (sort.key === key ? sort.order : null),
-    [sort],
+    (key: string): AuctionSort['order'] | null => (!unsorted && sort.key === key ? sort.order : null),
+    [sort, unsorted],
   );
 
   // 제네릭을 직접 적는다. useMemo 안에서는 배열 리터럴이 문맥 타입을 잃어
@@ -1399,7 +1364,7 @@ export function AuctionPage() {
             : submitted?.keywordsTruncated && !submitted.category
               ? '걸리는 이름이 많아 일부만 찾았습니다. 조금 더 길게 입력하거나 카테고리를 골라 주세요.'
               : submitted?.scan && !form.category && !form.keyword.trim()
-                ? `상세 검색 조건이 붙을 수 있는 장비 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${scanProgressLabel}`
+                ? `상세 검색 조건이 붙을 수 있는 카테고리 ${formatNumber(submitted.scan.length)}곳을 차례로 불러와 거릅니다.${scanProgressLabel}`
                 : null;
 
   const keywordInput = (
@@ -1489,44 +1454,45 @@ export function AuctionPage() {
           <Card variant="outlined" size="small">
             <Flex vertical gap={10}>
               {/*
-                검색 카드는 두 줄이다(인게임 경매장과 같다): 입력과 단추, 분류 경로와 정확히 일치와 상태.
-                상세 옵션 단추는 첫 줄 찾기 단추 옆에 늘 보이고, 건 조건이 있을 때만 아래에 배지 한 줄이 생긴다.
-                넓은 화면에서는 두 줄을 같은 칸 나누기(grid)에 올려 정확히 일치가 늘 찾기 단추 바로 아래에 선다.
+                검색 카드는 두 줄이다(인게임 경매장과 같다).
+                첫 줄: 입력칸, 바로 옆의 초기화, 찾기, 상세 옵션. 둘째 줄: 분류 경로와 상태, 찾기 아래의 정확히 일치,
+                상세 옵션 아래의 즐겨찾기. 건 조건이 있을 때만 아래에 배지 한 줄이 생긴다.
+                넓은 화면에서는 두 줄을 같은 칸 나누기(grid)에 올려 단추 아래 칸이 늘 제자리에 선다.
                 분류 경로나 상태 문구가 길어져도 이 칸은 움직이지 않는다. 좁은 화면에서는 줄바꿈에 맡기고,
-                정확히 일치를 분류 경로 앞에 두어 거기서도 제자리를 지킨다.
+                정확히 일치와 즐겨찾기를 분류 경로 앞에 두어 거기서도 제자리를 지킨다.
               */}
               {isWide ? (
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) auto auto auto auto',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto auto auto',
                     columnGap: 8,
                     rowGap: 10,
                     alignItems: 'center',
                   }}
                 >
                   {keywordInput}
+                  {resetButton}
                   {searchButton}
                   {optionsButton}
-                  {savedControls}
-                  {resetButton}
                   <Flex gap={12} wrap align="center" style={{ minWidth: 0 }}>
                     {breadcrumb}
                     {statusText}
                   </Flex>
-                  <div style={{ gridColumn: '2 / -1' }}>{exactCheckbox}</div>
+                  <div style={{ gridColumn: 3 }}>{exactCheckbox}</div>
+                  <div style={{ gridColumn: 4 }}>{savedControls}</div>
                 </div>
               ) : (
                 <>
                   <Flex gap={8} wrap align="center">
                     {keywordInput}
+                    {resetButton}
                     {searchButton}
                     {optionsButton}
-                    {savedControls}
-                    {resetButton}
                   </Flex>
                   <Flex gap={12} wrap align="center">
                     {exactCheckbox}
+                    {savedControls}
                     {breadcrumb}
                     {statusText}
                   </Flex>
@@ -1541,25 +1507,7 @@ export function AuctionPage() {
             <Card variant="outlined">
               <Skeleton active />
             </Card>
-          ) : submitted === null && preview.data && preview.data.length > 0 ? (
-            <Card variant="outlined" size="small" title="최근 거래">
-              <Flex vertical gap={12}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  아직 검색하지 않아 서버 전체의 최근 거래를 보여주고 있습니다. 카테고리를 고르거나
-                  검색하면 조건에 맞는 결과로 바뀝니다.
-                </Text>
-                <Table<AuctionHistoryItem>
-                  columns={historyColumns}
-                  dataSource={preview.data}
-                  onRow={(record) => rowInteraction(() => historyItemDetail(record))}
-                  rowKey={(record) => record.auction_buy_id}
-                  size="small"
-                  pagination={false}
-                  scroll={isWide ? { x: 640 } : undefined}
-                />
-              </Flex>
-            </Card>
-          ) : submitted === null ? (
+          ) : submitted === null || (recentMode && !canQuery) ? (
             <Card variant="outlined">
               <EmptyState
                 variant="search"
@@ -1571,8 +1519,8 @@ export function AuctionPage() {
               activeKey={tab}
               onChange={(key) => navigate(tabParamsFor(paramsRef.current, key as AuctionTab), false)}
               items={[
-                { key: 'items', label: '판매 중 매물', children: itemsPanel },
-                { key: 'history', label: '거래 내역', children: historyPanel },
+                { key: 'items', label: recentMode ? '최근 등록 매물' : '판매 중 매물', children: itemsPanel },
+                { key: 'history', label: recentMode ? '최근 거래' : '거래 내역', children: historyPanel },
               ]}
             />
           )}

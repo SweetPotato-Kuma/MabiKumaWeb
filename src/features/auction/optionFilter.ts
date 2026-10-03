@@ -55,6 +55,15 @@ export type Condition =
    * field 가 종족명이면 text 가 들어 있는 것, 나머지(레벨, 생명력 등)는 min 이상이다.
    */
   | { id: number; kind: 'pet'; field: string; text: string; min: number | null }
+  /**
+   * 구분 값이 능력치 이름인 옵션(토템 효과 "지력", 에코스톤 고유 능력 "의지" 등). sub 가 비면 아무 구분 값이고,
+   * 넣으면 그 글자가 든 구분 값만 본다. 값이 min 이상.
+   */
+  | { id: number; kind: 'sub'; optionType: string; sub: string; min: number | null }
+  /**
+   * 이름과 레벨이 함께 있는 옵션(세트 효과, 에코스톤 각성 능력). name 이 비면 아무 이름. 레벨이 minLevel 이상.
+   */
+  | { id: number; kind: 'named'; optionType: string; name: string; minLevel: number | null }
   /** 숫자 옵션(최대 공격, 크리티컬, 방어력 등)이 min 이상. */
   | { id: number; kind: 'number'; optionType: string; min: number | null }
   /** 그 밖의 옵션(세트 효과, 장인 개조 등)에 문구가 들어 있다. */
@@ -100,13 +109,68 @@ export const PET_FIELDS: readonly string[] = [
 const KIND_BY_TYPE: Record<string, ConditionKind> = {
   '세공 옵션': 'reforge',
   인챈트: 'enchant',
+  // 인챈트 스크롤과 페이지는 붙은 인챈트를 이 이름으로 준다. 장비의 인챈트와 같은 조건으로 찾는다.
+  '인챈트 종류': 'enchant',
   '특별 개조': 'special',
   에르그: 'erg',
   '아이템 색상': 'color',
   색상: 'color',
   [MURIAS_OPTION_TYPE]: 'relic',
   [PET_OPTION_TYPE]: 'pet',
+  '세트 효과': 'named',
+  '에코스톤 각성 능력': 'named',
+  '에코스톤 고유 능력': 'sub',
+  '토템 효과': 'sub',
+  '토템 추가 옵션': 'sub',
+  '토템 강화 제한': 'sub',
 };
+
+/** 인챈트 조건이 보는 옵션 이름. 장비는 인챈트, 인챈트 스크롤과 페이지는 인챈트 종류로 온다. */
+const ENCHANT_TYPES: readonly string[] = ['인챈트', '인챈트 종류'];
+
+/**
+ * 값이 숫자인 옵션. 매물을 불러오기 전에는 값을 보고 가를 수 없어 이름으로 정한다. 불러온 매물이 있으면
+ * 값으로 가른 쪽(buildOptionCatalog)을 따른다.
+ */
+const NUMBER_OPTION_TYPES = new Set([
+  '공격',
+  '부상률',
+  '크리티컬',
+  '밸런스',
+  '내구력',
+  '내구도',
+  '숙련',
+  '방어력',
+  '보호',
+  '마법 방어력',
+  '마법 보호',
+  '피어싱 레벨',
+  '일반 개조',
+  '보석 개조',
+  '에코스톤 등급',
+  '품질',
+  '크기',
+  '남은 거래 횟수',
+  '남은 사용 횟수',
+  '남은 전용 해제 가능 횟수',
+]);
+
+/** 옵션 이름으로 어떤 조건 종류를 쓸지. */
+export function kindOfOptionType(optionType: string): ConditionKind {
+  return KIND_BY_TYPE[optionType] ?? (NUMBER_OPTION_TYPES.has(optionType) ? 'number' : 'text');
+}
+
+/**
+ * 이름과 레벨이 함께 있는 옵션을 나눈다. 세트 효과는 레벨이 둘째 값에 따로 오고("공격 속도 증가", "7"),
+ * 에코스톤 각성 능력은 한 문장에 붙어 온다("1막: 우연한 충돌 대미지 배율 20 레벨 (100.00 )").
+ */
+export function namedParts(option: ItemOption): { name: string; level: number | null } {
+  const value = (option.option_value ?? '').trim();
+  const second = toNumber(option.option_value2);
+  if (second !== null) return { name: value, level: second };
+  const match = /^([\s\S]*?)\s*(\d+)\s*레벨/.exec(value);
+  return match ? { name: match[1].trim(), level: Number(match[2]) } : { name: value, level: null };
+}
 
 /** 두 색 옵션은 조건 하나로 다룬다. 장비 파트 색과 염색 앰플 색. */
 export const COLOR_OPTION_LABEL = '색상';
@@ -136,6 +200,10 @@ export function isConditionActive(condition: Condition): boolean {
       return condition.field === PET_SPECIES_FIELD
         ? normalizeForSearch(condition.text) !== ''
         : condition.min !== null;
+    case 'sub':
+      return normalizeForSearch(condition.sub) !== '' || condition.min !== null;
+    case 'named':
+      return normalizeForSearch(condition.name) !== '' || condition.minLevel !== null;
     case 'number':
       return condition.min !== null;
     case 'text':
@@ -217,7 +285,7 @@ const enchantIn = (options: ItemOption[], slot: string, name: string) => {
   const needle = normalizeForSearch(name);
   return options.some(
     (option) =>
-      option.option_type === '인챈트' &&
+      ENCHANT_TYPES.includes(option.option_type) &&
       option.option_sub_type === slot &&
       normalizeForSearch(enchantName(option.option_value)).includes(needle),
   );
@@ -302,6 +370,26 @@ function matchesCondition(options: ItemOption[], condition: Condition): boolean 
         const value = toNumber(option.option_value);
         return condition.min === null || (value !== null && value >= condition.min);
       });
+    case 'sub': {
+      const sub = normalizeForSearch(condition.sub);
+      return options.some((option) => {
+        if (option.option_type !== condition.optionType) return false;
+        if (sub && !normalizeForSearch(option.option_sub_type ?? '').includes(sub)) return false;
+        const value = optionNumber(option);
+        return condition.min === null || (value !== null && value >= condition.min);
+      });
+    }
+    case 'named': {
+      const needle = normalizeForSearch(condition.name);
+      return options.some((option) => {
+        if (option.option_type !== condition.optionType) return false;
+        const { name, level } = namedParts(option);
+        return (
+          normalizeForSearch(name).includes(needle) &&
+          (condition.minLevel === null || (level !== null && level >= condition.minLevel))
+        );
+      });
+    }
     case 'number':
       return options.some((option) => {
         if (option.option_type !== condition.optionType) return false;
@@ -363,6 +451,8 @@ export function conditionLabel(condition: Condition): string {
       return PET_OPTION_TYPE;
     case 'number':
       return numberLabel(condition.optionType);
+    case 'sub':
+    case 'named':
     case 'text':
       return condition.optionType;
   }
@@ -424,6 +514,18 @@ export function summarizeCondition(condition: Condition): string {
       return condition.field === PET_SPECIES_FIELD
         ? `${label} ${condition.field} "${condition.text.trim()}"`
         : `${label} ${condition.field} ${condition.min} 이상`;
+    case 'sub':
+      return [label, condition.sub.trim(), condition.min !== null ? `${condition.min} 이상` : '']
+        .filter(Boolean)
+        .join(' ');
+    case 'named':
+      return [
+        label,
+        condition.name.trim(),
+        condition.minLevel !== null ? `${condition.minLevel}레벨 이상` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
     case 'number':
       return `${label} ${condition.min} 이상`;
     case 'text':
@@ -475,7 +577,7 @@ export function describeMatch(
   const active = filter.conditions.filter(isConditionActive);
   for (const condition of active) {
     const key =
-      condition.kind === 'number' || condition.kind === 'text'
+      condition.kind === 'number' || condition.kind === 'text' || condition.kind === 'sub' || condition.kind === 'named'
         ? `${condition.kind}:${condition.optionType}`
         : condition.kind === 'pet'
           ? `pet:${condition.field}`
@@ -492,7 +594,7 @@ export function describeMatch(
       if (chips.length > 0) notes.push({ label: '세공', chips });
     } else if (condition.kind === 'enchant') {
       const chips = options
-        .filter((option) => option.option_type === '인챈트')
+        .filter((option) => ENCHANT_TYPES.includes(option.option_type))
         .map((option) => {
           const needle = normalizeForSearch(
             option.option_sub_type === ENCHANT_PREFIX ? condition.prefix : condition.suffix,
@@ -537,6 +639,31 @@ export function describeMatch(
       );
       if (option)
         notes.push({ label: PET_OPTION_TYPE, chips: [{ text: `${condition.field} ${option.option_value ?? ''}`, hit: true }] });
+    } else if (condition.kind === 'sub') {
+      const wanted = active.filter(
+        (each): each is Extract<Condition, { kind: 'sub' }> => each.kind === 'sub' && each.optionType === condition.optionType,
+      );
+      const chips = options
+        .filter((option) => option.option_type === condition.optionType)
+        .map((option) => ({
+          text: `${option.option_sub_type ?? ''} ${option.option_value ?? ''}`.trim(),
+          hit: wanted.some((each) => matchesCondition([option], each)),
+        }));
+      if (chips.length > 0) notes.push({ label: condition.optionType, chips });
+    } else if (condition.kind === 'named') {
+      const wanted = active.filter(
+        (each): each is Extract<Condition, { kind: 'named' }> => each.kind === 'named' && each.optionType === condition.optionType,
+      );
+      const chips = options
+        .filter((option) => option.option_type === condition.optionType)
+        .map((option) => {
+          const { name, level } = namedParts(option);
+          return {
+            text: level !== null ? `${name} ${level}레벨` : name,
+            hit: wanted.some((each) => matchesCondition([option], each)),
+          };
+        });
+      if (chips.length > 0) notes.push({ label: condition.optionType, chips });
     } else if (condition.kind === 'number') {
       const option = options.find((each) => each.option_type === condition.optionType);
       const value = option ? optionNumber(option) : null;
@@ -596,8 +723,11 @@ function numberOf(kind: ConditionKind | null, option: ItemOption): number | null
       return toNumber(option.option_value);
     case 'pet':
       return option.option_sub_type === PET_SPECIES_FIELD ? null : toNumber(option.option_value);
+    case 'sub':
     case null:
       return optionNumber(option);
+    case 'named':
+      return namedParts(option).level;
     default:
       return null;
   }
@@ -632,7 +762,8 @@ export function buildOptionCatalog(
 
     for (const option of item.item_option ?? []) {
       const fixed = KIND_BY_TYPE[option.option_type] ?? null;
-      const label = fixed === 'color' ? COLOR_OPTION_LABEL : option.option_type;
+      const label =
+        fixed === 'color' ? COLOR_OPTION_LABEL : fixed === 'enchant' ? ENCHANT_TYPES[0] : option.option_type;
       let tally = tallies.get(label);
       if (!tally) {
         tally = {
@@ -666,7 +797,9 @@ export function buildOptionCatalog(
             ? relic?.name
             : fixed === 'enchant'
               ? enchantName(option.option_value)
-              : fixed === null
+              : fixed === 'named'
+                ? namedParts(option).name
+                : fixed === null
                 ? option.option_value
                 : fixed === 'pet' && option.option_sub_type === PET_SPECIES_FIELD
                   ? option.option_value
@@ -687,9 +820,9 @@ export function buildOptionCatalog(
         const perLabel = maxHere.get(label) ?? new Map<string, number>();
         maxHere.set(label, perLabel);
         const keys =
-          (fixed === 'reforge' || fixed === 'relic') && name
+          (fixed === 'reforge' || fixed === 'relic' || fixed === 'named') && name
             ? ['', name]
-            : fixed === 'pet' && option.option_sub_type
+            : (fixed === 'pet' || fixed === 'sub') && option.option_sub_type
               ? ['', option.option_sub_type]
               : [''];
         for (const key of keys) perLabel.set(key, Math.max(perLabel.get(key) ?? -Infinity, number));
@@ -780,6 +913,10 @@ export function newCondition(entry: Pick<CatalogEntry, 'kind' | 'optionType'>): 
       return { id, kind: 'relic', name: '', minLevel: null, maxLevel: null };
     case 'pet':
       return { id, kind: 'pet', field: PET_SPECIES_FIELD, text: '', min: null };
+    case 'sub':
+      return { id, kind: 'sub', optionType: entry.optionType, sub: '', min: null };
+    case 'named':
+      return { id, kind: 'named', optionType: entry.optionType, name: '', minLevel: null };
     case 'number':
       return { id, kind: 'number', optionType: entry.optionType, min: null };
     case 'text':

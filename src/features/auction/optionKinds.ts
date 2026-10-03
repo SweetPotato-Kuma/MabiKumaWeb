@@ -1,52 +1,93 @@
-import { isEquipmentCategory } from '@/features/equipment/api';
-import { RELIC_CATEGORY } from '@/features/relics/murias';
-import { leavesOfGroupKey } from './categoryTree';
-import { PET_CATEGORY, PET_QUICK_CONDITION, QUICK_CONDITIONS, RELIC_QUICK_CONDITION, type CatalogEntry, type ConditionKind, type OptionFilter } from './optionFilter';
+import {
+  conditionLabel,
+  kindOfOptionType,
+  newCondition,
+  type CatalogEntry,
+  type Condition,
+  type ConditionKind,
+  type OptionFilter,
+} from './optionFilter';
+import { optionTypesFor } from './optionTypes';
 
-/** 장비에 붙는 옵션 다섯 가지. 장비가 아닌 카테고리에는 붙지 않는다. */
-const EQUIPMENT_KINDS: readonly ConditionKind[] = QUICK_CONDITIONS.map((quick) => quick.kind);
-
-/**
- * 카테고리에서 바로 고를 수 있게 둘 자주 쓰는 옵션 종류.
- *
- * - 카테고리를 고르지 않았으면 모두 둔다. 조건만 넣고 찾을 수도 있다.
- * - 장비 카테고리는 세공, 인챈트, 특별 개조, 에르그, 색상.
- * - 유물 카테고리는 무리아스 유물 옵션 하나. 세공은 붙지 않아 쓸모가 없다.
- * - 분양 메달은 펫 정보(종족명, 레벨 등) 하나.
- * - 묶음은 하위 카테고리에 하나라도 붙는 종류를 모두 둔다.
- * - 그 밖의 카테고리(포션, 도면 등)는 비운다. 불러온 매물에 있는 옵션(catalogKinds)과 이미 건 조건(usedKinds)은
- *   카테고리와 상관없이 남겨, 보이던 조건이 갑자기 사라지지 않게 한다.
- */
-export function offeredKinds(
-  category: string,
-  catalogKinds: Iterable<ConditionKind> = [],
-  usedKinds: Iterable<ConditionKind> = [],
-): ConditionKind[] {
-  const wanted = new Set<ConditionKind>([...catalogKinds, ...usedKinds]);
-  const leaves = leavesOfGroupKey(category) ?? (category ? [category] : null);
-  if (leaves === null) {
-    EQUIPMENT_KINDS.forEach((kind) => wanted.add(kind));
-    wanted.add('relic');
-    wanted.add('pet');
-  } else {
-    if (leaves.some(isEquipmentCategory)) EQUIPMENT_KINDS.forEach((kind) => wanted.add(kind));
-    if (leaves.includes(RELIC_CATEGORY)) wanted.add('relic');
-    if (leaves.includes(PET_CATEGORY)) wanted.add('pet');
-  }
-  const ordered = [RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS, PET_QUICK_CONDITION].map((quick) => quick.kind);
-  return ordered.filter((kind) => wanted.has(kind));
+/** 상세 검색에서 더할 수 있는 옵션 하나. */
+export interface OptionChoice {
+  /** 화면 이름이자 조건 칸 이름(conditionLabel). 같은 이름은 한 번만 둔다. */
+  label: string;
+  kind: ConditionKind;
+  optionType: string;
+  /** 불러온 매물 가운데 이 옵션이 있는 수. 불러온 것이 없으면 비어 있다. */
+  count?: number;
+  /** 값이 여러 칸(이름, 레벨, 구분 값)으로 나뉘는 옵션. 목록 위쪽 "주요 옵션" 에 모은다. */
+  main: boolean;
 }
 
-const QUICK_KINDS = new Set<ConditionKind>([RELIC_QUICK_CONDITION, ...QUICK_CONDITIONS, PET_QUICK_CONDITION].map((quick) => quick.kind));
+/** 주요 옵션의 순서. 장비 옵션을 먼저 두고, 그 밖의 아이템 옵션을 뒤에 둔다. */
+const MAIN_ORDER = [
+  '세공',
+  '인챈트',
+  '특별 개조',
+  '에르그',
+  '색상',
+  '세트 효과',
+  '무리아스 유물',
+  '펫 정보',
+  '에코스톤 고유 능력',
+  '에코스톤 각성 능력',
+  '토템 효과',
+  '토템 추가 옵션',
+  '토템 강화 제한',
+];
+
+const isMain = (kind: ConditionKind) => kind !== 'number' && kind !== 'text';
+
+const mainRank = (label: string) => {
+  const at = MAIN_ORDER.indexOf(label);
+  return at < 0 ? MAIN_ORDER.length : at;
+};
+
+/** 한 옵션으로 만들 조건 칸의 이름. 조건 칸과 목록이 같은 이름을 쓰게 조건을 만들어 본다. */
+const labelOf = (kind: ConditionKind, optionType: string) => conditionLabel(newCondition({ kind, optionType }));
 
 /**
- * 상세 검색에서 고를 수 있는 옵션이 있는지. 카테고리에 붙는 옵션이 없고(포션 등) 불러온 매물에 걸 만한 옵션도 없고
- * 이미 건 조건도 없으면 열어 볼 이유가 없다.
+ * 상세 검색에서 고를 수 있는 옵션.
+ *
+ * 고른 카테고리에 붙는 옵션(optionTypesFor)과 불러온 매물에 있는 옵션(catalog)을 합친다. 이미 칸이 있는 옵션은
+ * 뺀다. 칸 하나에 줄을 더해 여러 조건을 건다. 주요 옵션을 정한 순서로 먼저, 나머지를 가나다순으로 둔다.
+ */
+export function optionChoices(
+  category: string,
+  catalog: CatalogEntry[],
+  conditions: readonly Condition[],
+): OptionChoice[] {
+  const byLabel = new Map<string, OptionChoice>();
+  const put = (kind: ConditionKind, optionType: string, count?: number) => {
+    const label = labelOf(kind, optionType);
+    const known = byLabel.get(label);
+    if (known) {
+      if (count !== undefined) known.count = (known.count ?? 0) + count;
+      return;
+    }
+    byLabel.set(label, { label, kind, optionType, count, main: isMain(kind) });
+  };
+  // 불러온 매물에서 값으로 가른 종류(숫자인지 문구인지)를 먼저 믿는다.
+  for (const entry of catalog) put(entry.kind, entry.optionType, entry.count);
+  for (const type of optionTypesFor(category)) put(kindOfOptionType(type), type);
+
+  const used = new Set(conditions.map(conditionLabel));
+  return [...byLabel.values()]
+    .filter((choice) => !used.has(choice.label))
+    .sort(
+      (a, b) =>
+        Number(b.main) - Number(a.main) ||
+        (a.main ? mainRank(a.label) - mainRank(b.label) : 0) ||
+        a.label.localeCompare(b.label, 'ko'),
+    );
+}
+
+/**
+ * 상세 검색에서 고를 수 있는 옵션이 있는지. 카테고리에 붙는 옵션이 없고(뷰티 쿠폰 등) 불러온 매물에 걸 만한
+ * 옵션도 없고 이미 건 조건도 없으면 열어 볼 이유가 없다.
  */
 export function hasDetailOptions(category: string, catalog: CatalogEntry[], value: OptionFilter): boolean {
-  return (
-    offeredKinds(category, catalog.map((entry) => entry.kind), value.conditions.map((condition) => condition.kind)).length > 0 ||
-    catalog.some((entry) => !QUICK_KINDS.has(entry.kind)) ||
-    value.conditions.length > 0
-  );
+  return value.conditions.length > 0 || optionChoices(category, catalog, value.conditions).length > 0;
 }

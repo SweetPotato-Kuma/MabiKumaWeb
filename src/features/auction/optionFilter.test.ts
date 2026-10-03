@@ -127,6 +127,8 @@ describe('matchesOptionFilter', () => {
     expect(match({ kind: 'number', optionType: '크리티컬', min: 20 })).toBe(false);
     expect(match({ kind: 'text', optionType: '세트 효과', text: '파이널 히트' })).toBe(true);
     expect(match({ kind: 'text', optionType: '세트 효과', text: '윈드밀' })).toBe(false);
+    expect(match({ kind: 'named', optionType: '세트 효과', name: '파이널', minLevel: 10 })).toBe(true);
+    expect(match({ kind: 'named', optionType: '세트 효과', name: '파이널', minLevel: 11 })).toBe(false);
   });
 
   it('색은 R, G, B 채널마다 범위로 걸고, 건 채널이 모두 맞아야 한다', () => {
@@ -253,7 +255,8 @@ describe('buildOptionCatalog', () => {
     });
     expect(byLabel['에르그'].numbers['']).toEqual([35, 35]);
     expect(byLabel['최대 공격']).toMatchObject({ kind: 'number', optionType: '공격' });
-    expect(byLabel['세트 효과']).toMatchObject({ kind: 'text' });
+    expect(byLabel['세트 효과'].kind).toBe('named');
+    expect(byLabel['세트 효과'].values.map((each) => each.value)).toContain('파이널 히트 강화');
     expect(byLabel['에르그'].subTypes).toEqual(['S']);
     expect(catalog[0].label).toBe('색상');
   });
@@ -399,5 +402,76 @@ describe('펫 정보 조건', () => {
     expect(entry?.values.map((value) => value.value)).toEqual(['스쿠터']);
     expect(entry?.numbers['레벨']).toEqual([106]);
     expect(entry?.numbers['스태미나']).toEqual([473]);
+  });
+});
+
+describe('구분 값, 이름과 레벨이 있는 옵션', () => {
+  const echostone = {
+    item_option: [
+      option('에코스톤 등급', '24'),
+      option('에코스톤 고유 능력', '35', '지력'),
+      option('에코스톤 각성 능력', '1막: 우연한 충돌 대미지 배율 20 레벨 \n(100.00 )'),
+    ],
+  };
+  const totem = {
+    item_option: [option('토템 효과', '7', '지력'), option('토템 효과', '3', '행운'), option('토템 추가 옵션', '2', '보너스 대미지')],
+  };
+  const only = (condition: Draft): OptionFilter => ({
+    conditions: [{ id: 1, ...condition } as Condition],
+  });
+
+  it('구분 값에 글자가 들어 있고 값이 최솟값 이상인지 본다', () => {
+    expect(matchesOptionFilter(totem, only({ kind: 'sub', optionType: '토템 효과', sub: '지력', min: 5 }))).toBe(true);
+    expect(matchesOptionFilter(totem, only({ kind: 'sub', optionType: '토템 효과', sub: '행운', min: 5 }))).toBe(false);
+    expect(matchesOptionFilter(totem, only({ kind: 'sub', optionType: '토템 효과', sub: '', min: 7 }))).toBe(true);
+    expect(matchesOptionFilter(totem, only({ kind: 'sub', optionType: '토템 추가 옵션', sub: '지력', min: null }))).toBe(false);
+    expect(
+      matchesOptionFilter(echostone, only({ kind: 'sub', optionType: '에코스톤 고유 능력', sub: '지력', min: 30 })),
+    ).toBe(true);
+  });
+
+  it('각성 능력은 한 문장에서 이름과 레벨을 나눠 본다', () => {
+    const awakening = (name: string, minLevel: number | null) =>
+      matchesOptionFilter(echostone, only({ kind: 'named', optionType: '에코스톤 각성 능력', name, minLevel }));
+    expect(awakening('우연한 충돌', 20)).toBe(true);
+    expect(awakening('우연한 충돌', 21)).toBe(false);
+    expect(awakening('힐링', null)).toBe(false);
+  });
+
+  it('목록에는 구분 값과 이름을 모아 자동완성에 쓴다', () => {
+    const catalog = buildOptionCatalog([echostone, totem]);
+    const byLabel = Object.fromEntries(catalog.map((entry) => [entry.label, entry]));
+    expect(byLabel['토템 효과']).toMatchObject({ kind: 'sub', subTypes: ['지력', '행운'] });
+    expect(byLabel['토템 효과'].numbers['지력']).toEqual([7]);
+    expect(byLabel['에코스톤 각성 능력']).toMatchObject({
+      kind: 'named',
+      values: [{ value: '1막: 우연한 충돌 대미지 배율', count: 1 }],
+    });
+    expect(byLabel['에코스톤 등급']).toMatchObject({ kind: 'number' });
+  });
+
+  it('인챈트 스크롤의 인챈트 종류도 인챈트 조건으로 찾는다', () => {
+    const scroll = { item_option: [option('인챈트 종류', '울프헌터 (랭크 C)', '접두')] };
+    expect(matchesOptionFilter(scroll, only({ kind: 'enchant', prefix: '울프', suffix: '' }))).toBe(true);
+    const catalog = buildOptionCatalog([scroll, sword]);
+    expect(catalog.filter((entry) => entry.kind === 'enchant')).toHaveLength(1);
+  });
+
+  it('요약과 걸린 이유를 적는다', () => {
+    expect(summarizeCondition({ id: 1, kind: 'sub', optionType: '토템 효과', sub: '지력', min: 5 })).toBe(
+      '토템 효과 지력 5 이상',
+    );
+    expect(summarizeCondition({ id: 1, kind: 'named', optionType: '세트 효과', name: '', minLevel: 5 })).toBe(
+      '세트 효과 5레벨 이상',
+    );
+    expect(describeMatch(totem, only({ kind: 'sub', optionType: '토템 효과', sub: '지력', min: 5 }))).toEqual([
+      {
+        label: '토템 효과',
+        chips: [
+          { text: '지력 7', hit: true },
+          { text: '행운 3', hit: false },
+        ],
+      },
+    ]);
   });
 });

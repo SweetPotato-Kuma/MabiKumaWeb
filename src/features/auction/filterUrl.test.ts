@@ -160,3 +160,27 @@ describe('펫 정보 조건 주소', () => {
     expect(back.conditions).toMatchObject([{ kind: 'pet', field: '행운', min: 50 }]);
   });
 });
+
+describe('구분 값, 이름과 레벨 조건 주소', () => {
+  it('옵션 이름과 값을 주소에 담고 되살린다', () => {
+    const filter = filterOf(
+      { kind: 'sub', optionType: '토템 효과', sub: '지력', min: 5 },
+      { kind: 'named', optionType: '세트 효과', name: '스매시 강화', minLevel: null },
+    );
+
+    expect(withoutId(parseFilter(serializeFilter(filter)))).toEqual(withoutId(filter));
+  });
+
+  it('옵션 이름이 없으면 그 조건만 버린다', () => {
+    const back = parseFilter(
+      JSON.stringify([
+        { kind: 'sub', sub: '지력', min: 5 },
+        { kind: 'named', optionType: '에코스톤 각성 능력', name: '우연한 충돌', minLevel: 10 },
+      ]),
+    );
+
+    expect(withoutId(back)).toEqual([
+      { kind: 'named', optionType: '에코스톤 각성 능력', name: '우연한 충돌', minLevel: 10 },
+    ]);
+  });
+});

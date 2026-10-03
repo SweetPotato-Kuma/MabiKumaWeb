@@ -63,7 +63,8 @@ interface StreamCursor {
  * 매물 검색.
  *
  * 카테고리를 골랐으면 그 카테고리 목록을 받아 이름으로 거른다. 고르지 않았으면
- * 전체를 뒤질 방법이 keyword-search 뿐이라 그것을 쓴다.
+ * 전체를 뒤질 방법이 keyword-search 뿐이라 그것을 쓴다. 카테고리도 검색어도 없으면(첫 화면)
+ * 목록을 조건 없이 받는다. 넥슨은 그때 서버 전체에서 최근에 올라온 매물부터 준다.
  *
  * keyword-search 는 단어 단위로만 맞으므로, 찾기를 누를 때 사전으로 정한 검색어
  * (input.keywords, planKeywordSearch 참고)를 나눠 부르고 합친다. 다음 묶음도 검색어마다
@@ -88,9 +89,10 @@ export function useAuctionItemsQuery(input: AuctionSearchInput, enabled: boolean
       const pages = await Promise.all(
         pageParam.map(async (stream) => ({
           stream,
-          page: category
-            ? await fetchAuctionList({ category, cursor: stream.cursor }, signal)
-            : await fetchAuctionKeywordSearch({ keyword: stream.keyword, cursor: stream.cursor }, signal),
+          page:
+            category || !stream.keyword
+              ? await fetchAuctionList({ category: category || undefined, cursor: stream.cursor }, signal)
+              : await fetchAuctionKeywordSearch({ keyword: stream.keyword, cursor: stream.cursor }, signal),
         })),
       );
       return {
@@ -191,25 +193,6 @@ export function useAuctionHistoryQuery(
   });
 
   return useStored ? stored : live;
-}
-
-/** 첫 화면 미리보기로 보여줄 거래 수. 표 한 화면에 담기는 정도로 적게 둔다. */
-const PREVIEW_TRADE_LIMIT = 20;
-
-/**
- * 아직 아무것도 찾지 않았을 때 보여줄 서버 전체의 최근 거래. 워커가 있을 때만 쓸 수 있다
- * (canLookupMarket). 경매장 화면이 첫 렌더에서 "요즘 거래" 미리보기와, 거기서 가장 흔한
- * 카테고리로 판매 중 매물 탭을 자동으로 채우는 데 쓴다(issue #8).
- */
-export function useRecentTradesPreview(enabled: boolean) {
-  return useQuery({
-    queryKey: ['auction', 'history', 'preview'],
-    queryFn: ({ signal }) => fetchTradeHistory({ limit: PREVIEW_TRADE_LIMIT }, signal),
-    select: (data) => data.auction_history,
-    enabled: enabled && canLookupMarket(),
-    staleTime: FIVE_MINUTES,
-    retry: false,
-  });
 }
 
 /** 카테고리를 훑을 때 한 번에 부르는 카테고리 수. 넥슨 API 호출량 제한을 넘지 않게 나눈다. */

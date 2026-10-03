@@ -1,9 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { AuctionPage } from '@/pages/AuctionPage';
+
+// 개발용 .env 에 워커 주소가 있어도 조회할 수 없는 상태로 둔다. 실서버로 나가지 않고, CI 와 같은 화면을 본다.
+vi.mock('@/lib/settings', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useCanQuery: () => false,
+}));
 
 /**
  * 화면이 실제로 서는지 보는 스모크 테스트.

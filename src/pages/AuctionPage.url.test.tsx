@@ -209,7 +209,8 @@ describe('경매장 검색 조건과 주소', () => {
     renderAt('/auction?tab=zzz&sort=nope&page=-5&size=7&f=%7Bbroken&category=&keyword=');
 
     expect(await screen.findByRole('heading', { name: '경매장 조회' })).toBeInTheDocument();
-    expect(screen.getByText(/카테고리를 고르거나, 아이템명이나 상세 검색 조건을 넣은 뒤/)).toBeInTheDocument();
+    // 조건이 하나도 없으면 첫 화면처럼 서버 전체의 최근 등록 매물을 보인다.
+    expect(await screen.findByRole('tab', { name: '최근 등록 매물' })).toBeInTheDocument();
   });
 
   it('거래 내역 탭을 고르면 주소에 실리고 판매 중 매물로 돌아오면 빠진다', async () => {
@@ -247,6 +248,25 @@ describe('경매장 검색 조건과 주소', () => {
 
       await waitFor(() => expect(router.search()).toContain('sort=-price'));
       expect(router.search()).not.toContain('page=');
+    });
+
+    it('첫 화면은 최근 등록 매물을 받은 순서(등록순) 그대로 보인다', async () => {
+      renderAt('/auction');
+
+      expect(await screen.findByRole('tab', { name: '최근 등록 매물' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '최근 거래' })).toBeInTheDocument();
+      await screen.findByText('시험 검 1');
+      expect(firstNames()[0]).toBe('시험 검 1');
+    });
+
+    it('첫 화면에서 가격 머리를 누르면 가격 낮은 순이 주소에 남는다', async () => {
+      const router = renderAt('/auction');
+      await screen.findByText('시험 검 1');
+
+      fireEvent.click(screen.getByRole('columnheader', { name: /가격/ }));
+
+      await waitFor(() => expect(router.search()).toContain('sort=price'));
+      await waitFor(() => expect(firstNames()[0]).toBe('시험 검 25'));
     });
 
     it('쪽을 넘기면 주소에 실리고, 첫 쪽으로 돌아오면 주소에서 빠진다', async () => {
@@ -459,7 +479,8 @@ describe('경매장 검색 조건과 주소', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /상세 옵션/ }));
       const dialog = within(await screen.findByRole('dialog'));
-      fireEvent.click(dialog.getByRole('button', { name: '펫 정보' }));
+      fireEvent.mouseDown(dialog.getByRole('combobox', { name: '세부 옵션 선택' }));
+      fireEvent.click(await screen.findByTitle('펫 정보'));
       fireEvent.change(dialog.getByLabelText('펫 종족명'), { target: { value: '스쿠터' } });
       fireEvent.click(dialog.getByRole('button', { name: /^검색$/ }));
 
@@ -518,7 +539,7 @@ describe('경매장 검색 조건과 주소', () => {
     it('주소에 없는 묶음 이름이 실려 오면 카테고리를 고르지 않은 것으로 본다', async () => {
       renderAt('/auction?category=group:없는 묶음');
 
-      expect(await screen.findByText(/카테고리를 고르거나/)).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: '최근 등록 매물' })).toBeInTheDocument();
       expect(screen.queryByRole('navigation', { name: '카테고리 경로' })).toBeNull();
     });
   });
