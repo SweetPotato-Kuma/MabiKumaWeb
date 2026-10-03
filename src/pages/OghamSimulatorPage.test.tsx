@@ -8,7 +8,8 @@ import { OghamSimulatorPage } from '@/pages/OghamSimulatorPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
-vi.setConfig({ testTimeout: 20_000 });
+/** 목표 옵션을 세 번 고르는 테스트가 antd 고르기 창을 여러 번 그린다. 느린 기계에서 20초를 넘길 수 있다. */
+vi.setConfig({ testTimeout: 30_000 });
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -62,25 +63,40 @@ describe('오검 워드 옵션 시뮬레이터', () => {
     expect(within(statistic('오검 파편')).getByText('4')).toBeInTheDocument();
   });
 
-  it('조합 워드를 한 번에 넣으면 가운데에 조합이 발동한다', () => {
+  it('조합 워드를 한 번에 넣으면 가운데에 조합이 발동하고 스킬 그림이 뜬다', () => {
     renderPage();
     expect(screen.getByRole('status', { name: '발동한 조합 없음' })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: '빈 칸에 넣기' })[0]);
-    expect(
-      screen.getByRole('status', { name: /^발동한 조합 라이트닝 스매시 뇌신/ }),
-    ).toBeInTheDocument();
+    const center = screen.getByRole('status', { name: /^발동한 조합 라이트닝 스매시 뇌신/ });
+    // 라이트닝 스매시(59026)의 스킬 그림.
+    expect(center.querySelector('img')?.getAttribute('src')).toMatch(/data\/skills\/59026\.png$/);
     expect(screen.getByRole('button', { name: '1번 칸 베헤' })).toBeInTheDocument();
   });
 
-  it('목표 옵션을 고르면 한 번에 나올 확률을 보여 준다', async () => {
+  it('목표 옵션은 세 개까지 고를 수 있고, 고르면 한 번에 모두 채울 확률을 보여 준다', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '1번 칸 비어 있음' }));
     const picker = await screen.findByRole('dialog');
     fireEvent.click(within(picker).getByRole('button', { name: '콜' }));
     const panel = screen.getByRole('region', { name: '고른 워드' });
-    fireEvent.mouseDown(within(panel).getByRole('combobox', { name: '목표 옵션' }));
-    fireEvent.click(await screen.findByTitle('스매시 대미지 배율 증가 (최대 20)'));
+    const add = async (title: string) => {
+      fireEvent.mouseDown(within(panel).getByRole('combobox', { name: '목표 옵션 추가' }));
+      fireEvent.click(await screen.findByTitle(title));
+    };
+
+    await add('스매시 대미지 배율 증가 (최대 20)');
+    expect(within(panel).getByRole('combobox', { name: '목표 옵션 1' })).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: '목표 옵션 기댓값' })).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: '목표까지 최대 1,000번' })).toBeEnabled();
+
+    await add('돌진 대미지 배율 증가 (최대 20)');
+    await add('다운 어택 대미지 배율 증가 (최대 20)');
+    expect(within(panel).getByRole('combobox', { name: '목표 옵션 3' })).toBeInTheDocument();
+    // 세 개를 고르면 더하는 칸이 사라진다.
+    expect(within(panel).queryByRole('combobox', { name: '목표 옵션 추가' })).toBeNull();
+
+    fireEvent.click(within(panel).getByRole('button', { name: '목표 옵션 2 빼기' }));
+    expect(within(panel).queryByRole('combobox', { name: '목표 옵션 3' })).toBeNull();
+    expect(within(panel).getByRole('combobox', { name: '목표 옵션 추가' })).toBeInTheDocument();
   });
 });

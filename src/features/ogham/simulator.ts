@@ -44,6 +44,8 @@ export interface OghamCombination {
   arcana: number;
   /** 효과가 붙는 스킬. */
   skill: string | null;
+  /** 그 스킬의 게임 번호. 스킬 그림(public/data/skills)을 찾는다. */
+  skillId: number;
   /** 조합 이름. "뇌신" */
   name: string;
   /** 필요한 워드 셋. */
@@ -189,60 +191,87 @@ export function reroll(
   });
 }
 
+/** 목표 한 줄. 이 옵션이 이 레벨 이상으로 붙기를 바란다. */
 export interface OghamTarget {
   option: number;
   minLevel: number;
 }
 
-export const meetsTarget = (lines: readonly (OghamLine | null)[], target: OghamTarget) =>
-  lines.some(
-    (line) => line !== null && line.option === target.option && line.level >= target.minLevel,
-  );
+/** 목표는 세 개까지다. 워드 한 개의 옵션이 세 줄이다. */
+export const MAX_TARGETS = LINE_COUNT;
+
+/** 그 줄이 그 목표를 채우는지. */
+export const lineMeets = (line: OghamLine | null, target: OghamTarget) =>
+  line !== null && line.option === target.option && line.level >= target.minLevel;
+
+/** 세 줄이 목표를 모두 채우는지. 목표가 없으면 false 다. */
+export function meetsTargets(
+  lines: readonly (OghamLine | null)[],
+  targets: readonly OghamTarget[],
+): boolean {
+  if (targets.length === 0) return false;
+  return targets.every((target) => lines.some((line) => lineMeets(line, target)));
+}
 
 /**
- * 한 번 재설정해 잠그지 않은 줄에 목표 옵션이 그 레벨 이상으로 붙을 확률. 잠그지 않은 k 줄이 잠근
- * 옵션을 뺀 M 개에서 겹치지 않게 뽑히므로 그 옵션이 뽑힐 확률은 k/M 이다. 잠근 줄에 이미 있거나
- * 이 워드에 붙지 않는 옵션이면 0.
+ * 한 번 재설정해 목표를 모두 채울 확률.
+ *
+ * 잠근 줄이 이미 채운 목표는 빼고 남은 목표 t 개를 센다. 잠그지 않은 k 줄은 잠근 옵션을 뺀 M 개에서
+ * 겹치지 않게 뽑히고 어느 조합이든 확률이 같으므로, 정한 t 개가 모두 뽑힐 확률은
+ * k/M x (k-1)/(M-1) x ... (t 개) 이다. 레벨은 옵션마다 따로 정해지니 곱한다. 잠근 줄에 목표 옵션이
+ * 모자란 레벨로 묶여 있거나, 이 워드에 붙지 않는 옵션이 있거나, 남은 목표가 열린 줄보다 많으면 0.
  */
 export function targetChance(
   lines: readonly (OghamLine | null)[],
   pool: readonly OghamOption[],
-  target: OghamTarget,
+  targets: readonly OghamTarget[],
 ): number {
-  const option = pool.find((each) => each.id === target.option);
-  if (!option) return 0;
-  const locked = lines.filter((line) => line?.locked).map((line) => line!.option);
-  if (locked.includes(target.option)) return 0;
+  if (targets.length === 0) return 0;
+  const locked = lines.filter((line): line is OghamLine => line !== null && line.locked);
   const open = LINE_COUNT - locked.length;
-  const remaining = pool.length - locked.filter((id) => pool.some((each) => each.id === id)).length;
-  if (open <= 0 || remaining <= 0) return 0;
-  const minLevel = Math.min(Math.max(target.minLevel, 1), option.maxLevel);
-  return (
-    (Math.min(open, remaining) / remaining) * ((option.maxLevel - minLevel + 1) / option.maxLevel)
-  );
+  const remaining =
+    pool.length - locked.filter((line) => pool.some((each) => each.id === line.option)).length;
+  let chance = 1;
+  let needed = 0;
+  for (const target of targets) {
+    const held = locked.find((line) => line.option === target.option);
+    if (held) {
+      if (held.level < target.minLevel) return 0;
+      continue;
+    }
+    const option = pool.find((each) => each.id === target.option);
+    if (!option) return 0;
+    const minLevel = Math.min(Math.max(target.minLevel, 1), option.maxLevel);
+    chance *= (option.maxLevel - minLevel + 1) / option.maxLevel;
+    needed += 1;
+  }
+  if (needed > open || needed > remaining) return 0;
+  for (let index = 0; index < needed; index += 1) chance *= (open - index) / (remaining - index);
+  return chance;
 }
 
 export interface RerollRun {
   lines: (OghamLine | null)[];
   /** 재설정한 횟수. */
   tries: number;
-  /** 목표를 맞췄는지. 목표 없이 돌리면 true. */
+  /** 목표를 모두 채웠는지. 목표 없이 돌리면 true. */
   hit: boolean;
 }
 
-/** 목표가 나올 때까지(또는 limit 번까지) 재설정한다. 목표가 없으면 한 번만. */
+/** 목표를 모두 채울 때까지(또는 limit 번까지) 재설정한다. 목표가 없으면 한 번만. */
 export function rerollUntil(
   lines: readonly (OghamLine | null)[],
   pool: readonly OghamOption[],
-  target: OghamTarget | null,
+  targets: readonly OghamTarget[],
   limit: number,
   random: RandomSource = Math.random,
 ): RerollRun {
   let current = [...lines];
-  const times = target ? limit : 1;
+  const times = targets.length > 0 ? limit : 1;
   for (let tries = 1; tries <= times; tries += 1) {
     current = reroll(current, pool, random);
-    if (!target || meetsTarget(current, target)) return { lines: current, tries, hit: true };
+    if (targets.length === 0 || meetsTargets(current, targets))
+      return { lines: current, tries, hit: true };
   }
   return { lines: current, tries: times, hit: false };
 }

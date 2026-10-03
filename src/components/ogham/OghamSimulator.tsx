@@ -24,6 +24,7 @@ import {
   AddIcon,
   CalculateIcon,
   CloseIcon,
+  DeleteIcon,
   HexagonIcon,
   LockIcon,
   LockOpenIcon,
@@ -31,13 +32,16 @@ import {
 } from '@/components/icons';
 import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import { useMarketPrices, type PriceState } from '@/features/crafting/market';
+import { skillIconUrl } from '@/features/crafting/recipes';
 import {
   activeCombinations,
   addSpent,
   COMBINATION_POINTS,
   combinationsOf,
   emptyLines,
+  lineMeets,
   lockedCount,
+  MAX_TARGETS,
   NO_SPENT,
   OGHAM_ARCANAS,
   OGHAM_WORDS,
@@ -93,6 +97,13 @@ const SLOT_POSITIONS = [
 ] as const;
 
 const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
+
+/** 옵션 이름 한 줄 높이, 이름 아래 레벨 줄 높이. 줄 높이를 정해 두어 재설정해도 칸이 들썩이지 않는다. */
+const NAME_LINE_HEIGHT = 20;
+const META_HEIGHT = 22;
+/** 옵션 한 줄의 높이. 이름 두 줄과 레벨 줄, 위아래 여백. */
+const LINE_HEIGHT = NAME_LINE_HEIGHT * 2 + 2 + META_HEIGHT + 16;
+const SMALL_TAG: CSSProperties = { marginInlineEnd: 0, fontSize: 12, lineHeight: '18px' };
 
 const formatValue = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
 
@@ -256,7 +267,21 @@ function WordPicker({
   );
 }
 
-/** 다섯 칸 판. 가운데에 발동한 조합의 스킬을 둔다. */
+/** 조합 효과가 붙는 스킬의 그림. 이름이 곁에 있어 꾸밈으로 둔다. */
+function SkillIcon({ combination, size }: { combination: OghamCombination; size: number }) {
+  return (
+    <img
+      src={skillIconUrl(combination.skillId)}
+      alt=""
+      width={size}
+      height={size}
+      draggable={false}
+      style={{ display: 'block', flex: 'none' }}
+    />
+  );
+}
+
+/** 다섯 칸 판. 가운데에 발동한 조합의 스킬 그림을 둔다. */
 function OghamBoard({
   slots,
   selected,
@@ -330,8 +355,8 @@ function OghamBoard({
           top: '52%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: 92,
-          minHeight: 64,
+          width: 96,
+          height: 84,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -346,11 +371,9 @@ function OghamBoard({
       >
         {combination ? (
           <>
+            <SkillIcon combination={combination} size={40} />
             <Text strong style={{ fontSize: 12, lineHeight: 1.25, color: token.colorPrimary }}>
               {combination.name}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.25 }}>
-              {combination.skill}
             </Text>
           </>
         ) : (
@@ -361,21 +384,45 @@ function OghamBoard({
   );
 }
 
-/** 옵션 한 줄의 이름과 수치. 그 아르카나에게 쓸모 있는 옵션은 무리 이름을 붙인다. */
-function LineText({ line, arcana }: { line: OghamLine; arcana: OghamArcana }) {
+/**
+ * 옵션 한 줄의 이름과 수치. 그 아르카나에게 쓸모 있는 옵션은 무리 이름을, 목표를 채운 줄은 "목표" 를 붙인다.
+ * 이름은 두 줄까지 보이고 아래 줄은 높이를 정해 두어, 재설정할 때마다 줄 높이가 바뀌지 않는다.
+ */
+function LineText({ line, arcana, hit }: { line: OghamLine; arcana: OghamArcana; hit: boolean }) {
+  const { token } = theme.useToken();
   const option = oghamOption(line.option);
   const relevance = relevanceOf(option, arcana);
   return (
     <Flex vertical gap={2} style={{ minWidth: 0 }}>
-      <Text strong={relevance !== null} style={{ lineHeight: 1.35 }}>
+      <Text
+        strong={relevance !== null}
+        title={`${option.name} ${valueText(option, line.level)}`}
+        style={{
+          lineHeight: `${NAME_LINE_HEIGHT}px`,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}
+      >
         {option.name} <span className="tnum">{valueText(option, line.level)}</span>
       </Text>
-      <Flex gap={6} align="center" wrap>
+      <Flex gap={6} align="center" style={{ height: META_HEIGHT }}>
         <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
           레벨 {line.level}/{option.maxLevel}
         </Text>
-        {relevance ? (
-          <Tag style={{ marginInlineEnd: 0, fontSize: 12 }}>{RELEVANCE_LABEL[relevance]}</Tag>
+        {relevance ? <Tag style={SMALL_TAG}>{RELEVANCE_LABEL[relevance]}</Tag> : null}
+        {hit ? (
+          <Tag
+            style={{
+              ...SMALL_TAG,
+              color: token.colorPrimary,
+              borderColor: token.colorPrimary,
+              background: 'transparent',
+            }}
+          >
+            목표
+          </Tag>
         ) : null}
       </Flex>
     </Flex>
@@ -394,6 +441,96 @@ function targetOptions(pool: readonly OghamOption[], arcana: OghamArcana) {
     groups.set(label, group);
   }
   return [...groups.values()];
+}
+
+/**
+ * 목표 옵션 고르기. 세 개까지, 옵션마다 바라는 가장 낮은 레벨. 옵션이 백 개 가까이 되어 미리 아무 옵션이나
+ * 넣어 두지 않고, 빈 칸에서 골라 더한다.
+ */
+function TargetEditor({
+  pool,
+  arcana,
+  targets,
+  onChange,
+}: {
+  pool: readonly OghamOption[];
+  arcana: OghamArcana;
+  targets: OghamTarget[];
+  onChange: (targets: OghamTarget[]) => void;
+}) {
+  const choices = (except: number | null) => {
+    const used = new Set(targets.map((target) => target.option).filter((id) => id !== except));
+    return targetOptions(
+      pool.filter((option) => !used.has(option.id)),
+      arcana,
+    );
+  };
+  const replace = (index: number, target: OghamTarget | null) => {
+    const next = [...targets];
+    if (target) next[index] = target;
+    else next.splice(index, 1);
+    onChange(next);
+  };
+
+  return (
+    <Flex vertical gap={6}>
+      {targets.map((target, index) => {
+        const option = oghamOption(target.option);
+        return (
+          // 좁으면 옵션 칸이 한 줄을 다 쓰고 레벨과 빼기 단추가 아랫줄로 내려간다.
+          <Flex key={target.option} gap={8} align="center" wrap>
+            <Select<number>
+              aria-label={`목표 옵션 ${index + 1}`}
+              showSearch
+              optionFilterProp="label"
+              value={target.option}
+              onChange={(id) => replace(index, { option: id, minLevel: oghamOption(id).maxLevel })}
+              options={choices(target.option)}
+              popupMatchSelectWidth={false}
+              style={{ flex: '1 1 220px', minWidth: 0 }}
+            />
+            <InputNumber<number>
+              aria-label={`목표 옵션 ${index + 1}의 가장 낮은 레벨`}
+              min={1}
+              max={option.maxLevel}
+              value={target.minLevel}
+              onChange={(level) => {
+                if (level === null) return;
+                replace(index, {
+                  ...target,
+                  minLevel: Math.min(Math.max(Math.round(level), 1), option.maxLevel),
+                });
+              }}
+              suffix="레벨 이상"
+              className="tnum"
+              style={{ width: 128, flex: 'none' }}
+            />
+            <Button
+              type="text"
+              icon={<DeleteIcon />}
+              aria-label={`목표 옵션 ${index + 1} 빼기`}
+              onClick={() => replace(index, null)}
+            />
+          </Flex>
+        );
+      })}
+      {targets.length < MAX_TARGETS ? (
+        <Select<number>
+          aria-label="목표 옵션 추가"
+          showSearch
+          optionFilterProp="label"
+          placeholder={targets.length === 0 ? '예: 스매시 대미지 배율 증가' : '목표 옵션 추가'}
+          value={null}
+          onChange={(id) =>
+            onChange([...targets, { option: id, minLevel: oghamOption(id).maxLevel }])
+          }
+          options={choices(null)}
+          popupMatchSelectWidth={false}
+          style={{ width: '100%' }}
+        />
+      ) : null}
+    </Flex>
+  );
 }
 
 /** 고른 칸의 옵션 세 줄과 재설정. */
@@ -421,22 +558,21 @@ function RerollPanel({
   const locked = lockedCount(slot.lines);
   const cost = rerollCost(locked);
   const perTry = rerollGold(locked, prices);
-  const [target, setTarget] = useState<OghamTarget | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [targets, setTargets] = useState<OghamTarget[]>([]);
+  const [message, setMessage] = useState('');
   const [calcOpen, setCalcOpen] = useState(false);
   const [trials, setTrials] = useState(100);
-  const chance = target ? targetChance(slot.lines, pool, target) : 0;
-  const targetOption = target ? oghamOption(target.option) : null;
+  const chance = targetChance(slot.lines, pool, targets);
 
   const run = (limit: number | null) => {
-    const result = rerollUntil(slot.lines, pool, limit === null ? null : target, limit ?? 1);
+    const result = rerollUntil(slot.lines, pool, limit === null ? [] : targets, limit ?? 1);
     onChange(result.lines, result.tries, locked);
-    if (limit === null) setMessage(null);
+    if (limit === null) setMessage('');
     else
       setMessage(
         result.hit
-          ? `${formatNumber(result.tries)}번 만에 목표 옵션이 나왔습니다.`
-          : `${formatNumber(limit)}번 동안 목표 옵션이 나오지 않았습니다.`,
+          ? `${formatNumber(result.tries)}번 만에 목표 옵션을 모두 채웠습니다.`
+          : `${formatNumber(limit)}번 동안 목표 옵션을 모두 채우지 못했습니다.`,
       );
   };
 
@@ -490,13 +626,17 @@ function RerollPanel({
               gap={8}
               align="center"
               style={{
-                padding: '8px 0',
+                height: LINE_HEIGHT,
                 borderTop: index === 0 ? undefined : `1px solid ${token.colorBorderSecondary}`,
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 {line ? (
-                  <LineText line={line} arcana={arcana} />
+                  <LineText
+                    line={line}
+                    arcana={arcana}
+                    hit={targets.some((target) => lineMeets(line, target))}
+                  />
                 ) : (
                   <Text type="secondary">재설정 전</Text>
                 )}
@@ -527,45 +667,16 @@ function RerollPanel({
 
       <Flex vertical gap={8}>
         <Text strong>목표 옵션</Text>
-        <Flex gap={8} wrap>
-          <Select<number>
-            aria-label="목표 옵션"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            placeholder="예: 스매시 대미지 배율 증가"
-            value={target?.option ?? null}
-            onChange={(option) => {
-              setMessage(null);
-              setTarget(
-                option === undefined || option === null
-                  ? null
-                  : { option, minLevel: oghamOption(option).maxLevel },
-              );
-            }}
-            options={targetOptions(pool, arcana)}
-            popupMatchSelectWidth={false}
-            style={{ flex: '1 1 220px', minWidth: 0 }}
-          />
-          <InputNumber<number>
-            aria-label="목표 옵션의 가장 낮은 레벨"
-            min={1}
-            max={targetOption?.maxLevel ?? 1}
-            value={target?.minLevel ?? null}
-            disabled={!target}
-            onChange={(level) => {
-              if (level === null || !target || !targetOption) return;
-              setTarget({
-                ...target,
-                minLevel: Math.min(Math.max(Math.round(level), 1), targetOption.maxLevel),
-              });
-            }}
-            suffix="레벨 이상"
-            className="tnum"
-            style={{ width: 128 }}
-          />
-        </Flex>
-        {target ? (
+        <TargetEditor
+          pool={pool}
+          arcana={arcana}
+          targets={targets}
+          onChange={(next) => {
+            setMessage('');
+            setTargets(next);
+          }}
+        />
+        {targets.length > 0 ? (
           <Flex gap={8} align="center" wrap>
             <Text className="tnum" style={{ fontSize: 13 }}>
               {chance > 0 ? (
@@ -574,7 +685,7 @@ function RerollPanel({
                   <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
                 </>
               ) : (
-                '잠근 줄에 이미 있거나 이 워드에 붙지 않는 옵션입니다.'
+                '지금 잠근 줄로는 목표를 모두 채울 수 없습니다.'
               )}
             </Text>
             {chance > 0 ? (
@@ -631,11 +742,10 @@ function RerollPanel({
           </Button>
         ))}
       </Flex>
-      {message ? (
-        <Text strong role="status" className="tnum">
-          {message}
-        </Text>
-      ) : null}
+      {/* 결과 문구 자리는 비어 있을 때도 잡아 둔다. 문구가 뜨고 질 때 아래가 밀리지 않게 한다. */}
+      <Text strong role="status" className="tnum" style={{ minHeight: 22, lineHeight: '22px' }}>
+        {message}
+      </Text>
     </Flex>
   );
 }

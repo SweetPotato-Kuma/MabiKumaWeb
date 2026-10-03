@@ -1073,6 +1073,7 @@
       "id": 1,
       "arcana": 1,
       "skill": "라이트닝 스매시",
+      "skillId": 59026,
       "name": "뇌신",
       "words": [1, 9, 10],
       "effects": {
@@ -1087,6 +1088,7 @@
       "id": 2,
       "arcana": 1,
       "skill": "파이어 리프 어택",
+      "skillId": 59024,
       "name": "완전연소",
       "words": [5, 15, 18],
       "effects": {
@@ -1101,6 +1103,7 @@
       "id": 3,
       "arcana": 1,
       "skill": "라인 브레이크",
+      "skillId": 59028,
       "name": "검무",
       "words": [2, 8, 26],
       "effects": {
@@ -1115,6 +1118,7 @@
       "id": 4,
       "arcana": 2,
       "skill": "정화의 고동",
+      "skillId": 59004,
       "name": "공명",
       "words": [4, 22, 26],
       "effects": {
@@ -1129,6 +1133,7 @@
       "id": 5,
       "arcana": 2,
       "skill": "음파의 세례",
+      "skillId": 59009,
       "name": "폭음",
       "words": [5, 8, 11],
       "effects": {
@@ -1143,6 +1148,7 @@
       "id": 6,
       "arcana": 2,
       "skill": "소생의 찬가",
+      "skillId": 59007,
       "name": "제창",
       "words": [3, 9, 23],
       "effects": {
@@ -1157,6 +1163,7 @@
       "id": 7,
       "arcana": 3,
       "skill": "스노우 스톰",
+      "skillId": 59042,
       "name": "과냉각",
       "words": [1, 14, 23],
       "effects": {
@@ -1171,6 +1178,7 @@
       "id": 8,
       "arcana": 3,
       "skill": "익스플로전 런지",
+      "skillId": 59040,
       "name": "해방",
       "words": [2, 6, 17],
       "effects": {
@@ -1185,6 +1193,7 @@
       "id": 9,
       "arcana": 3,
       "skill": "레이턴트 이그니션",
+      "skillId": 59047,
       "name": "격화",
       "words": [4, 12, 25],
       "effects": {
@@ -1199,6 +1208,7 @@
       "id": 10,
       "arcana": 4,
       "skill": "트라이 어설트",
+      "skillId": 59064,
       "name": "융합",
       "words": [3, 20, 21],
       "effects": {
@@ -1213,6 +1223,7 @@
       "id": 11,
       "arcana": 4,
       "skill": "하이드로 피어스",
+      "skillId": 59061,
       "name": "격류",
       "words": [4, 7, 19],
       "effects": {
@@ -1227,6 +1238,7 @@
       "id": 12,
       "arcana": 4,
       "skill": "플레임 버스트",
+      "skillId": 59060,
       "name": "분출",
       "words": [5, 10, 25],
       "effects": {
@@ -1241,6 +1253,7 @@
       "id": 13,
       "arcana": 5,
       "skill": "광휘의 단죄",
+      "skillId": 59087,
       "name": "집행",
       "words": [2, 8, 17],
       "effects": {
@@ -1255,6 +1268,7 @@
       "id": 14,
       "arcana": 5,
       "skill": "철벽 강타",
+      "skillId": 59083,
       "name": "요새",
       "words": [4, 12, 20],
       "effects": {
@@ -1269,6 +1283,7 @@
       "id": 15,
       "arcana": 5,
       "skill": "심판의 일격",
+      "skillId": 59084,
       "name": "난격",
       "words": [1, 13, 24],
       "effects": {
@@ -1283,6 +1298,7 @@
       "id": 16,
       "arcana": 6,
       "skill": "차지 어설트",
+      "skillId": 59104,
       "name": "질풍",
       "words": [5, 7, 26],
       "effects": {
@@ -1297,6 +1313,7 @@
       "id": 17,
       "arcana": 6,
       "skill": "오버 드라이브",
+      "skillId": 59105,
       "name": "기폭",
       "words": [1, 19, 21],
       "effects": {
@@ -1311,6 +1328,7 @@
       "id": 18,
       "arcana": 6,
       "skill": "임팩트 크러시",
+      "skillId": 59102,
       "name": "과열",
       "words": [2, 15, 16],
       "effects": {
@@ -1325,6 +1343,7 @@
       "id": 19,
       "arcana": 7,
       "skill": "헤비 아틸러리",
+      "skillId": 59121,
       "name": "연속 포격",
       "words": [3, 12, 22],
       "effects": {
@@ -1339,6 +1358,7 @@
       "id": 20,
       "arcana": 7,
       "skill": "트랜스뮤트 존",
+      "skillId": 59125,
       "name": "록온",
       "words": [1, 6, 24],
       "effects": {
@@ -1353,6 +1373,7 @@
       "id": 21,
       "arcana": 7,
       "skill": "페이탈 스코프",
+      "skillId": 59123,
       "name": "연사",
       "words": [4, 11, 20],
       "effects": {
@@ -1367,6 +1388,7 @@
       "id": 22,
       "arcana": 8,
       "skill": "스파이럴 이럽션",
+      "skillId": 59145,
       "name": "응축",
       "words": [4, 16, 21],
       "effects": {
@@ -1381,6 +1403,7 @@
       "id": 23,
       "arcana": 8,
       "skill": "케미컬 카니발",
+      "skillId": 59144,
       "name": "폭화",
       "words": [2, 9, 18],
       "effects": {
@@ -1395,6 +1418,7 @@
       "id": 24,
       "arcana": 8,
       "skill": "엘레멘탈 콤비네이션",
+      "skillId": 59140,
       "name": "체화",
       "words": [3, 15, 17],
       "effects": {
@@ -1409,6 +1433,7 @@
       "id": 25,
       "arcana": 9,
       "skill": "인터루드 슬래시",
+      "skillId": 59165,
       "name": "크레센도",
       "words": [2, 13, 14],
       "effects": {
@@ -1423,6 +1448,7 @@
       "id": 26,
       "arcana": 9,
       "skill": "다운비트 악센트",
+      "skillId": 59161,
       "name": "앙상블",
       "words": [3, 11, 24],
       "effects": {
@@ -1437,6 +1463,7 @@
       "id": 27,
       "arcana": 9,
       "skill": "와이어 웹",
+      "skillId": 59164,
       "name": "덫",
       "words": [5, 7, 18],
       "effects": {
@@ -1451,6 +1478,7 @@
       "id": 28,
       "arcana": 10,
       "skill": "게일 피어스",
+      "skillId": 59185,
       "name": "돌진",
       "words": [5, 16, 25],
       "effects": {
@@ -1465,6 +1493,7 @@
       "id": 29,
       "arcana": 10,
       "skill": "얼티밋 스트라이크",
+      "skillId": 59187,
       "name": "극의",
       "words": [3, 10, 23],
       "effects": {
@@ -1479,6 +1508,7 @@
       "id": 30,
       "arcana": 10,
       "skill": "포스 플레어",
+      "skillId": 59186,
       "name": "포획",
       "words": [1, 6, 14],
       "effects": {
