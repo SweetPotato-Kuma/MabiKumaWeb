@@ -27,6 +27,7 @@ const RelicsPage = lazyPage(() => import('@/pages/RelicsPage'), 'RelicsPage');
 const RelicSimulatorPage = lazyPage(() => import('@/pages/RelicSimulatorPage'), 'RelicSimulatorPage');
 const ReforgeSimulatorPage = lazyPage(() => import('@/pages/ReforgeSimulatorPage'), 'ReforgeSimulatorPage');
 const HolyWaterSimulatorPage = lazyPage(() => import('@/pages/HolyWaterSimulatorPage'), 'HolyWaterSimulatorPage');
+const CoinSimulatorPage = lazyPage(() => import('@/pages/CoinSimulatorPage'), 'CoinSimulatorPage');
 const CalculatorListPage = lazyPage(() => import('@/pages/CalculatorPages'), 'CalculatorListPage');
 // 계산기 화면은 id 를 받으므로 lazyPage(속성 없는 화면)를 쓰지 않는다.
 const CalculatorPage = lazy(async () => ({ default: (await import('@/pages/CalculatorPages')).CalculatorPage }));
@@ -83,6 +84,7 @@ export const router = createBrowserRouter(
         { path: 'relic-simulator', element: <RelicSimulatorPage /> },
         { path: 'reforge-simulator', element: <ReforgeSimulatorPage /> },
         { path: 'holy-water-simulator', element: <HolyWaterSimulatorPage /> },
+        { path: 'coin-simulator', element: <CoinSimulatorPage /> },
         { path: 'privacy', element: <PrivacyPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },

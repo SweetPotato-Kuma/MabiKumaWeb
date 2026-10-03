@@ -37,6 +37,7 @@ import restartAltSvg from '@material-symbols/svg-400/rounded/restart_alt.svg?raw
 import saveSvg from '@material-symbols/svg-400/rounded/save.svg?raw';
 import searchSvg from '@material-symbols/svg-400/rounded/search.svg?raw';
 import settingsSvg from '@material-symbols/svg-400/rounded/settings.svg?raw';
+import paidSvg from '@material-symbols/svg-400/rounded/paid.svg?raw';
 import shoppingBagSvg from '@material-symbols/svg-400/rounded/shopping_bag.svg?raw';
 import starFillSvg from '@material-symbols/svg-400/rounded/star-fill.svg?raw';
 import starSvg from '@material-symbols/svg-400/rounded/star.svg?raw';
@@ -133,6 +134,7 @@ export const ListIcon = createIcon(listSvg, 'ListIcon');
 export const LockIcon = createIcon(lockSvg, 'LockIcon');
 export const MenuIcon = createIcon(menuSvg, 'MenuIcon');
 export const MuseumIcon = createIcon(museumSvg, 'MuseumIcon');
+export const PaidIcon = createIcon(paidSvg, 'PaidIcon');
 export const ReadIcon = createIcon(documentScannerSvg, 'ReadIcon');
 export const RefreshIcon = createIcon(refreshSvg, 'RefreshIcon');
 export const ResetIcon = createIcon(restartAltSvg, 'ResetIcon');
