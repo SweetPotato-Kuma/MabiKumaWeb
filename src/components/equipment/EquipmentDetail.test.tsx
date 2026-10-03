@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { ItemsPage } from '@/pages/ItemsPage';
 import { LegacyRedirect } from '@/pages/LegacyRedirect';
+import type { SetEffectData } from '@/features/equipment/setEffects';
 import type { EquipmentLookup } from '@/features/equipment/types';
 import type * as Settings from '@/lib/settings';
 
@@ -71,6 +72,18 @@ const LOOKUP: EquipmentLookup = {
 
 let lookup: EquipmentLookup = LOOKUP;
 
+/** 세트 효과 표. 시뮬레이터 시험에 쓰는 검에 효과 하나를 붙여 둔다. */
+const SET_EFFECTS: SetEffectData = {
+  updated: '2026-10-01',
+  effects: {
+    fast_attack: { name: '공격 속도 증가', desc: '공격 속도 20% 증가', need: 10 },
+  },
+  items: {
+    '소울 리버레이트 소드': [['fast_attack', 3, 5]],
+    '라멜라 무사 아머': [['fast_attack', 1, 4]],
+  },
+};
+
 beforeEach(() => {
   lookup = LOOKUP;
   // jsdom 에는 화면 이동이 없다. 상세로 넘어갈 때 맨 위로 올리는 호출을 비워 둔다.
@@ -80,6 +93,7 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/item-equip?')) return new Response(JSON.stringify(lookup));
+      if (url.endsWith('data/set-effects.json')) return new Response(JSON.stringify(SET_EFFECTS));
       if (url.endsWith('data/items/names.json')) {
         return new Response(
           JSON.stringify({
@@ -157,7 +171,9 @@ describe('아이템 정보 목록', () => {
   it('초성으로도 찾는다', async () => {
     renderPage('/items');
 
-    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: 'ㅅㅇㄹㅂ' } });
+    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), {
+      target: { value: 'ㅅㅇㄹㅂ' },
+    });
 
     expect(await findListRow('소울 리버레이트 소드')).toBeInTheDocument();
   });
@@ -166,7 +182,9 @@ describe('아이템 정보 목록', () => {
     // 포션을 고른 것을 잊고 무기 이름을 쳐도 빈 화면이 아니라 검 카테고리의 무기가 나와야 한다.
     renderPage('/items?category=포션');
 
-    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), { target: { value: 'ㅅㅇㄹㅂ' } });
+    fireEvent.change(await screen.findByLabelText('이름으로 찾기'), {
+      target: { value: 'ㅅㅇㄹㅂ' },
+    });
 
     expect(await findListRow('소울 리버레이트 소드')).toBeInTheDocument();
     expect(screen.getByText(/포션에는 "ㅅㅇㄹㅂ" 와 맞는 이름이 없어 전체/)).toBeInTheDocument();
@@ -256,7 +274,9 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
     expect(
       await screen.findAllByText('최소 공격력 +60, 최대 공격력 +120, 보너스 대미지 +5%'),
     ).not.toHaveLength(0);
-    expect(screen.getByTestId('url')).toHaveTextContent('/item/소울_리버레이트_소드?category=검&sp=s7');
+    expect(screen.getByTestId('url')).toHaveTextContent(
+      '/item/소울_리버레이트_소드?category=검&sp=s7',
+    );
   });
 
   it('예전 상세 주소는 아이템 주소로 옮기고 조합을 들고 간다', async () => {
@@ -265,7 +285,9 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
     );
 
     expect(await screen.findByText('장비 미리보기')).toBeInTheDocument();
-    expect(screen.getByTestId('url')).toHaveTextContent('/item/소울_리버레이트_소드?category=검&rv=10');
+    expect(screen.getByTestId('url')).toHaveTextContent(
+      '/item/소울_리버레이트_소드?category=검&rv=10',
+    );
   });
 
   it('검색에서 카테고리 없이 들어와도 이름 사전에서 카테고리를 찾아 시뮬레이터를 연다', async () => {
@@ -283,6 +305,26 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
 
     expect(await screen.findByText('생명력 50 포션')).toBeInTheDocument();
     expect(screen.getByTestId('url')).toHaveTextContent('/items?category=포션');
+  });
+
+  it('세트 효과의 수치, 발동 기준, 같은 효과 장비를 보여 준다', async () => {
+    renderPage(SWORD_PATH);
+
+    // 미리보기에 한 줄, 세트 효과 섹션에 자세히.
+    expect(await screen.findByText('공격 속도 증가 +3~5')).toBeInTheDocument();
+    const section = screen
+      .getByText('세트 효과', { selector: '.ant-card-head-title' })
+      .closest('.ant-card');
+    expect(section).toBeTruthy();
+    const card = within(section as HTMLElement);
+    expect(card.getByText('공격 속도 증가')).toBeInTheDocument();
+    expect(card.getByText('+3~5')).toBeInTheDocument();
+    expect(card.getByText('발동 10')).toBeInTheDocument();
+    expect(card.getByText('공격 속도 20% 증가')).toBeInTheDocument();
+
+    fireEvent.click(card.getByText('같은 효과 장비 1개'));
+    expect(await card.findByRole('link', { name: '라멜라 무사 아머' })).toBeInTheDocument();
+    expect(card.getByText('+1~4')).toBeInTheDocument();
   });
 
   it('주소에 담긴 조합을 불러와 최종 능력치에 더한다', async () => {
@@ -320,7 +362,9 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
   it('개조 NPC 는 칸 이름 옆 (?) 에 올리면 보이고 이름 모르는 NPC 는 수만 센다', async () => {
     renderPage(SWORD_PATH);
 
-    const help = (await screen.findAllByLabelText('개조 NPC: 네리스, 퍼거스 외 1명(이름 미확인)'))[0];
+    const help = (
+      await screen.findAllByLabelText('개조 NPC: 네리스, 퍼거스 외 1명(이름 미확인)')
+    )[0];
     fireEvent.mouseEnter(help);
 
     expect(await screen.findByText('개조 NPC')).toBeInTheDocument();

@@ -3,6 +3,7 @@ import { Flex, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import { ItemIcon } from '@/components/ItemIcon';
 import { enchantLabel, enchantRank, stripBrackets } from '@/features/equipment/enchant';
 import type { ErgSummary } from '@/features/equipment/erg';
+import { describeContribution, type ItemSetEffect } from '@/features/equipment/setEffects';
 import type { StatRow } from '@/features/equipment/simulate';
 import { describeSpecialStep, type SpecialStep } from '@/features/equipment/specialUpgrade';
 import {
@@ -29,6 +30,7 @@ export interface EquipmentPreviewProps {
   reforge: ReforgeLine[];
   special: { label: string; step: SpecialStep | undefined } | null;
   erg: ErgSummary | null;
+  setEffects?: ItemSetEffect[];
 }
 
 /** 세공 한 줄. 게임 툴팁처럼 "옵션 (레벨/최대)" 아래에 효과를 적는다. */
@@ -98,7 +100,7 @@ function EnchantLine({ line }: { line: string }) {
  * 장비 미리보기. 고른 것을 모두 합친 장비 한 벌을 게임 툴팁처럼 한 카드에 모은다.
  *
  * 능력치는 한 줄에 하나다. 구성(기본, 유동, 개조, 인챈트, 특별 개조, 에르그)은 이름 옆에 작은 글씨로
- * 붙이고, 길면 말줄임한 뒤 마우스를 올리면 전체가 보인다. 인챈트, 세공, 에르그는 게임 툴팁처럼 제목
+ * 붙이고, 길면 말줄임한 뒤 마우스를 올리면 전체가 보인다. 인챈트, 세공, 에르그, 세트 효과는 게임 툴팁처럼 제목
  * 아래에 효과를 한 줄에 하나씩 적는다. 카드가 길어지므로 넓은 화면에서는 미리보기 안에서 스크롤한다.
  */
 export function EquipmentPreview({
@@ -112,6 +114,7 @@ export function EquipmentPreview({
   reforge,
   special,
   erg,
+  setEffects = [],
 }: EquipmentPreviewProps) {
   const prefix = enchants.find((enchant) => enchant.slot === 0);
   const suffix = enchants.find((enchant) => enchant.slot === 1);
@@ -249,6 +252,16 @@ export function EquipmentPreview({
             {erg.dark.map((effect, index) => (
               <Text key={`d${index}`} className="tnum">
                 어둠의 에르그: {effect.text}
+              </Text>
+            ))}
+          </Block>
+        ) : null}
+
+        {setEffects.length ? (
+          <Block title="세트 효과">
+            {setEffects.map((effect) => (
+              <Text key={effect.key} className="tnum">
+                {effect.def.name} {describeContribution(effect.own)}
               </Text>
             ))}
           </Block>

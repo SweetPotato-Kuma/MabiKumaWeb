@@ -7,6 +7,7 @@ import { EnchantPanel } from '@/components/equipment/EnchantPanel';
 import { EquipmentPreview, type ReforgeLine } from '@/components/equipment/EquipmentPreview';
 import { ErgPanel } from '@/components/equipment/ErgPanel';
 import { ReforgePanel } from '@/components/equipment/ReforgePanel';
+import { SetEffectPanel } from '@/components/equipment/SetEffectPanel';
 import { SpecialUpgradePanel } from '@/components/equipment/SpecialUpgradePanel';
 import { UpgradePanel } from '@/components/equipment/UpgradePanel';
 import { QueryState } from '@/components/QueryState';
@@ -24,6 +25,7 @@ import {
   type SimulationParams,
   type SimulationState,
 } from '@/features/equipment/simulate';
+import { itemSetEffects, useSetEffectsQuery } from '@/features/equipment/setEffects';
 import type { EquipmentLookup, EquipmentRecord } from '@/features/equipment/types';
 import { useItemCard, usePrefetchItemCards, type ItemCard } from '@/features/itemcard/cards';
 import { EmptyState } from '@/components/EmptyState';
@@ -73,6 +75,12 @@ function Simulator({ category, lookup, card, params, onParamsChange }: Simulator
   const levels = useMemo(() => lookup.levels ?? [], [lookup.levels]);
   const enchants = useMemo(() => lookup.enchants ?? [], [lookup.enchants]);
   const erg = lookup.erg ?? null;
+  // 세트 효과는 장비 조회와 따로 받는 정적 표다. 못 받으면 섹션만 빠진다.
+  const setData = useSetEffectsQuery().data;
+  const setEffects = useMemo(
+    () => (setData ? itemSetEffects(setData, item.name) : []),
+    [setData, item.name],
+  );
 
   const state = useMemo(
     () => decodeState(params, item, upgrades, abilities, levels, enchants, erg),
@@ -123,7 +131,8 @@ function Simulator({ category, lookup, card, params, onParamsChange }: Simulator
     item.reforge ||
     item.special ||
     enchants.length ||
-    availableGrades(erg).length,
+    availableGrades(erg).length ||
+    setEffects.length,
   );
 
   return (
@@ -180,6 +189,7 @@ function Simulator({ category, lookup, card, params, onParamsChange }: Simulator
               reforge={reforgeLines}
               special={special}
               erg={ergSummary(erg, state.erg)}
+              setEffects={setEffects}
             />
           </Section>
         </div>
@@ -200,6 +210,12 @@ function Simulator({ category, lookup, card, params, onParamsChange }: Simulator
                 values={state.random}
                 onChange={(random) => update({ random })}
               />
+            </Section>
+          ) : null}
+
+          {setEffects.length ? (
+            <Section title="세트 효과">
+              <SetEffectPanel effects={setEffects} />
             </Section>
           ) : null}
 

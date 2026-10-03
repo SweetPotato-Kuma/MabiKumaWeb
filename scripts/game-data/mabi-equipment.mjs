@@ -17,6 +17,7 @@ const S = {
   LuckyCount: { 1: ['Count', 'u32'], 2: ['Rate', 'u32'] },
   LuckyOption: { 1: ['Id', 'u32'], 2: ['Rate', 'u32'] },
   RandomElement: { 1: ['Name', 'str'], 2: ['Min', 'u32'], 3: ['Max', 'u32'] },
+  SetElement: { 1: ['Name', 'str'], 2: ['Min', 'u32'], 3: ['Max', 'u32'] },
 };
 S.Lucky = {
   1: ['Id', 'u32'],
@@ -39,6 +40,15 @@ const DATASETS = {
     },
   ],
   8: ['ItemExtendRandomProductList', { 1: ['Id', 'u32'], 2: ['Elements', S.RandomElement, true] }],
+  // 아이템 번호별 세트 효과 수치. QualityElements 는 품질이 그 값 이상일 때 더 붙는 수치다.
+  9: [
+    'ItemExtendSetItemDescList',
+    {
+      1: ['Id', 'u32'],
+      2: ['Elements', S.SetElement, true],
+      3: ['QualityElements', { 1: ['Quality', 'u32'], 2: ['Elements', S.SetElement, true] }, true],
+    },
+  ],
   10: [
     'ItemExtendUpgradeList',
     {
@@ -109,6 +119,18 @@ const DATASETS = {
       4: ['Desc', 'str'],
       5: ['Usage', 'u32'],
       6: ['Level', 'u32'],
+    },
+  ],
+  // 세트 효과 정의. 장착한 장비들의 수치 합이 ThresholdCount 이상이면 효과가 켜진다.
+  20: [
+    'SetItemDescElementList',
+    {
+      1: ['Id', 'u32'],
+      2: ['Key', 'str'],
+      3: ['Name', 'str'],
+      4: ['Desc', 'str'],
+      5: ['ThresholdCount', 'i32'],
+      6: ['ThresholdConditionId', 'u32'],
     },
   ],
   // 개조 NPC 의 한글 이름. NPC 도 종족 한 줄로 들어 있고 ClassName 이 내부 이름이다.
@@ -203,6 +225,8 @@ const MIN_ROWS = {
   ItemExtendMetalWareList: 5_000,
   MetalWareAbilityList: 300,
   MetalWareLevelList: 10,
+  ItemExtendSetItemDescList: 500,
+  SetItemDescElementList: 100,
 };
 
 function readVarint(buffer, position) {
