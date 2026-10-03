@@ -29,6 +29,7 @@ import {
   LockIcon,
   LockOpenIcon,
   ResetIcon,
+  StarFillIcon,
 } from '@/components/icons';
 import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import { useMarketPrices, type PriceState } from '@/features/crafting/market';
@@ -105,6 +106,11 @@ const META_HEIGHT = 22;
 const LINE_HEIGHT = NAME_LINE_HEIGHT * 2 + 2 + META_HEIGHT + 16;
 const SMALL_TAG: CSSProperties = { marginInlineEnd: 0, fontSize: 12, lineHeight: '18px' };
 
+/** 최대 레벨의 90% 이상인 줄. 금빛으로 강조한다. */
+const HIGH_LEVEL_RATIO = 0.9;
+const isHighLevel = (line: OghamLine) =>
+  line.level / Math.max(1, oghamOption(line.option).maxLevel) >= HIGH_LEVEL_RATIO;
+
 const formatValue = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
 
 /** "파이어 리프 어택 대미지 배율 증가 120%" 의 뒤쪽 수치. */
@@ -167,7 +173,7 @@ function WordButton({
     <Button
       onClick={() => onPick(word)}
       disabled={disabled}
-      aria-label={`${word.name}${word.arcanaOptions ? ', 아르카나 옵션' : ''}`}
+      aria-label={`${word.name}, ${word.arcanaOptions ? '특수 오검' : '일반 오검'}`}
       style={{ width: 72, height: 64, padding: 4 }}
     >
       <WordFace word={word} size={56} />
@@ -242,9 +248,9 @@ function WordPicker({
             })}
           </Flex>
         </section>
-        <section aria-label="아르카나 옵션이 붙는 워드">
+        <section aria-label="특수 오검">
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
-            아르카나 옵션이 붙는 워드
+            특수 오검
           </Text>
           <div style={WORD_GRID}>
             {arcanaWords.map((word) => (
@@ -252,9 +258,9 @@ function WordPicker({
             ))}
           </div>
         </section>
-        <section aria-label="그 밖의 워드">
+        <section aria-label="일반 오검">
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
-            그 밖의 워드
+            일반 오검
           </Text>
           <div style={WORD_GRID}>
             {otherWords.map((word) => (
@@ -392,6 +398,7 @@ function LineText({ line, arcana, hit }: { line: OghamLine; arcana: OghamArcana;
   const { token } = theme.useToken();
   const option = oghamOption(line.option);
   const relevance = relevanceOf(option, arcana);
+  const high = isHighLevel(line);
   return (
     <Flex vertical gap={2} style={{ minWidth: 0 }}>
       <Text
@@ -405,12 +412,27 @@ function LineText({ line, arcana, hit }: { line: OghamLine; arcana: OghamArcana;
           overflow: 'hidden',
         }}
       >
-        {option.name} <span className="tnum">{valueText(option, line.level)}</span>
+        {option.name}{' '}
+        <span className="tnum" style={high ? { color: token.gold8, fontWeight: 700 } : undefined}>
+          {valueText(option, line.level)}
+        </span>
       </Text>
       <Flex gap={6} align="center" style={{ height: META_HEIGHT }}>
-        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-          레벨 {line.level}/{option.maxLevel}
-        </Text>
+        {high ? (
+          // 최대 레벨의 90% 이상. 다른 시뮬레이터의 최상위 결과처럼 금빛으로 칠하고 별을 붙인다.
+          <Text
+            className="tnum"
+            strong
+            style={{ fontSize: 12, color: token.gold8, display: 'inline-flex', gap: 2 }}
+          >
+            <StarFillIcon aria-hidden />
+            레벨 {line.level}/{option.maxLevel}
+          </Text>
+        ) : (
+          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+            레벨 {line.level}/{option.maxLevel}
+          </Text>
+        )}
         {relevance ? <Tag style={SMALL_TAG}>{RELEVANCE_LABEL[relevance]}</Tag> : null}
         {hit ? (
           <Tag
@@ -605,7 +627,7 @@ function RerollPanel({
             {word.name}
           </Text>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {word.arcanaOptions ? '아르카나 옵션이 붙는 워드' : '재능, 능력치 옵션만 붙는 워드'}
+            {word.arcanaOptions ? '특수 오검' : '일반 오검'}
           </Text>
         </Flex>
         <Flex gap={8}>
@@ -627,7 +649,10 @@ function RerollPanel({
               align="center"
               style={{
                 height: LINE_HEIGHT,
+                // 여백은 모든 줄이 같게 두고 바탕만 칠한다. 90% 이상 줄만 칸이 달라지지 않게 한다.
+                paddingInline: 8,
                 borderTop: index === 0 ? undefined : `1px solid ${token.colorBorderSecondary}`,
+                background: line && isHighLevel(line) ? token.gold1 : undefined,
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -891,7 +916,12 @@ function CombinationGuide({
   );
 }
 
+/** 합계 칸의 높이. 재설정할 때마다 옵션 수가 바뀌어도 판 칸이 늘고 줄지 않게 높이를 정해 두고 안에서 넘긴다. */
+const TOTALS_HEIGHT = 320;
+
+/** 다섯 칸의 옵션을 옵션별로 더한 표. 판 아래에 두어 재설정하며 바로 본다. */
 function TotalsTable({ rows, arcana }: { rows: OptionTotal[]; arcana: OghamArcana }) {
+  const { token } = theme.useToken();
   const columns: TableColumnsType<OptionTotal> = [
     {
       title: '옵션',
@@ -900,43 +930,59 @@ function TotalsTable({ rows, arcana }: { rows: OptionTotal[]; arcana: OghamArcan
         const relevance = relevanceOf(row.option, arcana);
         return (
           <Flex gap={6} align="center" wrap>
-            <Text strong={relevance !== null}>{row.option.name}</Text>
-            {relevance ? (
-              <Tag style={{ marginInlineEnd: 0, fontSize: 12 }}>{RELEVANCE_LABEL[relevance]}</Tag>
-            ) : null}
+            <Text strong={relevance !== null} style={{ fontSize: 13 }}>
+              {row.option.name}
+            </Text>
+            {relevance ? <Tag style={SMALL_TAG}>{RELEVANCE_LABEL[relevance]}</Tag> : null}
           </Flex>
         );
       },
     },
     {
-      title: '레벨 합',
-      dataIndex: 'levelSum',
-      width: 80,
-      align: 'right',
-      render: (value: number) => <span className="tnum">{formatNumber(value)}</span>,
-    },
-    {
       title: '합계',
       key: 'value',
-      width: 100,
+      width: 96,
       align: 'right',
       render: (_value, row) => (
-        <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
-          {formatValue(row.valueSum)}
-          {optionUnit(row.option)}
-        </Text>
+        <Flex vertical align="flex-end">
+          <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
+            {formatValue(row.valueSum)}
+            {optionUnit(row.option)}
+          </Text>
+          <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+            레벨 {formatNumber(row.levelSum)}
+          </Text>
+        </Flex>
       ),
     },
   ];
   return (
-    <Table<OptionTotal>
-      columns={columns}
-      dataSource={rows}
-      rowKey={(row) => row.option.id}
-      size="small"
-      pagination={false}
-      locale={{ emptyText: '재설정한 옵션이 아직 없습니다.' }}
-    />
+    <section
+      aria-label="옵션 합계"
+      style={{
+        width: '100%',
+        height: TOTALS_HEIGHT,
+        display: 'flex',
+        flexDirection: 'column',
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: token.borderRadius,
+        overflow: 'hidden',
+      }}
+    >
+      <Text strong style={{ padding: '10px 12px' }}>
+        옵션 합계
+      </Text>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <Table<OptionTotal>
+          columns={columns}
+          dataSource={rows}
+          rowKey={(row) => row.option.id}
+          size="small"
+          pagination={false}
+          locale={{ emptyText: '재설정한 옵션이 아직 없습니다.' }}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -1031,6 +1077,7 @@ export function OghamSimulatorView() {
               >
                 처음부터
               </Button>
+              <TotalsTable rows={totals} arcana={arcana} />
             </Flex>
           </Col>
           <Col xs={24} md={14} xl={15}>
@@ -1125,10 +1172,6 @@ export function OghamSimulatorView() {
         active={active}
         onPlace={(combination) => setSlots(placeCombination(slots, combination))}
       />
-
-      <Card title="옵션 합계" size="small" styles={{ body: { padding: 0 } }}>
-        <TotalsTable rows={totals} arcana={arcana} />
-      </Card>
 
       <WordPicker
         open={picking !== null}

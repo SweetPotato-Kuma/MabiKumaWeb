@@ -47,7 +47,7 @@ describe('오검 워드 옵션 시뮬레이터', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '1번 칸 비어 있음' }));
     const picker = await screen.findByRole('dialog');
-    fireEvent.click(within(picker).getByRole('button', { name: '베헤, 아르카나 옵션' }));
+    fireEvent.click(within(picker).getByRole('button', { name: '베헤, 특수 오검' }));
 
     const panel = screen.getByRole('region', { name: '고른 워드' });
     expect(within(panel).getAllByText('재설정 전')).toHaveLength(3);
@@ -77,7 +77,7 @@ describe('오검 워드 옵션 시뮬레이터', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '1번 칸 비어 있음' }));
     const picker = await screen.findByRole('dialog');
-    fireEvent.click(within(picker).getByRole('button', { name: '콜' }));
+    fireEvent.click(within(picker).getByRole('button', { name: '콜, 일반 오검' }));
     const panel = screen.getByRole('region', { name: '고른 워드' });
     const add = async (title: string) => {
       fireEvent.mouseDown(within(panel).getByRole('combobox', { name: '목표 옵션 추가' }));
