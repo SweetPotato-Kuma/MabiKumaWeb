@@ -85,7 +85,7 @@ import {
 } from '@/features/auction/searchParams';
 import { scanCategoriesFor, useOptionNamesQuery } from '@/features/auction/optionNames';
 import { useMarketRecentQuery, useRelicRecentQuery } from '@/features/market/api';
-import { isRelicOption, parseRelicOption, relicOptionOf } from '@/features/relics/murias';
+import { isRelicOption, relicOptionOf } from '@/features/relics/murias';
 import { riskThresholds, rowKeyOf, summarizeMurias } from '@/features/relics/prices';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
 import { useIconMaps } from '@/features/itemcard/iconMap';
@@ -1186,25 +1186,6 @@ export function AuctionPage() {
    * 한 글자 칠 때마다 500줄짜리 표까지 다시 그리면 입력이 밀린다. 패널이 쓰는 값에는
    * form 이 없으므로, 메모해 두면 타이핑 중에는 이 아래가 통째로 멈춰 있는다.
    */
-  /**
-   * 무리아스의 유물을 옵션과 레벨 하나로 좁혀 봤을 때(보이는 줄의 옵션 문장이 하나) 그 레벨의 최근 1일 거래를 위에 보인다.
-   * 문장이 여럿이면 줄마다의 시세 칸으로 충분하고, 모든 유물을 한 통계로 묶어 보이지 않는다.
-   */
-  const relicSummary = useMemo(() => {
-    const sentences = new Set<string>();
-    for (const item of visibleItems) {
-      const option = (item.item_option ?? []).find(isRelicOption);
-      if (option?.option_value) sentences.add(option.option_value);
-    }
-    if (sentences.size !== 1) return null;
-    const [sentence] = [...sentences];
-    const relic = parseRelicOption(sentence);
-    return {
-      label: relic ? `${relic.name} ${relic.level}레벨` : sentence,
-      summary: relicRecent.data?.items[sentence] ?? null,
-    };
-  }, [visibleItems, relicRecent.data]);
-
   const itemsPanel = useMemo(() => (
     <Flex vertical gap={16}>
       <SymbolNotice count={itemsSymbolCount} showing={showSymbols} onToggle={() => setShowSymbols((prev) => !prev)} />
@@ -1225,18 +1206,6 @@ export function AuctionPage() {
             <RecentTradeStats summary={recent.items[singleItem.item_name]} label="최근 1일 개당 가격" />
           ) : (
             <Text type="secondary">최근 1일 동안 거래된 기록이 없습니다.</Text>
-          )}
-        </Card>
-      ) : null}
-
-      {relicSummary ? (
-        <Card variant="outlined" size="small" title={`최근 1일 거래, ${relicSummary.label}`}>
-          {relicRecent.isLoading ? (
-            <Skeleton active title={false} paragraph={{ rows: 2 }} />
-          ) : relicSummary.summary ? (
-            <RecentTradeStats summary={relicSummary.summary} label="최근 1일 개당 가격" />
-          ) : (
-            <Text type="secondary">최근 1일 동안 이 레벨이 거래된 기록이 없습니다.</Text>
           )}
         </Card>
       ) : null}
@@ -1287,7 +1256,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, changeSort, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, relicSummary, relicRecent.isLoading, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <Flex vertical gap={12}>

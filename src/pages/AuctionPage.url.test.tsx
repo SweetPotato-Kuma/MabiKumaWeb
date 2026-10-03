@@ -451,10 +451,11 @@ describe('경매장 검색 조건과 주소', () => {
       expect(screen.queryByText('최근 1일 거래')).toBeNull();
     });
 
-    it('옵션과 레벨 하나로 좁혀 보면 그 레벨의 최근 1일 거래를 위에 보인다', async () => {
+    it('옵션과 레벨 하나로 좁혀 봐도 위에 그 레벨의 거래 요약 카드를 따로 두지 않는다', async () => {
       renderAt('/auction?keyword=유물한줄');
 
-      expect(await screen.findByText('최근 1일 거래, 오버 드라이브 폭발 공격 대미지 2레벨')).toBeInTheDocument();
+      expect(await screen.findByText(/1일 중위 10,500,000 G/)).toBeInTheDocument();
+      expect(screen.queryByText(/^최근 1일 거래/)).toBeNull();
     });
 
     it('더 높은 레벨 최저가보다 비싼 낮은 레벨 매물에 사기 위험 표시를 단다', async () => {
