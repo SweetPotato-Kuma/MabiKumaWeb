@@ -310,8 +310,9 @@ describe('아이템 정보의 장비 시뮬레이터', () => {
   it('세트 효과의 수치, 발동 기준, 같은 효과 장비를 보여 준다', async () => {
     renderPage(SWORD_PATH);
 
-    // 미리보기에 한 줄, 세트 효과 섹션에 자세히.
+    // 미리보기에 이름과 수치, 그 아래 효과. 세트 효과 섹션에 자세히.
     expect(await screen.findByText('공격 속도 증가 +3~5')).toBeInTheDocument();
+    expect(screen.getAllByText('공격 속도 20% 증가')).toHaveLength(2);
     const section = screen
       .getByText('세트 효과', { selector: '.ant-card-head-title' })
       .closest('.ant-card');

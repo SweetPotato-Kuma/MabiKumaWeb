@@ -259,10 +259,22 @@ export function EquipmentPreview({
 
         {setEffects.length ? (
           <Block title="세트 효과">
+            {/* 이름이 같아도 효과 크기가 다른 효과가 많다(크래시 샷 강화 8%, 10%, 15%). 효과를 이름 아래에 적는다. */}
             {setEffects.map((effect) => (
-              <Text key={effect.key} className="tnum">
-                {effect.def.name} {describeContribution(effect.own)}
-              </Text>
+              <Flex key={effect.key} vertical gap={0}>
+                <Text className="tnum">
+                  {effect.def.name} {describeContribution(effect.own)}
+                </Text>
+                {effect.def.desc ? (
+                  <Text
+                    type="secondary"
+                    className="tnum"
+                    style={{ paddingInlineStart: 12, whiteSpace: 'pre-line' }}
+                  >
+                    {effect.def.desc}
+                  </Text>
+                ) : null}
+              </Flex>
             ))}
           </Block>
         ) : null}
