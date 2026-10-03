@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatGoldWith, formatNumber, formatRemaining } from './format';
+import { formatGoldWith, formatKoreanReading, formatNumber, formatRemaining } from './format';
 
 describe('formatNumber', () => {
   it('천 단위로 구분한다', () => {
@@ -9,6 +9,16 @@ describe('formatNumber', () => {
   it('값이 없으면 하이픈을 돌려준다', () => {
     expect(formatNumber(null)).toBe('-');
     expect(formatNumber(undefined)).toBe('-');
+  });
+});
+
+describe('formatKoreanReading', () => {
+  it('억, 만 묶음의 천 자리를 천으로 읽는다', () => {
+    expect(formatKoreanReading(30_000_456)).toBe('3천만 456');
+    expect(formatKoreanReading(31_000_000)).toBe('3천100만');
+    expect(formatKoreanReading(1_231_005_000)).toBe('12억 3천100만 5천');
+    expect(formatKoreanReading(200_000_000)).toBe('2억');
+    expect(formatKoreanReading(4_560_000)).toBe('456만');
   });
 });
 

@@ -53,6 +53,24 @@ export function formatGoldWith(
   return `${sign}${parts.filter(Boolean).join(' ')}${suffix}`;
 }
 
+/** 네 자리 묶음을 소리 내어 읽듯 적는다. 3000 → "3천", 3456 → "3천456". 만 자리를 넘으면 숫자 그대로. */
+function readGroup(group: number): string {
+  if (group >= MAN) return numberFormatter.format(group);
+  const thousands = Math.floor(group / 1000);
+  const rest = group % 1000;
+  return `${thousands ? `${thousands}천` : ''}${rest ? rest : ''}`;
+}
+
+/** 입력한 금액을 읽기 쉽게. 30,000,456 → "3천만 456", 1,231,000,000 → "12억 3천100만". */
+export function formatKoreanReading(value: number): string {
+  const amount = Math.round(Math.abs(value));
+  const eok = Math.floor(amount / EOK);
+  const man = Math.floor((amount % EOK) / MAN);
+  const rest = amount % MAN;
+  const parts = [eok ? `${readGroup(eok)}억` : '', man ? `${readGroup(man)}만` : '', rest ? readGroup(rest) : ''];
+  return `${value < 0 ? '-' : ''}${parts.filter(Boolean).join(' ') || '0'}`;
+}
+
 /** API 가 주는 UTC ISO 문자열을 로컬 시간 문자열로 바꾼다. */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '-';

@@ -34,7 +34,7 @@ import { useItemQuotes, type QuoteBasis } from '@/features/calculators/quotes';
 import { remember, withRemembered } from '@/features/calculators/remembered';
 import { readValues, writeValues } from '@/features/calculators/url';
 import { headerHeightFor } from '@/app/theme';
-import { formatGoldWith } from '@/lib/format';
+import { formatGoldWith, formatKoreanReading } from '@/lib/format';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
 import { snapshotAgeLabel } from '@/features/auction/snapshot';
 
@@ -72,9 +72,16 @@ function GoldInput({
   const id = `calc-${field.key}`;
   return (
     <Flex vertical gap={6}>
-      <label htmlFor={id}>
-        <Text>{field.label}</Text>
-      </label>
+      <Flex gap={6} align="baseline" wrap>
+        <label htmlFor={id}>
+          <Text>{field.label}</Text>
+        </label>
+        {value !== null && value >= 10_000 ? (
+          <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
+            ({formatKoreanReading(value)})
+          </Text>
+        ) : null}
+      </Flex>
       <InputNumber<number>
         id={id}
         min={0}
@@ -265,6 +272,7 @@ function Headline({ rows, compact = false }: { rows: CalcRow[]; compact?: boolea
 /** 결과 카드. 핵심 숫자, 계산식 도움말, 접는 상세, 복사와 공유 링크. */
 function ResultPanel({ result, title }: { result: CalcResult; title: string }) {
   const formatGold = useGoldFormatter();
+  const { token } = theme.useToken();
   const { message } = App.useApp();
 
   const copy = async (text: string, done: string) => {
@@ -294,6 +302,9 @@ function ResultPanel({ result, title }: { result: CalcResult; title: string }) {
             title: column,
             key: column,
             align: columnIndex === 0 ? ('left' as const) : ('right' as const),
+            onCell: (_row: Cell[], index?: number) => ({
+              style: index === result.table?.highlight ? { background: token.colorPrimaryBg } : undefined,
+            }),
             render: (_value: unknown, row: Cell[]) => (
               <span className="tnum" style={{ whiteSpace: 'nowrap' }}>
                 {cellText(row[columnIndex], formatGold)}

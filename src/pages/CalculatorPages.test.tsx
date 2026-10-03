@@ -175,6 +175,15 @@ describe('경매장 수수료 계산기', () => {
     await waitFor(() => expect(search).toContain('price=1000000'));
   });
 
+  it('판매가 옆에 입력한 금액을 한글로 적는다', async () => {
+    renderAt('/fee-calculator');
+    expect(await screen.findByText('(1억)')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('판매가'), { target: { value: '30000456' } });
+
+    expect(await screen.findByText('(3천만 456)')).toBeInTheDocument();
+  });
+
   it('주소의 입력으로 같은 결과를 다시 만든다', async () => {
     renderAt('/fee-calculator?price=1000000&premium=1');
 
