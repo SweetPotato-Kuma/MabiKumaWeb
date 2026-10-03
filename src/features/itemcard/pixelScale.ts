@@ -1,7 +1,7 @@
 /**
- * 그림을 몇 배로 그릴지.
+ * 그림을 몇 배로 그릴지. 정규화한 128x128 그림은 표시 칸에 맞춘다.
  *
- * 마비노기 아이콘은 인벤토리 칸(24px) 단위로 그려진 픽셀 그림이다. 48x48 이 가장 많고
+ * 아직 정규화하지 않은 아이콘은 인벤토리 칸(24px) 단위로 그려진 픽셀 그림이다. 48x48 이 가장 많고
  * 48x96 처럼 긴 것도 많다(2026-09, 1만 5천 장 기준 48x48 이 38%). 칸에 맞춰 0.58배 같은
  * 어중간한 비율로 줄이면 픽셀이 뭉개져 번지고 길쭉해 보인다. 그래서 딱 떨어지는 배율만 쓴다.
  *
@@ -13,6 +13,8 @@
  */
 export function pixelScale(width: number, height: number, box: number): number {
   if (width <= 0 || height <= 0) return 1;
+  // 중앙 정렬된 128px 아이콘은 여백까지 포함한 정사각형을 표시 칸에 맞춘다.
+  if (width === 128 && height === 128) return box / 128;
   if (width <= box && height <= box) return 1;
   if (width / 2 <= box && height / 2 <= box) return 0.5;
   return Math.min(box / width, box / height);
