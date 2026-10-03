@@ -83,7 +83,6 @@ import {
 import { formatChance } from '@/features/simulator/trials';
 import { formatNumber } from '@/lib/format';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
-import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import { useResolvedThemeMode } from '@/lib/themePreference';
 import './reforgeFx.css';
 
@@ -741,7 +740,6 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
    */
   const stageScale = screens.xl ? 1.45 : screens.lg ? 1.3 : screens.md ? 1.15 : 1;
   const { token } = theme.useToken();
-  const reducedMotion = usePrefersReducedMotion();
 
   const [toolId, setToolId] = useState<ReforgeToolId>(data.tools[0].id);
   const tool = data.tools.find((entry) => entry.id === toolId) ?? data.tools[0];
@@ -789,7 +787,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
   const gemOn = gemChoice && gemUsable;
 
   const [fxOn, setFxOn] = useState(readFxSetting);
-  const animate = fxOn && !reducedMotion;
+  const animate = fxOn;
   /**
    * 마지막 세공을 연출로 보여 줄지. 세공 단추를 누를 때 정한다. 스위치 상태만 보고 정하면, 끈 채로
    * 세공한 뒤 스위치를 켜는 순간 지난 세공의 연출이 돌았다.
@@ -1087,8 +1085,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
               {/* 세공하기 바로 아래에 둔다. 누르기 전에 눈에 들어와야 끌지 말지 고른다. */}
               <Flex gap={8} align="center">
                 <Switch
-                  checked={fxOn && !reducedMotion}
-                  disabled={reducedMotion}
+                  checked={fxOn}
                   onChange={(on) => {
                     setFxOn(on);
                     setArmed(false);

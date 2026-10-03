@@ -39,7 +39,6 @@ import {
 import { formatChance } from '@/features/simulator/trials';
 import { formatNumber } from '@/lib/format';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
-import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import './holyWaterFx.css';
 
 const { Text } = Typography;
@@ -590,7 +589,6 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
   const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   const { token } = theme.useToken();
-  const reducedMotion = usePrefersReducedMotion();
 
   const priceNames = useMemo(() => [HOLY_WATER_NAME], []);
   const priceState = useMarketPrices(priceNames).get(HOLY_WATER_NAME);
@@ -618,7 +616,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
 
   // 연출. 한 번 발랐을 때만 돌리고, 누를 때 걸어 둔다(끈 채 바른 뒤 켜도 지난 연출이 돌지 않게).
   const [fxOn, setFxOn] = useState(readFxSetting);
-  const animate = fxOn && !reducedMotion;
+  const animate = fxOn;
   const [armed, setArmed] = useState(false);
   const apply = (times: number) => {
     setArmed(animate);
@@ -711,8 +709,7 @@ export function HolyWaterSimulatorView({ simulator }: { simulator: Simulator }) 
               </Button>
               <Flex gap={8} align="center">
                 <Switch
-                  checked={fxOn && !reducedMotion}
-                  disabled={reducedMotion}
+                  checked={fxOn}
                   onChange={(on) => {
                     setFxOn(on);
                     setArmed(false);

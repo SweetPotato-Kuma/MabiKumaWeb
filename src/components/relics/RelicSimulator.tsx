@@ -61,7 +61,6 @@ import { formatEstimatedChance, sumAtLeastChance } from '@/features/simulator/br
 import { formatChance } from '@/features/simulator/trials';
 import { formatNumber } from '@/lib/format';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
-import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import './relicFx.css';
 
 const { Text } = Typography;
@@ -622,7 +621,6 @@ export function RelicSimulatorView({
   const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   const { token } = theme.useToken();
-  const reducedMotion = usePrefersReducedMotion();
   const arcanaQuery = useArcanaQuery();
   const arcanas = arcanaQuery.data?.arcanas;
 
@@ -652,7 +650,7 @@ export function RelicSimulatorView({
   const last = priced[priced.length - 1] ?? null;
   // 연출. 한 번 복원했을 때만 돌리고, 누를 때 걸어 둔다(끈 채 복원한 뒤 켜도 지난 연출이 돌지 않게).
   const [fxOn, setFxOn] = useState(readFxSetting);
-  const animate = fxOn && !reducedMotion;
+  const animate = fxOn;
   const [armed, setArmed] = useState(false);
   const restore = (times: number) => {
     setArmed(animate);
@@ -876,8 +874,7 @@ export function RelicSimulatorView({
               </Button>
               <Flex gap={8} align="center">
                 <Switch
-                  checked={fxOn && !reducedMotion}
-                  disabled={reducedMotion}
+                  checked={fxOn}
                   onChange={(on) => {
                     setFxOn(on);
                     setArmed(false);

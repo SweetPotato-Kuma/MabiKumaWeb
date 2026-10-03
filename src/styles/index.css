@@ -97,11 +97,12 @@ body {
  * transition-duration 은 여기서 줄이지 않는다. 기본 transition-property 가 all 이라 전환이 없던
  * top, left 에도 짧은 전환이 생기고, 팝업이 제자리를 재는 순간 옛 자리(화면 밖)가 읽혀
  * 옵션 창이 보이지 않은 채 페이지만 길어지며 흔들렸다.
+ * 시뮬레이터 연출은 화면의 "연출" 스위치로 따로 켜고 끄므로 여기서 빼 둔다.
  */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :not(:where(.rl-play, .rl-reveal, .hw-play, .hw-reveal, .rf-play, .rf-reveal) *),
+  :not(:where(.rl-play, .rl-reveal, .hw-play, .hw-reveal, .rf-play, .rf-reveal) *)::before,
+  :not(:where(.rl-play, .rl-reveal, .hw-play, .hw-reveal, .rf-play, .rf-reveal) *)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
