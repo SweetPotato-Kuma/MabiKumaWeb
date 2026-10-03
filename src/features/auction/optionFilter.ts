@@ -122,7 +122,6 @@ const KIND_BY_TYPE: Record<string, ConditionKind> = {
   '에코스톤 고유 능력': 'sub',
   '토템 효과': 'sub',
   '토템 추가 옵션': 'sub',
-  '토템 강화 제한': 'sub',
 };
 
 /** 인챈트 조건이 보는 옵션 이름. 장비는 인챈트, 인챈트 스크롤과 페이지는 인챈트 종류로 온다. */
@@ -132,28 +131,7 @@ const ENCHANT_TYPES: readonly string[] = ['인챈트', '인챈트 종류'];
  * 값이 숫자인 옵션. 매물을 불러오기 전에는 값을 보고 가를 수 없어 이름으로 정한다. 불러온 매물이 있으면
  * 값으로 가른 쪽(buildOptionCatalog)을 따른다.
  */
-const NUMBER_OPTION_TYPES = new Set([
-  '공격',
-  '부상률',
-  '크리티컬',
-  '밸런스',
-  '내구력',
-  '내구도',
-  '숙련',
-  '방어력',
-  '보호',
-  '마법 방어력',
-  '마법 보호',
-  '피어싱 레벨',
-  '일반 개조',
-  '보석 개조',
-  '에코스톤 등급',
-  '품질',
-  '크기',
-  '남은 거래 횟수',
-  '남은 사용 횟수',
-  '남은 전용 해제 가능 횟수',
-]);
+const NUMBER_OPTION_TYPES = new Set(['밸런스', '에코스톤 등급']);
 
 /** 옵션 이름으로 어떤 조건 종류를 쓸지. */
 export function kindOfOptionType(optionType: string): ConditionKind {

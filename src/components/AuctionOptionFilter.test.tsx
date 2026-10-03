@@ -79,16 +79,15 @@ const addOption = async (label: string) => {
 };
 
 describe('상세 옵션 창', () => {
-  it('장비 카테고리는 장비 옵션과 숫자 옵션을 한 목록에서 고른다', async () => {
+  it('장비 카테고리는 장비 옵션을 한 목록에서 고른다', async () => {
     render(<Harness category="검" />);
 
     openPicker();
 
-    for (const label of ['세공', '인챈트', '특별 개조', '에르그', '색상', '세트 효과', '최대 공격', '밸런스']) {
+    for (const label of ['세공', '인챈트', '특별 개조', '에르그', '색상', '세트 효과', '밸런스']) {
       expect(await screen.findByTitle(label)).toBeInTheDocument();
     }
-    expect(screen.getByText('주요 옵션')).toBeInTheDocument();
-    expect(screen.getByText('그 밖의 옵션')).toBeInTheDocument();
+    expect(screen.queryByTitle('내구력')).toBeNull();
   });
 
   it('유물에서는 무리아스 유물 옵션을 두고 세공은 두지 않는다', async () => {

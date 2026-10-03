@@ -209,8 +209,6 @@ export function DetailOptionsPanel({
 
   // 고를 수 있는 옵션: 카테고리에 붙는 옵션과 불러온 매물에 있는 옵션. 칸이 이미 있는 옵션은 빠진다.
   const choices = optionChoices(category, catalog, draft);
-  const mainChoices = choices.filter((choice) => choice.main);
-  const otherChoices = choices.filter((choice) => !choice.main);
   // 칸은 더한 순서대로 쌓는다.
   const groups = [...new Set(draft.map(groupOf))];
 
@@ -296,10 +294,7 @@ export function DetailOptionsPanel({
         <Select<string>
           value={null}
           placeholder="세부 옵션 선택"
-          options={[
-            ...(mainChoices.length > 0 ? [{ label: '주요 옵션', options: mainChoices.map(choiceOption) }] : []),
-            ...(otherChoices.length > 0 ? [{ label: '그 밖의 옵션', options: otherChoices.map(choiceOption) }] : []),
-          ]}
+          options={choices.map(choiceOption)}
           showSearch
           optionFilterProp="label"
           onChange={(label) => {
@@ -308,7 +303,7 @@ export function DetailOptionsPanel({
           }}
           aria-label="세부 옵션 선택"
           listHeight={320}
-          // 옵션은 50개 남짓이라 모두 그린다. 가상 목록은 칠 때마다 줄 높이를 다시 재서 목록이 잠깐 비어 보였다.
+          // 옵션은 열몇 개라 모두 그린다. 가상 목록은 칠 때마다 줄 높이를 다시 재서 목록이 잠깐 비어 보였다.
           virtual={false}
           style={{ width: '100%' }}
         />

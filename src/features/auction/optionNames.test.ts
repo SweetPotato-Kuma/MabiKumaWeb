@@ -93,11 +93,11 @@ describe('scanCategoriesFor', () => {
     const filter = {
       conditions: [
         { id: 1, kind: 'erg' as const, grade: '', minLevel: 30 },
-        { id: 2, kind: 'number' as const, optionType: '부상률', min: 50 },
+        { id: 2, kind: 'number' as const, optionType: '밸런스', min: 50 },
       ],
     };
     const scan = scanCategoriesFor(filter, names);
     expect(scan).toContain('활');
-    expect(scan).not.toContain('스태프');
+    expect(scan).not.toContain('경갑옷');
   });
 });
