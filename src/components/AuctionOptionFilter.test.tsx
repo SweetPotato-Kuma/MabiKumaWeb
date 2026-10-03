@@ -44,14 +44,10 @@ const catalogFor = (category: string) =>
 function Harness({
   category,
   onSearch = () => {},
-  matches = () => 0,
-  total = 0,
   onCancel = () => {},
 }: {
   category: string;
   onSearch?: (filter: OptionFilter) => void;
-  matches?: (filter: OptionFilter) => number;
-  total?: number;
   onCancel?: () => void;
 }) {
   const [filter, setFilter] = useState<OptionFilter>(EMPTY_OPTION_FILTER);
@@ -63,8 +59,6 @@ function Harness({
         catalog={catalogFor(category)}
         names={null}
         category={category}
-        countMatches={matches}
-        total={total}
         onCancel={onCancel}
         onSearch={(next: OptionFilter) => {
           setFilter(next);
@@ -186,21 +180,13 @@ describe('상세 옵션 창', () => {
     expect(screen.queryByText(/색상 R 100/)).toBeNull();
   });
 
-  it('불러온 매물이 있으면 고른 조건에 몇 건이 맞는지 아래에 보인다', async () => {
-    const matches = vi.fn(() => 3);
-    render(<Harness category="검" total={12} matches={matches} />);
+  it('창 안에 건수를 늘어놓지 않는다', async () => {
+    render(<Harness category="분양 메달" />);
 
-    expect(screen.getByText('불러온 12건')).toBeInTheDocument();
-    await addOption('색상');
-    fireEvent.change(screen.getByLabelText('R 최소'), { target: { value: '100' } });
+    openPicker();
+    await screen.findByTitle('펫 정보');
 
-    expect(screen.getByText('불러온 12건 중 3건 일치')).toBeInTheDocument();
-  });
-
-  it('불러온 매물이 없으면 건수를 보이지 않는다', () => {
-    render(<Harness category="검" total={0} />);
-
-    expect(screen.queryByText(/불러온/)).toBeNull();
+    expect(screen.queryByText(/\d+건/)).toBeNull();
   });
 
   it('값을 넣지 않은 옵션 칸은 배지가 없다', async () => {

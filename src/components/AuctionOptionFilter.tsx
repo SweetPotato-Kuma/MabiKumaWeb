@@ -135,8 +135,8 @@ const ROW_ADD_LABEL: Partial<Record<ConditionKind, string>> = { reforge: '세공
 /** 줄을 더할 때 만들 조건의 옵션 이름. 숫자, 문구, 구분 값, 이름 옵션은 옵션 이름이 따로 있다. */
 const optionTypeOf = (condition: Condition, label: string) => ('optionType' in condition ? condition.optionType : label);
 
-/** 옵션 고르기 목록 한 줄. 불러온 매물에 있는 옵션은 건수를 함께 보인다. */
-const choiceOption = (choice: OptionChoice) => ({ value: choice.label, label: choice.label, count: choice.count });
+/** 옵션 고르기 목록 한 줄. 건수는 보이지 않는다(상세 검색 창에는 숫자를 늘어놓지 않는다). */
+const choiceOption = (choice: OptionChoice) => ({ value: choice.label, label: choice.label });
 
 /**
  * 건 조건을 배지로 요약한다. 상세 검색 창이 닫혀 있어도 어떤 조건이 걸려 있는지 보이고, 하나씩 빼거나 모두 지울 수 있다.
@@ -302,16 +302,6 @@ export function DetailOptionsPanel({
           ]}
           showSearch
           optionFilterProp="label"
-          optionRender={(option) => (
-            <Flex justify="space-between" gap={12}>
-              <span>{option.label}</span>
-              {option.data.count !== undefined ? (
-                <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                  {formatNumber(option.data.count)}건
-                </Text>
-              ) : null}
-            </Flex>
-          )}
           onChange={(label) => {
             const choice = choices.find((each) => each.label === label);
             if (choice) add(choice);
@@ -332,16 +322,14 @@ export function DetailOptionsPanel({
 }
 
 /**
- * 상세 검색 창. 고친 것은 검색을 누를 때만 건 조건이 되고, 취소하면 버려진다. 창이 결과를 가리므로, 지금 고른 조건이
- * 불러온 매물 중 몇 건에 맞는지를 아래에 바로 보여 준다. 열 때마다 새로 그려 초안을 건 조건에서 다시 시작한다.
+ * 상세 검색 창. 고친 것은 검색을 누를 때만 건 조건이 되고, 취소하면 버려진다. 열 때마다 새로 그려 초안을 건 조건에서
+ * 다시 시작한다.
  */
 export function DetailOptionsModal({
   initial,
   catalog,
   names,
   category,
-  countMatches,
-  total,
   onCancel,
   onSearch,
 }: {
@@ -349,16 +337,11 @@ export function DetailOptionsModal({
   catalog: CatalogEntry[];
   names: OptionNames | null | undefined;
   category: string;
-  /** 초안 조건에 맞는 불러온 매물 수. */
-  countMatches: (filter: OptionFilter) => number;
-  /** 불러온 매물 수. 0 이면 맞는 수를 보여 주지 않는다. */
-  total: number;
   onCancel: () => void;
   /** 값을 넣은 조건만 넘긴다. */
   onSearch: (next: OptionFilter) => void;
 }) {
   const [draft, setDraft] = useState<OptionFilter>(initial);
-  const activeCount = draft.conditions.filter(isConditionActive).length;
 
   return (
     <Modal
@@ -369,18 +352,9 @@ export function DetailOptionsModal({
       destroyOnHidden
       footer={
         <Flex justify="space-between" align="center" gap={8} wrap>
-          <Flex gap={12} align="center" wrap>
-            <Button disabled={draft.conditions.length === 0} onClick={() => setDraft({ conditions: [] })}>
-              모두 지우기
-            </Button>
-            {total > 0 ? (
-              <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-                {activeCount > 0
-                  ? `불러온 ${formatNumber(total)}건 중 ${formatNumber(countMatches(draft))}건 일치`
-                  : `불러온 ${formatNumber(total)}건`}
-              </Text>
-            ) : null}
-          </Flex>
+          <Button disabled={draft.conditions.length === 0} onClick={() => setDraft({ conditions: [] })}>
+            모두 지우기
+          </Button>
           <Flex gap={8}>
             <Button onClick={onCancel}>취소</Button>
             <Button
@@ -472,25 +446,16 @@ function NameInput({
       styles={{ popup: { root: NAME_POPUP_STYLE } }}
       // 목록 줄 모양은 optionRender 로만 그린다. label 에 넣으면 고른 뒤 입력칸 안에도 같은 모양으로
       // 그려져, 줄바꿈 때문에 칸이 두 줄 높이로 늘었다.
-      optionRender={(option) => (
-        <Flex justify="space-between" align="baseline" gap={12}>
-          {/* 목록 줄은 기본이 한 줄 말줄임이다. 긴 이름은 줄을 바꿔 끝까지 보인다. */}
-          <span style={{ whiteSpace: 'normal' }}>{option.value}</span>
-          {option.data.count !== undefined ? (
-            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-              {formatNumber(option.data.count)}건
-            </Text>
-          ) : null}
-        </Flex>
-      )}
+      // 목록 줄은 기본이 한 줄 말줄임이다. 긴 이름은 줄을 바꿔 끝까지 보인다.
+      optionRender={(option) => <span style={{ whiteSpace: 'normal' }}>{option.value}</span>}
       style={{ width: '100%', minWidth: 0 }}
     />
   );
 }
 
 /**
- * "N 이상" 숫자 자동완성. 불러온 매물의 값에서 "7 이상, 12건" 처럼 그 값 이상인 매물 수를
- * 같이 보여 준다. 매물이 없으면 자주 찾는 기준값을 보여 준다. 목록에 없는 값도 직접 칠 수 있다.
+ * "N 이상" 숫자 자동완성. 불러온 매물에 있는 값을, 매물이 없으면 자주 찾는 기준값을 보여 준다.
+ * 목록에 없는 값도 직접 칠 수 있다.
  */
 function NumberInput({
   value,
@@ -528,23 +493,16 @@ function NumberInput({
   const options = suggestions.map((each) => ({
     value: String(each.value),
     label: (
-      <Flex justify="space-between" gap={12}>
-        <span className="tnum">
-          {formatNumber(each.value)}
-          {unit} 이상
-          {each.note ? (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {' '}
-              ({each.note})
-            </Text>
-          ) : null}
-        </span>
-        {each.count !== undefined ? (
-          <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-            {formatNumber(each.count)}건
+      <span className="tnum">
+        {formatNumber(each.value)}
+        {unit} 이상
+        {each.note ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {' '}
+            ({each.note})
           </Text>
         ) : null}
-      </Flex>
+      </span>
     ),
   }));
 

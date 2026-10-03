@@ -209,8 +209,8 @@ describe('경매장 검색 조건과 주소', () => {
     renderAt('/auction?tab=zzz&sort=nope&page=-5&size=7&f=%7Bbroken&category=&keyword=');
 
     expect(await screen.findByRole('heading', { name: '경매장 조회' })).toBeInTheDocument();
-    // 조건이 하나도 없으면 첫 화면처럼 서버 전체의 최근 등록 매물을 보인다.
-    expect(await screen.findByRole('tab', { name: '최근 등록 매물' })).toBeInTheDocument();
+    // 조건이 하나도 없으면 첫 화면처럼 판매 중 매물에 서버 전체의 최근 등록 매물을 보인다.
+    expect(await screen.findByRole('tab', { name: '판매 중 매물' })).toBeInTheDocument();
   });
 
   it('거래 내역 탭을 고르면 주소에 실리고 판매 중 매물로 돌아오면 빠진다', async () => {
@@ -250,11 +250,10 @@ describe('경매장 검색 조건과 주소', () => {
       expect(router.search()).not.toContain('page=');
     });
 
-    it('첫 화면은 최근 등록 매물을 받은 순서(등록순) 그대로 보인다', async () => {
+    it('첫 화면은 판매 중 매물에 최근 등록 매물을 받은 순서(등록순) 그대로 보인다', async () => {
       renderAt('/auction');
 
-      expect(await screen.findByRole('tab', { name: '최근 등록 매물' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: '최근 거래' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: '판매 중 매물' })).toBeInTheDocument();
       await screen.findByText('시험 검 1');
       expect(firstNames()[0]).toBe('시험 검 1');
     });
@@ -539,7 +538,7 @@ describe('경매장 검색 조건과 주소', () => {
     it('주소에 없는 묶음 이름이 실려 오면 카테고리를 고르지 않은 것으로 본다', async () => {
       renderAt('/auction?category=group:없는 묶음');
 
-      expect(await screen.findByRole('tab', { name: '최근 등록 매물' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: '판매 중 매물' })).toBeInTheDocument();
       expect(screen.queryByRole('navigation', { name: '카테고리 경로' })).toBeNull();
     });
   });

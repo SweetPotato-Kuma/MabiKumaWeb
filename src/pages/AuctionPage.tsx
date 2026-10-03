@@ -398,8 +398,9 @@ export function AuctionPage() {
   const scanning = (query.scan?.length ?? 0) > 0;
   const enabled = canQuery && submitted !== null;
   /**
-   * 카테고리도 검색어도 조건도 없는 첫 화면. 넥슨 경매장 API 는 아무것도 주지 않으면 서버 전체에서 최근에 올라온
-   * 매물부터 준다. 그 순서가 곧 등록순이라, 정렬을 고르지 않았으면 받은 순서 그대로 보인다(sortOrderOf).
+   * 카테고리도 검색어도 조건도 없는 첫 화면. 판매 중 매물 탭에 서버 전체의 최근 등록 매물을 보인다. 넥슨 경매장
+   * API 는 아무것도 주지 않으면 최근에 올라온 매물부터 준다. 그 순서가 곧 등록순이라, 정렬을 고르지 않았으면 받은
+   * 순서 그대로 보인다(sortOrderOf).
    */
   const recentMode = submitted !== null && !isAuctionSearchReady(query) && !scanning;
 
@@ -937,7 +938,6 @@ export function AuctionPage() {
       {optionsLabel}
     </Button>
   );
-  const loadedForOptions = tab === 'items' ? items : history;
 
   /**
    * 주소의 정렬을 열에 건다. 표는 스스로 정렬 상태를 두지 않고 주소가 가리키는 대로 그린다.
@@ -1519,8 +1519,8 @@ export function AuctionPage() {
               activeKey={tab}
               onChange={(key) => navigate(tabParamsFor(paramsRef.current, key as AuctionTab), false)}
               items={[
-                { key: 'items', label: recentMode ? '최근 등록 매물' : '판매 중 매물', children: itemsPanel },
-                { key: 'history', label: recentMode ? '최근 거래' : '거래 내역', children: historyPanel },
+                { key: 'items', label: '판매 중 매물', children: itemsPanel },
+                { key: 'history', label: '거래 내역', children: historyPanel },
               ]}
             />
           )}
@@ -1533,8 +1533,6 @@ export function AuctionPage() {
           catalog={optionCatalog}
           names={optionNames}
           category={form.category}
-          total={loadedForOptions.length}
-          countMatches={(filter) => loadedForOptions.filter((item) => matchesOptionFilter(item, filter)).length}
           onCancel={() => setOptionsOpen(false)}
           onSearch={(filter) => {
             setOptionsOpen(false);
