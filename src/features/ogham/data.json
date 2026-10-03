@@ -65,157 +65,131 @@
     {
       "id": 1,
       "name": "베헤",
-      "glyph": "ᚁ",
       "arcanaOptions": true
     },
     {
       "id": 2,
       "name": "리스",
-      "glyph": "ᚂ",
       "arcanaOptions": true
     },
     {
       "id": 3,
       "name": "페른",
-      "glyph": "ᚃ",
       "arcanaOptions": true
     },
     {
       "id": 4,
       "name": "살",
-      "glyph": "ᚄ",
       "arcanaOptions": true
     },
     {
       "id": 5,
       "name": "닌",
-      "glyph": "ᚅ",
       "arcanaOptions": true
     },
     {
       "id": 6,
       "name": "우흐",
-      "glyph": "ᚆ",
       "arcanaOptions": false
     },
     {
       "id": 7,
       "name": "다르",
-      "glyph": "ᚇ",
       "arcanaOptions": false
     },
     {
       "id": 8,
       "name": "티너",
-      "glyph": "ᚈ",
       "arcanaOptions": false
     },
     {
       "id": 9,
       "name": "콜",
-      "glyph": "ᚉ",
       "arcanaOptions": false
     },
     {
       "id": 10,
       "name": "케르트",
-      "glyph": "ᚊ",
       "arcanaOptions": false
     },
     {
       "id": 11,
       "name": "민",
-      "glyph": "ᚋ",
       "arcanaOptions": false
     },
     {
       "id": 12,
       "name": "고르트",
-      "glyph": "ᚌ",
       "arcanaOptions": false
     },
     {
       "id": 13,
       "name": "게탈",
-      "glyph": "ᚍ",
       "arcanaOptions": false
     },
     {
       "id": 14,
       "name": "스트라프",
-      "glyph": "ᚎ",
       "arcanaOptions": false
     },
     {
       "id": 15,
       "name": "루스",
-      "glyph": "ᚏ",
       "arcanaOptions": false
     },
     {
       "id": 16,
       "name": "알름",
-      "glyph": "ᚐ",
       "arcanaOptions": false
     },
     {
       "id": 17,
       "name": "온",
-      "glyph": "ᚑ",
       "arcanaOptions": false
     },
     {
       "id": 18,
       "name": "우르",
-      "glyph": "ᚒ",
       "arcanaOptions": false
     },
     {
       "id": 19,
       "name": "에다드",
-      "glyph": "ᚓ",
       "arcanaOptions": false
     },
     {
       "id": 20,
       "name": "이다드",
-      "glyph": "ᚔ",
       "arcanaOptions": false
     },
     {
       "id": 21,
       "name": "에바드",
-      "glyph": "ᚕ",
       "arcanaOptions": false
     },
     {
       "id": 22,
       "name": "오르",
-      "glyph": "ᚖ",
       "arcanaOptions": false
     },
     {
       "id": 23,
       "name": "일란드",
-      "glyph": "ᚗ",
       "arcanaOptions": false
     },
     {
       "id": 24,
       "name": "이핀",
-      "glyph": "ᚘ",
       "arcanaOptions": false
     },
     {
       "id": 25,
       "name": "에만콜",
-      "glyph": "ᚙ",
       "arcanaOptions": false
     },
     {
       "id": 26,
       "name": "페헤",
-      "glyph": "ᚚ",
       "arcanaOptions": false
     }
   ],

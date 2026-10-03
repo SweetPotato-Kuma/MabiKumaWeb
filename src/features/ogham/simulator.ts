@@ -21,8 +21,6 @@ export interface OghamArcana {
 export interface OghamWord {
   id: number;
   name: string;
-  /** 오검 문자 한 글자. */
-  glyph: string;
   /** 아르카나 스킬 옵션이 붙을 수 있는지. */
   arcanaOptions: boolean;
 }
@@ -75,6 +73,9 @@ export const COMBINATION_POINTS = [5, 6, 7, 8, 9] as const;
 
 const optionById = new Map(OGHAM_OPTIONS.map((option) => [option.id, option]));
 const wordById = new Map(OGHAM_WORDS.map((word) => [word.id, word]));
+
+/** 워드 그림. 번호는 게임의 워드 번호와 같다. 64px 투명 바탕 그림이다. */
+export const oghamWordIconUrl = (id: number) => `${import.meta.env.BASE_URL}data/ogham/${id}.png`;
 
 export const oghamOption = (id: number): OghamOption => optionById.get(id)!;
 export const oghamWord = (id: number): OghamWord => wordById.get(id)!;

@@ -44,6 +44,7 @@ import {
   oghamArcana,
   oghamOption,
   oghamWord,
+  oghamWordIconUrl,
   optionPool,
   optionTotals,
   optionUnit,
@@ -117,13 +118,25 @@ function rerollGold(locked: number, prices: MaterialPrices): number | null {
   );
 }
 
-/** 오검 문자 한 글자와 이름. 판의 칸과 고르는 창이 같이 쓴다. */
+/** 워드 그림. 이름이 늘 곁에 있어 꾸밈으로 둔다. 자리를 미리 잡아 그림이 늦게 와도 칸이 들썩이지 않는다. */
+function WordIcon({ word, size }: { word: OghamWord; size: number }) {
+  return (
+    <img
+      src={oghamWordIconUrl(word.id)}
+      alt=""
+      width={size}
+      height={size}
+      draggable={false}
+      style={{ display: 'block', flex: 'none' }}
+    />
+  );
+}
+
+/** 워드 그림과 이름. 판의 칸과 고르는 창이 같이 쓴다. */
 function WordFace({ word, size }: { word: OghamWord; size: number }) {
   return (
     <Flex vertical align="center" gap={2} style={{ lineHeight: 1.1 }}>
-      <span aria-hidden style={{ fontSize: Math.round(size * 0.42), lineHeight: 1 }}>
-        {word.glyph}
-      </span>
+      <WordIcon word={word} size={Math.round(size * 0.6)} />
       <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{word.name}</span>
     </Flex>
   );
@@ -699,14 +712,17 @@ function CombinationGuide({
                       <Tag
                         key={id}
                         aria-label={has ? `${word.name}, 넣음` : word.name}
+                        icon={<WordIcon word={word} size={16} />}
                         style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
                           marginInlineEnd: 0,
                           fontWeight: has ? 600 : undefined,
                           color: has ? token.colorText : token.colorTextSecondary,
                           borderStyle: has ? 'solid' : 'dashed',
                         }}
                       >
-                        <span aria-hidden>{word.glyph} </span>
                         {word.name}
                       </Tag>
                     );
