@@ -8,6 +8,7 @@ import {
   CalculateIcon,
   DiceIcon,
   HammerIcon,
+  HexagonIcon,
   HornIcon,
   ImageIcon,
   MuseumIcon,
@@ -53,8 +54,8 @@ export type NavEntry = NavLeaf | NavGroup;
 export const isNavGroup = (entry: NavEntry): entry is NavGroup => 'sections' in entry;
 
 /**
- * 사용자가 직접 해 보는 것(세공, 성수, 주화, 유물 복원)은 시뮬레이터 아래로 모은다. 주화는 토템 장비라
- * 장비에 둔다. 주화는 던전을, 유물 복원은 무리아스와 탈라 가흐를
+ * 사용자가 직접 해 보는 것(세공, 성수, 주화, 오검 워드, 유물 복원)은 시뮬레이터 아래로 모은다. 주화는 토템 장비라
+ * 장비에 두고, 오검 워드는 아르카나에 끼우는 것이라 따로 둔다. 주화는 던전을, 유물 복원은 무리아스와 탈라 가흐를
  * 그 화면 안의 탭으로 가르므로 메뉴에는 한 칸씩이다. 순서는 게임에 먼저 나온 것부터다.
  * 유물 시세는 매물을 읽는 화면이라 경매장 곁에 두고, 탈라 가흐 유물도 그 화면의 탭으로 들어간다.
  * 던전 코인은 코인으로 NPC 상점에서 살 수 있는 것의 값을 따지는 화면이라 NPC 상점 아래에 둔다.
@@ -112,6 +113,12 @@ export const NAV_TREE: NavEntry[] = [
           { path: '/reforge-simulator', label: '세공', icon: <HammerIcon />, keywords: '시뮬레이터 세공 도구' },
           { path: '/holy-water-simulator', label: '성수', icon: <WaterDropIcon />, keywords: '무리아스 시뮬레이터' },
           { path: '/coin-simulator', label: '주화', icon: <PaidIcon />, keywords: '브리레흐 브리 레흐 토템 잔흔석 시뮬레이터' },
+        ],
+      },
+      {
+        title: '아르카나',
+        items: [
+          { path: '/ogham-simulator', label: '오검 워드', icon: <HexagonIcon />, keywords: '오검 룬 조합 재설정 시뮬레이터' },
         ],
       },
       {

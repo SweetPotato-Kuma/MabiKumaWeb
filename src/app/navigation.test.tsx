@@ -13,11 +13,12 @@ describe('메뉴 구조', () => {
     for (const path of paths.filter((each) => each !== ADMIN_NAV_ITEM.path)) expect(known).toContain(path);
   });
 
-  it('시뮬레이터는 장비, 유물 순이고 유물 시세는 시뮬레이터 밖에 있다', () => {
+  it('시뮬레이터는 장비, 아르카나, 유물 순이고 유물 시세는 시뮬레이터 밖에 있다', () => {
     const pages = navPages(entries);
     const simulators = pages.filter(({ trail }) => trail.startsWith('시뮬레이터')).map(({ leaf }) => leaf.label);
-    expect(simulators).toEqual(['세공', '성수', '주화', '유물 복원']);
+    expect(simulators).toEqual(['세공', '성수', '주화', '오검 워드', '유물 복원']);
     expect(pages.find(({ leaf }) => leaf.path === '/coin-simulator')?.trail).toBe('시뮬레이터, 장비');
+    expect(pages.find(({ leaf }) => leaf.path === '/ogham-simulator')?.trail).toBe('시뮬레이터, 아르카나');
     expect(pages.find(({ leaf }) => leaf.path === '/relic-simulator')?.trail).toBe('시뮬레이터, 유물');
     expect(pages.find(({ leaf }) => leaf.path === '/relics')?.trail).toBe('');
   });
