@@ -12,6 +12,7 @@ import {
   kstDay,
   lastTradesByOption,
   recentStats,
+  relicOptionName,
   toTradeRow,
 } from './market.js';
 
@@ -494,6 +495,55 @@ describe('인기 거래 아이템', () => {
     }
     // 시세 조회의 하루 요약은 원래 이름으로 묶은 그대로다.
     expect(count("SELECT COUNT(*) AS c FROM daily WHERE name = '전용 인챈트 스크롤'")).toBe(2);
+  });
+
+  it('무리아스의 유물은 옵션별로 센다. 레벨이 달라도 옵션이 같으면 한 줄이다', async () => {
+    const relic = (id, secondsAgo, text, price) =>
+      trade(id, secondsAgo, {
+        name: '무리아스의 유물',
+        category: '유물',
+        price,
+        options: text ? [{ option_type: '무리아스 유물', option_value: text }] : null,
+      });
+    pages = [
+      [
+        relic(21, 30, '오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)', 20_000_000),
+        relic(22, 40, '오버 드라이브 폭발 공격 대미지 700% 증가 (최대 700%)', 80_000_000),
+        relic(23, 50, '임팩트 크러시 대미지 400% 증가 (최대 500%)', 30_000_000),
+        relic(24, 3 * 86400, '임팩트 크러시 대미지 100% 증가 (최대 500%)', 1_000_000),
+        relic(25, 60, null, 5),
+      ],
+    ];
+    await collectTrades(env, NOW);
+
+    const hour = await (await call('/market/popular?window=1h')).json();
+    expect(hour.byCount.filter((row) => row.category === '유물')).toEqual([
+      {
+        name: '무리아스의 유물 - 오버 드라이브 폭발 공격 대미지',
+        item: '무리아스의 유물',
+        relic: '오버 드라이브 폭발 공격 대미지',
+        category: '유물',
+        n: 2,
+        qty: 2,
+        total: 100_000_000,
+        avg: 50_000_000,
+      },
+      expect.objectContaining({ name: '무리아스의 유물 - 임팩트 크러시 대미지', relic: '임팩트 크러시 대미지', n: 1 }),
+      // 옵션을 읽지 못한 거래는 원래 이름 한 줄이다.
+      { name: '무리아스의 유물', category: '유물', n: 1, qty: 1, total: 5, avg: 5 },
+    ]);
+    expect(hour.byTotal[0].name).toBe('무리아스의 유물 - 오버 드라이브 폭발 공격 대미지');
+
+    const week = await (await call('/market/popular?window=7d')).json();
+    expect(week.byCount.find((row) => row.relic === '임팩트 크러시 대미지')).toMatchObject({ n: 2, total: 31_000_000 });
+    expect(week.byCount.some((row) => row.name === '무리아스의 유물' && row.n > 1)).toBe(false);
+  });
+
+  it('유물 옵션 문장에서 옵션 이름을 뗀다', () => {
+    expect(relicOptionName('속성 에너지 4개 소모 시 대미지 0.35 증가 (최대 0.5)')).toBe('속성 에너지 4개 소모 시 대미지');
+    expect(relicOptionName('어나이얼레이션 대폭발 과열 계수 1.8 증가 (최대 3)')).toBe('어나이얼레이션 대폭발 과열 계수');
+    expect(relicOptionName('아무 말')).toBeNull();
+    expect(relicOptionName(null)).toBeNull();
   });
 
   it('모르는 기간은 거절하고, 기간을 안 주면 24시간이다', async () => {

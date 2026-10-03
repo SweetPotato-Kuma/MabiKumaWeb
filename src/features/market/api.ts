@@ -84,10 +84,15 @@ export interface RelicRecentResponse {
 export type PopularWindow = '1h' | '24h' | '7d' | '30d';
 
 export interface PopularRow {
-  /** 순위의 이름. 인챈트 스크롤, 도면, 옷본은 보이는 이름("전용 인챈트 스크롤 - 투지")으로 센다. */
+  /**
+   * 순위의 이름. 인챈트 스크롤, 도면, 옷본은 보이는 이름("전용 인챈트 스크롤 - 투지")으로, 무리아스의 유물은
+   * 옵션 이름을 붙여("무리아스의 유물 - 오버 드라이브 폭발 공격 대미지") 센다.
+   */
   name: string;
   /** 보이는 이름으로 센 줄의 원래 이름("전용 인챈트 스크롤"). 그림은 이 이름으로 찾는다. */
   item?: string;
+  /** 무리아스의 유물을 옵션별로 센 줄의 옵션 이름("오버 드라이브 폭발 공격 대미지"). 레벨은 가르지 않는다. */
+  relic?: string;
   category: string;
   /** 거래 횟수 */
   n: number;

@@ -1,4 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Button, Flex, Grid, Segmented, Skeleton, Tag, Typography, theme } from 'antd';
 import { ArrowDownIcon, SearchIcon, TrendingUpIcon } from '@/components/icons';
 import { EmptyState } from '@/components/EmptyState';
@@ -13,6 +14,7 @@ import {
   type PopularRow,
   type PopularWindow,
 } from '@/features/market/api';
+import { muriasAuctionPath } from '@/features/relics/murias';
 import { formatNumber } from '@/lib/format';
 import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
@@ -168,7 +170,10 @@ function PopularItem({
   onSearch: (name: string) => void;
 }) {
   const formatGold = useGoldFormatter();
+  const navigate = useNavigate();
   const name = canonicalItemName(row.name);
+  // 유물 옵션 줄은 아이템 상세가 없다. 이름과 검색 모두 경매장의 그 옵션 매물로 간다.
+  const relicPath = row.relic ? muriasAuctionPath(row.relic) : null;
   return (
     <Flex gap={10} align="center" style={{ minWidth: 0 }}>
       <Rank rank={rank} width={22} />
@@ -176,7 +181,7 @@ function PopularItem({
       <Flex vertical gap={2} style={{ minWidth: 0, flex: '1 1 auto' }}>
         <Flex gap={6} align="center" wrap>
           <Text strong style={{ minWidth: 0 }}>
-            <ItemInfoLink name={name} category={row.category} />
+            {relicPath ? <Link to={relicPath}>{name}</Link> : <ItemInfoLink name={name} category={row.category} />}
           </Text>
           <Tag style={{ margin: 0 }}>{row.category}</Tag>
         </Flex>
@@ -191,7 +196,7 @@ function PopularItem({
         size="small"
         icon={<SearchIcon />}
         aria-label={`${name} 경매장 검색`}
-        onClick={() => onSearch(name)}
+        onClick={() => (relicPath ? navigate(relicPath) : onSearch(name))}
       />
     </Flex>
   );

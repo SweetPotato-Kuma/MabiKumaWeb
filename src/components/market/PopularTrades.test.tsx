@@ -291,6 +291,26 @@ describe('인기 거래 아이템 펼침', () => {
     expect(onSearch).toHaveBeenCalledWith('낙지');
   });
 
+  it('유물 옵션 줄은 이름과 검색 단추 모두 경매장의 그 옵션 매물로 간다', async () => {
+    const relic: PopularRow = {
+      ...row('무리아스의 유물 - 오버 드라이브 폭발 공격 대미지', 40, 800_000_000, 20_000_000, '유물'),
+      item: '무리아스의 유물',
+      relic: '오버 드라이브 폭발 공격 대미지',
+    };
+    stubPopular(body({ byCount: [relic] }));
+    const onSearch = vi.fn();
+    renderChart(onSearch);
+    await screen.findByText(relic.name);
+    expand();
+
+    const link = await screen.findByRole('link', { name: relic.name });
+    expect(link.getAttribute('href')).toBe(
+      `/auction?category=${encodeURIComponent('유물')}&relic=${encodeURIComponent('오버 드라이브 폭발 공격 대미지').replace(/%20/g, '+')}`,
+    );
+    fireEvent.click(screen.getByRole('button', { name: `${relic.name} 경매장 검색` }));
+    expect(onSearch).not.toHaveBeenCalled();
+  });
+
   it('이름은 아이템 정보로 가는 링크다', async () => {
     stubPopular(body());
     renderChart();

@@ -102,6 +102,7 @@ export function popularKey(name, display) {
  * 기간 안에서 거래 횟수가 많은 순, 총 거래 금액이 많은 순 두 가지 순위를 한 번에 뽑는다. 아이템별로 묶는 일은
  * 한 번이고 정렬만 둘이다. 같으면 다른 쪽 기준, 그다음 이름 순이라 새로 불러도 순서가 흔들리지 않는다.
  * name 은 순위의 이름(VARIANT_WHERE 이면 보이는 이름), item 은 원래 이름이다.
+ * 무리아스의 유물(?4)은 옵션별로 따로 세므로(POPULAR_RELIC_SQL) 여기서 뺀다.
  */
 const POPULAR_RANK = `SELECT * FROM (SELECT 'n' AS src, name, item, category, n, qty, total FROM g ORDER BY n DESC, total DESC, name LIMIT ?3)
 UNION ALL
@@ -110,7 +111,7 @@ SELECT * FROM (SELECT 't' AS src, name, item, category, n, qty, total FROM g ORD
 const POPULAR_TRADES_SQL = `WITH g AS (
   SELECT CASE WHEN ${VARIANT_WHERE} THEN display ELSE name END AS name, MAX(name) AS item, MAX(category) AS category,
     COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total
-  FROM trades WHERE ts >= ?1 AND ts < ?2 GROUP BY 1
+  FROM trades WHERE ts >= ?1 AND ts < ?2 AND name <> ?4 GROUP BY 1
 )
 ${POPULAR_RANK}`;
 
@@ -125,7 +126,7 @@ const POPULAR_DAILY_SQL = `WITH v AS (
   SELECT item, SUM(n) AS n, SUM(qty) AS qty, SUM(total) AS total FROM v GROUP BY item
 ), d AS (
   SELECT name, MAX(category) AS category, SUM(n) AS n, SUM(qty) AS qty, SUM(total) AS total
-  FROM daily WHERE day > ?1 AND day <= ?2 GROUP BY name
+  FROM daily WHERE day > ?1 AND day <= ?2 AND name <> ?4 GROUP BY name
 ), g AS (
   SELECT d.name, d.name AS item, d.category, d.n - COALESCE(vi.n, 0) AS n, d.qty - COALESCE(vi.qty, 0) AS qty,
     d.total - COALESCE(vi.total, 0) AS total
@@ -165,6 +166,30 @@ SELECT text, price, ts FROM ranked WHERE rn = 1 ORDER BY text`;
  */
 const RELIC_NAME = '무리아스의 유물';
 const RELIC_OPTION_TYPE = '무리아스 유물';
+
+/**
+ * 인기 순위에 넣을 유물 거래를 옵션 문장별로 센다. 문장에서 옵션 이름을 떼는 일(relicOptionName)은 SQL 로
+ * 하기 어려워 워커가 한다. 옵션 줄이 없는 거래는 문장이 NULL 인 줄로 모인다. 하루 요약이 없어 7일, 30일도
+ * 원본에서 센다. 하루 900건 남짓이라 30일이어도 가볍다.
+ */
+const POPULAR_RELIC_SQL = `SELECT (SELECT json_extract(o.value, '$[2]') FROM json_each(t.options) o
+    WHERE json_extract(o.value, '$[0]') = '${RELIC_OPTION_TYPE}' LIMIT 1) AS text,
+  MAX(category) AS category, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total
+FROM trades t WHERE t.name = '${RELIC_NAME}' AND t.ts >= ?1 AND t.ts < ?2
+GROUP BY 1`;
+
+/**
+ * 유물 옵션 문장의 옵션 이름. "오버 드라이브 폭발 공격 대미지 490% 증가 (최대 700%)" -> "오버 드라이브 폭발 공격 대미지".
+ * 화면의 parseRelicOption(src/features/relics/murias.ts)과 같은 모양으로 읽는다. 모양이 다르면 null.
+ */
+export function relicOptionName(text) {
+  const match =
+    /^(.*?)(\d+(?:\.\d+)?)\s*(%|초)?\s*(증가|추가|감소)?\s*\(최대\s*(\d+(?:\.\d+)?)\s*(%|초)?\)\s*$/.exec(
+      String(text ?? '').trim(),
+    );
+  const name = match?.[1].trim();
+  return name || null;
+}
 
 /** 옵션 하나의 시세 그래프에 담을 날 수의 기본값과 상한. 거래 원본(RAW_DAYS)보다 길 수 없다. */
 const RELIC_SERIES_DAYS = 30;
@@ -840,17 +865,43 @@ export async function marketHistory(request, url, env, cors) {
   });
 }
 
-/** 순위 한 줄. 보이는 이름으로 센 줄이면 원래 이름(item)을 함께 준다. 평균은 수량으로 가중한 개당 가격이고, 수량이 0 이하면 값이 없다(0 으로 적지 않는다). */
+/** 순위 한 줄. 보이는 이름이나 유물 옵션으로 센 줄이면 원래 이름(item)을, 유물 옵션이면 옵션 이름(relic)도 준다. 평균은 수량으로 가중한 개당 가격이고, 수량이 0 이하면 값이 없다(0 으로 적지 않는다). */
 function toPopularRow(row) {
   return {
     name: row.name,
     ...(row.item !== row.name ? { item: row.item } : {}),
+    ...(row.relic ? { relic: row.relic } : {}),
     category: row.category,
     n: row.n,
     qty: row.qty,
     total: row.total,
     avg: row.qty > 0 ? Math.round(row.total / row.qty) : null,
   };
+}
+
+/**
+ * 유물 거래를 옵션 이름으로 묶는다. 레벨(수치)이 달라도 옵션이 같으면 한 줄이다. 옵션을 읽지 못한 거래는
+ * 원래 이름("무리아스의 유물") 한 줄로 모인다.
+ */
+function relicPopularRows(results) {
+  const byName = new Map();
+  for (const row of results) {
+    const option = relicOptionName(row.text);
+    const name = option ? `${RELIC_NAME} - ${option}` : RELIC_NAME;
+    const sum = byName.get(name) ?? { name, item: RELIC_NAME, relic: option, category: row.category, n: 0, qty: 0, total: 0 };
+    sum.n += row.n;
+    sum.qty += row.qty;
+    sum.total += row.total;
+    byName.set(name, sum);
+  }
+  return [...byName.values()];
+}
+
+/** POPULAR_RANK 와 같은 순서로 다시 줄 세운다. SQL 순위에 유물 옵션 줄을 끼워 넣을 때 쓴다. */
+function rankPopular(rows, first, second) {
+  return rows
+    .sort((a, b) => b[first] - a[first] || b[second] - a[second] || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .slice(0, POPULAR_LIMIT);
 }
 
 /**
@@ -862,23 +913,16 @@ function toPopularRow(row) {
 export async function popularTrades(db, window, now = Date.now()) {
   const spec = POPULAR_WINDOWS[window];
   const nowSec = Math.floor(now / 1000);
-  let results;
-  let fromSec;
-  if (spec.days) {
-    const today = kstDay(nowSec);
-    fromSec = dayStart(today - spec.days + 1);
-    ({ results } = await db
-      .prepare(POPULAR_DAILY_SQL)
-      .bind(today - spec.days, today, POPULAR_LIMIT)
-      .all());
-  } else {
-    fromSec = nowSec - spec.seconds;
-    ({ results } = await db
-      .prepare(POPULAR_TRADES_SQL)
-      .bind(fromSec, nowSec + 1, POPULAR_LIMIT)
-      .all());
-  }
+  const today = kstDay(nowSec);
+  const fromSec = spec.days ? dayStart(today - spec.days + 1) : nowSec - spec.seconds;
+  const [{ results }, { results: relicResults }] = await Promise.all([
+    spec.days
+      ? db.prepare(POPULAR_DAILY_SQL).bind(today - spec.days, today, POPULAR_LIMIT, RELIC_NAME).all()
+      : db.prepare(POPULAR_TRADES_SQL).bind(fromSec, nowSec + 1, POPULAR_LIMIT, RELIC_NAME).all(),
+    db.prepare(POPULAR_RELIC_SQL).bind(fromSec, nowSec + 1).all(),
+  ]);
   const rows = results ?? [];
+  const relics = relicPopularRows(relicResults ?? []);
   const info = await collectionInfo(db);
   const started = Number(await readMeta(db, 'started')) || 0;
   return {
@@ -886,8 +930,8 @@ export async function popularTrades(db, window, now = Date.now()) {
     from: new Date(fromSec * 1000).toISOString(),
     to: new Date(nowSec * 1000).toISOString(),
     partial: started > fromSec,
-    byCount: rows.filter((row) => row.src === 'n').map(toPopularRow),
-    byTotal: rows.filter((row) => row.src === 't').map(toPopularRow),
+    byCount: rankPopular([...rows.filter((row) => row.src === 'n'), ...relics], 'n', 'total').map(toPopularRow),
+    byTotal: rankPopular([...rows.filter((row) => row.src === 't'), ...relics], 'total', 'n').map(toPopularRow),
     ...info,
   };
 }
