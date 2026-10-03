@@ -75,6 +75,11 @@ function Rank({ rank, width }: { rank: number; width: number }) {
   );
 }
 
+/** 그림을 찾을 이름. 인챈트별로 센 스크롤은 사전에 그 이름이 없을 수 있어 원래 이름으로 찾는다. */
+function iconName(row: PopularRow): string {
+  return canonicalItemName(row.item ?? row.name);
+}
+
 /** 띠에 한 번에 한 줄로 보이는 순위 하나. */
 function TickerItem({ rank, row, basis }: { rank: number; row: PopularRow; basis: Basis }) {
   const formatGold = useGoldFormatter();
@@ -82,7 +87,7 @@ function TickerItem({ rank, row, basis }: { rank: number; row: PopularRow; basis
   return (
     <>
       <Rank rank={rank} width={20} />
-      <ItemIcon category={row.category} name={name} size={24} />
+      <ItemIcon category={row.category} name={iconName(row)} size={24} />
       <Text strong ellipsis style={{ minWidth: 0, flex: '0 1 auto' }}>
         {name}
       </Text>
@@ -167,7 +172,7 @@ function PopularItem({
   return (
     <Flex gap={10} align="center" style={{ minWidth: 0 }}>
       <Rank rank={rank} width={22} />
-      <ItemIcon category={row.category} name={name} size={40} />
+      <ItemIcon category={row.category} name={iconName(row)} size={40} />
       <Flex vertical gap={2} style={{ minWidth: 0, flex: '1 1 auto' }}>
         <Flex gap={6} align="center" wrap>
           <Text strong style={{ minWidth: 0 }}>

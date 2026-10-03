@@ -488,6 +488,12 @@ export function AuctionPage() {
     };
   }, [tierKeyword]);
   const exactOnly = exact && tierKeyword.trim() !== '';
+  // 정확히 일치는 보이는 이름이 같은 것도 남긴다. "전용 인챈트 스크롤 - 투지" 는 원래 이름이 "전용 인챈트 스크롤" 이다.
+  const isExact = useCallback(
+    (row: { item_name: string; item_display_name: string }) =>
+      tierOf(row) === 0 || matchTier(row.item_display_name, tierKeyword) === 0,
+    [tierOf, tierKeyword],
+  );
   // 묶음을 검색어와 함께 찾으면 카테고리를 차례로 불러온 매물에서 이름으로 거른다.
   const scanTerms = useMemo(
     () => (scanning && tierKeyword.trim() ? splitTerms(tierKeyword) : []),
@@ -496,12 +502,12 @@ export function AuctionPage() {
   const itemsMatching = useMemo(() => {
     const byKeyword = scanTerms.length > 0 ? items.filter((item) => matchesKeyword(item, scanTerms)) : items;
     const byOption = filtering ? byKeyword.filter((item) => matchesOptionFilter(item, deferredFilter)) : byKeyword;
-    return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
-  }, [filtering, items, scanTerms, deferredFilter, exactOnly, tierOf]);
+    return exactOnly ? byOption.filter(isExact) : byOption;
+  }, [filtering, items, scanTerms, deferredFilter, exactOnly, isExact]);
   const historyMatching = useMemo(() => {
     const byOption = filtering ? history.filter((item) => matchesOptionFilter(item, deferredFilter)) : history;
-    return exactOnly ? byOption.filter((item) => tierOf(item) === 0) : byOption;
-  }, [filtering, history, deferredFilter, exactOnly, tierOf]);
+    return exactOnly ? byOption.filter(isExact) : byOption;
+  }, [filtering, history, deferredFilter, exactOnly, isExact]);
 
   /**
    * 심볼, 도면, 옷본 제외(방문자 설정). 결과 위에 몇 건을 숨겼는지 알리고, 누르면 보인다. 새로 찾으면 다시

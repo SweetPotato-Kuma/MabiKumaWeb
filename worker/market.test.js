@@ -22,7 +22,7 @@ import {
  */
 function fakeD1() {
   const sqlite = new DatabaseSync(':memory:');
-  for (const file of ['0001_market.sql', '0002_horn.sql', '0003_trades_category_index.sql']) {
+  for (const file of ['0001_market.sql', '0002_horn.sql', '0003_trades_category_index.sql', '0004_daily_variant.sql']) {
     sqlite.exec(readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'));
   }
 
@@ -453,6 +453,47 @@ describe('인기 거래 아이템', () => {
     const body = await (await call('/market/popular?window=7d')).json();
 
     expect(body.byCount.find((row) => row.name === '깨진 줄')).toMatchObject({ n: 50, avg: null });
+  });
+
+  it('인챈트 스크롤은 인챈트마다 따로 센다', async () => {
+    const scroll = (id, secondsAgo, enchant, price) =>
+      trade(id, secondsAgo, {
+        name: '전용 인챈트 스크롤',
+        display: enchant ? `전용 인챈트 스크롤 - ${enchant}` : undefined,
+        category: '인챈트 스크롤',
+        price,
+      });
+    pages = [
+      [
+        scroll(11, 30, '투지', 1000),
+        scroll(12, 40, '투지', 3000),
+        scroll(13, 50, '파괴적인', 9000),
+        scroll(14, 3 * 86400, '투지', 500),
+        // 보이는 이름이 원래 이름과 같으면 원래 이름으로 센다.
+        scroll(15, 60, null, 10),
+      ],
+    ];
+    await collectTrades(env, NOW);
+
+    for (const window of ['1h', '7d']) {
+      const body = await (await call(`/market/popular?window=${window}`)).json();
+      const rows = body.byCount.filter((row) => row.name.includes('인챈트 스크롤'));
+      expect(rows).toEqual([
+        {
+          name: '전용 인챈트 스크롤 - 투지',
+          item: '전용 인챈트 스크롤',
+          category: '인챈트 스크롤',
+          n: window === '7d' ? 3 : 2,
+          qty: window === '7d' ? 3 : 2,
+          total: window === '7d' ? 4500 : 4000,
+          avg: window === '7d' ? 1500 : 2000,
+        },
+        expect.objectContaining({ name: '전용 인챈트 스크롤 - 파괴적인', n: 1, total: 9000 }),
+        { name: '전용 인챈트 스크롤', category: '인챈트 스크롤', n: 1, qty: 1, total: 10, avg: 10 },
+      ]);
+    }
+    // 시세 조회의 하루 요약은 원래 이름으로 묶은 그대로다.
+    expect(count("SELECT COUNT(*) AS c FROM daily WHERE name = '전용 인챈트 스크롤'")).toBe(2);
   });
 
   it('모르는 기간은 거절하고, 기간을 안 주면 24시간이다', async () => {

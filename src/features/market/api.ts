@@ -84,7 +84,10 @@ export interface RelicRecentResponse {
 export type PopularWindow = '1h' | '24h' | '7d' | '30d';
 
 export interface PopularRow {
+  /** 순위의 이름. 인챈트 스크롤, 도면, 옷본은 보이는 이름("전용 인챈트 스크롤 - 투지")으로 센다. */
   name: string;
+  /** 보이는 이름으로 센 줄의 원래 이름("전용 인챈트 스크롤"). 그림은 이 이름으로 찾는다. */
+  item?: string;
   category: string;
   /** 거래 횟수 */
   n: number;

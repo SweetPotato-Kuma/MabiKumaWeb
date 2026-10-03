@@ -5,10 +5,10 @@
  * 그래프도 그릴 수 없다. 그래서 워커가 10분마다(wrangler.toml 의 crons) 거래 내역을 받아 D1 에
  * 쌓고, 화면은 여기서 아이템별로 읽는다.
  *
- *   MARKET             (D1 바인딩, 필수) 거래 원본(trades), 하루 요약(daily), 수집 상태(meta)
+ *   MARKET             (D1 바인딩, 필수) 거래 원본(trades), 하루 요약(daily, daily_variant), 수집 상태(meta)
  *   MARKET_RATE_LIMIT  (Rate limiting 바인딩, 선택) 있으면 시세 조회 횟수를 제한한다
  *
- * 표 모양은 migrations/0001_market.sql 에 있다.
+ * 표 모양은 migrations/ 에 있다.
  *
  * 받는 쪽은 새것부터 거꾸로 내려가며 지난번에 받은 곳을 조금 지나칠 때까지 읽는다. 같은 거래는
  * 거래 번호가 같아 두 번 들어가지 않는다. 중간에 실패하면 "마지막으로 받은 시각" 을 옮기지 않아
@@ -87,24 +87,54 @@ export const POPULAR_WINDOWS = {
 export const POPULAR_LIMIT = 30;
 
 /**
+ * 원래 이름은 같고 보이는 이름("전용 인챈트 스크롤 - 투지", "도면 - 글라디우스")에서만 무엇인지 갈리는 거래.
+ * 인기 순위는 이것들을 보이는 이름으로 센다. 원래 이름으로 세면 인챈트가 다른 스크롤이 모두 한 줄에 섞인다.
+ * 시세 조회(daily, STATS_SQL)는 원래 이름으로 묶은 채 둔다.
+ */
+const VARIANT_WHERE = `display IS NOT NULL AND substr(display, 1, length(name) + 3) = name || ' - '`;
+
+/** 순위에 쓰는 한 거래의 이름. VARIANT_WHERE 이면 보이는 이름이다. */
+export function popularKey(name, display) {
+  return display && display.startsWith(`${name} - `) ? display : name;
+}
+
+/**
  * 기간 안에서 거래 횟수가 많은 순, 총 거래 금액이 많은 순 두 가지 순위를 한 번에 뽑는다. 아이템별로 묶는 일은
  * 한 번이고 정렬만 둘이다. 같으면 다른 쪽 기준, 그다음 이름 순이라 새로 불러도 순서가 흔들리지 않는다.
+ * name 은 순위의 이름(VARIANT_WHERE 이면 보이는 이름), item 은 원래 이름이다.
  */
-const POPULAR_TRADES_SQL = `WITH g AS (
-  SELECT name, MAX(category) AS category, COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total
-  FROM trades WHERE ts >= ?1 AND ts < ?2 GROUP BY name
-)
-SELECT * FROM (SELECT 'n' AS src, name, category, n, qty, total FROM g ORDER BY n DESC, total DESC, name LIMIT ?3)
+const POPULAR_RANK = `SELECT * FROM (SELECT 'n' AS src, name, item, category, n, qty, total FROM g ORDER BY n DESC, total DESC, name LIMIT ?3)
 UNION ALL
-SELECT * FROM (SELECT 't' AS src, name, category, n, qty, total FROM g ORDER BY total DESC, n DESC, name LIMIT ?3)`;
+SELECT * FROM (SELECT 't' AS src, name, item, category, n, qty, total FROM g ORDER BY total DESC, n DESC, name LIMIT ?3)`;
 
-const POPULAR_DAILY_SQL = `WITH g AS (
+const POPULAR_TRADES_SQL = `WITH g AS (
+  SELECT CASE WHEN ${VARIANT_WHERE} THEN display ELSE name END AS name, MAX(name) AS item, MAX(category) AS category,
+    COUNT(*) AS n, SUM(count) AS qty, SUM(count * price) AS total
+  FROM trades WHERE ts >= ?1 AND ts < ?2 GROUP BY 1
+)
+${POPULAR_RANK}`;
+
+/**
+ * 하루 요약으로 센 순위. 보이는 이름으로 갈리는 몫(daily_variant)을 원래 이름의 줄(daily)에서 빼고 따로 세운다.
+ * 둘은 같은 때 같은 원본에서 계산하므로 빼면 보이는 이름이 따로 없는 거래만 남는다.
+ */
+const POPULAR_DAILY_SQL = `WITH v AS (
+  SELECT display AS name, MAX(name) AS item, MAX(category) AS category, SUM(n) AS n, SUM(qty) AS qty, SUM(total) AS total
+  FROM daily_variant WHERE day > ?1 AND day <= ?2 GROUP BY display
+), vi AS (
+  SELECT item, SUM(n) AS n, SUM(qty) AS qty, SUM(total) AS total FROM v GROUP BY item
+), d AS (
   SELECT name, MAX(category) AS category, SUM(n) AS n, SUM(qty) AS qty, SUM(total) AS total
   FROM daily WHERE day > ?1 AND day <= ?2 GROUP BY name
+), g AS (
+  SELECT d.name, d.name AS item, d.category, d.n - COALESCE(vi.n, 0) AS n, d.qty - COALESCE(vi.qty, 0) AS qty,
+    d.total - COALESCE(vi.total, 0) AS total
+  FROM d LEFT JOIN vi ON vi.item = d.name
+  WHERE d.n > COALESCE(vi.n, 0)
+  UNION ALL
+  SELECT name, item, category, n, qty, total FROM v
 )
-SELECT * FROM (SELECT 'n' AS src, name, category, n, qty, total FROM g ORDER BY n DESC, total DESC, name LIMIT ?3)
-UNION ALL
-SELECT * FROM (SELECT 't' AS src, name, category, n, qty, total FROM g ORDER BY total DESC, n DESC, name LIMIT ?3)`;
+${POPULAR_RANK}`;
 
 /** 같은 질문은 이 시간 동안 엣지 캐시에서 답한다. 수집이 10분마다라 더 자주 볼 이유가 없다. */
 const CACHE_SECONDS = 300;
@@ -313,6 +343,13 @@ ORDER BY h`;
 const DAILY_SQL = `INSERT OR REPLACE INTO daily (name, day, category, n, qty, total, lo, hi, mid)
 SELECT name, ?4, category, n, qty, total, lo, hi, mid FROM (${STATS_SQL})`;
 
+/** 보이는 이름으로 갈리는 거래의 하루 요약(인기 순위용). 셈은 DAILY_SQL 과 같은 원본, 같은 범위다. */
+const DAILY_VARIANT_SQL = `INSERT OR REPLACE INTO daily_variant (display, day, name, category, n, qty, total)
+SELECT display, ?4, MAX(name), MAX(category), COUNT(*), SUM(count), SUM(count * price)
+FROM trades
+WHERE name IN (SELECT value FROM json_each(?1)) AND ts >= ?2 AND ts < ?3 AND ${VARIANT_WHERE}
+GROUP BY display`;
+
 async function readMeta(db, key) {
   const row = await db.prepare('SELECT value FROM meta WHERE key = ?1').bind(key).first();
   return row?.value ?? null;
@@ -386,17 +423,25 @@ export async function collectTrades(env, now = Date.now()) {
   // 새로 들어온 것이 있을 때만 그날 요약을 다시 센다. 날이 바뀌는 때는 이틀 몫이 된다.
   if (inserted > 0) {
     const namesByDay = new Map();
+    const variantNamesByDay = new Map();
+    const add = (map, day, name) => {
+      if (!map.has(day)) map.set(day, new Set());
+      map.get(day).add(name);
+    };
     for (const row of rows) {
       const day = kstDay(row[1]);
-      if (!namesByDay.has(day)) namesByDay.set(day, new Set());
-      namesByDay.get(day).add(row[2]);
+      add(namesByDay, day, row[2]);
+      if (popularKey(row[2], row[3]) !== row[2]) add(variantNamesByDay, day, row[2]);
     }
-    for (const [day, names] of namesByDay) {
-      followUps.push(
-        db
-          .prepare(DAILY_SQL)
-          .bind(JSON.stringify([...names]), dayStart(day), dayStart(day + 1), day),
-      );
+    for (const [sql, byDay] of [
+      [DAILY_SQL, namesByDay],
+      [DAILY_VARIANT_SQL, variantNamesByDay],
+    ]) {
+      for (const [day, names] of byDay) {
+        followUps.push(
+          db.prepare(sql).bind(JSON.stringify([...names]), dayStart(day), dayStart(day + 1), day),
+        );
+      }
     }
   }
 
@@ -795,10 +840,11 @@ export async function marketHistory(request, url, env, cors) {
   });
 }
 
-/** 순위 한 줄. 평균은 수량으로 가중한 개당 가격이고, 수량이 0 이하면 값이 없다(0 으로 적지 않는다). */
+/** 순위 한 줄. 보이는 이름으로 센 줄이면 원래 이름(item)을 함께 준다. 평균은 수량으로 가중한 개당 가격이고, 수량이 0 이하면 값이 없다(0 으로 적지 않는다). */
 function toPopularRow(row) {
   return {
     name: row.name,
+    ...(row.item !== row.name ? { item: row.item } : {}),
     category: row.category,
     n: row.n,
     qty: row.qty,
