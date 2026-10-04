@@ -18,26 +18,6 @@ function renderImage(size: number) {
 }
 
 describe('ItemImage', () => {
-  it('새 아이콘에 변환본이 없으면 원래 주소를 표시하고, 그것도 실패하면 빈 그림을 표시한다', () => {
-    const src = 'https://icons.example/0123456789abcdef.png';
-    const { container } = render(<ItemImage src={src} size={48} />);
-    const image = container.querySelector('img') as HTMLImageElement;
-    expect(image.getAttribute('src')).toContain('/data/item-icons/0123456789abcdef.webp');
-    fireEvent.error(image);
-    expect(image.getAttribute('src')).toBe(src);
-    loadAs(image, 24, 48);
-    expect(image.style.width).toBe('24px');
-    fireEvent.error(image);
-    expect(container.querySelector('img')?.getAttribute('src')).toContain('item-missing');
-  });
-
-  it.each([40, 48, 50, 80])('128px 정사각 이미지는 %ipx 칸에 맞춘다', (size) => {
-    const image = renderImage(size);
-    loadAs(image, 128, 128);
-    expect(image.style.width).toBe(`${size}px`);
-    expect(image.style.height).toBe(`${size}px`);
-  });
-
   it('크기를 알기 전에는 숨겨 둔다', () => {
     // 늦게 온 그림이 잘못된 크기로 번쩍이지 않게 한다. 칸은 먼저 잡혀 있다.
     expect(renderImage(48).style.visibility).toBe('hidden');

@@ -2,10 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { pixelScale } from './pixelScale';
 
 describe('pixelScale', () => {
-  it.each([40, 48, 50, 80, 128])('정사각 아이콘은 %ipx 표시 칸을 채운다', (box) => {
-    expect(128 * pixelScale(128, 128, box)).toBe(box);
-  });
-
   it('칸에 들어가면 원래 크기 그대로 둔다', () => {
     expect(pixelScale(48, 48, 48)).toBe(1);
     expect(pixelScale(24, 24, 48)).toBe(1);

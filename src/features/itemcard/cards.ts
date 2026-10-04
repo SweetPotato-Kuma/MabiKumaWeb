@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { getAdminKey } from '@/lib/adminKey';
 import { getProxyUrl } from '@/lib/settings';
-import { squareIconUrl } from './squareIcons';
 
 /**
  * 아이템 카드 - 이름 옆에 붙는 아이콘과 설명.
@@ -79,7 +78,7 @@ export function preloadItemIcons(srcs: readonly string[]): void {
     preloadedIcons.add(src);
     const image = new Image();
     image.decoding = 'async';
-    image.src = squareIconUrl(src) ?? src;
+    image.src = src;
   }
 }
 

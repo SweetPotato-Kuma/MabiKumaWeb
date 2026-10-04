@@ -4,7 +4,6 @@ import itemMissing from '@/assets/item-missing.png';
 import { iconSrcOf, isCardStoreConfigured, type ItemCard } from '@/features/itemcard/cards';
 import { iconFileUrl, isIconMapConfigured, useItemBrief } from '@/features/itemcard/iconMap';
 import { pixelScale } from '@/features/itemcard/pixelScale';
-import { squareIconUrl } from '@/features/itemcard/squareIcons';
 
 interface ItemImageProps {
   src: string;
@@ -17,22 +16,19 @@ interface ItemImageProps {
  * 전에는 숨겨 두고 칸만 잡아 둔다. 칸이 먼저 있으므로 그림이 와도 표가 들썩이지 않는다.
  */
 export function ItemImage({ src, size }: ItemImageProps) {
-  const [unavailableSquare, setUnavailableSquare] = useState<string | null>(null);
-  const preferred = squareIconUrl(src);
-  const displaySrc = unavailableSquare === src ? src : (preferred ?? src);
   // 같은 칸에 다른 그림이 들어올 수 있다(표의 줄이 바뀔 때). 크기는 그림 주소와 짝지어 둔다.
   const [natural, setNatural] = useState<{ src: string; width: number; height: number } | null>(
     null,
   );
   // 주소가 깨진 그림은 빈칸 대신 '그림 없음' 표시로 바꾼다. 이것도 주소와 짝지어 둔다.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const known = natural?.src === displaySrc ? natural : null;
+  const known = natural?.src === src ? natural : null;
   const scale = known ? pixelScale(known.width, known.height, size) : 1;
 
   const measure = (image: HTMLImageElement | null) => {
     if (!image || !image.complete || image.naturalWidth === 0) return;
-    if (natural?.src === displaySrc) return;
-    setNatural({ src: displaySrc, width: image.naturalWidth, height: image.naturalHeight });
+    if (natural?.src === src) return;
+    setNatural({ src, width: image.naturalWidth, height: image.naturalHeight });
   };
 
   if (failedSrc === src) return <MissingIcon size={size} />;
@@ -51,16 +47,13 @@ export function ItemImage({ src, size }: ItemImageProps) {
       <img
         // 이미 받아 둔 그림은 붙는 순간 끝나 있어서 onLoad 가 오지 않을 수 있다. 붙을 때도 한 번 잰다.
         ref={measure}
-        src={displaySrc}
+        src={src}
         // 이름이 바로 옆에 있으므로 그림은 꾸밈이다. 화면 읽기 프로그램이 이름을 두 번 읽지 않게 비운다.
         alt=""
         // lazy 로 두면 화면 배치가 끝날 때까지 받기를 미룬다. 2KB 남짓한 그림이라 바로 받는 편이 낫다.
         decoding="async"
         onLoad={(event) => measure(event.currentTarget)}
-        onError={() => {
-          if (displaySrc !== src) setUnavailableSquare(src);
-          else setFailedSrc(src);
-        }}
+        onError={() => setFailedSrc(src)}
         style={
           known
             ? { width: known.width * scale, height: known.height * scale, display: 'block' }
