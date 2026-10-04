@@ -1,6 +1,6 @@
-/// <reference types="vitest/config" />
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
+import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 /** 넥슨 오픈 API 원본 호스트. 개발 서버에서는 CORS 회피를 위해 프록시로 우회한다. */
@@ -51,6 +51,14 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
+      /**
+       * 다른 사이트에서 받아 온 게임 데이터 파일을 그대로 읽어 검사하는 시험은 *.data.test.ts 로 따로 둔다. 그 사이트가
+       * 막거나 형식을 바꾸면 우리 코드와 상관없이 깨지므로 기본 시험(배포와 동기화)에서는 빼고, `npm run test:data`
+       * (--mode data)로만 돈다. 데이터를 우리 쪽으로 옮기면 기본 시험에 다시 넣는다.
+       */
+      ...(mode === 'data'
+        ? { include: ['src/**/*.data.test.ts'] }
+        : { exclude: [...configDefaults.exclude, '**/*.data.test.ts'] }),
       css: false,
       /**
        * 개발용 .env 에 실제 워커 주소가 들어 있다. 테스트가 그걸 읽으면 화면을 그릴 때마다

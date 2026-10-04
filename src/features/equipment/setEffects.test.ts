@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   describeContribution,
@@ -59,37 +57,5 @@ describe('장비 하나의 세트 효과', () => {
   it('수치는 같으면 하나로, 다르면 폭으로 적는다', () => {
     expect(formatSetRange(3, 3)).toBe('+3');
     expect(formatSetRange(3, 5)).toBe('+3~5');
-  });
-});
-
-describe('세트 효과 표 파일', () => {
-  const data = JSON.parse(
-    readFileSync(resolve(process.cwd(), 'public/data/set-effects.json'), 'utf8'),
-  ) as SetEffectData;
-
-  it('아이템이 가리키는 효과가 모두 정의돼 있다', () => {
-    const missing = Object.values(data.items)
-      .flat()
-      .map(([key]) => key)
-      .filter((key) => !data.effects[key]);
-    expect(missing).toEqual([]);
-  });
-
-  it('효과 이름과 설명에 채우지 못한 자리나 글자 그대로의 줄바꿈이 없다', () => {
-    const texts = Object.values(data.effects).flatMap((def) => [def.name, def.desc]);
-    expect(texts.filter((text) => /\{\d+\}|\[int:|\\n|not found key/.test(text))).toEqual([]);
-  });
-
-  it('제보된 장비의 세트 효과가 들어 있다', () => {
-    const effects = itemSetEffects(data, '얼티밋 기아스 데버스테이션 써클릿');
-    expect(effects.map((effect) => effect.def.name)).toEqual([
-      '연속 공격 발동 확률 증가',
-      '급소 관통 지속 시간 증가',
-      '쾌속 지속 시간 증가',
-    ]);
-    expect(effects[0].own).toEqual({ min: 3, max: 5, bonus: [] });
-    expect(effects[0].others.map((other) => other.name)).toContain(
-      '얼티밋 기아스 데버스테이션 글러브',
-    );
   });
 });

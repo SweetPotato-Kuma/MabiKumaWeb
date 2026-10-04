@@ -17,6 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:data": "vitest run --mode data",
     "test:watch": "vitest"
   },
   "dependencies": {
