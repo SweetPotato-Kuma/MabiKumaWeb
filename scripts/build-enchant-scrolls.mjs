@@ -14,7 +14,7 @@
  *
  * 실행: node scripts/build-enchant-scrolls.mjs
  */
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { buildEnchantDef, buildEnchantSources } from './game-data/enchant-defs.mjs';
 import { parseEquipmentResource } from './game-data/mabi-equipment.mjs';
@@ -29,10 +29,9 @@ const today = new Date().toISOString().slice(0, 10);
 
 async function main() {
   const resource = await readFile(RESOURCE).catch(() => null);
-  const cached = await readdir(ENCHANT_DIR).catch(() => []);
-  if (!resource || cached.length === 0) {
+  if (!resource) {
     throw new Error(
-      '받아 둔 리소스나 인챈트가 없습니다. node scripts/game-data/collect-equipment.mjs --download 를 먼저 돌리세요.',
+      '받아 둔 리소스가 없습니다. node scripts/game-data/collect-equipment.mjs --download 를 먼저 돌리세요.',
     );
   }
 
@@ -52,6 +51,19 @@ async function main() {
       .catch(() => null);
     if (!file?.json) continue;
     defs.push(buildEnchantDef(row, file, text, new Set(), sources));
+  }
+
+  /*
+   * 쓸 수 있는 인챈트가 하나도 없으면 받지 못한 것이다(받기를 건너뛰었거나 데이터 서버가 막았다). 빈 사양으로
+   * 덮으면 사이트의 인챈트 스크롤 사양과 사전 항목이 통째로 사라지므로, 지금 파일을 그대로 두고 알리기만 한다.
+   */
+  if (defs.length === 0) {
+    const message =
+      '쓸 수 있는 인챈트가 없어 인챈트 스크롤 사양과 사전을 그대로 둡니다. ' +
+      'node scripts/game-data/collect-equipment.mjs --download 로 받은 뒤 다시 돌리세요.';
+    console.log(message);
+    if (process.env.GITHUB_ACTIONS) console.log(`::warning::${message}`);
+    return;
   }
 
   const groups = groupScrolls(defs);

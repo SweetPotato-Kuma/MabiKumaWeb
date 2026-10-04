@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createCardMatcher } from './card-match.mjs';
 import { buildEnchantDef, buildEnchantSources, equipTagsOf } from './enchant-defs.mjs';
@@ -42,6 +42,31 @@ const RESOURCE_HOST = 'https://mabires2.pril.cc';
 const VERSION_URL = `${RESOURCE_HOST}/resourceversion/kr/kr_resourceversion.json`;
 const RESOURCE_URL = `${RESOURCE_HOST}/resourcedata/kr/kr_resourcedata.bin.br`;
 const ITEM_JSON_URL = 'https://mabiapi.pril.cc/prilus.mabiapi/ItemJson';
+
+/**
+ * 아이템 JSON 과 인챈트를 주는 서버가 사람 확인을 요구하며 막은 것. 서버는 HTTP 200 에 빈 몸통을 주고 머리글에
+ * grpc-status 7(PERMISSION_DENIED)과 "human check failed" 를 실어 보낸다(2026-10). 빈 응답으로 읽으면 인챈트가
+ * 비었다고 캐시에 남기고 아이템을 "없음" 으로 적어 버려, 서버가 풀린 뒤에도 다시 받지 않는다. 막힌 것은 따로
+ * 알아보고 받기를 멈춘다. 막힌 것을 뚫으려 하지 않는다.
+ */
+class ApiBlockedError extends Error {}
+
+/** grpc 상태를 머리글로 바로 돌려준 응답에서 막힘을 알아본다. 그 밖의 오류 상태는 지금처럼 "없음" 으로 읽는다. */
+function throwIfBlocked(response) {
+  if (response.headers.get('grpc-status') !== '7') return;
+  const message = decodeURIComponent(response.headers.get('grpc-message') ?? '');
+  throw new ApiBlockedError(`데이터 서버가 요청을 막았습니다 (${message || 'PERMISSION_DENIED'}).`);
+}
+
+/**
+ * 막혔다고 알린다. GitHub Actions 에서는 경고로 남기고, 이어지는 단계(장비 올리기)가 건너뛸 수 있게
+ * api_blocked=true 를 단계 출력으로 적는다.
+ */
+async function reportBlocked(error) {
+  log(`${error.message} 받아 둔 것만 쓰고, 받지도 올리지도 않습니다.`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::warning::${error.message}`);
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, 'api_blocked=true\n');
+}
 
 /** 카드 도구와 같은 덩어리를 쓴다. 한쪽이 받아 두면 다른 쪽은 다시 받지 않는다. */
 const RESOURCE_DIR = resolve(process.cwd(), '.cache/item-cards');
@@ -225,6 +250,7 @@ async function fetchItemJson(id) {
     body: itemJsonRequest(id),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  throwIfBlocked(response);
   const json = readItemJsonResponse(Buffer.from(await response.arrayBuffer()));
   return json ? JSON.parse(json) : null;
 }
@@ -241,6 +267,7 @@ async function callGrpc(method, id) {
     body: itemJsonRequest(id),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  throwIfBlocked(response);
   const buffer = Buffer.from(await response.arrayBuffer());
   let position = 0;
   while (position + 5 <= buffer.length) {
@@ -345,7 +372,8 @@ async function downloadEnchants(ids) {
             );
             got++;
             return;
-          } catch {
+          } catch (error) {
+            if (error instanceof ApiBlockedError) throw error;
             await sleep(500);
           }
         }
@@ -384,7 +412,8 @@ async function downloadItemJsons(ids, missing) {
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
             return { id, json: await fetchItemJson(id), failed: false };
-          } catch {
+          } catch (error) {
+            if (error instanceof ApiBlockedError) throw error;
             await sleep(500);
           }
         }
@@ -695,8 +724,16 @@ async function main() {
   // 인챈트는 옵션셋 가운데 쓰임새 0(접두)과 1(접미)이다. 나머지는 개조 옵션, 세트 효과 같은 것들.
   const enchantRows = data.OptionSetList.filter((row) => (row.Usage ?? 0) <= 1);
   if (!checkOnly) {
-    const got = await downloadEnchants(enchantRows.map((row) => row.Id));
-    if (got) log(`인챈트 ${got}개 새로 받음`);
+    try {
+      const got = await downloadEnchants(enchantRows.map((row) => row.Id));
+      if (got) log(`인챈트 ${got}개 새로 받음`);
+    } catch (error) {
+      if (!(error instanceof ApiBlockedError)) throw error;
+      // 막혔으면 아이템 JSON 도 같은 서버라 받을 수 없다. 반쯤 빈 장비 데이터를 올리면 멀쩡한 것을 덮으므로 여기서 멈춘다.
+      await reportBlocked(error);
+      if (willUpload) process.exitCode = 1;
+      return;
+    }
   }
 
   const npcName = buildNpcNames(data.RaceList, text);
@@ -818,10 +855,20 @@ async function main() {
       continue;
     }
 
-    const got = await downloadItemJsons(
-      picked.map((entry) => entry.id),
-      missing,
-    );
+    let got;
+    try {
+      got = await downloadItemJsons(
+        picked.map((entry) => entry.id),
+        missing,
+      );
+    } catch (error) {
+      if (!(error instanceof ApiBlockedError)) throw error;
+      // 도중에 막히면 이 카테고리부터는 올리지 않는다. 앞서 올린 카테고리는 다 받은 것이라 그대로 둔다.
+      await writeFile(resolve(CACHE_DIR, 'missing.json'), JSON.stringify([...missing]));
+      await reportBlocked(error);
+      if (willUpload) process.exitCode = 1;
+      return;
+    }
     await writeFile(resolve(CACHE_DIR, 'missing.json'), JSON.stringify([...missing]));
     if (got) log(`${step}: 아이템 JSON ${got}개 새로 받음`);
     if (downloadOnly) continue;

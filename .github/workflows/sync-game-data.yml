@@ -56,7 +56,9 @@ jobs:
         run: node scripts/sync-recipe-names.mjs
 
       # 인챈트 정의를 받아 두고(새로 생긴 것만), 스크롤 이름과 사양을 만든다. 카드를 올리기 전에 사전에 이름이 있어야 한다.
+      # 데이터 서버가 사람 확인을 요구하며 막으면 api_blocked=true 를 남기고, 받아 둔 것과 커밋된 사양을 그대로 쓴다.
       - name: Build enchant scrolls
+        id: enchants
         run: |
           node --max-old-space-size=4096 scripts/game-data/collect-equipment.mjs --download
           node scripts/build-enchant-scrolls.mjs
@@ -78,7 +80,8 @@ jobs:
             echo "same=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload cards and equipment
+      # 카드는 리소스 파일과 그림 서버만 쓴다. 장비 데이터 서버가 막혀도 올린다.
+      - name: Upload cards
         if: steps.fingerprint.outputs.same != 'true'
         env:
           VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL }}
@@ -87,6 +90,15 @@ jobs:
           node --max-old-space-size=4096 scripts/game-data/collect-item-cards.mjs --recipe-icons
           node scripts/build-recipes.mjs --icons-only
           node --max-old-space-size=4096 scripts/game-data/collect-item-cards.mjs
+
+      # 데이터 서버가 막혔으면 장비 JSON 이 빈 채로 올라가 멀쩡한 장비 데이터를 덮으므로 건너뛴다. 지문은 장비까지
+      # 올린 뒤에만 남겨, 서버가 풀린 뒤의 실행에서 다시 올린다(카드는 올린 기록이 있어 다시 올리지 않는다).
+      - name: Upload equipment
+        if: steps.fingerprint.outputs.same != 'true' && steps.enchants.outputs.api_blocked != 'true'
+        env:
+          VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL }}
+          MABIKUMA_ADMIN_KEY: ${{ secrets.MABIKUMA_ADMIN_KEY }}
+        run: |
           node --max-old-space-size=4096 scripts/game-data/collect-equipment.mjs
           echo "${{ steps.fingerprint.outputs.value }}" > .cache/game-data-stamp
 
