@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Card, Col, Flex, Grid, InputNumber, Row, Segmented, Statistic, Table, Typography, theme, type TableColumnsType } from 'antd';
+import { Button, Card, Flex, Grid, InputNumber, Segmented, Table, Typography, type TableColumnsType } from 'antd';
 import { FarmItemLink, GainCell, GoldCell } from '@/components/taltinFarm/shared';
 import { DUCAT_GEM, DUCAT_ITEMS, type DucatGroup, type DucatItem } from '@/features/taltinFarm/data';
 import { byGainDesc, ducatOutcome, goldPerDucat, type DucatOutcome, type Quote } from '@/features/taltinFarm/value';
@@ -23,22 +23,27 @@ const GROUP_OPTIONS: { value: GroupFilter; label: string }[] = [
   { value: 'finest', label: '최고급' },
 ];
 
-/** 두카트 1개 값은 1골드 안팎이라 소수 둘째 자리까지 적는다. */
-const rateText = (rate: number) => `${rate.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} G`;
+/** 비율은 1골드 안팎이라 소수 둘째 자리까지 다룬다. */
+const RATE_PRECISION = 2;
+const roundRate = (rate: number) => Number(rate.toFixed(RATE_PRECISION));
 
 /** 물품을 경매장에 팔지, NPC 에 넘겨 두카트로 받을지. 두카트가 더 남는 것부터. */
 export function DucatTab({ quote, pending }: { quote: Quote; pending: boolean }) {
   const formatGold = useGoldFormatter();
-  const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
 
-  const [typedRate, setTypedRate] = useState<number | null>(null);
+  /**
+   * 직접 넣은 비율. undefined 면 손대지 않은 것이라 칸에 시세 비율을 채워 보인다. 칸을 지우는 중(null)에는
+   * 칸을 비워 두어야 새 값을 칠 수 있다. 그동안 계산은 시세 비율로 한다.
+   */
+  const [typedRate, setTypedRate] = useState<number | null | undefined>(undefined);
   const [group, setGroup] = useState<GroupFilter>('all');
 
   const gemPrice = quote(DUCAT_GEM.name);
   const autoRate = goldPerDucat(gemPrice);
-  const rate = typedRate !== null && typedRate > 0 ? typedRate : autoRate;
+  const typed = typeof typedRate === 'number' && typedRate > 0;
+  const rate = typed ? (typedRate as number) : autoRate;
 
   const rows = useMemo(
     () =>
@@ -48,19 +53,22 @@ export function DucatTab({ quote, pending }: { quote: Quote; pending: boolean })
     [group, rate, quote],
   );
 
+  const ducatText = (row: DucatRow) => (
+    <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
+      {formatNumber(row.item.ducats)}
+    </Text>
+  );
+
   const columns: TableColumnsType<DucatRow> = wide
     ? [
         { title: '물품', key: 'name', render: (_value, row) => <FarmItemLink name={row.item.name} short /> },
+        { title: '두카트', key: 'ducats', align: 'right', width: 110, render: (_value, row) => ducatText(row) },
         {
-          title: '두카트',
-          key: 'ducats',
+          title: '골드 환산액',
+          key: 'exchanged',
           align: 'right',
-          width: 110,
-          render: (_value, row) => (
-            <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-              {formatNumber(row.item.ducats)}
-            </Text>
-          ),
+          width: 140,
+          render: (_value, row) => <GoldCell value={row.outcome.exchanged} pending={pending} />,
         },
         {
           title: '경매장 판매가',
@@ -70,89 +78,72 @@ export function DucatTab({ quote, pending }: { quote: Quote; pending: boolean })
           render: (_value, row) => <GoldCell value={row.outcome.market} pending={pending} />,
         },
         {
-          title: '두카트로 받는 값',
-          key: 'exchanged',
-          align: 'right',
-          width: 150,
-          render: (_value, row) => <GoldCell value={row.outcome.exchanged} pending={pending} />,
-        },
-        {
-          title: '두카트 - 경매장',
+          title: '차익',
           key: 'gain',
           align: 'right',
-          width: 140,
+          width: 130,
           render: (_value, row) => <GainCell value={row.outcome.gain} pending={pending} />,
         },
       ]
     : [
         {
-          // 768px 미만에서는 칸을 합친다. 차이만 제 칸에 둔다.
+          // 768px 미만에서는 칸을 합친다. 차익만 제 칸에 둔다.
           title: '물품',
           key: 'name',
           render: (_value, row) => (
             <Flex vertical gap={4}>
               <FarmItemLink name={row.item.name} short />
               <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                {formatNumber(row.item.ducats)} 두카트, 경매장 {formatGold(row.outcome.market)}
+                {formatNumber(row.item.ducats)} 두카트, 환산 {formatGold(row.outcome.exchanged)}, 경매장{' '}
+                {formatGold(row.outcome.market)}
               </Text>
             </Flex>
           ),
         },
         {
-          title: '두카트 - 경매장',
+          title: '차익',
           key: 'gain',
           align: 'right',
-          width: 120,
+          width: 110,
           render: (_value, row) => <GainCell value={row.outcome.gain} pending={pending} />,
         },
       ];
 
   return (
     <Flex vertical gap={12}>
-      <Card variant="outlined">
-        {/* 두 칸. 768px 미만에서는 한 단으로 떨어진다. */}
-        <Row gutter={[24, 16]} align="middle">
-          <Col xs={24} md={10}>
-            <Statistic
-              title="두카트 1개"
-              value={rate === null ? '-' : rateText(rate)}
-              styles={{
-                content: {
-                  color: token.colorPrimary,
-                  fontWeight: 600,
-                  fontVariantNumeric: 'tabular-nums',
-                  whiteSpace: 'nowrap',
-                },
-              }}
-            />
-            <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-              {typedRate !== null && typedRate > 0
-                ? '직접 넣은 값'
-                : `${DUCAT_GEM.name} ${formatGold(gemPrice)} / ${formatNumber(DUCAT_GEM.ducats)} 두카트`}
-            </Text>
-          </Col>
-          <Col xs={24} md={14}>
-            <Flex vertical gap={4}>
-              <label htmlFor="ducat-rate">
-                <Text>두카트 1개 값 직접 넣기</Text>
-              </label>
-              <InputNumber<number>
-                id="ducat-rate"
-                min={0}
-                step={0.01}
-                precision={2}
-                controls={false}
-                value={typedRate}
-                placeholder={autoRate === null ? undefined : `예: ${autoRate.toFixed(2)}`}
-                onChange={(value) => setTypedRate(value)}
-                suffix="G"
-                className="tnum"
-                style={{ width: 160 }}
-              />
-            </Flex>
-          </Col>
-        </Row>
-      </Card>
+      <Flex gap={12} align="center" wrap>
+        <Flex gap={8} align="center">
+          <label htmlFor="ducat-rate">
+            <Text>두카트 비율</Text>
+          </label>
+          <InputNumber<number>
+            id="ducat-rate"
+            min={0}
+            step={0.01}
+            precision={RATE_PRECISION}
+            controls={false}
+            value={typedRate !== undefined ? typedRate : autoRate === null ? null : roundRate(autoRate)}
+            placeholder={autoRate === null ? undefined : String(roundRate(autoRate))}
+            onChange={(value) => setTypedRate(value)}
+            prefix={<Text type="secondary">1 두카트 =</Text>}
+            suffix="G"
+            className="tnum"
+            style={{ width: 170 }}
+          />
+        </Flex>
+        <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
+          {typed
+            ? '직접 넣은 비율'
+            : gemPrice === null
+              ? `${DUCAT_GEM.name} 시세 없음`
+              : `${DUCAT_GEM.name} ${formatGold(gemPrice)} / ${formatNumber(DUCAT_GEM.ducats)}`}
+        </Text>
+        {typedRate !== undefined ? (
+          <Button size="small" type="link" style={{ paddingInline: 0 }} onClick={() => setTypedRate(undefined)}>
+            시세로 되돌리기
+          </Button>
+        ) : null}
+      </Flex>
 
       <Segmented<GroupFilter>
         aria-label="물품 종류"

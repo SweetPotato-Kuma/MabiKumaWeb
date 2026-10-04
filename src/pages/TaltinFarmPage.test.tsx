@@ -118,15 +118,19 @@ describe('탈틴 농장 계산기', () => {
     expect(within(firstRow).getByText('농작물 3,000 G, 가공품 5,000 G')).toBeInTheDocument();
   });
 
-  it('두카트 탭은 티어드롭 젬스톤으로 두카트 값을 매기고, 직접 넣은 값이 이긴다', async () => {
+  it('두카트 탭은 티어드롭 젬스톤으로 비율을 채우고, 직접 넣은 비율이 이긴다', async () => {
     renderPage('/taltin-farm-calculator?tab=ducat');
-    expect(await screen.findByText('2 G', undefined, SLOW)).toBeInTheDocument();
     // 블랙베리 주스 3,500 두카트 x 2 G - 경매장 5,000 G
-    expect(within(rowOf('블랙베리 주스')).getByText('+2,000 G')).toBeInTheDocument();
+    expect(await within(await vi.waitFor(() => rowOf('블랙베리 주스'), SLOW)).findByText(/\+2,000 G/, undefined, SLOW)).toBeInTheDocument();
+    const input = screen.getByLabelText('두카트 비율');
+    expect(input).toHaveValue('2.00');
 
-    fireEvent.change(screen.getByLabelText('두카트 1개 값 직접 넣기'), { target: { value: '3' } });
+    fireEvent.change(input, { target: { value: '3' } });
     expect(await within(rowOf('블랙베리 주스')).findByText('+5,500 G')).toBeInTheDocument();
-    expect(screen.getByText('직접 넣은 값')).toBeInTheDocument();
+    expect(screen.getByText('직접 넣은 비율')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '시세로 되돌리기' }));
+    expect(await within(rowOf('블랙베리 주스')).findByText('+2,000 G')).toBeInTheDocument();
   });
 
   it('시세 파일에 있는 이름은 경매장에 묻지 않는다', async () => {
