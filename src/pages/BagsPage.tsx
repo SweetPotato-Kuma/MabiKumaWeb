@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -23,9 +23,11 @@ import {
   type TreeDataNode,
 } from 'antd';
 import { BagImage } from '@/components/BagImage';
+import { BagWatchList, type WatchCounts } from '@/components/bags/BagWatchList';
 import { ColorChannelFields } from '@/components/ColorChannelFields';
 import { ShopResetCountdown } from '@/components/ErinnClock';
 import { canSearchBags } from '@/features/bags/api';
+import { buildAuctionBagListings, useAuctionBags } from '@/features/bags/auction';
 import {
   COLOR_CHANNEL_KEYS,
   describeColorChannel,
@@ -33,7 +35,7 @@ import {
   hasColorChannels,
 } from '@/features/colorChannels';
 import { BAG_NAMES } from '@/features/bags/constants';
-import { formatRgb } from '@/features/bags/color';
+import { formatRgb, hexToRgb } from '@/features/bags/color';
 import { useDyeBook, type BagDyeBook } from '@/features/bags/dye';
 import {
   bagCategory,
@@ -44,34 +46,57 @@ import {
   namesOfSelection,
   type BagTreeNode,
 } from '@/features/bags/groups';
-import { bagNamesOf, buildListings, type BagListing } from '@/features/bags/listings';
+import { bagNamesOf, buildListings } from '@/features/bags/listings';
 import {
   bagConditionParams,
-  hasBagConditions,
   readBagConditions,
+  type BagSearchConditions,
   type PartCondition,
 } from '@/features/bags/searchParams';
 import { useBagSearch } from '@/features/bags/useBagSearch';
 import { useGridFit } from '@/features/bags/useGridFit';
+import {
+  compileWatches,
+  matchingWatches,
+  useBagWatches,
+  type BagWatch,
+  type CompiledWatch,
+} from '@/features/bags/watches';
 import { NpcShopNotReady } from '@/components/NpcShopNotReady';
 import { ServerSelect } from '@/components/ServerSelect';
 import { useServerParam } from '@/lib/useServerParam';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatRemaining } from '@/lib/format';
 import { formatPriceWithType, useGoldFormatter } from '@/lib/useGoldFormatter';
 import { PAGE_SIZE_OPTIONS, useListPagination } from '@/lib/useListPagination';
-import { useQueryParams } from '@/lib/useQueryParams';
+import { readOneOf, useQueryParams } from '@/lib/useQueryParams';
 import { EmptyState } from '@/components/EmptyState';
-import { ArrowDownIcon, GridIcon, ListIcon, SearchIcon } from '@/components/icons';
+import {
+  ArrowDownIcon,
+  GridIcon,
+  ListIcon,
+  RefreshIcon,
+  SearchIcon,
+  StarFillIcon,
+} from '@/components/icons';
 
 const { Title, Text } = Typography;
 
 const PART_LABELS = ['파트 A', '파트 B', '파트 C'];
+const PART_LETTERS = ['A', 'B', 'C'];
 
 type ViewMode = 'grid' | 'table';
 
 const VIEW_OPTIONS = [
   { value: 'grid', label: '그림', icon: <GridIcon /> },
   { value: 'table', label: '표', icon: <ListIcon /> },
+];
+
+/** 어디서 파는 주머니를 보는지. NPC 상점이 기본이라 주소에 남기지 않는다. */
+type Market = 'npc' | 'auction';
+const MARKETS: readonly Market[] = ['npc', 'auction'];
+const MARKET_TABS = [
+  { key: 'npc', label: 'NPC 상점' },
+  { key: 'auction', label: '경매장' },
 ];
 
 /**
@@ -99,12 +124,46 @@ const CARD_IMAGE_SIZE = 96;
 /** 조건을 고친 뒤 주소에 쓰기까지 기다리는 시간. 색을 끌어 고르는 동안 주소가 계속 바뀌지 않게 한다. */
 const URL_WRITE_DELAY_MS = 300;
 
-/** 결과가 유효한지 다시 볼 간격. 데이터를 다시 받는 것이 아니라 "지났다" 표시만 바꾼다. */
+/** 결과가 유효한지 다시 볼 간격. 이 간격마다 상점이 바뀌었는지 보고, 바뀌었으면 새로 받는다. */
 const CLOCK_TICK_MS = 30 * 1000;
 
 function formatClock(ms: number): string {
   return new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 }
+
+/**
+ * 결과 한 줄. NPC 상점과 경매장이 같은 그림 보기와 분류 탭을 쓰도록 둘을 같은 모양으로 맞춘다.
+ * 어디서 파는지(채널과 NPC, 남은 시간)는 place 한 줄로 적고, 표는 탭마다 칸을 따로 둔다.
+ */
+interface ResultRow {
+  key: string;
+  name: string;
+  colors: string[];
+  comparedParts: number[];
+  score: number | null;
+  price: number | null;
+  priceType: string | null;
+  /** 그림 보기 카드의 파는 곳 한 줄. */
+  place: string;
+  channel?: number;
+  npc?: string;
+  expire?: string;
+  /** 맞는 관심 조건 이름. 비어 있으면 관심 주머니가 아니다. */
+  watched: string[];
+}
+
+/** 관심 주머니를 맨 위로. 같은 무리 안의 순서는 그대로 둔다. */
+function pinWatched(rows: ResultRow[]): ResultRow[] {
+  return [
+    ...rows.filter((row) => row.watched.length > 0),
+    ...rows.filter((row) => row.watched.length === 0),
+  ];
+}
+
+const watchedNames = (
+  row: { name: string; colors: readonly string[] },
+  watches: readonly CompiledWatch[],
+) => matchingWatches(row, watches).map((watch) => watch.name);
 
 /** 주머니 색 견본. 비교에 쓰인 파트는 테두리를 두껍게 해 무엇과 비교했는지 보이게 한다. */
 function Swatches({
@@ -142,6 +201,50 @@ function Swatches({
   );
 }
 
+/** 표 보기의 파트별 RGB 숫자. 견본 아래 한 줄로 둔다. */
+function PartRgb({ colors }: { colors: string[] }) {
+  return (
+    <Flex gap={10} wrap>
+      {colors.map((hex, part) => {
+        const rgb = hexToRgb(hex);
+        return rgb ? (
+          <Text
+            key={part}
+            type="secondary"
+            className="tnum"
+            style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            {PART_LETTERS[part]} {rgb.r},{rgb.g},{rgb.b}
+          </Text>
+        ) : null;
+      })}
+    </Flex>
+  );
+}
+
+/** 관심 조건에 맞는 주머니 표시. 어느 조건에 맞는지는 툴팁으로 알린다. */
+function WatchTag({ names }: { names: string[] }) {
+  const { token } = theme.useToken();
+  if (names.length === 0) return null;
+  return (
+    <Tooltip title={`관심 조건: ${names.join(', ')}`}>
+      <Tag
+        icon={<StarFillIcon aria-hidden />}
+        style={{
+          marginInlineEnd: 0,
+          paddingInline: 4,
+          fontSize: 11,
+          color: token.colorPrimary,
+          borderColor: token.colorPrimary,
+          background: 'transparent',
+        }}
+      >
+        관심
+      </Tag>
+    </Tooltip>
+  );
+}
+
 /**
  * 그림 보기. 색이 입혀진 주머니를 카드로 늘어놓아 눈으로 훑어 고를 수 있게 한다.
  *
@@ -151,13 +254,14 @@ function Swatches({
  * 칸 너비를 정해 두고 화면에 들어가는 만큼 채운다. 768px 미만 휴대폰에서는 두 칸이 된다.
  * 따로 단을 나누는 규칙이 없어도 한 단으로 무너지지 않는다.
  */
-function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }) {
+function BagGrid({ rows, book }: { rows: ResultRow[]; book: BagDyeBook | null }) {
   const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
 
   return (
     <div
       role="list"
+      aria-label="주머니 목록"
       style={{
         display: 'grid',
         gridTemplateColumns: `repeat(auto-fill, minmax(${CARD_MIN_WIDTH}px, 1fr))`,
@@ -170,7 +274,10 @@ function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }
           role="listitem"
           size="small"
           variant="outlined"
-          style={{ height: CARD_HEIGHT }}
+          style={{
+            height: CARD_HEIGHT,
+            borderColor: row.watched.length > 0 ? token.colorPrimary : undefined,
+          }}
           styles={{ body: { padding: 8 } }}
         >
           <Flex vertical gap={4}>
@@ -178,6 +285,7 @@ function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }
               <BagImage book={book} name={row.name} colors={row.colors} size={CARD_IMAGE_SIZE} />
             </Flex>
             <Flex gap={4} align="center" style={{ minWidth: 0, height: 22 }}>
+              <WatchTag names={row.watched} />
               {isSturdier(row.name) ? (
                 <Tag
                   bordered={false}
@@ -199,7 +307,7 @@ function BagGrid({ rows, book }: { rows: BagListing[]; book: BagDyeBook | null }
               ) : null}
             </Flex>
             <Text type="secondary" className="tnum" ellipsis style={{ fontSize: 12 }}>
-              {row.channel}채널 {row.npc}
+              {row.place}
             </Text>
             <Text className="tnum" style={{ fontSize: 12 }}>
               {row.price === null ? '-' : formatPriceWithType(formatGold, row.price, row.priceType)}
@@ -254,7 +362,9 @@ function PartChannelsRow({
 }) {
   const label = PART_LABELS[part];
   const narrowed = hasColorChannels(condition.channels);
-  const summary = COLOR_CHANNEL_KEYS.map((key) => describeColorChannel(key, condition.channels[key]))
+  const summary = COLOR_CHANNEL_KEYS.map((key) =>
+    describeColorChannel(key, condition.channels[key]),
+  )
     .filter(Boolean)
     .join(' ');
 
@@ -300,7 +410,10 @@ function PartChannelsRow({
             aria-label={`${label} 조건 ${open ? '접기' : '펼치기'}`}
             icon={
               <ArrowDownIcon
-                style={{ transform: open ? undefined : 'rotate(-90deg)', transition: 'transform 0.15s' }}
+                style={{
+                  transform: open ? undefined : 'rotate(-90deg)',
+                  transition: 'transform 0.15s',
+                }}
               />
             }
             onClick={() => onOpenChange(!open)}
@@ -320,14 +433,198 @@ function PartChannelsRow({
   );
 }
 
+/**
+ * 결과 목록. 분류 탭, 그림과 표 보기, 쪽 넘기기를 NPC 상점과 경매장이 같이 쓴다. 표의 칸만 탭마다 다르다.
+ * 그림 보기는 화면에 들어가는 만큼씩 넘기고, 쪽 크기를 직접 고르면 그 값을 쓴다.
+ */
+function BagResultList({
+  rows,
+  book,
+  columns,
+  status,
+  layoutKey,
+}: {
+  rows: ResultRow[];
+  book: BagDyeBook | null;
+  columns: TableColumnsType<ResultRow>;
+  /** 목록 위에 붙는 한 줄(서버와 개수, 유효 시각 같은). */
+  status: ReactNode;
+  /** 위쪽 안내가 바뀌면 격자를 다시 잰다. */
+  layoutKey: string;
+}) {
+  const screens = Grid.useBreakpoint();
+  const wide = Boolean(screens.md);
+  const [view, setView] = useState<ViewMode>('grid');
+  const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
+
+  /**
+   * 분류별 탭. 여러 분류를 함께 고르면 결과가 섞여 한 분류만 훑어보기 어렵다. 결과에 분류가
+   * 둘 이상 있을 때만 탭을 보이고, "전체" 는 분류를 가리지 않고 가까운 순으로 본다.
+   */
+  const categoryOfName = useMemo(() => {
+    const map = new Map<string, { key: string; title: string }>();
+    for (const row of rows) if (!map.has(row.name)) map.set(row.name, bagCategory(row.name));
+    return map;
+  }, [rows]);
+  const categoryTabs = useMemo(() => {
+    const counts = new Map<string, { title: string; count: number }>();
+    for (const row of rows) {
+      const { key, title } = categoryOfName.get(row.name)!;
+      counts.set(key, { title, count: (counts.get(key)?.count ?? 0) + 1 });
+    }
+    return CATEGORY_ORDER.filter((key) => counts.has(key)).map((key) => ({
+      key,
+      ...counts.get(key)!,
+    }));
+  }, [rows, categoryOfName]);
+  const showTabs = categoryTabs.length > 1;
+  // 체크를 바꿔 보던 분류가 결과에서 사라지면 전체로 돌아간다.
+  const currentTab =
+    showTabs && categoryTabs.some((tab) => tab.key === activeTab) ? activeTab : ALL_TAB;
+  const visible = useMemo(
+    () =>
+      currentTab === ALL_TAB
+        ? rows
+        : rows.filter((row) => categoryOfName.get(row.name)?.key === currentTab),
+    [rows, categoryOfName, currentTab],
+  );
+
+  const resetKey = `${layoutKey}|${currentTab}|${rows.length}`;
+  const tablePaging = useListPagination(resetKey, { defaultPageSize: TABLE_PAGE_SIZE });
+
+  // 그림 보기는 화면에 맞춘 개수씩 넘긴다. 위쪽 안내가 생기거나 없어지면 격자가 움직이므로 다시 잰다.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const fitted = useGridFit(gridRef, {
+    minColumnWidth: CARD_MIN_WIDTH,
+    rowHeight: CARD_HEIGHT,
+    gap: GRID_GAP,
+    reserveBelow: PAGINATION_ROOM,
+    minRows: 2,
+    layoutKey: `${view}|${layoutKey}|${showTabs}`,
+  });
+  // 쪽 크기를 직접 고르면 그 값을 쓰고, 고르지 않았으면 화면에 맞춘 개수를 쓴다. 표와 경매장처럼 같은 선택지다.
+  const [gridSizeChoice, setGridSizeChoice] = useState<number | null>(null);
+  const gridPageSize = gridSizeChoice ?? (wide ? (fitted ?? MOBILE_PAGE_SIZE) : MOBILE_PAGE_SIZE);
+  const [gridPage, setGridPage] = useState(1);
+  useEffect(() => {
+    setGridPage(1);
+  }, [resetKey, gridPageSize]);
+
+  const viewToggle = (
+    <Segmented
+      size="small"
+      aria-label="보기 방식"
+      value={view}
+      onChange={(value) => setView(value as ViewMode)}
+      options={VIEW_OPTIONS}
+    />
+  );
+
+  const header = showTabs ? (
+    // 개수는 탭마다 붙어 있으므로 따로 줄을 쓰지 않는다. 그만큼 격자가 한 줄 더 들어간다.
+    // 768px 미만에서는 탭 옆에 안내와 보기 단추를 두면 탭이 한두 개만 남고 단추가 잘렸다. 그때는 그 둘을
+    // 탭 위 한 줄로 올린다.
+    <Flex vertical gap={8}>
+      {wide ? null : (
+        <Flex justify="space-between" align="center" gap={12} wrap>
+          {status}
+          {viewToggle}
+        </Flex>
+      )}
+      <Tabs
+        size="small"
+        activeKey={currentTab}
+        onChange={setActiveTab}
+        tabBarStyle={{ marginBottom: 0 }}
+        tabBarExtraContent={
+          wide ? (
+            <Flex gap={12} align="center">
+              {status}
+              {viewToggle}
+            </Flex>
+          ) : undefined
+        }
+        items={[
+          { key: ALL_TAB, label: tabLabel('전체', rows.length) },
+          ...categoryTabs.map((tab) => ({ key: tab.key, label: tabLabel(tab.title, tab.count) })),
+        ]}
+      />
+    </Flex>
+  ) : (
+    <Flex justify="space-between" align="center" gap={12} wrap>
+      {status}
+      {viewToggle}
+    </Flex>
+  );
+
+  return (
+    <>
+      {header}
+      {view === 'grid' ? (
+        <>
+          <div ref={gridRef}>
+            <BagGrid
+              rows={visible.slice((gridPage - 1) * gridPageSize, gridPage * gridPageSize)}
+              book={book}
+            />
+          </div>
+          <Flex justify="flex-end" align="center" gap={8} wrap>
+            {gridSizeChoice !== null ? (
+              <Button size="small" type="link" onClick={() => setGridSizeChoice(null)}>
+                화면에 맞춤
+              </Button>
+            ) : null}
+            <Pagination
+              current={gridPage}
+              pageSize={gridPageSize}
+              total={visible.length}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              showSizeChanger
+              onChange={(page, size) => {
+                if (size !== gridPageSize) setGridSizeChoice(size);
+                else setGridPage(page);
+              }}
+              size="small"
+            />
+          </Flex>
+        </>
+      ) : (
+        <Table<ResultRow>
+          columns={columns}
+          dataSource={visible}
+          rowKey="key"
+          size="small"
+          pagination={tablePaging.pagination}
+          scroll={{ x: 720 }}
+        />
+      )}
+    </>
+  );
+}
+
+/** 표의 주머니 칸. 그림, 이름, 관심 표시, 견본, 파트별 RGB 숫자. */
+function NameCell({ row, book }: { row: ResultRow; book: BagDyeBook | null }) {
+  return (
+    <Flex gap={12} align="center">
+      <BagImage book={book} name={row.name} colors={row.colors} size={ROW_IMAGE_SIZE} />
+      <Flex vertical gap={6}>
+        <Flex gap={6} align="center" wrap>
+          <WatchTag names={row.watched} />
+          <Text strong>{row.name}</Text>
+        </Flex>
+        <Swatches colors={row.colors} compared={row.comparedParts} />
+        <PartRgb colors={row.colors} />
+      </Flex>
+    </Flex>
+  );
+}
+
 export function BagsPage() {
   const formatGold = useGoldFormatter();
   const available = canSearchBags();
   const { state, search } = useBagSearch();
   // 찾기 전에 미리 받아 둔다. 결과가 올 때쯤이면 칠할 준비가 끝나 있다.
   const dyeBook = useDyeBook();
-  const screens = Grid.useBreakpoint();
-  const wide = Boolean(screens.md);
 
   /**
    * 검색 조건은 주소에 담는다. 처음 열 때 주소에서 읽고, 고칠 때마다 주소를 따라 고친다(replace).
@@ -335,14 +632,15 @@ export function BagsPage() {
    * 쌓이지 않게 하고, 색을 끄는 동안 주소가 매번 바뀌지 않게 잠깐 기다린다.
    */
   const [params, updateParams] = useQueryParams();
-  const [initial] = useState(() => ({ conditions: readBagConditions(params), shared: hasBagConditions(params) }));
+  const [initial] = useState(() => readBagConditions(params));
   const [server, setServer] = useServerParam();
+  const market = readOneOf(params.get('tab'), MARKETS, 'npc');
   /** 트리에서 체크한 칸들. 비어 있으면 모든 주머니. */
-  const [selectedBags, setSelectedBags] = useState<string[]>(initial.conditions.bags);
-  const [parts, setParts] = useState<PartCondition[]>(initial.conditions.parts);
+  const [selectedBags, setSelectedBags] = useState<string[]>(initial.bags);
+  const [parts, setParts] = useState<PartCondition[]>(initial.parts);
   // 처음에는 켜 둔 파트만 펼친다. 조건이 실린 링크로 들어왔으면 건 파트가 보인다.
   const [openParts, setOpenParts] = useState<boolean[]>(() =>
-    initial.conditions.parts.map((part) => part.enabled),
+    initial.parts.map((part) => part.enabled),
   );
   useEffect(() => {
     const timer = setTimeout(
@@ -351,21 +649,68 @@ export function BagsPage() {
     );
     return () => clearTimeout(timer);
   }, [selectedBags, parts, updateParams]);
-  // 조건이 실린 링크로 들어왔으면 찾기를 누른 것처럼 바로 받는다. 받은 결과는 조건과 상관없이 쓴다.
-  useEffect(() => {
-    if (available && initial.shared) void search(server);
-    // 처음 열 때 한 번만 부른다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const [view, setView] = useState<ViewMode>('grid');
-  const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
+  const current: BagSearchConditions = useMemo(
+    () => ({ bags: selectedBags, parts }),
+    [selectedBags, parts],
+  );
 
-  // 결과가 아직 유효한지 보여 주려고 시계만 돈다. 데이터를 다시 받지는 않는다.
+  const watches = useBagWatches();
+
+  /**
+   * 들어오면 바로 찾는다. 서버를 바꿔도 바로 찾는다. 서버가 이미 골라져 있는데 찾기를 누르라고 기다리게 하던
+   * 것을 없앴다. 같은 서버를 두 번 부르지 않게 마지막으로 찾은 서버를 기억한다.
+   */
+  const searchedServer = useRef<string | null>(null);
+  useEffect(() => {
+    if (!available || searchedServer.current === server) return;
+    searchedServer.current = server;
+    void search(server);
+  }, [available, server, search]);
+
+  // 경매장 주머니는 경매장 탭을 열었거나 관심 조건이 있을 때 받는다. 관심 조건은 두 곳을 모두 본다.
+  const auctionQuery = useAuctionBags(available && (market === 'auction' || watches.length > 0));
+
+  // 상점이 바뀌었는지 보려고 시계만 돈다.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
     return () => clearInterval(timer);
   }, []);
+
+  const loading = state.status === 'loading';
+  const expired = state.nextUpdate !== null && state.nextUpdate <= now;
+  const percent = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
+  const failed = state.failedChannels.length > 0 && !loading;
+
+  /**
+   * 상점이 바뀌면 다시 받는다. 관심 조건도 그때 다시 맞춰 본다. 바뀐 시각마다 한 번만 부른다. 다시 받았는데도
+   * 다음 갱신 시각이 그대로면(넥슨이 아직 새 상점을 주지 않으면) 아래에 다시 찾으라고 알린다.
+   */
+  const refreshedFor = useRef<number | null>(null);
+  const { refetch: refetchAuction } = auctionQuery;
+  useEffect(() => {
+    if (
+      !expired ||
+      loading ||
+      state.nextUpdate === null ||
+      refreshedFor.current === state.nextUpdate
+    )
+      return;
+    refreshedFor.current = state.nextUpdate;
+    void search(state.server ?? server);
+    if (market === 'auction' || watches.length > 0) void refetchAuction();
+  }, [
+    expired,
+    loading,
+    state.nextUpdate,
+    state.server,
+    server,
+    search,
+    market,
+    watches.length,
+    refetchAuction,
+  ]);
+  const staleAfterRefresh = expired && !loading && refreshedFor.current === state.nextUpdate;
 
   // 찾기 전에는 알려진 42종, 찾은 뒤에는 실제로 나온 이름을 합친다.
   const bagTree = useMemo(
@@ -379,141 +724,142 @@ export function BagsPage() {
     () => parts.map((part) => (part.enabled ? part.channels : null)),
     [parts],
   );
+  const compiledWatches = useMemo(() => compileWatches(watches, bagTree), [watches, bagTree]);
 
-  const listings = useMemo(
-    () => buildListings(state.channels, { bagNames, parts: searchParts }),
-    [state.channels, bagNames, searchParts],
-  );
-
-  /**
-   * 분류별 탭. 여러 분류를 함께 고르면 결과가 섞여 한 분류만 훑어보기 어렵다. 결과에 분류가
-   * 둘 이상 있을 때만 탭을 보이고, "전체" 는 분류를 가리지 않고 가까운 순으로 본다.
-   */
-  const categoryOfName = useMemo(() => {
-    const map = new Map<string, { key: string; title: string }>();
-    for (const row of listings) if (!map.has(row.name)) map.set(row.name, bagCategory(row.name));
-    return map;
-  }, [listings]);
-  const categoryTabs = useMemo(() => {
-    const counts = new Map<string, { title: string; count: number }>();
-    for (const row of listings) {
-      const { key, title } = categoryOfName.get(row.name)!;
-      counts.set(key, { title, count: (counts.get(key)?.count ?? 0) + 1 });
-    }
-    return CATEGORY_ORDER.filter((key) => counts.has(key)).map((key) => ({
-      key,
-      ...counts.get(key)!,
-    }));
-  }, [listings, categoryOfName]);
-  const showTabs = categoryTabs.length > 1;
-  // 체크를 바꿔 보던 분류가 결과에서 사라지면 전체로 돌아간다.
-  const currentTab =
-    showTabs && categoryTabs.some((tab) => tab.key === activeTab) ? activeTab : ALL_TAB;
-  const visible = useMemo(
+  const npcRows = useMemo(
     () =>
-      currentTab === ALL_TAB
-        ? listings
-        : listings.filter((row) => categoryOfName.get(row.name)?.key === currentTab),
-    [listings, categoryOfName, currentTab],
+      pinWatched(
+        buildListings(state.channels, { bagNames, parts: searchParts }).map((row): ResultRow => ({
+          ...row,
+          place: `${row.channel}채널 ${row.npc}`,
+          watched: watchedNames(row, compiledWatches),
+        })),
+      ),
+    [state.channels, bagNames, searchParts, compiledWatches],
   );
 
-  const loading = state.status === 'loading';
-  const expired = state.nextUpdate !== null && state.nextUpdate <= now;
-  const percent = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
-  const failed = state.failedChannels.length > 0 && !loading;
-
-  const resetKey = `${state.server}|${selectedBags.join(',')}|${JSON.stringify(searchParts)}|${currentTab}`;
-  const tablePaging = useListPagination(resetKey, { defaultPageSize: TABLE_PAGE_SIZE });
-
-  // 그림 보기는 화면에 맞춘 개수씩 넘긴다. 위쪽 안내가 생기거나 없어지면 격자가 움직이므로 다시 잰다.
-  const gridRef = useRef<HTMLDivElement>(null);
-  const fitted = useGridFit(gridRef, {
-    minColumnWidth: CARD_MIN_WIDTH,
-    rowHeight: CARD_HEIGHT,
-    gap: GRID_GAP,
-    reserveBelow: PAGINATION_ROOM,
-    minRows: 2,
-    layoutKey: `${view}|${loading}|${failed}|${expired}|${state.status}|${listings.length > 0}|${showTabs}`,
-  });
-  // 쪽 크기를 직접 고르면 그 값을 쓰고, 고르지 않았으면 화면에 맞춘 개수를 쓴다. 표와 경매장처럼 같은 선택지다.
-  const [gridSizeChoice, setGridSizeChoice] = useState<number | null>(null);
-  const gridPageSize = gridSizeChoice ?? (wide ? (fitted ?? MOBILE_PAGE_SIZE) : MOBILE_PAGE_SIZE);
-  const [gridPage, setGridPage] = useState(1);
-  useEffect(() => {
-    setGridPage(1);
-  }, [resetKey, gridPageSize]);
-
-  const columns = useMemo<TableColumnsType<BagListing>>(
-    () => [
-      {
-        title: '주머니',
-        dataIndex: 'name',
-        render: (name: string, row) => (
-          <Flex gap={12} align="center">
-            <BagImage book={dyeBook} name={row.name} colors={row.colors} size={ROW_IMAGE_SIZE} />
-            <Flex vertical gap={6}>
-              <Text strong>{name}</Text>
-              <Swatches colors={row.colors} compared={row.comparedParts} />
-            </Flex>
-          </Flex>
+  const auctionItems = auctionQuery.data?.items;
+  const auctionRows = useMemo(
+    () =>
+      pinWatched(
+        buildAuctionBagListings(auctionItems ?? [], { bagNames, parts: searchParts }).map(
+          (row): ResultRow => ({
+            key: row.key,
+            name: row.name,
+            colors: row.colors,
+            comparedParts: row.comparedParts,
+            score: row.score,
+            price: row.price,
+            // 경매장은 늘 골드다.
+            priceType: '골드',
+            place: `남은 시간 ${formatRemaining(row.expire, now)}`,
+            expire: row.expire,
+            watched: watchedNames(row, compiledWatches),
+          }),
         ),
-      },
-      {
-        title: '채널',
-        dataIndex: 'channel',
-        width: 90,
-        align: 'right',
-        className: 'tnum',
-        render: (channel: number) => `${channel}채널`,
-      },
-      { title: 'NPC', dataIndex: 'npc', width: 120 },
-      {
-        title: '가격',
-        dataIndex: 'price',
-        width: 150,
-        align: 'right',
-        className: 'tnum',
-        render: (price: number | null, row) =>
-          price === null ? (
-            <Text type="secondary">-</Text>
-          ) : (
-            formatPriceWithType(formatGold, price, row.priceType)
-          ),
-      },
-      {
-        title: '비슷함',
-        dataIndex: 'score',
-        width: 100,
-        align: 'right',
-        className: 'tnum',
-        render: (score: number | null) => (score === null ? '-' : `${score.toFixed(1)}%`),
-      },
-    ],
-    [dyeBook, formatGold],
+      ),
+    [auctionItems, bagNames, searchParts, compiledWatches, now],
   );
+
+  // 관심 조건마다 지금 맞는 주머니 수. 검색 조건과 상관없이 받아 둔 것 전부에서 센다.
+  const watchCounts = useMemo(() => {
+    const counts = new Map<string, WatchCounts>();
+    if (compiledWatches.length === 0) return counts;
+    const npcAll =
+      state.status === 'done' ? buildListings(state.channels, { bagNames: null, parts: [] }) : null;
+    const auctionAll = auctionItems
+      ? buildAuctionBagListings(auctionItems, { bagNames: null, parts: [] })
+      : null;
+    for (const watch of compiledWatches) {
+      counts.set(watch.id, {
+        npc: npcAll
+          ? npcAll.filter((row) => matchingWatches(row, [watch]).length > 0).length
+          : null,
+        auction: auctionAll
+          ? auctionAll.filter((row) => matchingWatches(row, [watch]).length > 0).length
+          : null,
+      });
+    }
+    return counts;
+  }, [compiledWatches, state.status, state.channels, auctionItems]);
+
+  const applyWatch = (watch: BagWatch) => {
+    setSelectedBags(watch.conditions.bags);
+    setParts(watch.conditions.parts);
+    setOpenParts(watch.conditions.parts.map((part) => part.enabled));
+  };
+
+  const priceColumn = {
+    title: '가격',
+    dataIndex: 'price',
+    width: 150,
+    align: 'right' as const,
+    className: 'tnum',
+    render: (price: number | null, row: ResultRow) =>
+      price === null ? (
+        <Text type="secondary">-</Text>
+      ) : (
+        formatPriceWithType(formatGold, price, row.priceType)
+      ),
+  };
+  const scoreColumn = {
+    title: '비슷함',
+    dataIndex: 'score',
+    width: 100,
+    align: 'right' as const,
+    className: 'tnum',
+    render: (score: number | null) => (score === null ? '-' : `${score.toFixed(1)}%`),
+  };
+  const npcColumns: TableColumnsType<ResultRow> = [
+    {
+      title: '주머니',
+      key: 'name',
+      render: (_value, row) => <NameCell row={row} book={dyeBook} />,
+    },
+    {
+      title: '채널',
+      dataIndex: 'channel',
+      width: 90,
+      align: 'right',
+      className: 'tnum',
+      render: (channel: number) => `${channel}채널`,
+    },
+    { title: 'NPC', dataIndex: 'npc', width: 120 },
+    priceColumn,
+    scoreColumn,
+  ];
+  const auctionColumns: TableColumnsType<ResultRow> = [
+    {
+      title: '주머니',
+      key: 'name',
+      render: (_value, row) => <NameCell row={row} book={dyeBook} />,
+    },
+    { ...priceColumn, title: '개당 가격' },
+    {
+      title: '남은 시간',
+      dataIndex: 'expire',
+      width: 110,
+      align: 'right',
+      className: 'tnum',
+      render: (expire: string) => formatRemaining(expire, now),
+    },
+    scoreColumn,
+  ];
 
   const validity =
     state.nextUpdate !== null && !expired
       ? `다음 상점 갱신 ${formatClock(state.nextUpdate)}까지 유효`
       : null;
 
-  const viewToggle = (
-    <Segmented
-      size="small"
-      aria-label="보기 방식"
-      value={view}
-      onChange={(value) => setView(value as ViewMode)}
-      options={VIEW_OPTIONS}
-    />
-  );
-
   const conditions = (
     <Card variant="outlined" size="small" title="검색 조건">
       <Flex vertical gap={14}>
-        <Flex vertical gap={6}>
-          <Text>서버</Text>
-          <ServerSelect block value={server} onChange={setServer} />
-        </Flex>
+        {market === 'npc' ? (
+          <Flex vertical gap={6}>
+            <Text>서버</Text>
+            <ServerSelect block value={server} onChange={setServer} />
+          </Flex>
+        ) : null}
         <Flex vertical gap={12}>
           <Text>원하는 색</Text>
           {parts.map((condition, part) => (
@@ -531,16 +877,29 @@ export function BagsPage() {
             />
           ))}
         </Flex>
-        <Button
-          type="primary"
-          icon={<SearchIcon />}
-          disabled={!available}
-          loading={loading}
-          onClick={() => void search(server)}
-          block
-        >
-          찾기
-        </Button>
+        {market === 'npc' ? (
+          <Button
+            type="primary"
+            icon={<SearchIcon />}
+            disabled={!available}
+            loading={loading}
+            onClick={() => void search(server)}
+            block
+          >
+            다시 찾기
+          </Button>
+        ) : (
+          <Button
+            type="primary"
+            icon={<RefreshIcon />}
+            disabled={!available}
+            loading={auctionQuery.isFetching}
+            onClick={() => void refetchAuction()}
+            block
+          >
+            경매장 다시 받기
+          </Button>
+        )}
       </Flex>
     </Card>
   );
@@ -557,11 +916,7 @@ export function BagsPage() {
           </Button>
         ) : null
       }
-      styles={{
-        body: wide
-          ? { maxHeight: 'calc(100dvh - 520px)', minHeight: 160, overflowY: 'auto' }
-          : undefined,
-      }}
+      styles={{ body: { maxHeight: 420, overflowY: 'auto' } }}
     >
       <Flex vertical gap={6}>
         <Text type="secondary" style={{ fontSize: 12 }}>
@@ -582,13 +937,16 @@ export function BagsPage() {
     </Card>
   );
 
-  const results =
+  const statusText = (text: string) => (
+    <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+      {text}
+    </Text>
+  );
+
+  const npcResults =
     state.status === 'idle' ? (
       <Card>
-        <EmptyState
-          variant="search"
-          description="서버를 고르고 찾기를 누르세요. 주머니와 색은 찾은 뒤에 바꿔도 다시 받지 않습니다."
-        />
+        <EmptyState variant="search" description="서버를 고르면 바로 찾습니다." />
       </Card>
     ) : state.status === 'notReady' ? (
       <NpcShopNotReady what="주머니" onRetry={() => void search(server)} />
@@ -599,52 +957,61 @@ export function BagsPage() {
         message="주머니를 받지 못했습니다"
         description="잠시 후 다시 찾아 주세요. 계속 안 되면 화면 위나 맨 아래의 의견 보내기로 알려 주세요."
       />
-    ) : listings.length === 0 && loading ? (
+    ) : npcRows.length === 0 && loading ? (
       <Card aria-busy="true">
         <Skeleton active paragraph={{ rows: 6 }} />
       </Card>
-    ) : listings.length === 0 ? (
+    ) : npcRows.length === 0 ? (
       <Card>
         <EmptyState description="조건에 맞는 주머니가 없습니다. 색 조건을 넓히거나, 없는 파트(파트 C 등)의 조건을 지워 보세요." />
       </Card>
-    ) : view === 'grid' ? (
-      <>
-        <div ref={gridRef}>
-          <BagGrid
-            rows={visible.slice((gridPage - 1) * gridPageSize, gridPage * gridPageSize)}
-            book={dyeBook}
-          />
-        </div>
-        <Flex justify="flex-end" align="center" gap={8} wrap>
-          {gridSizeChoice !== null ? (
-            <Button size="small" type="link" onClick={() => setGridSizeChoice(null)}>
-              화면에 맞춤
-            </Button>
-          ) : null}
-          <Pagination
-            current={gridPage}
-            pageSize={gridPageSize}
-            total={visible.length}
-            pageSizeOptions={PAGE_SIZE_OPTIONS}
-            showSizeChanger
-            onChange={(page, size) => {
-              if (size !== gridPageSize) setGridSizeChoice(size);
-              else setGridPage(page);
-            }}
-            size="small"
-          />
-        </Flex>
-      </>
     ) : (
-      <Table<BagListing>
-        columns={columns}
-        dataSource={visible}
-        rowKey="key"
-        size="small"
-        pagination={tablePaging.pagination}
-        scroll={{ x: 720 }}
+      <BagResultList
+        rows={npcRows}
+        book={dyeBook}
+        columns={npcColumns}
+        status={statusText(
+          `${state.server} ${formatNumber(npcRows.length)}개${validity ? `, ${validity}` : ''}`,
+        )}
+        layoutKey={`npc|${loading}|${failed}|${staleAfterRefresh}|${state.status}`}
       />
     );
+
+  const auctionResults = !available ? null : auctionQuery.isError ? (
+    <Alert
+      type="error"
+      showIcon
+      message="경매장 주머니를 받지 못했습니다"
+      description={auctionQuery.error instanceof Error ? auctionQuery.error.message : undefined}
+      action={
+        <Button size="small" icon={<RefreshIcon />} onClick={() => void refetchAuction()}>
+          다시 받기
+        </Button>
+      }
+    />
+  ) : !auctionQuery.data ? (
+    <Card aria-busy="true">
+      <Skeleton active paragraph={{ rows: 6 }} />
+    </Card>
+  ) : auctionRows.length === 0 ? (
+    <Card>
+      <EmptyState description="조건에 맞는 경매장 주머니가 없습니다. 색 조건을 넓히거나 주머니를 더 골라 보세요." />
+    </Card>
+  ) : (
+    <BagResultList
+      rows={auctionRows}
+      book={dyeBook}
+      columns={auctionColumns}
+      status={statusText(
+        `경매장 ${formatNumber(auctionRows.length)}개, ${formatClock(auctionQuery.data.at)}에 받음${
+          auctionQuery.data.truncated
+            ? `, 앞 ${formatNumber(auctionQuery.data.items.length)}건만 받음`
+            : ''
+        }`,
+      )}
+      layoutKey={`auction|${auctionQuery.isFetching}`}
+    />
+  );
 
   return (
     <Flex vertical gap={16}>
@@ -653,8 +1020,9 @@ export function BagsPage() {
           튼튼한 주머니 찾기
         </Title>
         <Text type="secondary">
-          고른 서버의 모든 채널, NPC 17명의 주머니를 조건에 맞는 것만 원하는 값에 가까운 순으로 보여 줍니다. 상점은
-          에린 하루(현실 36분)마다 바뀝니다. <ShopResetCountdown />
+          고른 서버의 모든 채널, NPC 17명의 주머니와 경매장에 올라온 주머니를 조건에 맞는 것만
+          원하는 값에 가까운 순으로 보여 줍니다. 상점은 에린 하루(현실 36분)마다 바뀝니다.{' '}
+          <ShopResetCountdown />
         </Text>
       </Flex>
 
@@ -666,18 +1034,32 @@ export function BagsPage() {
         />
       ) : null}
 
-      {/* 왼쪽에 검색 조건과 주머니 트리, 오른쪽에 결과. 768px 미만에서는 위아래 한 단으로 떨어진다. */}
+      <Tabs
+        activeKey={market}
+        onChange={(key) => updateParams({ tab: key === 'npc' ? null : key })}
+        items={MARKET_TABS}
+        tabBarStyle={{ marginBottom: 0 }}
+      />
+
+      {/* 왼쪽에 검색 조건, 관심 조건, 주머니 트리, 오른쪽에 결과. 768px 미만에서는 위아래 한 단으로 떨어진다. */}
       <Row gutter={[16, 16]}>
         <Col xs={24} md={9} lg={7} xl={6}>
           <Flex vertical gap={16}>
             {conditions}
+            <BagWatchList
+              watches={watches}
+              tree={bagTree}
+              current={current}
+              counts={watchCounts}
+              onApply={applyWatch}
+            />
             {bagPicker}
           </Flex>
         </Col>
 
         <Col xs={24} md={15} lg={17} xl={18}>
           <Flex vertical gap={10}>
-            {loading ? (
+            {market === 'npc' && loading ? (
               <Card variant="outlined" size="small">
                 <Flex vertical gap={6}>
                   <Progress percent={percent} showInfo={false} />
@@ -689,7 +1071,7 @@ export function BagsPage() {
               </Card>
             ) : null}
 
-            {failed ? (
+            {market === 'npc' && failed ? (
               <Alert
                 type="warning"
                 showIcon
@@ -697,7 +1079,7 @@ export function BagsPage() {
               />
             ) : null}
 
-            {expired ? (
+            {market === 'npc' && staleAfterRefresh ? (
               <Alert
                 type="info"
                 showIcon
@@ -705,58 +1087,7 @@ export function BagsPage() {
               />
             ) : null}
 
-            {state.status !== 'idle' && state.status !== 'error' && listings.length > 0 ? (
-              showTabs ? (
-                // 개수는 탭마다 붙어 있으므로 따로 줄을 쓰지 않는다. 그만큼 격자가 한 줄 더 들어간다.
-                // 768px 미만에서는 탭 옆에 유효 시각과 보기 단추를 두면 탭이 한두 개만 남고 단추가
-                // 잘렸다. 그때는 그 둘을 탭 위 한 줄로 올린다.
-                <Flex vertical gap={8}>
-                  {wide ? null : (
-                    <Flex justify="space-between" align="center" gap={12} wrap>
-                      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                        {validity}
-                      </Text>
-                      {viewToggle}
-                    </Flex>
-                  )}
-                  <Tabs
-                    size="small"
-                    activeKey={currentTab}
-                    onChange={setActiveTab}
-                    tabBarStyle={{ marginBottom: 0 }}
-                    tabBarExtraContent={
-                      wide ? (
-                        <Flex gap={12} align="center">
-                          {validity ? (
-                            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                              {validity}
-                            </Text>
-                          ) : null}
-                          {viewToggle}
-                        </Flex>
-                      ) : undefined
-                    }
-                    items={[
-                      { key: ALL_TAB, label: tabLabel('전체', listings.length) },
-                      ...categoryTabs.map((tab) => ({
-                        key: tab.key,
-                        label: tabLabel(tab.title, tab.count),
-                      })),
-                    ]}
-                  />
-                </Flex>
-              ) : (
-                <Flex justify="space-between" align="center" gap={12} wrap>
-                  <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-                    {state.server} {formatNumber(listings.length)}개
-                    {validity ? `, ${validity}` : ''}
-                  </Text>
-                  {viewToggle}
-                </Flex>
-              )
-            ) : null}
-
-            {results}
+            {market === 'npc' ? npcResults : auctionResults}
           </Flex>
         </Col>
       </Row>

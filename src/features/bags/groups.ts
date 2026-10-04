@@ -46,6 +46,11 @@ export function bareName(name: string): string {
   return name.replace(GRADE, '').replace(/\s*주머니$/, '');
 }
 
+/** 튼튼한 주머니인지. 경매장 "주머니" 카테고리에는 일반 주머니(양털 주머니, 고급 가죽 주머니 등)도 섞여 있다. */
+export function isSturdyBag(name: string): boolean {
+  return GRADE.test(name);
+}
+
 export function isSturdier(name: string): boolean {
   return STURDIER.test(name);
 }

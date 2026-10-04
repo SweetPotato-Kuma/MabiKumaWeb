@@ -24,6 +24,40 @@ export interface BagListing {
   comparedParts: number[];
 }
 
+/** 색 조건을 건 파트. 채널을 하나도 채우지 않았거나 끈 파트는 빠진다. */
+export interface NarrowedPart {
+  part: number;
+  channels: ColorChannels;
+}
+
+/** 파트별 조건에서 실제로 거르는 파트만 고른다. */
+export function narrowParts(parts: readonly (ColorChannels | null)[]): NarrowedPart[] {
+  return parts
+    .map((partChannels, part) => ({ part, channels: partChannels }))
+    .filter(
+      (entry): entry is NarrowedPart => entry.channels !== null && hasColorChannels(entry.channels),
+    );
+}
+
+/**
+ * 주머니 하나의 색이 조건에 드는지와 가까운 정도. 건 파트의 채널을 모두 만족해야 들고, 가까운 정도는 건
+ * 파트마다 잰 값의 평균이다(0~100, 소수 첫째 자리). 조건을 건 파트의 색이 없으면(파트 C 를 걸었는데 파트가
+ * 둘뿐인 주머니) 비교할 수 없어 들지 않는다. 들지 않으면 false, 조건이 없으면 null 이다.
+ */
+export function scoreBagColors(
+  colors: readonly string[],
+  narrowed: readonly NarrowedPart[],
+): number | null | false {
+  if (narrowed.length === 0) return null;
+  let total = 0;
+  for (const { part, channels } of narrowed) {
+    const color = colors[part] ? hexToRgb(colors[part]) : null;
+    if (!color || !channelsMatch(channels, color)) return false;
+    total += channelsCloseness(channels, color) ?? 0;
+  }
+  return Math.round((total / narrowed.length) * 10) / 10;
+}
+
 interface ListingOptions {
   /** 볼 주머니 이름. null 이면 모든 주머니. */
   bagNames: ReadonlySet<string> | null;
@@ -48,12 +82,7 @@ export function buildListings(
   channels: readonly BagChannelResult[],
   options: ListingOptions,
 ): BagListing[] {
-  const narrowed = options.parts
-    .map((partChannels, part) => ({ part, channels: partChannels }))
-    .filter(
-      (entry): entry is { part: number; channels: ColorChannels } =>
-        entry.channels !== null && hasColorChannels(entry.channels),
-    );
+  const narrowed = narrowParts(options.parts);
   const comparedParts = narrowed.map((entry) => entry.part);
   const rows: BagListing[] = [];
 
@@ -62,17 +91,9 @@ export function buildListings(
       (seller.bags ?? []).forEach((bag, index) => {
         if (options.bagNames && !options.bagNames.has(bag.n)) return;
 
-        let score: number | null = null;
-        if (narrowed.length > 0) {
-          let total = 0;
-          for (const { part, channels: partChannels } of narrowed) {
-            const color = bag.c[part] ? hexToRgb(bag.c[part]) : null;
-            // 조건을 건 파트의 색이 없거나 조건에 맞지 않는 주머니는 뺀다.
-            if (!color || !channelsMatch(partChannels, color)) return;
-            total += channelsCloseness(partChannels, color) ?? 0;
-          }
-          score = Math.round((total / narrowed.length) * 10) / 10;
-        }
+        const score = scoreBagColors(bag.c, narrowed);
+        // 조건을 건 파트의 색이 없거나 조건에 맞지 않는 주머니는 뺀다.
+        if (score === false) return;
 
         rows.push({
           key: `${result.channel}|${seller.npc}|${index}`,
