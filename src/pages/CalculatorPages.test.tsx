@@ -31,8 +31,6 @@ vi.mock('@/features/market/api', async (importOriginal) => ({
   }),
 }));
 
-vi.setConfig({ testTimeout: 30_000 });
-
 /** 경매장 쿠폰 최저가. */
 const COUPON_PRICES: Record<string, number> = {
   [couponName(10)]: 400_000,

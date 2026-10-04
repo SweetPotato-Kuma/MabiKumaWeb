@@ -6,9 +6,6 @@ import { AppProviders } from '@/app/AppProviders';
 import { readRelicPriceCache, type RelicPriceFile } from '@/features/relics/priceFile';
 import { RelicSimulatorPage } from '@/pages/RelicSimulatorPage';
 
-/** antd 표를 여러 번 다시 그린다. 느린 기계에서 기본 제한 5초를 넘길 수 있다. */
-vi.setConfig({ testTimeout: 20_000 });
-
 vi.mock('@/features/itemcard/iconMap', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   iconBaseUrl: () => 'https://cdn.test',

@@ -170,9 +170,6 @@ afterEach(() => {
   resetSavedSearchesForTest();
 });
 
-// 페이지 전체를 그리는 시험이라 다른 시험과 함께 돌면 기본 5초를 넘기기도 한다.
-vi.setConfig({ testTimeout: 30_000 });
-
 describe('경매장 검색 조건과 주소', () => {
   it('주소의 검색어가 입력칸에 채워진다', async () => {
     renderAt('/auction?keyword=소울&category=검');

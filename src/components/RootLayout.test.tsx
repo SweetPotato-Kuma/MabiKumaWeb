@@ -5,8 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { RootLayout } from '@/components/RootLayout';
 
-vi.setConfig({ testTimeout: 30_000 });
-
 function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));

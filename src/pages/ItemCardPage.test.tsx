@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { ItemCardPage } from '@/pages/ItemCardPage';
 import { setAdminKey } from '@/lib/adminKey';
@@ -33,13 +33,6 @@ function renderEditor() {
   renderPage();
   return screen.findByText('이 브라우저에는 없음');
 }
-
-/**
- * 이 화면은 antd 컴포넌트를 가장 많이 한꺼번에 그린다(업로드, 폼 두 벌, 슬라이더, 캔버스).
- * 한가할 때는 한 건에 1초 안쪽이지만, 게임처럼 CPU 를 크게 쓰는 프로그램이 같이 돌면
- * 기본 제한 5초를 넘긴다. 느린 것이지 틀린 것이 아니므로 제한만 넉넉히 둔다.
- */
-vi.setConfig({ testTimeout: 20_000 });
 
 beforeEach(() => {
   setAdminKey('');

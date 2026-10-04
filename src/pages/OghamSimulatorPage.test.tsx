@@ -8,9 +8,6 @@ import { OghamSimulatorPage } from '@/pages/OghamSimulatorPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
-/** 목표 옵션을 세 번 고르는 테스트가 antd 고르기 창을 여러 번 그린다. 느린 기계에서 20초를 넘길 수 있다. */
-vi.setConfig({ testTimeout: 30_000 });
-
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(

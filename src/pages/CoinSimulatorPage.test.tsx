@@ -8,8 +8,6 @@ import { CoinSimulatorPage } from '@/pages/CoinSimulatorPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
-vi.setConfig({ testTimeout: 20_000 });
-
 const STONE = '브리 레흐의 잔흔석';
 
 /** 연출이 끝나 통계가 올라갈 때까지 기다리는 시간. 금빛까지 더해도 넉넉하다. */

@@ -14,9 +14,6 @@ vi.mock('@/lib/settings', async (importOriginal) => ({
   getProxyUrl: () => 'https://worker.test',
 }));
 
-/** 이 화면은 antd 컴포넌트를 많이 그린다. 느린 기계에서 기본 제한 5초를 넘길 수 있다. */
-vi.setConfig({ testTimeout: 20_000 });
-
 /** 워커가 돌려주는 모양 그대로. 값은 2026-09 게임 데이터에서 줄여 옮겼다. */
 const LOOKUP: EquipmentLookup = {
   item: {

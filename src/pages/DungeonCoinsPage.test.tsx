@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { configure, fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -19,13 +19,6 @@ vi.mock('@/features/market/api', async (importOriginal) => ({
   canLookupMarket: () => market.available,
   useMarketRecentQuery: () => market.state,
 }));
-
-/**
- * antd 표와 탭을 여러 번 다시 그린다. 넓은 화면의 표는 교환품 스무 줄에 여섯 열이라 느린 기계(CI 는 로컬의 여러 배)에서
- * 20초도 넘겼다. 시험 제한과 비동기 기다림을 넉넉히 둔다.
- */
-vi.setConfig({ testTimeout: 60_000 });
-configure({ asyncUtilTimeout: 5_000 });
 
 /** 이름마다 올라와 있는 매물의 개당 가격. 없는 이름은 매물이 없다. */
 const LISTINGS: Record<string, number[]> = {

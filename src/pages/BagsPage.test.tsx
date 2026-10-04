@@ -5,9 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { BagsPage } from '@/pages/BagsPage';
 
-// 페이지 전체를 그리는 시험이라 다른 시험과 함께 돌면 기본 5초를 넘기기도 한다.
-vi.setConfig({ testTimeout: 30_000 });
-
 function renderPage(url = '/bags') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(

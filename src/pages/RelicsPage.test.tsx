@@ -53,9 +53,6 @@ vi.mock('@/lib/settings', async (importOriginal) => ({
   useCanQuery: () => true,
 }));
 
-/** antd 표와 탭을 여러 번 다시 그린다. 느린 기계에서 기본 제한 5초를 넘길 수 있다. */
-vi.setConfig({ testTimeout: 20_000 });
-
 const listing = (item_name: string, price: number, item_option: ItemOption[] | null = null) =>
   ({
     item_name,

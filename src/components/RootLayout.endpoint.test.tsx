@@ -13,8 +13,6 @@ vi.mock('@/lib/settings', async (importOriginal) => ({
   useEndpointMode: () => endpoint.state,
 }));
 
-vi.setConfig({ testTimeout: 30_000 });
-
 /** jsdom 은 폭 조건이 모두 거짓이라 좁은 화면이다. 조회 상태 배지는 서랍 아래에 있다. */
 async function drawerText() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });

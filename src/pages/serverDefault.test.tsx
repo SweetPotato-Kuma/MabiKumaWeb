@@ -15,8 +15,6 @@ vi.mock('@/lib/settings', async (importOriginal) => ({
   getProxyUrl: () => 'https://w.example',
 }));
 
-vi.setConfig({ testTimeout: 30_000 });
-
 function renderPage(page: React.ReactElement, url: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   let search = '';

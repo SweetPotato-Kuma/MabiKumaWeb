@@ -10,8 +10,6 @@ vi.mock('@/features/report/api', async (importOriginal) => ({
   canReportIssue: () => canReport,
 }));
 
-vi.setConfig({ testTimeout: 20_000 });
-
 function renderAll() {
   return render(
     <AppProviders>

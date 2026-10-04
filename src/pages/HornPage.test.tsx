@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -14,9 +14,6 @@ vi.mock('@/lib/settings', async (importOriginal) => ({
   getProxyUrl: () => 'https://w.example',
 }));
 
-vi.setConfig({ testTimeout: 20_000 });
-/** antd 표를 처음 그리는 데 느린 기계에서 1초를 넘긴다. */
-configure({ asyncUtilTimeout: 5_000 });
 
 const NOW_SECONDS = Math.floor(Date.now() / 1000);
 

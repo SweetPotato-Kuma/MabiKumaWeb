@@ -9,8 +9,6 @@ import {
   type OptionFilter,
 } from '@/features/auction/optionFilter';
 
-vi.setConfig({ testTimeout: 20_000 });
-
 const relicCatalog = buildOptionCatalog([
   {
     item_option: [

@@ -6,8 +6,6 @@ import { AppProviders } from '@/app/AppProviders';
 import { CookingGuide } from '@/components/crafting/CookingGuide';
 import { buildRecipeBook } from '@/features/crafting/recipes';
 
-vi.setConfig({ testTimeout: 20_000 });
-
 /** 마요네즈(1) = 달걀(2) 75 + 올리브유(3) 20. 소금(4) 10 을 하나 더 넣을 수 있다. */
 const book = buildRecipeBook({
   updated: '2026-09-22',

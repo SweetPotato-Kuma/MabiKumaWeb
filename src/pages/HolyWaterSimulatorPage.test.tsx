@@ -11,9 +11,6 @@ import { HolyWaterSimulatorPage } from '@/pages/HolyWaterSimulatorPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
-/** antd 표를 여러 번 다시 그린다. 느린 기계에서 기본 제한 5초를 넘길 수 있다. */
-vi.setConfig({ testTimeout: 20_000 });
-
 /** 연출이 끝나 통계가 올라갈 때까지 기다리는 시간. 금빛까지 더해도 넉넉하다. */
 const FX_WAIT = 4000;
 

@@ -9,9 +9,6 @@ import { ReforgeSimulatorPage } from '@/pages/ReforgeSimulatorPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
-/** antd 표를 여러 번 다시 그린다. 느린 기계에서 기본 제한 5초를 넘길 수 있다. */
-vi.setConfig({ testTimeout: 20_000 });
-
 /** 옵션이 셋뿐이고 레벨 폭이 한 칸이라 세공 결과가 늘 같다. */
 const DATA: ReforgeData = {
   tools: [
