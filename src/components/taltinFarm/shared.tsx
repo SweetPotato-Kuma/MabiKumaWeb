@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react';
 import { Flex, Skeleton, Typography, theme } from 'antd';
 import { GAIN_LOSS_COLORS } from '@/app/theme';
+import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { shortName, type Material } from '@/features/taltinFarm/data';
@@ -10,15 +12,35 @@ import { useResolvedThemeMode } from '@/lib/themePreference';
 
 const { Text } = Typography;
 
-/** 아이템 정보 상세로 가는 이름. 이름 사전의 카테고리로 주소를 짓는다. */
-export function FarmItemLink({ name, short = false }: { name: string; short?: boolean }) {
+/** 표의 이름 칸 그림. 던전 코인 교환품과 같다. */
+const NAME_ICON = 28;
+
+/** 필요 물품 줄의 그림. 줄 높이에 맞춘다. */
+const MATERIAL_ICON = 20;
+
+/** 그림과 아이템 정보 상세로 가는 이름. 이름 사전의 카테고리로 그림과 주소를 찾는다. */
+export function FarmItemLink({
+  name,
+  short = false,
+  iconSize = NAME_ICON,
+  suffix,
+}: {
+  name: string;
+  short?: boolean;
+  iconSize?: number;
+  /** 이름 바로 뒤에 붙일 것(개수). 좁은 칸에서 이름이 줄을 바꿔도 이름 끝에 붙어 따라간다. */
+  suffix?: ReactNode;
+}) {
   const index = useItemNameIndexQuery().data;
+  const category = index?.categoriesByName.get(name)?.[0];
   return (
-    <ItemInfoLink
-      name={name}
-      category={index?.categoriesByName.get(name)?.[0]}
-      label={short ? shortName(name) : undefined}
-    />
+    <Flex gap={6} align="center" style={{ minWidth: 0 }}>
+      <ItemIcon category={category} name={name} size={iconSize} />
+      <span style={{ minWidth: 0 }}>
+        <ItemInfoLink name={name} category={category} label={short ? shortName(name) : undefined} />
+        {suffix}
+      </span>
+    </Flex>
   );
 }
 
@@ -79,14 +101,18 @@ export function MaterialList({ materials, quote }: { materials: readonly Materia
       {materials.map(([name, qty]) => {
         const unit = quote(name);
         return (
-          <Flex key={name} gap={8} justify="space-between" wrap={false} style={{ fontSize: 13 }}>
-            <span style={{ minWidth: 0 }}>
-              <FarmItemLink name={name} short />
-              <Text type="secondary" className="tnum">
-                {' '}
-                x{formatNumber(qty)}
-              </Text>
-            </span>
+          <Flex key={name} gap={8} justify="space-between" align="center" wrap={false} style={{ fontSize: 13 }}>
+            <FarmItemLink
+              name={name}
+              short
+              iconSize={MATERIAL_ICON}
+              suffix={
+                <Text type="secondary" className="tnum" style={{ whiteSpace: 'nowrap' }}>
+                  {' '}
+                  x{formatNumber(qty)}
+                </Text>
+              }
+            />
             <Text type="secondary" className="tnum" style={{ whiteSpace: 'nowrap' }}>
               {unit === null ? '-' : formatGold(unit)}
             </Text>
