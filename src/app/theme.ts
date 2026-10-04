@@ -101,6 +101,16 @@ export const KIND_BADGE_COLORS = {
 } as const satisfies Record<'light' | 'dark', Record<'party' | 'buy' | 'sell', { text: string; background: string }>>;
 
 /**
+ * 손익 글자의 색. 라이트에서 antd 기본 초록과 빨강은 카드 바탕 대비가 모자라(2.2, 3.2) 더 진한 색을 쓴다.
+ * 다크는 antd 시맨틱 토큰(colorSuccess, colorError)이 충분하므로 null 로 두고 토큰을 쓴다.
+ * 색만으로 가르지 않도록 쓰는 곳은 이득, 손해나 부호를 글자로도 적는다.
+ */
+export const GAIN_LOSS_COLORS = {
+  light: { gain: '#237804', loss: '#cf1322' },
+  dark: null,
+} as const;
+
+/**
  * 주의를 끄는 배지의 색("거래 적음" 등). 주황 계열이라 분류 배지의 팝니다와 같은 쌍을 쓰고, 그 쌍이 4.5:1 을
  * 넘는 것은 theme.test.ts 가 지킨다. 뜻이 다른 곳에서 쓰므로 이름을 따로 둔다.
  */

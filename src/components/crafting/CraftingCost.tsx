@@ -29,6 +29,7 @@ import { CookingGuide } from '@/components/crafting/CookingGuide';
 import { RecipeInfo } from '@/components/crafting/RecipeInfo';
 import { ItemIcon } from '@/components/ItemIcon';
 import { useResolvedThemeMode } from '@/lib/themePreference';
+import { GAIN_LOSS_COLORS } from '@/app/theme';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
 import { isCardStoreConfigured } from '@/features/itemcard/cards';
 import { isIconMapConfigured } from '@/features/itemcard/iconMap';
@@ -96,10 +97,9 @@ const SMALL_STAT = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', f
 function ProfitStat({ title, profit }: { title: string; profit: CraftProfit | undefined }) {
   const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
-  // 밝은 배경에서 기본 초록과 빨강은 글자 대비가 모자라(2.2, 3.2) 더 진한 색을 쓴다.
-  const light = useResolvedThemeMode() === 'light';
-  const gain = light ? '#237804' : token.colorSuccess;
-  const loss = light ? '#cf1322' : token.colorError;
+  const fixed = GAIN_LOSS_COLORS[useResolvedThemeMode()];
+  const gain = fixed?.gain ?? token.colorSuccess;
+  const loss = fixed?.loss ?? token.colorError;
   const value = profit?.profit;
   const text =
     value === undefined

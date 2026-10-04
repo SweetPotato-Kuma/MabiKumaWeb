@@ -8,15 +8,19 @@
  *   ICONS           (R2 바인딩, 필수) 그림과 같은 버킷. prices/ 아래에 둔다
  *   ICON_BASE_URL   (Variable) 화면이 파일을 받는 주소. 없으면 화면은 예전처럼 하나씩 묻는다
  *
- * 모을 이름은 화면과 같은 목록(src/features/dungeonCoins/priceNames.json)을 쓴다. 화면 쪽 테스트가
- * 그 목록이 화면이 묻는 이름을 모두 담고 있는지 본다.
+ * 모을 이름은 화면과 같은 목록을 쓴다. 던전 코인은 src/features/dungeonCoins/priceNames.json(화면 쪽 테스트가
+ * 그 목록이 화면이 묻는 이름을 모두 담고 있는지 본다), 탈틴 농장 계산기는 그 데이터가 내보내는 이름 목록이다.
  *
  * 파일 이름은 고정이다(prices/dungeon-coins.js). 캐시를 짧게 걸어 CDN 이 1분 안에 새것을 받는다.
  * 확장자가 .js 인 것은 매물 파일과 같은 이유다(자체 도메인은 .js 를 기본으로 캐시한다).
  * 받다가 실패한 이름은 지난번 값을 모은 시각과 함께 그대로 둔다.
  */
-import PRICE_NAMES from '../src/features/dungeonCoins/priceNames.json';
+import DUNGEON_PRICE_NAMES from '../src/features/dungeonCoins/priceNames.json';
+import { FARM_PRICE_NAMES } from '../src/features/taltinFarm/data';
 import { isListingOf, listingNameOf } from '../src/features/crafting/listing';
+
+/** 모을 이름 전부. 두 화면이 같이 묻는 이름은 한 번만 받는다. */
+const PRICE_NAMES = [...new Set([...DUNGEON_PRICE_NAMES, ...FARM_PRICE_NAMES])];
 
 const NEXON_LIST_URL = 'https://open.api.nexon.com/mabinogi/v1/auction/list';
 

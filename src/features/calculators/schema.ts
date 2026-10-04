@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 /**
  * 계산기 틀. 새 계산기는 입력 스키마(fields)와 계산 함수(compute)만 적으면 틀(CalculatorView)이 입력칸, 시세
@@ -117,6 +117,21 @@ export interface CalculatorDef {
   /** 이 계산기와 이어지는 화면. 상단 칩으로 보인다. */
   related?: readonly RelatedLink[];
 }
+
+/**
+ * 입력칸 몇 개로 담기지 않는 계산기(표 여러 장, 줄마다 입력)는 화면을 직접 그린다. 목록, 메뉴, 전체 검색,
+ * 라우터는 스키마 계산기와 똑같이 이 정의를 읽는다. 화면은 열 때 받도록 load 로 넘긴다.
+ */
+export interface PageCalculatorDef {
+  id: string;
+  title: string;
+  summary: string;
+  load: () => Promise<{ default: ComponentType }>;
+}
+
+export type CalculatorEntry = CalculatorDef | PageCalculatorDef;
+
+export const isPageCalculator = (entry: CalculatorEntry): entry is PageCalculatorDef => 'load' in entry;
 
 /** 기본값으로 채운 입력. */
 export function defaultValues(fields: readonly Field[]): Values {
