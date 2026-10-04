@@ -53,15 +53,17 @@ type MenuItem = NonNullable<MenuProps['items']>[number];
  *
  * 메뉴 구조는 app/navigation.tsx 의 표 하나가 원본이다. 여기서는 그 표를 antd 메뉴 항목으로 바꾸기만 한다.
  * 묶음 칸 자체는 화면이 없어 누르면 펼쳐지기만 하고, 펼친 목록 안의 소제목은 group 항목으로 그린다.
+ *
+ * 가로 메뉴의 첫 줄 칸에는 아이콘을 두지 않는다. 칸이 일곱이 되자 1200~1439px(흔한 노트북 폭)에서 끝의 계산기와
+ * 시뮬레이터가 넘침 메뉴(...)로 숨었다. 아이콘은 칸마다 24px 를 차지한다. 펼친 목록, 서랍, 전체 검색에는 둔다.
  */
 function toMenuItem(entry: NavEntry): MenuItem {
-  if (!isNavGroup(entry)) return leafItem(entry);
+  if (!isNavGroup(entry)) return leafItem(entry, false);
   return {
     key: entry.key,
-    icon: entry.icon,
     label: entry.label,
     children: entry.sections.flatMap((section, position): MenuItem[] => {
-      const items = section.items.map(leafItem);
+      const items = section.items.map((leaf) => leafItem(leaf));
       const body: MenuItem[] = section.title
         ? [{ key: `${entry.key}:${section.title}`, type: 'group', label: section.title, children: items }]
         : items;
@@ -70,10 +72,10 @@ function toMenuItem(entry: NavEntry): MenuItem {
   };
 }
 
-function leafItem(leaf: NavLeaf): MenuItem {
+function leafItem(leaf: NavLeaf, withIcon = true): MenuItem {
   return {
     key: leaf.path,
-    icon: leaf.icon,
+    icon: withIcon ? leaf.icon : undefined,
     label: <NavLink to={leaf.path}>{leaf.label}</NavLink>,
   };
 }
@@ -109,17 +111,27 @@ function toDrawerItems(entries: NavEntry[]): MenuItem[] {
         key: `${entry.key}:${section.title ?? index}`,
         type: 'group',
         label: drawerHeading(title),
-        children: section.items.map(leafItem),
+        children: section.items.map((leaf) => leafItem(leaf)),
       });
     });
   });
   return items;
 }
 
-/** 헤더의 검색 단추. 넓은 화면에서는 단축키를 함께 알린다. */
-function SearchButton({ onOpen, showShortcut }: { onOpen: () => void; showShortcut: boolean }) {
-  if (!showShortcut) {
-    return <Button type="text" aria-label="전체 검색 열기" icon={<SearchIcon />} onClick={onOpen} />;
+/**
+ * 헤더의 검색 단추. 아주 넓은 화면(1600px 이상)에서는 "검색" 과 단축키를 함께 적는다. 그보다 좁으면 아이콘만 두어
+ * 가로 메뉴가 한 줄에 들 자리를 남기고, 가로 메뉴가 있는 폭에서는 단축키를 툴팁으로 알린다.
+ */
+function SearchButton({ onOpen, size }: { onOpen: () => void; size: 'full' | 'icon' | 'iconWithHint' }) {
+  if (size !== 'full') {
+    const button = (
+      <Button type="text" aria-label="전체 검색 열기" icon={<SearchIcon />} onClick={onOpen} />
+    );
+    return size === 'iconWithHint' ? (
+      <Tooltip title={`전체 검색 (${searchShortcutLabel()})`}>{button}</Tooltip>
+    ) : (
+      button
+    );
   }
   return (
     <Button icon={<SearchIcon />} onClick={onOpen}>
@@ -286,7 +298,10 @@ export function RootLayout() {
             {screens.sm ? <EndpointTag /> : null}
             {/* 검색 단추 왼쪽. 좁은 화면은 헤더에 자리가 없어 서랍 맨 위에 둔다. */}
             {compactNav ? null : <ErinnClockButton />}
-            <SearchButton onOpen={() => setSearchOpen(true)} showShortcut={!compactNav} />
+            <SearchButton
+              onOpen={() => setSearchOpen(true)}
+              size={compactNav ? 'icon' : screens.xxl ? 'full' : 'iconWithHint'}
+            />
             <ThemeToggle />
             {/* 좁은 화면은 헤더가 좁아 설정을 메뉴 서랍 안에 둔다. */}
             {compactNav ? null : <SettingsButton />}
