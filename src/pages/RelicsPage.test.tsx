@@ -188,9 +188,9 @@ describe('유물 시세', () => {
     expect(within(line).getByText('2건')).toBeInTheDocument();
     expect((await levelButton(10)).textContent).toBe('300,000,000');
     expect(screen.getByText('134,000,000 G')).toBeInTheDocument();
-    // 두 단이 어디서 어디까지인지 머리에 적는다.
-    expect(screen.getByText('10~6레벨')).toBeInTheDocument();
-    expect(screen.getByText('5~1레벨')).toBeInTheDocument();
+    // 두 단의 범위는 화면에 적지 않고 화면 읽기용 이름에만 둔다.
+    expect(screen.queryByText('10~6레벨')).toBeNull();
+    expect(screen.getAllByRole('list', { name: /10~6레벨 최저가/ }).length).toBeGreaterThan(0);
   });
 
   it('가격 칸을 누르면 그 레벨의 거래가 추이 창이 열리고, 경매장 매물 보기로 그 레벨 매물에 간다', async () => {

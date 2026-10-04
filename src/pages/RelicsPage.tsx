@@ -216,7 +216,7 @@ const OPTION_CARD_MIN = LEVEL_COLUMN_MIN * 2 + LEVEL_COLUMN_GAP + 24;
  */
 const LEVEL_ROW_MAX = 240;
 
-/** 레벨 단 둘. 높은 레벨이 왼쪽이다. 단 머리에 범위를 적어 어디서 어디까지인지 읽게 한다. */
+/** 레벨 단 둘. 높은 레벨이 왼쪽이다. 줄마다 레벨이 적혀 있어 범위는 화면에 따로 적지 않고 화면 읽기에만 알린다. */
 const LEVEL_BLOCKS = [
   { label: '10~6레벨', levels: [10, 9, 8, 7, 6] },
   { label: '5~1레벨', levels: [5, 4, 3, 2, 1] },
@@ -379,7 +379,7 @@ function OptionCard({
           </Flex>
         </Flex>
         {/*
-          두 단. 왼쪽이 10~6, 오른쪽이 5~1 이고 단마다 범위를 머리에 적는다. 카드가 두 단을 담지 못하는 폭(휴대폰)에서는
+          두 단. 왼쪽이 10~6, 오른쪽이 5~1 이다. 카드가 두 단을 담지 못하는 폭(휴대폰)에서는
           위아래로 쌓인다.
         */}
         <div
@@ -392,9 +392,6 @@ function OptionCard({
         >
           {blocks.map((block) => (
             <div key={block.label} role="list" aria-label={`${row.name} ${block.label} 최저가(골드)`}>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 2 }}>
-                {block.label}
-              </Text>
               {block.levels.map(levelRow)}
             </div>
           ))}
