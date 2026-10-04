@@ -290,6 +290,9 @@ function ResultPanel({ result, title }: { result: CalcResult; title: string }) {
     ...(result.details ?? []).map((row) => `${row.label}: ${rowText(row, formatGold)}`),
   ].join('\n');
 
+  // 표의 줄 키. 줄은 순서대로 그려지기만 하고 바뀌지 않으므로 순번을 미리 붙여 둔다(antd 는 rowKey 의 index 를 더는 보장하지 않는다).
+  const tableRowKeys = new Map(result.table?.rows.map((row, index) => [row, String(index)]) ?? []);
+
   const detailChildren = (
     <Flex vertical gap={12}>
       {result.table ? (
@@ -297,7 +300,7 @@ function ResultPanel({ result, title }: { result: CalcResult; title: string }) {
           size="small"
           pagination={false}
           scroll={{ x: 'max-content' }}
-          rowKey={(_row, index) => String(index)}
+          rowKey={(row) => tableRowKeys.get(row) ?? ''}
           columns={result.table.columns.map((column, columnIndex) => ({
             title: column,
             key: column,

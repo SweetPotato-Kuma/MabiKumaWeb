@@ -77,6 +77,12 @@ export function RelicTrendModal({
 
   const levels = useMemo(() => trendByLevel(query.data, row), [query.data, row]);
   const trend = levels[level - 1];
+  // 최근 거래 표의 줄. 같은 시각에 같은 값이 두 번 거래될 수 있어 순번을 붙여 키를 만든다.
+  const recentRows = useMemo(() => trend.recent.slice(0, RECENT_ROWS), [trend.recent]);
+  const recentKeys = useMemo(
+    () => new Map(recentRows.map((trade, index) => [trade, `${trade.at}-${index}`])),
+    [recentRows],
+  );
   const chart = useMemo(() => chartOf(trend.daily, days, now), [trend.daily, days, now]);
 
   const cell = row.levels[level - 1];
@@ -204,8 +210,8 @@ export function RelicTrendModal({
               <Table<RelicTrade>
                 size="small"
                 pagination={false}
-                rowKey={(trade, index) => `${trade.at}-${index ?? 0}`}
-                dataSource={trend.recent.slice(0, RECENT_ROWS)}
+                rowKey={(trade) => recentKeys.get(trade) ?? trade.at}
+                dataSource={recentRows}
                 columns={[
                   { title: '거래 시각', dataIndex: 'at', render: (at: string) => <span className="tnum">{formatDateTime(at)}</span> },
                   {

@@ -507,6 +507,20 @@ export function AuctionPage() {
     () => (hideSymbols ? itemsMatching.filter((item) => !isSymbolItem(item.item_name)) : itemsMatching),
     [hideSymbols, itemsMatching],
   );
+  /**
+   * 매물 줄의 키. 이름과 만료 시각이 같은 매물이 여럿일 수 있어 목록 전체의 순번을 붙인다. 쪽을 나누면 antd 가
+   * rowKey 에 주는 순번은 쪽마다 0부터 다시 시작해 키가 겹치므로 미리 정해 둔다.
+   */
+  const itemKeys = useMemo(
+    () =>
+      new Map(
+        visibleItems.map((item, index) => [
+          item,
+          `${item.item_display_name}-${item.date_auction_expire}-${index}`,
+        ]),
+      ),
+    [visibleItems],
+  );
   const visibleHistory = useMemo(
     () => (hideSymbols ? historyMatching.filter((item) => !isSymbolItem(item.item_name)) : historyMatching),
     [hideSymbols, historyMatching],
@@ -1239,7 +1253,7 @@ export function AuctionPage() {
                 showRemaining: true,
               }))
             }
-            rowKey={(record, index) => `${record.item_display_name}-${record.date_auction_expire}-${index ?? 0}`}
+            rowKey={(record) => itemKeys.get(record) ?? record.item_display_name}
             size="small"
             pagination={itemsPaging.pagination}
             onChange={changeSort}
@@ -1256,7 +1270,7 @@ export function AuctionPage() {
         </Flex>
       </QueryState>
     </Flex>
-  ), [enabled, changeSort, itemColumns, visibleItems, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
+  ), [enabled, changeSort, itemColumns, visibleItems, itemKeys, itemsSymbolCount, showSymbols, itemsLoaded, itemsMore, loadEverything, itemsPaging.pagination, itemsQuery, isWide, recent, rowInteraction, singleItem, stickyHeader]);
 
   const historyPanel = useMemo(() => (
     <Flex vertical gap={12}>
