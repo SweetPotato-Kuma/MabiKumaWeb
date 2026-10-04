@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { Card, Flex, Grid, Table, Typography, type TableColumnsType } from 'antd';
-import { FarmItemLink, GainCell, GoldCell, MaterialList } from '@/components/taltinFarm/shared';
+import { FarmItemLink, GainCell, GoldCell, MaterialList, type FarmTabProps } from '@/components/taltinFarm/shared';
 import { FARM_RECIPES, type FarmRecipe } from '@/features/taltinFarm/data';
-import { byGainDesc, recipeOutcome, type Quote, type RecipeOutcome } from '@/features/taltinFarm/value';
+import { byGainDesc, recipeOutcome, type RecipeOutcome } from '@/features/taltinFarm/value';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
@@ -13,7 +13,7 @@ interface RecipeRow {
 }
 
 /** 마법의 솥 가공 손익. 가공해서 더 남는 것부터. */
-export function CraftTab({ quote, pending }: { quote: Quote; pending: boolean }) {
+export function CraftTab({ quote, pending, basisControl }: FarmTabProps) {
   const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
@@ -81,14 +81,17 @@ export function CraftTab({ quote, pending }: { quote: Quote; pending: boolean })
       ];
 
   return (
-    <Card variant="outlined" styles={{ body: { padding: 0 } }}>
-      <Table<RecipeRow>
-        columns={columns}
-        dataSource={rows}
-        rowKey={(row) => row.recipe.name}
-        size="small"
-        pagination={false}
-      />
-    </Card>
+    <Flex vertical gap={12}>
+      {basisControl}
+      <Card variant="outlined" styles={{ body: { padding: 0 } }}>
+        <Table<RecipeRow>
+          columns={columns}
+          dataSource={rows}
+          rowKey={(row) => row.recipe.name}
+          size="small"
+          pagination={false}
+        />
+      </Card>
+    </Flex>
   );
 }

@@ -1,5 +1,5 @@
-import { Link, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Flex, Segmented, Tabs, Tag, Typography } from 'antd';
+import { useSearchParams } from 'react-router-dom';
+import { Alert, Button, Flex, Segmented, Tabs, Typography } from 'antd';
 import { RefreshIcon } from '@/components/icons';
 import { CraftTab } from '@/components/taltinFarm/CraftTab';
 import { DucatTab } from '@/components/taltinFarm/DucatTab';
@@ -45,25 +45,35 @@ export function TaltinFarmPage() {
     );
 
   const loading = pending > 0;
-  const tabProps = { quote, pending: loading };
+
+  // 시세 기준은 탭마다 표 바로 위 도구 줄에 둔다(두카트 탭은 비율 칸과 한 줄). 고른 값은 탭을 옮겨도 그대로다.
+  const basisControl = (
+    <Flex gap={10} align="center" wrap>
+      <Segmented<QuoteBasis>
+        aria-label="시세 기준"
+        value={basis}
+        onChange={(next) => setParam('basis', next === 'mid' ? 'mid' : null)}
+        options={[
+          { value: 'lowest', label: '경매장 최저가' },
+          { value: 'mid', label: '1일 중위' },
+        ]}
+      />
+      <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+        {loading
+          ? `시세 ${formatNumber(pending)}종을 받는 중입니다.`
+          : asOf === null
+            ? '평균 10분 지연된 시세입니다.'
+            : `${snapshotAgeLabel(asOf)} 모은 시세, 평균 10분 지연`}
+      </Text>
+    </Flex>
+  );
+  const tabProps = { quote, pending: loading, basisControl };
 
   return (
     <Flex vertical gap={16}>
       <Title level={3} style={{ margin: 0 }}>
         탈틴 농장 계산기
       </Title>
-
-      <Flex gap={8} align="center" wrap>
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          관련
-        </Text>
-        <Link to="/auction">
-          <Tag style={{ marginInlineEnd: 0, cursor: 'pointer' }}>경매장</Tag>
-        </Link>
-        <Link to="/calculators">
-          <Tag style={{ marginInlineEnd: 0, cursor: 'pointer' }}>다른 계산기</Tag>
-        </Link>
-      </Flex>
 
       {!canQuery ? (
         <Alert
@@ -86,25 +96,6 @@ export function TaltinFarmPage() {
           }
         />
       ) : null}
-
-      <Flex gap={10} align="center" wrap>
-        <Segmented<QuoteBasis>
-          aria-label="시세 기준"
-          value={basis}
-          onChange={(next) => setParam('basis', next === 'mid' ? 'mid' : null)}
-          options={[
-            { value: 'lowest', label: '경매장 최저가' },
-            { value: 'mid', label: '1일 중위' },
-          ]}
-        />
-        <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-          {loading
-            ? `시세 ${formatNumber(pending)}종을 받는 중입니다.`
-            : asOf === null
-              ? '평균 10분 지연된 시세입니다.'
-              : `${snapshotAgeLabel(asOf)} 모은 시세, 평균 10분 지연`}
-        </Text>
-      </Flex>
 
       <Tabs
         activeKey={tab}

@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Button, Card, Flex, Grid, InputNumber, Segmented, Table, Typography, type TableColumnsType } from 'antd';
-import { FarmItemLink, GainCell, GoldCell } from '@/components/taltinFarm/shared';
+import { FarmItemLink, GainCell, GoldCell, type FarmTabProps } from '@/components/taltinFarm/shared';
 import { DUCAT_GEM, DUCAT_ITEMS, type DucatGroup, type DucatItem } from '@/features/taltinFarm/data';
-import { byGainDesc, ducatOutcome, goldPerDucat, type DucatOutcome, type Quote } from '@/features/taltinFarm/value';
+import { byGainDesc, ducatOutcome, goldPerDucat, type DucatOutcome } from '@/features/taltinFarm/value';
 import { formatNumber } from '@/lib/format';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
@@ -28,7 +28,7 @@ const RATE_PRECISION = 2;
 const roundRate = (rate: number) => Number(rate.toFixed(RATE_PRECISION));
 
 /** 물품을 경매장에 팔지, NPC 에 넘겨 두카트로 받을지. 두카트가 더 남는 것부터. */
-export function DucatTab({ quote, pending }: { quote: Quote; pending: boolean }) {
+export function DucatTab({ quote, pending, basisControl }: FarmTabProps) {
   const formatGold = useGoldFormatter();
   const screens = Grid.useBreakpoint();
   const wide = screens.md ?? true;
@@ -111,7 +111,9 @@ export function DucatTab({ quote, pending }: { quote: Quote; pending: boolean })
 
   return (
     <Flex vertical gap={12}>
-      <Flex gap={12} align="center" wrap>
+      {/* 시세 기준과 그 시세로 매긴 비율이 한 줄이다. 좁으면 아래로 접힌다. */}
+      <Flex align="center" wrap style={{ columnGap: 24, rowGap: 12 }}>
+        {basisControl}
         <Flex gap={8} align="center">
           <label htmlFor="ducat-rate">
             <Text>두카트 비율</Text>

@@ -12,6 +12,13 @@ import { useResolvedThemeMode } from '@/lib/themePreference';
 
 const { Text } = Typography;
 
+/** 탭 셋이 받는 것. 시세 기준 고르기는 화면이 만들어 탭마다 표 위 도구 줄에 둔다. */
+export interface FarmTabProps {
+  quote: Quote;
+  pending: boolean;
+  basisControl: ReactNode;
+}
+
 /** 표의 이름 칸 그림. 던전 코인 교환품과 같다. */
 const NAME_ICON = 28;
 

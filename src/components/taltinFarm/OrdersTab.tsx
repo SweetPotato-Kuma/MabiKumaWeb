@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Button, Card, Collapse, Flex, Grid, InputNumber, Select, Table, Typography, theme, type TableColumnsType } from 'antd';
 import { StarFillIcon, StarIcon } from '@/components/icons';
-import { GainCell, GoldCell, MaterialList } from '@/components/taltinFarm/shared';
+import { GainCell, GoldCell, MaterialList, type FarmTabProps } from '@/components/taltinFarm/shared';
 import {
   FARM_ORDERS,
   MAX_REWARD_QTY,
@@ -10,7 +10,7 @@ import {
   type FarmOrder,
 } from '@/features/taltinFarm/data';
 import { useFarmState, type FarmState } from '@/features/taltinFarm/store';
-import { byGainDesc, orderOutcome, type OrderOutcome, type Quote, type RewardPick } from '@/features/taltinFarm/value';
+import { byGainDesc, orderOutcome, type OrderOutcome, type RewardPick } from '@/features/taltinFarm/value';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
@@ -146,7 +146,7 @@ function RewardValues({ state, update }: { state: FarmState; update: ReturnType<
 }
 
 /** 생활 협회 주문 납품 손익. */
-export function OrdersTab({ quote, pending }: { quote: Quote; pending: boolean }) {
+export function OrdersTab({ quote, pending, basisControl }: FarmTabProps) {
   const formatGold = useGoldFormatter();
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
@@ -286,6 +286,7 @@ export function OrdersTab({ quote, pending }: { quote: Quote; pending: boolean }
 
   return (
     <Flex vertical gap={12}>
+      {basisControl}
       <RewardValues state={state} update={update} />
       {anyPicked ? (
         <Button
