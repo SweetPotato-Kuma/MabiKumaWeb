@@ -1,6 +1,6 @@
 {
-  "updated": "2026-10-02",
-  "total": 18865,
+  "updated": "2026-10-05",
+  "total": 19089,
   "categories": [
     {
       "name": "개조석",
@@ -10,27 +10,27 @@
     {
       "name": "검",
       "file": "fdbdf11e.json",
-      "count": 146
+      "count": 152
     },
     {
       "name": "경갑옷",
       "file": "1c762e8c.json",
-      "count": 104
+      "count": 108
     },
     {
       "name": "기타",
       "file": "2991f61c.json",
-      "count": 1642
+      "count": 1662
     },
     {
       "name": "기타 소모품",
       "file": "7956b4fb.json",
-      "count": 1593
+      "count": 1613
     },
     {
       "name": "기타 스크롤",
       "file": "de7ec6fe.json",
-      "count": 731
+      "count": 738
     },
     {
       "name": "기타 장비",
@@ -45,22 +45,22 @@
     {
       "name": "꼬리",
       "file": "906127f7.json",
-      "count": 68
+      "count": 69
     },
     {
       "name": "날개",
       "file": "c000ef4c.json",
-      "count": 1217
+      "count": 1240
     },
     {
       "name": "낭만농장/달빛섬",
       "file": "513a4daa.json",
-      "count": 990
+      "count": 1002
     },
     {
       "name": "너클",
       "file": "a89cf1dd.json",
-      "count": 25
+      "count": 26
     },
     {
       "name": "대형 낫",
@@ -85,7 +85,7 @@
     {
       "name": "둔기",
       "file": "85c965a5.json",
-      "count": 230
+      "count": 231
     },
     {
       "name": "듀얼건",
@@ -100,7 +100,7 @@
     {
       "name": "로브",
       "file": "b2c6ea29.json",
-      "count": 105
+      "count": 106
     },
     {
       "name": "마기그래프",
@@ -150,7 +150,7 @@
     {
       "name": "모자/가발",
       "file": "008ae516.json",
-      "count": 1638
+      "count": 1664
     },
     {
       "name": "방패",
@@ -180,7 +180,7 @@
     {
       "name": "뷰티 쿠폰",
       "file": "691ae0a7.json",
-      "count": 966
+      "count": 974
     },
     {
       "name": "생활 도구",
@@ -190,7 +190,7 @@
     {
       "name": "석궁",
       "file": "d7243f3a.json",
-      "count": 10
+      "count": 11
     },
     {
       "name": "수리검",
@@ -210,12 +210,12 @@
     {
       "name": "신발",
       "file": "514d3c6f.json",
-      "count": 1127
+      "count": 1140
     },
     {
       "name": "실린더",
       "file": "19575ffc.json",
-      "count": 29
+      "count": 30
     },
     {
       "name": "아틀라틀",
@@ -225,12 +225,12 @@
     {
       "name": "악기",
       "file": "0bafcc33.json",
-      "count": 146
+      "count": 150
     },
     {
       "name": "알반 훈련석",
       "file": "91b4d572.json",
-      "count": 94
+      "count": 99
     },
     {
       "name": "애뮬릿",
@@ -240,7 +240,7 @@
     {
       "name": "액세서리",
       "file": "4f972c4b.json",
-      "count": 564
+      "count": 571
     },
     {
       "name": "양손 장비",
@@ -250,7 +250,7 @@
     {
       "name": "얼굴 장식",
       "file": "b8587079.json",
-      "count": 227
+      "count": 228
     },
     {
       "name": "에이도스",
@@ -280,12 +280,12 @@
     {
       "name": "원거리 소모품",
       "file": "dcbd2152.json",
-      "count": 39
+      "count": 40
     },
     {
       "name": "원드",
       "file": "853b9732.json",
-      "count": 44
+      "count": 45
     },
     {
       "name": "유물",
@@ -295,12 +295,12 @@
     {
       "name": "음식",
       "file": "2e144916.json",
-      "count": 706
+      "count": 711
     },
     {
       "name": "의자/사물",
       "file": "7f3c7f85.json",
-      "count": 389
+      "count": 395
     },
     {
       "name": "인챈트 스크롤",
@@ -310,7 +310,7 @@
     {
       "name": "장갑",
       "file": "bb003394.json",
-      "count": 767
+      "count": 778
     },
     {
       "name": "제련/블랙스미스",
@@ -330,17 +330,17 @@
     {
       "name": "중갑옷",
       "file": "24947707.json",
-      "count": 68
+      "count": 69
     },
     {
       "name": "책",
       "file": "ba928dd5.json",
-      "count": 49
+      "count": 51
     },
     {
       "name": "천옷",
       "file": "d18ae9d5.json",
-      "count": 2115
+      "count": 2140
     },
     {
       "name": "천옷/방직",
@@ -355,7 +355,7 @@
     {
       "name": "토템",
       "file": "d4e23a63.json",
-      "count": 99
+      "count": 102
     },
     {
       "name": "퍼퓸",
@@ -370,17 +370,17 @@
     {
       "name": "포션",
       "file": "4e7ecd78.json",
-      "count": 311
+      "count": 312
     },
     {
       "name": "피니 펫",
       "file": "49a7fd7e.json",
-      "count": 66
+      "count": 69
     },
     {
       "name": "핀즈비즈",
       "file": "934ec738.json",
-      "count": 45
+      "count": 47
     },
     {
       "name": "한손 장비",
@@ -400,7 +400,7 @@
     {
       "name": "활",
       "file": "6a29c778.json",
-      "count": 38
+      "count": 39
     },
     {
       "name": "힐링 원드",
