@@ -28,7 +28,7 @@
  *
  * 스킬:
  * - 제작법에 나오는 스킬마다 이름, 분류(생활, 연금술 같은 스킬 창의 탭), 설명을 적는다
- * - 스킬 그림(42px)은 같은 곳에서 받아 public/data/skills/<번호>.png 로 둔다. 스무 장이 안 되고
+ * - 스킬 그림(42px)은 그림 서버에 둔다. scripts/game-data/upload-game-images.mjs 가 올린다. 스무 장이 안 되고
  *   한 장이 몇 KB 라 우리 쪽에 두고, 남의 서버를 화면에서 직접 부르지 않는다
  *
  * 아이템 그림:
@@ -41,7 +41,7 @@
  *
  * 실행: node scripts/build-recipes.mjs
  *       node scripts/build-recipes.mjs --icons-only   다시 모으지 않고 그림 파일 이름만 새로 적는다
- * 산출: public/data/recipes.json, public/data/skills/*.png
+ * 산출: public/data/recipes.json
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -51,7 +51,6 @@ const SITE = 'https://prilus.gitlab.io/';
 const RESOURCE_ORIGIN = 'https://mabires.pril.cc/';
 const REGION = 'kr';
 const OUT = resolve('public/data/recipes.json');
-const SKILL_ICON_DIR = resolve('public/data/skills');
 const UPLOADED_ICONS = resolve('.cache/item-cards/uploaded.json');
 
 const readJson = (path) =>
@@ -507,22 +506,6 @@ async function main() {
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-
-  // 스킬 그림. 받지 못한 스킬은 화면이 그림 없이 그린다.
-  await mkdir(SKILL_ICON_DIR, { recursive: true });
-  const missingIcons = [];
-  for (const { id } of skills) {
-    const response = await fetch(`${RESOURCE_ORIGIN}skillimage/${REGION}/${id}/${id}.png`);
-    if (!response.ok) {
-      missingIcons.push(id);
-      continue;
-    }
-    await writeFile(
-      resolve(SKILL_ICON_DIR, `${id}.png`),
-      Buffer.from(await response.arrayBuffer()),
-    );
-  }
-  if (missingIcons.length) console.warn(`그림을 받지 못한 스킬: ${missingIcons.join(', ')}`);
 
   const nameOf = (id) => items[id][0];
   recipes.sort(

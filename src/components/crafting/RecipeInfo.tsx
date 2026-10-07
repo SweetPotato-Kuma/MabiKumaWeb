@@ -85,7 +85,7 @@ export function SkillIcon({ skillId, size = SKILL_ICON }: { skillId: number; siz
     >
       {failed ? null : (
         <img
-          src={skillIconUrl(skillId)}
+          src={skillIconUrl(skillId) || undefined}
           alt=""
           width={size}
           height={size}

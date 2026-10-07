@@ -139,7 +139,7 @@ function rerollGold(locked: number, prices: MaterialPrices): number | null {
 function WordIcon({ word, size }: { word: OghamWord; size: number }) {
   return (
     <img
-      src={oghamWordIconUrl(word.id)}
+      src={oghamWordIconUrl(word.id) || undefined}
       alt=""
       width={size}
       height={size}
@@ -277,7 +277,7 @@ function WordPicker({
 function SkillIcon({ combination, size }: { combination: OghamCombination; size: number }) {
   return (
     <img
-      src={skillIconUrl(combination.skillId)}
+      src={skillIconUrl(combination.skillId) || undefined}
       alt=""
       width={size}
       height={size}

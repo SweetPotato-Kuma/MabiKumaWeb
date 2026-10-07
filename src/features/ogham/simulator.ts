@@ -1,4 +1,5 @@
 import data from './data.json';
+import { oghamWordImageUrl } from '@/features/itemcard/gameImages';
 
 /**
  * 오검 워드 옵션 시뮬레이터.
@@ -76,8 +77,8 @@ export const COMBINATION_POINTS = [5, 6, 7, 8, 9] as const;
 const optionById = new Map(OGHAM_OPTIONS.map((option) => [option.id, option]));
 const wordById = new Map(OGHAM_WORDS.map((word) => [word.id, word]));
 
-/** 워드 그림. 번호는 게임의 워드 번호와 같다. 64px 투명 바탕 그림이다. */
-export const oghamWordIconUrl = (id: number) => `${import.meta.env.BASE_URL}data/ogham/${id}.png`;
+/** 워드 그림. 번호는 게임의 워드 번호와 같다. 64px 투명 바탕 그림이고 그림 서버에 있다(gameImages.ts). */
+export const oghamWordIconUrl = (id: number) => oghamWordImageUrl(id);
 
 export const oghamOption = (id: number): OghamOption => optionById.get(id)!;
 export const oghamWord = (id: number): OghamWord => wordById.get(id)!;

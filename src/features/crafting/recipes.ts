@@ -1,5 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { formatNumber } from '@/lib/format';
+import { skillImageUrl } from '@/features/itemcard/gameImages';
 
 /**
  * 제작법 책.
@@ -253,9 +254,9 @@ export function rankText(rank: number): string {
 /** 요리 스킬. 도구 자리에 조리 방법이 들어 있다. */
 export const COOKING_SKILL = 10020;
 
-/** 스킬 그림. scripts/build-recipes.mjs 가 받아 둔 42px 그림이다. */
+/** 스킬 그림(42px). 그림 서버에 있다(gameImages.ts). */
 export function skillIconUrl(skillId: number): string {
-  return `${import.meta.env.BASE_URL}data/skills/${skillId}.png`;
+  return skillImageUrl(skillId);
 }
 
 /** 스킬, 도구, 랭크를 한 줄로. "방직(베틀) 5랭크" */

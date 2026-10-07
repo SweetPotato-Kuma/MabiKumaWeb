@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { fetchAuctionList } from '@/features/auction/api';
+import images from '@/features/itemcard/generated/gameImages.json';
 import { OghamSimulatorPage } from '@/pages/OghamSimulatorPage';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
@@ -38,6 +39,7 @@ describe('오검 워드 옵션 시뮬레이터', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('빈 칸에 워드를 넣고 재설정하면 세 줄이 붙고 비용이 쌓인다', async () => {
@@ -61,12 +63,16 @@ describe('오검 워드 옵션 시뮬레이터', () => {
   });
 
   it('조합 워드를 한 번에 넣으면 가운데에 조합이 발동하고 스킬 그림이 뜬다', () => {
+    // 그림은 그림 서버에 있다. CI 에는 주소가 없으니 여기서 준다.
+    vi.stubEnv('VITE_ICON_BASE_URL', 'https://icons.example');
     renderPage();
     expect(screen.getByRole('status', { name: '발동한 조합 없음' })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: '빈 칸에 넣기' })[0]);
     const center = screen.getByRole('status', { name: /^발동한 조합 라이트닝 스매시 뇌신/ });
-    // 라이트닝 스매시(59026)의 스킬 그림.
-    expect(center.querySelector('img')?.getAttribute('src')).toMatch(/data\/skills\/59026\.png$/);
+    // 라이트닝 스매시(59026)의 스킬 그림. 그림 서버에 올린 파일이다.
+    expect(center.querySelector('img')?.getAttribute('src')).toBe(
+      `https://icons.example/${images.skills['59026']}`,
+    );
     expect(screen.getByRole('button', { name: '1번 칸 베헤' })).toBeInTheDocument();
   });
 

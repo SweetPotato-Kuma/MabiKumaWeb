@@ -19,7 +19,7 @@
  * 것이다. 각 칸의 가운데 픽셀을 읽어 48x48 로 되돌린다.
  *
  * + 표시는 모든 주머니에 붙고, 색으로 등급을 가른다. 튼튼한 주머니는 주황, 더 튼튼한
- * 주머니는 노랑이다(게임 화면으로 확인, scripts/bag-dye-sources). 그런데 넥슨 그림은 튼튼한
+ * 주머니는 노랑이다(게임 화면으로 확인, .cache/game-images/bag-dye-sources). 그런데 넥슨 그림은 튼튼한
  * 주머니에도 노란 + 를 그린다. 그래서 넥슨 그림과 대 본 뒤에 노란 + 를 지우고(가려져 있던 주머니
  * 모서리는 보이는 가장자리를 이어 그어 되살린다, fillUnderPlus), 게임 화면에서 뽑은 주황 + 를
  * 그 자리에 찍는다.
@@ -49,10 +49,11 @@ const CLIENT_ICON_URL = (id) => `https://mabires2.pril.cc/invimage/kr/${id}/${id
 /**
  * 게임 화면 캡처. 인벤토리의 아이콘을 원래 크기로 찍은 것과, 그 주머니의 파트 색(툴팁 값).
  * 허브 주머니의 주머니 틀과 + 표시를 여기서 푼다.
+ * 게임 그림은 저장소에 두지 않아 캡처는 .cache/game-images/bag-dye-sources 에 있다. 이 PC 밖에서 돌리려면 거기에 넣는다.
  */
 const HERB_CAPTURES = {
   plain: {
-    file: 'scripts/bag-dye-sources/sturdy-mandrake-bag.png',
+    file: '.cache/game-images/bag-dye-sources/sturdy-mandrake-bag.png',
     herb: '만드레이크 주머니',
     colors: [
       [245, 132, 89],
@@ -60,7 +61,7 @@ const HERB_CAPTURES = {
     ],
   },
   sturdier: {
-    file: 'scripts/bag-dye-sources/sturdier-bloody-herb-bag.png',
+    file: '.cache/game-images/bag-dye-sources/sturdier-bloody-herb-bag.png',
     herb: '블러디 허브 주머니',
     colors: [
       [167, 184, 218],
