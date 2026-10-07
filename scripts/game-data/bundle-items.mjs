@@ -152,7 +152,8 @@ export function koreaRecord(records, enabled) {
         ? localeHolds(condition.expression)
         : condition.kind === 'feature'
           ? enabled.get(condition.expression) === true
-          : false,
+          : // 시즌 조건은 내보내기가 한국 프로필로 이미 걸렀다. 남은 행은 지금 시즌에 쓰인다.
+            condition.kind === 'season',
     ),
   );
   const korea = live.filter((record) =>

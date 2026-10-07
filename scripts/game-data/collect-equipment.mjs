@@ -1,93 +1,46 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { createCardMatcher } from './card-match.mjs';
 import { buildEnchantDef, buildEnchantSources, equipTagsOf } from './enchant-defs.mjs';
-import { parseEquipmentResource } from './mabi-equipment.mjs';
-import { parseItemReference } from './mabi-resource.mjs';
-import { defaultBundleRoot, loadBundleItemJsons } from './bundle-items.mjs';
-import { createHash } from 'node:crypto';
+import { defaultBundleRoot, loadBundleCandidates, loadItemIdPins } from './bundle-items.mjs';
+import { loadClientTables } from './client-tables.mjs';
+import { loadArtisanOdds } from './artisan-odds.mjs';
 
 /**
- * 장비 시뮬레이터에 쓸 데이터를 모아 우리 워커에 올린다.
+ * 장비 시뮬레이터에 쓸 데이터를 만들어 우리 워커에 올린다.
  *
- * `collect-item-cards.mjs` 와 같은 두 단계다.
- *   받기    공개된 곳 ──▶ .cache/equipment/     자격 증명 필요 없음
- *   올리기  이 PC ──(운영자 키)──▶ 워커 ──▶ KV     우리 서버 필요
- *
- *   node collect-equipment.mjs --check       아무것도 받지 않고 몇 개인지만 센다
- *   node collect-equipment.mjs --download    아이템별 능력치만 받아 둔다 (키 불필요)
- *   node collect-equipment.mjs --build       받은 것으로 칸을 만들어 .cache/equipment/shards 에만 쓴다
- *   node collect-equipment.mjs               받고 올린다
+ *   node collect-equipment.mjs --check       세기만 한다
+ *   node collect-equipment.mjs --build       칸을 만들어 .cache/equipment/shards 에만 쓴다
+ *   node collect-equipment.mjs               만들고 올린다
  *
  *   --limit=<n>    카테고리 n 개까지만 (처음 돌려 볼 때)
- *   --category=<이름,이름>  그 카테고리만. 이름 사전에 몇 개 더한 뒤 그 칸만 다시 올릴 때
+ *   --category=<이름,이름>  그 카테고리만
+ *   --force        지난번과 같은 칸도 다시 올린다
+ *   --refresh-odds 장인 개조 확률을 공식 페이지에서 모두 다시 받는다
  *
  * ## 무엇을 어디서 가져오는가
  *
- * 리소스 덩어리(카드 도구가 이미 받아 둔 것)에 대부분이 있다.
- *   개조      ItemExtendUpgradeList → ItemUpgradeList
- *   세공      ItemExtendMetalWareList(장비 종류) + MetalWareAbilityList + MetalWareLevelList
- * 덩어리에 없는 것은 아이템마다 따로 묻는 JSON 에 있다.
- *   기본 능력치   Par_AttackMin 같은 칸
+ * 모두 클라이언트 내보내기(`.cache/client-src/exports/client-bundle`)에서 만든다(client-tables.mjs).
+ *   기본 능력치   아이템 데이터의 Par_AttackMin 같은 칸
  *   랜덤 능력치   XML.random_product  "attack_min,0,10;critical,0,10"  (기본값에 더하는 폭)
  *   특별 개조     XML.enhance_type_s / enhance_type_r / enhance_max_lv
+ *   개조          ItemUpgradeDB 의 개조가 item_filter 로 붙는 아이템
+ *   세공          ItemNewMetalWare 의 장비 종류, 능력, 레벨 분포
+ *   인챈트        OptionSet 의 AllowItem / BlockItem 이 맞는 아이템. 나오는 곳은 던전 보상 표
+ *   에르그        ErgEnhanceClient 의 등급별 값. 효과 문장과 붙는 무기는 erg-pins.json
  *
- * ## 아이템 JSON 은 클라이언트 내보내기에서
- *
- * 아이템 JSON 은 게임 아이템 데이터 한 줄이라 클라이언트 내보내기(bundle-items.mjs 의 loadBundleItemJsons)에서
- * 그대로 만든다. 한국 서버에서 쓰이는 줄을 고르는 규칙이 같아서, 받아 둔 7,988개와 장비 칸이 모두 같다(2026-10).
- * 내보내기가 있으면 아이템 JSON 을 묻지 않는다. 받는 서버가 막혀 새 아이템의 장비 정보가 비던 것이 채워진다.
- * 인챈트가 붙는 아이템 목록은 아직 받은 것만 쓴다. 서버가 막혀 있으면 받아 둔 목록으로 계속한다.
+ * 장인 개조의 확률만 클라이언트에 없어 넥슨 공식 확률 공개 페이지에서 읽는다(artisan-odds.mjs). 받은 것은
+ * 남겨 두고 처음 보는 번호만 묻는다.
  *
  * 칸을 올릴 때 지난번에 올린 내용과 같으면 보내지 않는다(.cache/equipment/uploaded-shards.json, --force 로 다시 씀).
- *
- * ## 남의 서버다
- *
- * 아이템 JSON 은 6천 번 넘게 물어야 한다. 동시 3개, 사이에 텀을 두고, 한 번 받은 것은
- * `.cache/equipment/json/` 에 남겨 다시 묻지 않는다. 처음 한 번만 오래 걸린다.
  */
 
-const RESOURCE_HOST = 'https://mabires2.pril.cc';
-const VERSION_URL = `${RESOURCE_HOST}/resourceversion/kr/kr_resourceversion.json`;
-const RESOURCE_URL = `${RESOURCE_HOST}/resourcedata/kr/kr_resourcedata.bin.br`;
-const ITEM_JSON_URL = 'https://mabiapi.pril.cc/prilus.mabiapi/ItemJson';
-
-/**
- * 아이템 JSON 과 인챈트를 주는 서버가 사람 확인을 요구하며 막은 것. 서버는 HTTP 200 에 빈 몸통을 주고 머리글에
- * grpc-status 7(PERMISSION_DENIED)과 "human check failed" 를 실어 보낸다(2026-10). 빈 응답으로 읽으면 인챈트가
- * 비었다고 캐시에 남기고 아이템을 "없음" 으로 적어 버려, 서버가 풀린 뒤에도 다시 받지 않는다. 막힌 것은 따로
- * 알아보고 받기를 멈춘다. 막힌 것을 뚫으려 하지 않는다.
- */
-class ApiBlockedError extends Error {}
-
-/** grpc 상태를 머리글로 바로 돌려준 응답에서 막힘을 알아본다. 그 밖의 오류 상태는 지금처럼 "없음" 으로 읽는다. */
-function throwIfBlocked(response) {
-  if (response.headers.get('grpc-status') !== '7') return;
-  const message = decodeURIComponent(response.headers.get('grpc-message') ?? '');
-  throw new ApiBlockedError(`데이터 서버가 요청을 막았습니다 (${message || 'PERMISSION_DENIED'}).`);
-}
-
-/**
- * 막혔다고 알린다. GitHub Actions 에서는 경고로 남기고, 이어지는 단계(장비 올리기)가 건너뛸 수 있게
- * api_blocked=true 를 단계 출력으로 적는다.
- */
-async function reportBlocked(error) {
-  log(`${error.message} 받아 둔 것만 쓰고, 받지도 올리지도 않습니다.`);
-  if (process.env.GITHUB_ACTIONS) console.log(`::warning::${error.message}`);
-  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, 'api_blocked=true\n');
-}
-
-/** 카드 도구와 같은 덩어리를 쓴다. 한쪽이 받아 두면 다른 쪽은 다시 받지 않는다. */
-const RESOURCE_DIR = resolve(process.cwd(), '.cache/item-cards');
 const CACHE_DIR = resolve(process.cwd(), '.cache/equipment');
-const JSON_DIR = resolve(CACHE_DIR, 'json');
 const SHARD_DIR = resolve(CACHE_DIR, 'shards');
 const ITEMS_DIR = resolve(process.cwd(), 'public/data/items');
-
-const JSON_CONCURRENCY = 3;
-const JSON_PAUSE_MS = 80;
 
 /** 특별 개조 단계 상한을 적지 않은 아이템이 많다. 게임 안내의 기본 상한이 8단계다. */
 const DEFAULT_ENHANCE_MAX = 8;
@@ -113,8 +66,8 @@ loadEnvFile();
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
 const forceShards = args.has('--force');
-const downloadOnly = args.has('--download');
 const buildOnly = args.has('--build');
+const refreshOdds = args.has('--refresh-odds');
 const limitArg = [...args].find((a) => a.startsWith('--limit='));
 const categoryLimit = limitArg ? Number(limitArg.split('=')[1]) : Infinity;
 const onlyCategories = new Set(
@@ -124,39 +77,24 @@ const onlyCategories = new Set(
     .map((name) => name.trim())
     .filter(Boolean),
 );
-const willUpload = !checkOnly && !downloadOnly && !buildOnly;
+const willUpload = !checkOnly && !buildOnly;
 
 const proxyUrl = (process.env.VITE_PROXY_URL ?? '').trim().replace(/\/+$/, '');
 const adminKey = (process.env.MABIKUMA_ADMIN_KEY ?? '').trim();
 
 const log = (...parts) => console.log('[equipment]', ...parts);
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-async function loadResource() {
-  await mkdir(RESOURCE_DIR, { recursive: true });
-  const versionPath = resolve(RESOURCE_DIR, 'version.json');
-  const blobPath = resolve(RESOURCE_DIR, 'resourcedata.bin.br');
-
-  const response = await fetch(VERSION_URL);
-  if (!response.ok) throw new Error(`목록 버전을 받지 못했습니다. (HTTP ${response.status})`);
-  const version = await response.json();
-
-  const cachedVersion = await readFile(versionPath, 'utf8').catch(() => null);
-  if (cachedVersion === JSON.stringify(version)) {
-    const cached = await readFile(blobPath).catch(() => null);
-    if (cached) {
-      log('리소스는 그대로입니다. 받아 둔 것을 씁니다.');
-      return cached;
-    }
-  }
-
-  log('리소스 내려받는 중...');
-  const blobResponse = await fetch(RESOURCE_URL);
-  if (!blobResponse.ok) throw new Error(`리소스를 받지 못했습니다. (HTTP ${blobResponse.status})`);
-  const blob = Buffer.from(await blobResponse.arrayBuffer());
-  await writeFile(blobPath, blob);
-  await writeFile(versionPath, JSON.stringify(version));
-  return blob;
+/** 클라이언트 내보내기의 마지막 실행 폴더. 없으면 만들 수 없다. */
+async function loadBundleRun() {
+  const root = defaultBundleRoot();
+  const latest = await readFile(resolve(root, 'latest.json'), 'utf8')
+    .then(JSON.parse)
+    .catch(() => null);
+  if (!latest?.run)
+    throw new Error(
+      `${root} 에 클라이언트 내보내기가 없습니다. Run-ClientExport.ps1 을 먼저 돌리세요.`,
+    );
+  return resolve(root, latest.run);
 }
 
 async function loadDictionary() {
@@ -190,262 +128,6 @@ const compactName = (name) => name.replace(/\s+/g, '').replace(/&&/g, '&');
 
 /** f32 로 들어온 0.009999999776 같은 값을 사람이 읽는 값으로. */
 const round = (value) => Math.round(value * 1e4) / 1e4;
-
-// ---------------------------------------------------------------------------
-// 아이템 JSON (gRPC-web 한 번)
-
-function varintBytes(value) {
-  const bytes = [];
-  let n = value;
-  while (n > 127) {
-    bytes.push((n & 127) | 128);
-    n >>>= 7;
-  }
-  bytes.push(n);
-  return bytes;
-}
-
-/** ItemJsonReq { 100: Region = "kr", 1: Id } 를 grpc-web 틀 하나에 싣는다. */
-function itemJsonRequest(id) {
-  const region = Buffer.from('kr');
-  const message = Buffer.from([
-    ...varintBytes((100 << 3) | 2),
-    ...varintBytes(region.length),
-    ...region,
-    0x08,
-    ...varintBytes(id),
-  ]);
-  const frame = Buffer.alloc(5 + message.length);
-  frame.writeUInt32BE(message.length, 1);
-  message.copy(frame, 5);
-  return frame;
-}
-
-/** 응답 틀에서 JsonRes { 1: Json } 의 문자열만 꺼낸다. 오류 트레일러면 null. */
-function readItemJsonResponse(buffer) {
-  let position = 0;
-  let json = null;
-  while (position + 5 <= buffer.length) {
-    const flag = buffer[position];
-    const length = buffer.readUInt32BE(position + 1);
-    const body = buffer.subarray(position + 5, position + 5 + length);
-    position += 5 + length;
-
-    if (flag & 0x80) {
-      const status = /grpc-status:\s*(\d+)/.exec(body.toString())?.[1];
-      if (status && status !== '0') return null;
-      continue;
-    }
-    if (body[0] !== 0x0a) continue;
-    let length2 = 0;
-    let shift = 0;
-    let cursor = 1;
-    let byte;
-    do {
-      byte = body[cursor++];
-      length2 |= (byte & 127) << shift;
-      shift += 7;
-    } while (byte & 128);
-    json = body.subarray(cursor, cursor + length2).toString('utf8');
-  }
-  return json;
-}
-
-async function fetchItemJson(id) {
-  const response = await fetch(ITEM_JSON_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/grpc-web+proto',
-      accept: 'application/grpc-web+proto',
-      'x-grpc-web': '1',
-    },
-    body: itemJsonRequest(id),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  throwIfBlocked(response);
-  const json = readItemJsonResponse(Buffer.from(await response.arrayBuffer()));
-  return json ? JSON.parse(json) : null;
-}
-
-/** 같은 모양의 요청({ Region, Id })을 받는 다른 메서드를 부른다. 첫 데이터 틀의 몸통만 돌려준다. */
-async function callGrpc(method, id) {
-  const response = await fetch(`https://mabiapi.pril.cc/prilus.mabiapi/${method}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/grpc-web+proto',
-      accept: 'application/grpc-web+proto',
-      'x-grpc-web': '1',
-    },
-    body: itemJsonRequest(id),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  throwIfBlocked(response);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  let position = 0;
-  while (position + 5 <= buffer.length) {
-    const flag = buffer[position];
-    const length = buffer.readUInt32BE(position + 1);
-    const body = buffer.subarray(position + 5, position + 5 + length);
-    position += 5 + length;
-    if (flag & 0x80) {
-      const status = /grpc-status:\s*(\d+)/.exec(body.toString())?.[1];
-      if (status && status !== '0') return null;
-      continue;
-    }
-    return body;
-  }
-  return null;
-}
-
-/** 필드 1 한 칸의 [시작, 끝]. JsonRes 와 AllowItemsRes 모두 필드 1 하나짜리 메시지다. */
-function fieldOneRange(body) {
-  if (!body || body[0] !== 0x0a) return null;
-  let cursor = 1;
-  let length = 0;
-  let shift = 0;
-  let byte;
-  do {
-    byte = body[cursor++];
-    length |= (byte & 127) << shift;
-    shift += 7;
-  } while (byte & 128);
-  return [cursor, cursor + length];
-}
-
-/** JsonRes { 1: Json } */
-function readJsonRes(body) {
-  const range = fieldOneRange(body);
-  return range ? body.subarray(range[0], range[1]).toString('utf8') : null;
-}
-
-/** 필드 1 에 packed varint 로 들어 있는 번호 목록(OptionSetAllowItemsRes.AllowItemIds). */
-function readPackedIds(body) {
-  const range = fieldOneRange(body);
-  if (!range) return [];
-  let [cursor] = range;
-  const end = range[1];
-  let byte;
-  const ids = [];
-  while (cursor < end) {
-    let value = 0;
-    let factor = 1;
-    do {
-      byte = body[cursor++];
-      value += (byte & 127) * factor;
-      factor *= 128;
-    } while (byte & 128);
-    ids.push(value);
-  }
-  return ids;
-}
-
-const ENCHANT_DIR = resolve(CACHE_DIR, 'enchants');
-const enchantPath = (id) => resolve(ENCHANT_DIR, `${id}.json`);
-
-/**
- * 받아 둔 인챈트가 쓸 수 있는 내용인지. 파일이 있어도 json 이 null 이면 못 쓴 것이다 — 남의
- * 서버가 콜드 스타트의 몰린 요청을 못 견디고 전부 빈 응답을 준 적이 있다(2026-10-01). 그때
- * 파일 존재만 보고 "받았다"고 여기면, 캐시가 깨진 채로 저장돼 서버가 멀쩡해져도 다시 받지 않고
- * 영원히 빈 사전으로 남는다.
- */
-async function hasEnchant(id) {
-  const text = await readFile(enchantPath(id), 'utf8').catch(() => null);
-  if (!text) return false;
-  try {
-    return JSON.parse(text).json != null;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 인챈트 하나: 효과 원문(JSON)과 붙일 수 있는 아이템 번호 목록. 1,400개 남짓이라 두 번씩 물어도
- * 아이템 JSON 보다 적다. 쓸 수 있게 받아 둔 것만 다시 묻지 않는다.
- */
-async function downloadEnchants(ids) {
-  await mkdir(ENCHANT_DIR, { recursive: true });
-  const todo = [];
-  for (const id of ids) {
-    if (await hasEnchant(id)) continue;
-    todo.push(id);
-  }
-  let got = 0;
-  for (let i = 0; i < todo.length; i += JSON_CONCURRENCY) {
-    const slice = todo.slice(i, i + JSON_CONCURRENCY);
-    await Promise.all(
-      slice.map(async (id) => {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const text = readJsonRes(await callGrpc('OptionSetJson', id));
-            const allow = readPackedIds(await callGrpc('OptionSetAllowItems', id));
-            await writeFile(
-              enchantPath(id),
-              JSON.stringify({ json: text ? JSON.parse(text) : null, allow }),
-            );
-            got++;
-            return;
-          } catch (error) {
-            if (error instanceof ApiBlockedError) throw error;
-            await sleep(500);
-          }
-        }
-      }),
-    );
-    if ((i / JSON_CONCURRENCY) % 50 === 0)
-      log(`  인챈트 ${Math.min(i + JSON_CONCURRENCY, todo.length)}/${todo.length}`);
-    await sleep(JSON_PAUSE_MS);
-  }
-  return got;
-}
-
-const jsonPath = (id) => resolve(JSON_DIR, `${id}.json`);
-
-async function readCachedJson(id) {
-  const text = await readFile(jsonPath(id), 'utf8').catch(() => null);
-  return text ? JSON.parse(text) : null;
-}
-
-async function downloadItemJsons(ids, missing) {
-  await mkdir(JSON_DIR, { recursive: true });
-  const todo = [];
-  for (const id of ids) {
-    if (missing.has(id)) continue;
-    if (await readCachedJson(id)) continue;
-    todo.push(id);
-  }
-  if (todo.length === 0) return 0;
-
-  let got = 0;
-  for (let i = 0; i < todo.length; i += JSON_CONCURRENCY) {
-    const slice = todo.slice(i, i + JSON_CONCURRENCY);
-    const results = await Promise.all(
-      slice.map(async (id) => {
-        // 한 번 삐끗한 것은 한 번만 다시 묻는다. 그래도 안 되면 다음 실행 때 다시 본다.
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            return { id, json: await fetchItemJson(id), failed: false };
-          } catch (error) {
-            if (error instanceof ApiBlockedError) throw error;
-            await sleep(500);
-          }
-        }
-        return { id, json: null, failed: true };
-      }),
-    );
-    for (const { id, json, failed } of results) {
-      if (json) {
-        await writeFile(jsonPath(id), JSON.stringify(json));
-        got++;
-      } else if (!failed) {
-        missing.add(id);
-      }
-    }
-    if ((i / JSON_CONCURRENCY) % 50 === 0)
-      log(`  아이템 JSON ${Math.min(i + JSON_CONCURRENCY, todo.length)}/${todo.length}`);
-    await sleep(JSON_PAUSE_MS);
-  }
-  return got;
-}
 
 // ---------------------------------------------------------------------------
 // 레코드 만들기
@@ -619,20 +301,9 @@ function buildUpgradeDef(upgrade, text, optionSets, npcName) {
     .filter(Boolean);
   if (options.length) def.options = options;
 
-  const lucky = upgrade.LuckyUpgrade;
-  if (lucky) {
-    const pct = (rate, total) => (total > 0 ? round((rate / total) * 100) : 0);
-    def.lucky = {
-      counts: (lucky.CountRates ?? []).map((row) => [
-        row.Count,
-        pct(row.Rate, lucky.CountTotalRate),
-      ]),
-      options: (lucky.RandomOptionRates ?? []).map((row) => [
-        text(optionSets.get(row.Id)?.Desc) || `옵션 ${row.Id}`,
-        pct(row.Rate, lucky.RandomOptionTotalRate),
-      ]),
-    };
-  }
+  // 장인 개조 확률. 공식 확률 공개 페이지의 표 그대로다(옵션 개수 %, 옵션 문장 %).
+  const odds = upgrade.ArtisanOdds;
+  if (odds) def.lucky = { counts: odds.counts, options: odds.options };
   if (upgrade.Personalize) def.personal = true;
   return def;
 }
@@ -727,8 +398,22 @@ async function putShard(category, shard) {
 async function main() {
   if (willUpload) requireUploadConfig();
 
-  const [resource, dictionary] = await Promise.all([loadResource(), loadDictionary()]);
-  const data = parseEquipmentResource(resource);
+  const run = await loadBundleRun();
+  log(`클라이언트 내보내기 ${run}`);
+  const dictionary = await loadDictionary();
+  const data = loadClientTables(run);
+
+  // 장인 개조 확률은 공식 페이지에서. 받아 둔 것은 다시 묻지 않는다.
+  const luckyIds = data.ItemUpgradeList.map((row) => row.LuckyUpgradeId).filter(
+    (id) => id !== undefined,
+  );
+  const odds = checkOnly
+    ? new Map()
+    : await loadArtisanOdds(luckyIds, { refresh: refreshOdds, log });
+  for (const row of data.ItemUpgradeList) {
+    if (row.LuckyUpgradeId !== undefined && odds.has(row.LuckyUpgradeId))
+      row.ArtisanOdds = odds.get(row.LuckyUpgradeId);
+  }
 
   const strings = new Map(data.StringTable.map((row) => [row.Id, row.Str ?? '']));
   // 게임 안 표기(<color> 등)와 줄바꿈 글자를 걷어 낸다.
@@ -738,17 +423,7 @@ async function main() {
       .replace(/<\/?[^>]+>/g, '')
       .trim();
 
-  // 아이템 JSON 은 내보내기에서 만든다. 내보내기가 없을 때만 예전처럼 받는다.
-  const bundleRoot = defaultBundleRoot();
-  const bundleJsons = await readFile(resolve(bundleRoot, 'latest.json'), 'utf8')
-    .then((text) => loadBundleItemJsons(resolve(bundleRoot, JSON.parse(text).run)))
-    .catch(() => null);
-  log(
-    bundleJsons
-      ? `아이템 JSON: 클라이언트 내보내기 ${bundleJsons.size}개`
-      : '아이템 JSON: 내보내기가 없어 받아 둔 것을 씁니다',
-  );
-  const itemJson = async (id) => bundleJsons?.get(String(id)) ?? readCachedJson(id);
+  const itemJson = (id) => data.itemJsons.get(String(id)) ?? null;
   const shardState = await readFile(SHARD_STATE, 'utf8')
     .then(JSON.parse)
     .catch(() => ({}));
@@ -756,42 +431,19 @@ async function main() {
 
   // 인챈트는 옵션셋 가운데 쓰임새 0(접두)과 1(접미)이다. 나머지는 개조 옵션, 세트 효과 같은 것들.
   const enchantRows = data.OptionSetList.filter((row) => (row.Usage ?? 0) <= 1);
-  if (!checkOnly) {
-    try {
-      const got = await downloadEnchants(enchantRows.map((row) => row.Id));
-      if (got) log(`인챈트 ${got}개 새로 받음`);
-    } catch (error) {
-      if (!(error instanceof ApiBlockedError)) throw error;
-      // 막혔으면 아이템 JSON 도 같은 서버라 받을 수 없다. 반쯤 빈 장비 데이터를 올리면 멀쩡한 것을 덮으므로 여기서 멈춘다.
-      // 내보내기가 있으면 아이템 JSON 은 거기서 오므로, 받아 둔 인챈트 목록으로 계속한다.
-      await reportBlocked(error);
-      if (!bundleJsons) {
-        if (willUpload) process.exitCode = 1;
-        return;
-      }
-    }
-  }
-
   const npcName = buildNpcNames(data.RaceList, text);
 
-  /** 아이템 번호 → 붙일 수 있는 인챈트 번호. 인챈트마다 받아 둔 "붙는 아이템" 목록을 뒤집는다. */
-  const enchantCache = new Map();
+  /** 아이템 번호 → 붙일 수 있는 인챈트 번호. 인챈트마다 "붙는 아이템" 목록을 뒤집는다. */
+  const enchantCache = data.enchants;
   const enchantsByItem = new Map();
-  if (!checkOnly && !downloadOnly) {
-    for (const row of enchantRows) {
-      const cached = await readFile(enchantPath(row.Id), 'utf8')
-        .then(JSON.parse)
-        .catch(() => null);
-      if (!cached?.json) continue;
-      enchantCache.set(row.Id, cached);
-      for (const itemId of cached.allow ?? []) {
-        const list = enchantsByItem.get(itemId) ?? [];
-        list.push(row.Id);
-        enchantsByItem.set(itemId, list);
-      }
+  for (const [enchantId, { allow }] of enchantCache) {
+    for (const itemId of allow) {
+      const list = enchantsByItem.get(itemId) ?? [];
+      list.push(enchantId);
+      enchantsByItem.set(itemId, list);
     }
-    log(`인챈트 ${enchantCache.size}개, 인챈트가 붙는 아이템 ${enchantsByItem.size}개`);
   }
+  log(`인챈트 ${enchantCache.size}개, 인챈트가 붙는 아이템 ${enchantsByItem.size}개`);
   const unknownParams = new Set();
   const enchantRowById = new Map(enchantRows.map((row) => [row.Id, row]));
   const ergSets = buildErgSets(data, text);
@@ -848,10 +500,15 @@ async function main() {
    * 붙은 후보만 고르면 기본 성능(공격, 크리티컬, 밸런스)까지 통째로 빠진다. 그래서 그 카테고리에서
    * 고른 후보가 장비로 보이면 기본 성능만이라도 싣는다.
    */
-  const { candidates } = parseItemReference(resource);
+  const { candidates } = loadBundleCandidates(run);
   const matcher = createCardMatcher(candidates, dictionary);
+  const pins = loadItemIdPins();
 
   const pickId = (name, category) => {
+    // 아이템 카드와 같은 아이템을 먼저 본다. 카드의 그림과 설명이 이 아이템의 것이라 능력치도 같아야 한다.
+    const pinned = pins[category]?.[name];
+    const card = pinned ?? matcher.pick(name, category)?.id;
+    if (card !== undefined && hasEquipData(card)) return card;
     const ids = idsByName.get(name) ?? compactIndex.get(compactName(name));
     const withData = ids?.find(hasEquipData);
     if (withData !== undefined) return withData;
@@ -865,11 +522,6 @@ async function main() {
     .filter((category) => onlyCategories.size === 0 || onlyCategories.has(category))
     .sort((a, b) => a.localeCompare(b, 'ko'))
     .slice(0, categoryLimit);
-  const missing = new Set(
-    await readFile(resolve(CACHE_DIR, 'missing.json'), 'utf8')
-      .then(JSON.parse)
-      .catch(() => []),
-  );
   await mkdir(SHARD_DIR, { recursive: true });
 
   let totalItems = 0;
@@ -891,25 +543,6 @@ async function main() {
       continue;
     }
 
-    let got = 0;
-    try {
-      if (!bundleJsons)
-        got = await downloadItemJsons(
-          picked.map((entry) => entry.id),
-          missing,
-        );
-    } catch (error) {
-      if (!(error instanceof ApiBlockedError)) throw error;
-      // 도중에 막히면 이 카테고리부터는 올리지 않는다. 앞서 올린 카테고리는 다 받은 것이라 그대로 둔다.
-      await writeFile(resolve(CACHE_DIR, 'missing.json'), JSON.stringify([...missing]));
-      await reportBlocked(error);
-      if (willUpload) process.exitCode = 1;
-      return;
-    }
-    await writeFile(resolve(CACHE_DIR, 'missing.json'), JSON.stringify([...missing]));
-    if (got) log(`${step}: 아이템 JSON ${got}개 새로 받음`);
-    if (downloadOnly) continue;
-
     const items = {};
     const usedUpgrades = new Set();
     const usedTypes = new Set();
@@ -921,7 +554,7 @@ async function main() {
     const usedErgSets = new Set();
 
     for (const { name, id } of picked) {
-      const json = await itemJson(id);
+      const json = itemJson(id);
       if (!json) withoutJson++;
       const xml = json?.XML ?? {};
 
@@ -1043,8 +676,7 @@ async function main() {
   if (!checkOnly)
     log(`  아이템 JSON 이 없는 것 ${withoutJson}개 (기본 능력치와 특별 개조가 비어 있음)`);
   if (willUpload) log(`  올린 것 ${uploaded}개, 바뀌지 않아 건너뛴 칸 ${unchanged}개`);
-  if (checkOnly) log('세기만 했습니다. 받지도 올리지도 않았습니다.');
-  if (downloadOnly) log('받기만 했습니다. .cache\\equipment 에 쌓여 있고, 올리려면 다시 돌리세요.');
+  if (checkOnly) log('세기만 했습니다. 올리지 않았습니다.');
 }
 
 main().catch((error) => {
