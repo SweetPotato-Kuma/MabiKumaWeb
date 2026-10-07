@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { theme } from 'antd';
 import itemMissing from '@/assets/item-missing.png';
 import { iconSrcOf, isCardStoreConfigured, type ItemCard } from '@/features/itemcard/cards';
 import { iconFileUrl, isIconMapConfigured, useItemBrief } from '@/features/itemcard/iconMap';
+import { dyeKey, paintFromSheet, type DyeColors, type ItemDye } from '@/features/itemcard/dye';
 import { pixelScale } from '@/features/itemcard/pixelScale';
 
 interface ItemImageProps {
@@ -76,6 +77,8 @@ interface ItemIconProps {
   file?: string;
   name?: string;
   size: number;
+  /** 경매장 매물의 파트별 색. 있으면 그 색으로 다시 칠한다(dye.ts). */
+  colors?: DyeColors | null;
 }
 
 /**
@@ -88,12 +91,12 @@ interface ItemIconProps {
  * 그림이 아직 없어도 **자리는 비워 둔다.** 칸이 늦게 생기면 이름이 옆으로 밀리며 표가 들썩인다.
  * 카드 저장소도 그림 목록도 없는 환경에서는 자리도 만들지 않는다. 영영 채워지지 않을 빈칸을 두지 않는다.
  */
-export function ItemIcon({ card, category, name, file, size }: ItemIconProps) {
+export function ItemIcon({ card, category, name, file, size, colors }: ItemIconProps) {
   if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
   if (file && isIconMapConfigured()) return <ItemImage src={iconFileUrl(file)} size={size} />;
   // 카테고리와 이름을 받은 칸만 목록을 본다. 카드만 넘기는 상세 창은 목록을 받을 이유가 없다.
   if (category && name)
-    return <MappedItemIcon card={card} category={category} name={name} size={size} />;
+    return <MappedItemIcon card={card} category={category} name={name} size={size} colors={colors} />;
   const src = card?.icon ? iconSrcOf(card) : '';
   // 상세 창은 카드만 받는다. null 이면 물어봤는데 카드가 없다는 뜻이다. undefined 는 아직 모른다.
   return <IconSlot src={src} missing={card !== undefined && !src} size={size} />;
@@ -104,11 +107,79 @@ function MappedItemIcon({
   category,
   name,
   size,
+  colors,
 }: ItemIconProps & { category: string; name: string }) {
   const brief = useItemBrief(category, name);
   const src = brief?.icon ? iconFileUrl(brief.icon) : card?.icon ? iconSrcOf(card) : '';
+  if (src && brief?.dye && colors) return <DyedItemImage src={src} dye={brief.dye} colors={colors} size={size} />;
   // 목록을 받았는데 이름이 없으면(null) 그림이 없다고 확정된 것이다. 받는 중(undefined)에는 비워 둔다.
   return <IconSlot src={src} missing={brief !== undefined && !src} size={size} />;
+}
+
+/**
+ * 매물 색으로 칠한 그림. 칠하기 전에는 기본 색 그림을 그대로 보인다. 칸 크기가 같아 바뀌어도
+ * 표가 들썩이지 않는다. 칠하기는 브라우저가 한가할 때 한다. 첫 화면을 그리는 일을 막지 않는다.
+ * 시트를 받지 못하면 기본 그림이 남는다.
+ */
+function DyedItemImage({ src, dye, colors, size }: { src: string; dye: ItemDye; colors: DyeColors; size: number }) {
+  const key = dyeKey(dye, colors);
+  const [result, setResult] = useState<{ key: string; side: number; pixels: Uint8ClampedArray } | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = () => {
+      void paintFromSheet(iconFileUrl(dye.sheet), dye, colors).then((painted) => {
+        if (!cancelled && painted) setResult({ key, ...painted });
+      });
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const handle = window.requestIdleCallback(run, { timeout: 800 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(handle);
+      };
+    }
+    const timer = setTimeout(run, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [dye, colors, key]);
+
+  const ready = result?.key === key ? result : null;
+
+  useEffect(() => {
+    const context = ready ? canvasRef.current?.getContext('2d') : null;
+    if (!ready || !context) return;
+    const image = context.createImageData(ready.side, ready.side);
+    image.data.set(ready.pixels);
+    context.putImageData(image, 0, 0);
+  }, [ready]);
+
+  if (!ready) return <ItemImage src={src} size={size} />;
+  const shown = ready.side * pixelScale(ready.side, ready.side, size);
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        flex: `0 0 ${size}px`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={ready.side}
+        height={ready.side}
+        // 이름이 바로 옆에 있으므로 그림은 꾸밈이다.
+        aria-hidden
+        style={{ width: shown, height: shown, display: 'block' }}
+      />
+    </div>
+  );
 }
 
 /**

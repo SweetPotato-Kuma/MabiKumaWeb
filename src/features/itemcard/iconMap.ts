@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { parseDye, type ItemDye } from './dye';
 
 /**
  * 카테고리별 그림 목록. `이름 -> 그림 파일, 부제` 만 담긴 작은 파일이다.
@@ -18,6 +19,8 @@ export interface ItemBrief {
   /** 그림 파일 이름. 내용 해시라 한 번 받으면 1년 동안 다시 받지 않는다. 없으면 빈 문자열. */
   icon: string;
   subtitle: string;
+  /** 매물 색으로 다시 칠할 수 있는 아이템이면 회색 레이어 시트 정보. dye.ts 참고. */
+  dye?: ItemDye;
 }
 
 type IconMap = ReadonlyMap<string, ItemBrief>;
@@ -57,7 +60,8 @@ export function parseIconMap(raw: unknown): IconMap {
   if (!items || typeof items !== 'object') return map;
   for (const [name, value] of Object.entries(items)) {
     if (!Array.isArray(value)) continue;
-    map.set(name, { icon: String(value[0] ?? ''), subtitle: String(value[1] ?? '') });
+    const dye = parseDye(value[2]);
+    map.set(name, { icon: String(value[0] ?? ''), subtitle: String(value[1] ?? ''), ...(dye ? { dye } : {}) });
   }
   return map;
 }

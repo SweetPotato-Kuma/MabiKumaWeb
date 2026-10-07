@@ -88,8 +88,9 @@ import { useMarketRecentQuery, useRelicRecentQuery } from '@/features/market/api
 import { isRelicOption, relicOptionOf } from '@/features/relics/murias';
 import { riskThresholds, rowKeyOf, summarizeMurias } from '@/features/relics/prices';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
+import { dyeColorsOf } from '@/features/itemcard/dye';
 import { useIconMaps } from '@/features/itemcard/iconMap';
-import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput } from '@/features/auction/types';
+import type { AuctionHistoryItem, AuctionItem, AuctionSearchInput, ItemOption } from '@/features/auction/types';
 import { headerHeightFor } from '@/app/theme';
 import { formatDateTime, formatNumber, formatRemaining } from '@/lib/format';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
@@ -133,10 +134,20 @@ const AUCTION_ICON_BOX = 48;
  * 이 칸이 스스로 지켜보는 이유는 표 전체가 메모로 굳어 있어서다. 목록이나 카드가 뒤늦게
  * 도착해도 이 칸만 다시 그려진다.
  */
-function ItemIconCell({ rawName, category }: { rawName: string; category: string }) {
+function ItemIconCell({
+  rawName,
+  category,
+  options,
+}: {
+  rawName: string;
+  category: string;
+  options?: ItemOption[];
+}) {
   const name = canonicalItemName(rawName);
   const card = useItemCard(category, name);
-  return <ItemIcon category={category} name={name} card={card} size={AUCTION_ICON_BOX} />;
+  // 매물의 파트 색으로 그림을 다시 칠한다. 색이 없는 매물은 사전 그림 그대로다.
+  const colors = useMemo(() => dyeColorsOf(options), [options]);
+  return <ItemIcon category={category} name={name} card={card} size={AUCTION_ICON_BOX} colors={colors} />;
 }
 
 /**
@@ -974,7 +985,7 @@ export function AuctionPage() {
       title: '',
       key: 'icon',
       width: ICON_COLUMN_WIDTH,
-      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} />,
+      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} options={record.item_option} />,
     },
     {
       title: '이름',
@@ -1064,7 +1075,7 @@ export function AuctionPage() {
       title: '',
       key: 'icon',
       width: COMPACT_ICON_COLUMN_WIDTH,
-      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} />,
+      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} options={record.item_option} />,
     },
     {
       title: '이름',
@@ -1114,7 +1125,7 @@ export function AuctionPage() {
       title: '',
       key: 'icon',
       width: ICON_COLUMN_WIDTH,
-      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} />,
+      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} options={record.item_option} />,
     },
     {
       title: '이름',
@@ -1164,7 +1175,7 @@ export function AuctionPage() {
       title: '',
       key: 'icon',
       width: COMPACT_ICON_COLUMN_WIDTH,
-      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} />,
+      render: (_value, record) => <ItemIconCell rawName={record.item_name} category={record.auction_item_category} options={record.item_option} />,
     },
     {
       title: '이름',
