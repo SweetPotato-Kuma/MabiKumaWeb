@@ -21,7 +21,7 @@
  * 아무나 쓰게 두면 남이 사전을 채워 넣을 수 있으므로 키를 아는 사람만 쓰게 한다.
  *   ADMIN_KEY        (Secret, 카드 기능에 필수) 운영자만 아는 긴 문자열
  *   ITEM_CARDS       (KV 바인딩, 카드 기능에 필수) 카테고리별 카드 목록
- *   ICONS            (R2 바인딩, 카드 기능에 필수) 아이콘 PNG. 1만 장이 넘어 KV 로는 감당이 안 된다
+ *   ICONS            (R2 바인딩, 카드 기능에 필수) 아이콘 WebP/PNG. 1만 장이 넘어 KV 로는 감당이 안 된다
  *   CARD_RATE_LIMIT  (Rate limiting 바인딩, 선택) 있으면 카드 조회 횟수를 제한한다
  *
  * 장비 정보(GET /item-equip, PUT /item-equip/shard)도 같은 KV 와 같은 운영자 키, 같은 조회
@@ -93,6 +93,7 @@ const CARD_LOOKUP_PATH = '/item-card/lookup';
 const CARD_ICONS_PATH = '/item-card/icons';
 const CARD_SHARD_PATH = '/item-card/shard';
 const CARD_MAPS_PATH = '/item-card/maps';
+const CARD_ICONS_DELETE_PATH = '/item-card/icons/delete';
 const ICON_PATH_PREFIX = '/item-card/icons/';
 
 /**
@@ -137,6 +138,14 @@ const ADMIN_HEADER = 'x-mabikuma-admin-key';
 
 /** 아이콘 한 장의 상한. 툴팁에서 잘라낸 아이콘은 보통 몇 KB 다. */
 const ICON_MAX_BYTES = 512 * 1024;
+
+/**
+ * 아이콘 파일 이름. 내용 해시 16자리와 형식 확장자다. 한꺼번에 올리는 그림은 무손실 WebP 이고,
+ * 툴팁 화면에서 손으로 넣는 그림과 WebP 로 바꾸기 전에 올린 그림은 PNG 다. 옛 카드를 들고 있는
+ * 브라우저가 있으므로 PNG 도 계속 내준다.
+ */
+const ICON_FILE_PATTERN = /^[0-9a-f]{16}\.(png|webp)$/;
+const ICON_CONTENT_TYPES = { png: 'image/png', webp: 'image/webp' };
 
 const CARD_NAME_MAX = 120;
 const CARD_TEXT_MAX = 2000;
@@ -714,7 +723,10 @@ async function iconMapKey(category) {
 async function writeIconMap(env, category, cards) {
   if (!env.ICONS) return;
   const items = {};
-  for (const card of cards) items[card.name] = card.subtitle ? [card.icon, card.subtitle] : [card.icon];
+  for (const card of cards) {
+    if (card.dye) items[card.name] = [card.icon, card.subtitle, card.dye];
+    else items[card.name] = card.subtitle ? [card.icon, card.subtitle] : [card.icon];
+  }
   await env.ICONS.put(await iconMapKey(category), JSON.stringify({ category, items }), {
     httpMetadata: { contentType: 'application/json; charset=utf-8', cacheControl: ICON_MAP_CACHE },
   });
@@ -758,7 +770,15 @@ function decodeBase64(value) {
  * 캐시를 마음 놓고 걸 수 있고, 같은 그림을 두 번 올려도 파일이 늘지 않는다.
  */
 async function iconFileName(bytes) {
-  return `${(await sha256Hex(bytes)).slice(0, 16)}.png`;
+  return `${(await sha256Hex(bytes)).slice(0, 16)}.${iconFormat(bytes)}`;
+}
+
+/** 앞머리 바이트로 형식을 가린다. PNG 도 WebP 도 아니면 받지 않는다. */
+function iconFormat(bytes) {
+  const ascii = (start, end) => String.fromCharCode(...bytes.subarray(start, end));
+  if (bytes[0] === 0x89 && ascii(1, 4) === 'PNG') return 'png';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'webp';
+  throw new Error('아이콘은 PNG 나 WebP 여야 합니다.');
 }
 
 /** base64 로 온 아이콘을 풀고 파일 이름을 정한다. 아직 쓰지는 않는다. */
@@ -768,11 +788,16 @@ async function prepareIcon(base64) {
   return { bytes, file: await iconFileName(bytes) };
 }
 
+const iconContentType = (file) => ICON_CONTENT_TYPES[file.slice(file.lastIndexOf('.') + 1)];
+
 async function writeIcon(env, file, bytes) {
   // 캐시 표시를 파일에 같이 적어 둔다. 워커를 거치지 않고 R2 에서 바로 나갈 때도 CDN 과
   // 브라우저가 이걸 보고 오래 붙잡는다. 이름이 내용 해시라 1년을 걸어도 틀릴 일이 없다.
   await env.ICONS.put(file, bytes, {
-    httpMetadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000, immutable' },
+    httpMetadata: {
+      contentType: iconContentType(file),
+      cacheControl: 'public, max-age=31536000, immutable',
+    },
   });
 }
 
@@ -793,14 +818,14 @@ async function serveIcon(url, env) {
   if (!env.ICONS) return new Response('아이콘 저장소가 설정되지 않았습니다.', { status: 503 });
 
   const file = url.pathname.slice(ICON_PATH_PREFIX.length);
-  if (!/^[0-9a-f]{16}\.png$/.test(file)) return new Response('없는 아이콘입니다.', { status: 404 });
+  if (!ICON_FILE_PATTERN.test(file)) return new Response('없는 아이콘입니다.', { status: 404 });
 
   const object = await env.ICONS.get(file);
   if (!object) return new Response('없는 아이콘입니다.', { status: 404 });
 
   return new Response(object.body, {
     headers: {
-      'content-type': 'image/png',
+      'content-type': iconContentType(file),
       'cache-control': 'public, max-age=31536000, immutable',
       etag: object.httpEtag,
       // img 태그로 불리므로 CORS 는 필요 없지만, 캔버스로 다시 읽을 때를 위해 열어 둔다.
@@ -924,6 +949,28 @@ function withIconUrl(card, env) {
   return { ...card, iconUrl: `${base}/${card.icon}` };
 }
 
+/**
+ * 경매장 매물 색으로 그림을 다시 칠할 때 쓰는 정보. `[레이어 시트 파일, 너비, 높이, 레이어들]` 이고
+ * 레이어 하나는 `[시트 안 순번, 파트 글자, 기본 색]` 이다. 파트가 빈 레이어는 칠하지 않는다.
+ * 모양이 하나라도 어긋나면 통째로 버린다. 잘못 칠하느니 기본 그림을 보이는 편이 낫다.
+ */
+function cleanDye(value) {
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  const [sheet, width, height, layers] = value;
+  const size = (n) => Number.isInteger(n) && n > 0 && n <= 240;
+  if (!ICON_FILE_PATTERN.test(sheet ?? '') || !size(width) || !size(height)) return undefined;
+  if (!Array.isArray(layers) || layers.length === 0 || layers.length > 16) return undefined;
+  const clean = [];
+  for (const layer of layers) {
+    if (!Array.isArray(layer) || layer.length !== 3) return undefined;
+    const [index, part, colour] = layer;
+    if (!Number.isInteger(index) || index < 0 || index > 15) return undefined;
+    if (!/^[A-F]?$/.test(part ?? 'x') || !/^([0-9a-f]{6})?$/.test(colour ?? 'x')) return undefined;
+    clean.push([index, part, colour]);
+  }
+  return [sheet, width, height, clean];
+}
+
 function cleanText(value, limit) {
   return String(value ?? '')
     .trim()
@@ -967,6 +1014,8 @@ async function saveCard(request, env, cors) {
     description: cleanText(payload.card?.description, CARD_TEXT_MAX),
     category,
     icon,
+    // 툴팁 화면은 그림만 바꾼다. 그림이 그대로면 염색 정보도 그대로 둔다.
+    ...(previous?.dye && icon === previous.icon ? { dye: previous.dye } : {}),
     updated: new Date().toISOString().slice(0, 10),
   };
 
@@ -1063,6 +1112,42 @@ async function putIcons(request, env, cors) {
   });
 }
 
+/** 한 번에 지울 수 있는 아이콘 수. R2 의 delete 한 번이 받는 상한이다. */
+const ICON_DELETE_MAX = 1000;
+
+/**
+ * 더 쓰지 않는 아이콘을 지운다. 운영자가 그림을 바꾼 뒤 옛 파일을 치울 때 쓴다.
+ * 아이콘 파일 이름(해시.png, 해시.webp)만 받는다. 그림 목록(maps/)은 이 경로로 지울 수 없다.
+ * R2 delete 한 번에 1,000개까지 지워 subrequest 한도에 걸리지 않는다.
+ */
+async function deleteIcons(request, env, cors) {
+  if (!env.ICONS) {
+    return errorResponse('CARD_ICONS_NOT_CONFIGURED', '아이콘 저장소가 없습니다.', 503, cors);
+  }
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return errorResponse('CARD_INVALID_BODY', '보낸 내용을 읽지 못했습니다.', 400, cors);
+  }
+  const files = Array.isArray(payload?.files) ? payload.files : null;
+  if (!files || files.length === 0) {
+    return errorResponse('CARD_ICONS_REQUIRED', '지울 아이콘이 없습니다.', 400, cors);
+  }
+  if (files.length > ICON_DELETE_MAX || files.some((file) => !ICON_FILE_PATTERN.test(file ?? ''))) {
+    return errorResponse(
+      'CARD_ICONS_INVALID',
+      `아이콘 파일 이름을 ${ICON_DELETE_MAX}개까지만 보낼 수 있습니다.`,
+      400,
+      cors,
+    );
+  }
+  await env.ICONS.delete([...new Set(files)]);
+  return new Response(JSON.stringify({ deleted: new Set(files).size }), {
+    headers: { ...cors, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
 /**
  * 카테고리 한 칸을 통째로 갈아 끼운다. 운영자가 한꺼번에 등록할 때 쓰는 경로다.
  *
@@ -1093,7 +1178,8 @@ async function putShard(request, env, cors) {
       subtitle: cleanText(entry?.subtitle, CARD_NAME_MAX),
       description: cleanText(entry?.description, CARD_TEXT_MAX),
       category,
-      icon: /^[0-9a-f]{16}\.png$/.test(entry?.icon ?? '') ? entry.icon : '',
+      icon: ICON_FILE_PATTERN.test(entry?.icon ?? '') ? entry.icon : '',
+      ...(cleanDye(entry?.dye) ? { dye: cleanDye(entry.dye) } : {}),
       updated: new Date().toISOString().slice(0, 10),
     });
   }
@@ -1479,7 +1565,8 @@ export default {
       url.pathname === CARD_PATH ||
       url.pathname === CARD_ICONS_PATH ||
       url.pathname === CARD_SHARD_PATH ||
-      url.pathname === CARD_MAPS_PATH
+      url.pathname === CARD_MAPS_PATH ||
+      url.pathname === CARD_ICONS_DELETE_PATH
     ) {
       const problem = adminProblem(request, env, cors);
       if (problem) return problem;
@@ -1513,6 +1600,13 @@ export default {
           return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
         }
         return rebuildIconMap(url, env, cors);
+      }
+
+      if (url.pathname === CARD_ICONS_DELETE_PATH) {
+        if (request.method !== 'POST') {
+          return errorResponse('CARD_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+        }
+        return deleteIcons(request, env, cors);
       }
 
       if (request.method === 'POST') return saveCard(request, env, cors);

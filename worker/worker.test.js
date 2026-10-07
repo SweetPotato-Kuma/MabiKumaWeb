@@ -41,8 +41,9 @@ function fakeR2() {
     async put(key, value) {
       store.set(key, value);
     },
-    async delete(key) {
-      store.delete(key);
+    // 진짜 R2 처럼 이름 하나나 이름 배열을 받는다.
+    async delete(keys) {
+      for (const key of [keys].flat()) store.delete(key);
     },
   };
 }
@@ -65,6 +66,8 @@ beforeEach(() => {
 /** 1x1 짜리 PNG. 내용은 중요하지 않고 바이트가 오간다는 것만 본다. */
 const TINY_PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+/** 1x1 무손실 WebP. 한꺼번에 올리는 그림의 형식이다. */
+const TINY_WEBP = 'UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAdQjyLXo/+BiOh/AAA=';
 
 function call(path, { method = 'GET', body, adminKey, origin = ORIGIN } = {}) {
   const headers = {};
@@ -117,6 +120,33 @@ describe('카테고리별 그림 목록', () => {
       category: '기타 소모품',
       items: { "'도' 음 빈 병": [card.icon, '보통속도 3타 악기'] },
     });
+  });
+
+  it('염색 정보가 있는 카드는 목록에 레이어 시트와 파트를 같이 싣는다', async () => {
+    const dye = ['0123456789abcdef.webp', 48, 96, [[0, 'A', 'f2f4ff'], [3, '', '']]];
+    await call('/item-card/shard', {
+      method: 'PUT',
+      adminKey: ADMIN_KEY,
+      body: { category: '천옷', cards: [{ name: '수트', icon: 'fedcba9876543210.webp', dye }] },
+    });
+
+    expect((await readIconMap('천옷')).items).toEqual({ 수트: ['fedcba9876543210.webp', '', dye] });
+  });
+
+  it('모양이 어긋난 염색 정보는 버린다', async () => {
+    const broken = [
+      ['../cards', 48, 96, [[0, 'A', 'f2f4ff']]],
+      ['0123456789abcdef.webp', 48, 96, [[0, 'G', 'f2f4ff']]],
+      ['0123456789abcdef.webp', 48, 96, [[0, 'A', 'red']]],
+      ['0123456789abcdef.webp', 999, 96, [[0, 'A', 'f2f4ff']]],
+    ];
+    await call('/item-card/shard', {
+      method: 'PUT',
+      adminKey: ADMIN_KEY,
+      body: { category: '천옷', cards: broken.map((dye, i) => ({ name: `수트 ${i}`, icon: 'fedcba9876543210.webp', dye })) },
+    });
+
+    for (const entry of Object.values((await readIconMap('천옷')).items)) expect(entry).toEqual(['fedcba9876543210.webp']);
   });
 
   it('카드를 지우면 목록에서도 빠진다', async () => {
@@ -453,6 +483,21 @@ describe('아이템 카드 읽기', () => {
     expect(response.headers.get('cache-control')).toContain('immutable');
   });
 
+  it('WebP 아이콘은 WebP 로 내준다', async () => {
+    const { files } = await (
+      await call('/item-card/icons', {
+        method: 'POST',
+        adminKey: ADMIN_KEY,
+        body: { icons: [{ key: 'a', base64: TINY_WEBP }] },
+      })
+    ).json();
+
+    const response = await call(`/item-card/icons/${files.a}`, { origin: null });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/webp');
+  });
+
   it('없는 아이콘은 404 다', async () => {
     const response = await call('/item-card/icons/0123456789abcdef.png', { origin: null });
 
@@ -575,6 +620,39 @@ describe('일괄 등록 경로', () => {
     expect(env.ICONS.store.has(files['51102'])).toBe(true);
   });
 
+  it('WebP 는 .webp 이름으로 저장하고 형식을 적어 둔다', async () => {
+    let options;
+    const put = env.ICONS.put.bind(env.ICONS);
+    env.ICONS.put = async (key, value, given) => {
+      options = given;
+      return put(key, value, given);
+    };
+
+    const { files } = await (
+      await call('/item-card/icons', {
+        method: 'POST',
+        adminKey: ADMIN_KEY,
+        body: { icons: [{ key: 'a', base64: TINY_WEBP }] },
+      })
+    ).json();
+
+    expect(files.a).toMatch(/^[0-9a-f]{16}\.webp$/);
+    expect(options.httpMetadata.contentType).toBe('image/webp');
+  });
+
+  it('그림이 아닌 것은 올리지 않는다', async () => {
+    const { files } = await (
+      await call('/item-card/icons', {
+        method: 'POST',
+        adminKey: ADMIN_KEY,
+        body: { icons: [{ key: 'a', base64: btoa('not an image') }] },
+      })
+    ).json();
+
+    expect(files).toEqual({});
+    expect(env.ICONS.store.size).toBe(0);
+  });
+
   it('같은 그림은 두 번 올려도 파일이 하나다', async () => {
     const body = {
       icons: [
@@ -643,6 +721,36 @@ describe('일괄 등록 경로', () => {
     expect(response.status).toBe(400);
   });
 
+  it('운영자는 더 쓰지 않는 아이콘을 한꺼번에 지운다', async () => {
+    const { files } = await (
+      await call('/item-card/icons', {
+        method: 'POST',
+        adminKey: ADMIN_KEY,
+        body: { icons: [{ key: 'a', base64: TINY_WEBP }, { key: 'b', base64: TINY_PNG }] },
+      })
+    ).json();
+
+    const response = await call('/item-card/icons/delete', {
+      method: 'POST',
+      adminKey: ADMIN_KEY,
+      body: { files: [files.a, files.b] },
+    });
+
+    expect(response.status).toBe(200);
+    expect(env.ICONS.store.has(files.a)).toBe(false);
+    expect(env.ICONS.store.has(files.b)).toBe(false);
+  });
+
+  it('아이콘 지우기는 키가 필요하고, 아이콘 파일 이름만 받는다', async () => {
+    await call('/item-card', { method: 'POST', body: cardBody(), adminKey: ADMIN_KEY });
+    const map = await iconMapKeyOf('기타 소모품');
+
+    expect((await call('/item-card/icons/delete', { method: 'POST', body: { files: ['0123456789abcdef.webp'] } })).status).toBe(401);
+    const response = await call('/item-card/icons/delete', { method: 'POST', adminKey: ADMIN_KEY, body: { files: [map] } });
+    expect(response.status).toBe(400);
+    expect(env.ICONS.store.has(map)).toBe(true);
+  });
+
   it('아이콘 올리기에도 키가 필요하다', async () => {
     const response = await call('/item-card/icons', {
       method: 'POST',
@@ -661,7 +769,7 @@ describe('일괄 등록 경로', () => {
       body: {
         category: '기타 소모품',
         cards: [
-          { name: '새 아이템', description: '한꺼번에 올린 설명', icon: 'a1b2c3d4e5f60718.png' },
+          { name: '새 아이템', description: '한꺼번에 올린 설명', icon: 'a1b2c3d4e5f60718.webp' },
         ],
       },
     });
@@ -677,6 +785,7 @@ describe('일괄 등록 경로', () => {
       })
     ).json();
     expect(found.cards.map((card) => card.name)).toEqual(['새 아이템']);
+    expect(found.cards[0].icon).toBe('a1b2c3d4e5f60718.webp');
   });
 
   it('칸에 실린 엉뚱한 아이콘 이름은 버린다', async () => {

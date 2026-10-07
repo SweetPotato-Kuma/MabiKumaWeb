@@ -87,7 +87,8 @@ WAF → Rate limiting rules 에서 `/report/issue` 경로에 규칙을 하나 �
   그때 쓰는 것이 아래 `POST /item-card/icons` 와 `PUT /item-card/shard` 입니다.
 - **거기서 빠진 것**은 사이트의 `/item-card` 화면에서 툴팁 스크린샷을 읽어 한 장씩 넣습니다.
 
-설명은 KV 에 카테고리별로, 아이콘 PNG 는 R2 에 한 장씩 들어갑니다.
+설명은 KV 에 카테고리별로, 아이콘은 R2 에 한 장씩 들어갑니다. 한꺼번에 올리는 아이콘은 받은 PNG 와
+픽셀이 같은 무손실 WebP 이고, 툴팁 화면에서 넣는 것과 그 전에 올린 것은 PNG 입니다.
 
 ```
 일괄 등록 ────(운영자 키)──▶ Worker ──▶ KV(설명) + R2(아이콘)
@@ -176,8 +177,9 @@ localStorage 에만 남고, 저장할 때마다 워커가 다시 확인합니다
 | 경로 | 권한 | 하는 일 |
 | --- | --- | --- |
 | `POST /item-card/lookup` | 공개 | 보낸 이름들의 카드만. 합쳐서 60개, 카테고리 4개까지 |
-| `GET /item-card/icons/<해시>.png` | 공개 | 아이콘 이미지. 평소에는 `icons.spkuma.com` 이 대신 내고, 이 경로는 예비다 |
+| `GET /item-card/icons/<해시>.webp`, `.png` | 공개 | 아이콘 이미지. 평소에는 `icons.spkuma.com` 이 대신 내고, 이 경로는 예비다 |
 | `POST /item-card/verify` | 운영자 | 키가 맞는지만 확인 |
+| `POST /item-card/icons/delete` | 운영자 | 더 쓰지 않는 아이콘 파일을 1,000개씩 지운다 |
 | `POST /item-card` | 운영자 | 카드 한 장 저장 또는 덮어쓰기 |
 | `DELETE /item-card?name=<이름>&category=<칸>` | 운영자 | 카드 삭제 |
 | `POST /item-card/icons` | 운영자 | 아이콘 한 번에 40장까지 (일괄 등록용) |
@@ -237,7 +239,7 @@ Rate limiting rules 에서 `/item-card/lookup` 경로에 규칙을 하나 걸어
 | Edge TTL, Browser TTL | 원본의 Cache-Control 을 따름(그림 1년 `immutable`, 그림 목록 1시간) |
 
 적용 뒤에는 `HIT` 가 나오고, 한 번 받은 그림은 가까운 엣지에서 바로 나갑니다. 확인은
-`curl -s -o /dev/null -D - https://icons.spkuma.com/<파일>.png | grep cf-cache-status` 로 합니다
+`curl -s -o /dev/null -D - https://icons.spkuma.com/<파일>.webp | grep cf-cache-status` 로 합니다
 (`curl -I` 같은 HEAD 요청은 캐시되지 않아 늘 DYNAMIC 이 나옵니다).
 
 ### 관리
