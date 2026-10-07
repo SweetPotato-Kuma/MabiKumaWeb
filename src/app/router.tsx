@@ -29,6 +29,7 @@ const ReforgeSimulatorPage = lazyPage(() => import('@/pages/ReforgeSimulatorPage
 const HolyWaterSimulatorPage = lazyPage(() => import('@/pages/HolyWaterSimulatorPage'), 'HolyWaterSimulatorPage');
 const OghamSimulatorPage = lazyPage(() => import('@/pages/OghamSimulatorPage'), 'OghamSimulatorPage');
 const EchostoneSimulatorPage = lazyPage(() => import('@/pages/EchostoneSimulatorPage'), 'EchostoneSimulatorPage');
+const KitSimulatorPage = lazyPage(() => import('@/pages/KitSimulatorPage'), 'KitSimulatorPage');
 const CoinSimulatorPage = lazyPage(() => import('@/pages/CoinSimulatorPage'), 'CoinSimulatorPage');
 const CalculatorListPage = lazyPage(() => import('@/pages/CalculatorPages'), 'CalculatorListPage');
 // 계산기 화면은 id 를 받으므로 lazyPage(속성 없는 화면)를 쓰지 않는다.
@@ -89,6 +90,7 @@ export const router = createBrowserRouter(
         { path: 'ogham-simulator', element: <OghamSimulatorPage /> },
         { path: 'coin-simulator', element: <CoinSimulatorPage /> },
         { path: 'echostone-simulator', element: <EchostoneSimulatorPage /> },
+        { path: 'kit-simulator', element: <KitSimulatorPage /> },
         { path: 'privacy', element: <PrivacyPage /> },
         ...ADMIN_ROUTES,
         { path: '*', element: <NotFoundPage /> },

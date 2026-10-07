@@ -8,6 +8,7 @@ import {
   CalculateIcon,
   DiceIcon,
   GemIcon,
+  GiftIcon,
   HammerIcon,
   HexagonIcon,
   HornIcon,
@@ -55,7 +56,7 @@ export type NavEntry = NavLeaf | NavGroup;
 export const isNavGroup = (entry: NavEntry): entry is NavGroup => 'sections' in entry;
 
 /**
- * 사용자가 직접 해 보는 것(세공, 에코스톤, 성수, 주화, 오검 워드, 유물 복원)은 시뮬레이터 아래로 모은다. 주화는 토템 장비라
+ * 사용자가 직접 해 보는 것(세공, 에코스톤, 성수, 주화, 오검 워드, 키트, 유물 복원)은 시뮬레이터 아래로 모은다. 주화는 토템 장비라
  * 장비에 두고, 오검 워드는 아르카나에 끼우는 것이라 따로 둔다. 주화는 던전을, 유물 복원은 무리아스와 탈라 가흐를
  * 그 화면 안의 탭으로 가르므로 메뉴에는 한 칸씩이다. 순서는 게임에 먼저 나온 것부터다.
  * 유물 시세는 매물을 읽는 화면이라 경매장 곁에 두고, 탈라 가흐 유물도 그 화면의 탭으로 들어간다.
@@ -121,6 +122,12 @@ export const NAV_TREE: NavEntry[] = [
         title: '아르카나',
         items: [
           { path: '/ogham-simulator', label: '오검 워드', icon: <HexagonIcon />, keywords: '오검 룬 조합 재설정 시뮬레이터' },
+        ],
+      },
+      {
+        title: '아이템샵',
+        items: [
+          { path: '/kit-simulator', label: '키트', icon: <GiftIcon />, keywords: '키트 가챠 랜덤 박스 상자 확률 시뮬레이터' },
         ],
       },
       {

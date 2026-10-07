@@ -1,0 +1,585 @@
+import { useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Col,
+  Divider,
+  Flex,
+  Grid,
+  Input,
+  Popover,
+  Row,
+  Select,
+  Skeleton,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+  theme,
+  type TableColumnsType,
+} from 'antd';
+import { EmptyState } from '@/components/EmptyState';
+import { QueryState } from '@/components/QueryState';
+import { CalculateIcon, CloseIcon, GiftIcon, ResetIcon, StarFillIcon } from '@/components/icons';
+import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
+import { normalizeForSearch } from '@/features/auction/dictionary';
+import {
+  addCounts,
+  isOnSale,
+  isTopGrade,
+  openKit,
+  useKitArchiveQuery,
+  type Kit,
+  type KitArchive,
+} from '@/features/kits/kits';
+import { formatChance } from '@/features/simulator/trials';
+import { formatNumber } from '@/lib/format';
+import { useNarrowScreen } from '@/lib/narrowScreen';
+
+const { Text } = Typography;
+
+/** 한 번에 여는 횟수 단추. */
+const OPEN_COUNTS = [1, 10, 100] as const;
+/** 목표까지 자동으로 여는 횟수 상한. */
+const AUTO_LIMITS = [1000, 10000] as const;
+
+const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
+
+const kitLabel = (kit: Kit) => `${kit.name} (${kit.start ?? kit.firstSeen ?? '날짜 모름'})`;
+
+/** 지정 색상 상품의 색 견본. 색은 상품의 데이터라 토큰이 아니라 그 값으로 칠한다. */
+function ColorChips({ colors }: { colors: readonly string[] }) {
+  const { token } = theme.useToken();
+  return (
+    <Flex gap={4} align="center" wrap>
+      {colors.map((color, index) => (
+        <span
+          key={`${color}-${index}`}
+          title={`#${color}`}
+          aria-label={`색 #${color}`}
+          style={{
+            display: 'inline-block',
+            width: 14,
+            height: 14,
+            borderRadius: 3,
+            background: `#${color}`,
+            border: `1px solid ${token.colorBorder}`,
+          }}
+        />
+      ))}
+    </Flex>
+  );
+}
+
+/** 아이템 이름. 가장 높은 등급이면 금빛, 지정 색상이면 견본을 붙인다. */
+function ItemName({ kit, item }: { kit: Kit; item: number }) {
+  const { token } = theme.useToken();
+  const each = kit.items[item];
+  const top = isTopGrade(kit, item);
+  return (
+    <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
+      {/* 별은 글자 안에 둔다. 따로 두면 좁은 칸에서 별만 윗줄에 남는다. */}
+      <Text strong={top} style={top ? { color: token.gold8 } : undefined}>
+        {top ? (
+          <StarFillIcon
+            style={{ color: token.gold7, fontSize: 14, marginInlineEnd: 4, verticalAlign: -2 }}
+          />
+        ) : null}
+        {each.name}
+        {each.count && each.count > 1 ? ` ${formatNumber(each.count)}개` : ''}
+      </Text>
+      {each.colors?.length ? <ColorChips colors={each.colors} /> : null}
+    </Flex>
+  );
+}
+
+const gradeName = (kit: Kit, item: number) => {
+  const grade = kit.items[item]?.grade;
+  return grade === undefined ? null : (kit.grades[grade]?.name ?? null);
+};
+
+interface ItemRow {
+  item: number;
+  name: string;
+  grade: string | null;
+  chance: number;
+  count: number;
+}
+
+/** 지금까지 얻은 아이템. 드문 것부터. */
+function TallyTable({ kit, counts }: { kit: Kit; counts: ReadonlyMap<number, number> }) {
+  const narrow = useNarrowScreen();
+  const rows: ItemRow[] = [...counts]
+    .map(([item, count]) => ({
+      item,
+      name: kit.items[item].name,
+      grade: gradeName(kit, item),
+      chance: kit.items[item].chance,
+      count,
+    }))
+    .sort((a, b) => a.chance - b.chance || a.item - b.item);
+  const columns: TableColumnsType<ItemRow> = [
+    {
+      title: '얻은 아이템',
+      key: 'name',
+      render: (_value, row) => (
+        <Flex vertical gap={2}>
+          <ItemName kit={kit} item={row.item} />
+          {narrow && row.grade ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {row.grade}
+            </Text>
+          ) : null}
+        </Flex>
+      ),
+    },
+    ...(narrow || kit.grades.length === 0
+      ? []
+      : [
+          {
+            title: '등급',
+            key: 'grade',
+            width: 90,
+            render: (_value: unknown, row: ItemRow) => <Text>{row.grade ?? '-'}</Text>,
+          },
+        ]),
+    {
+      title: '개수',
+      key: 'count',
+      width: 80,
+      align: 'right',
+      render: (_value, row) => <Text className="tnum">{formatNumber(row.count)}</Text>,
+    },
+  ];
+  return (
+    <Table<ItemRow>
+      columns={columns}
+      dataSource={rows}
+      rowKey="item"
+      size="small"
+      pagination={{ pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }}
+      locale={{
+        emptyText: <EmptyState size="small" description="열면 얻은 아이템이 여기에 쌓입니다." />,
+      }}
+    />
+  );
+}
+
+/** 키트의 구성품과 확률. */
+function ItemTable({ kit, onTarget }: { kit: Kit; onTarget: (item: number) => void }) {
+  const narrow = useNarrowScreen();
+  const [keyword, setKeyword] = useState('');
+  const term = normalizeForSearch(keyword);
+  const rows: ItemRow[] = kit.items
+    .map((item, index) => ({
+      item: index,
+      name: item.name,
+      grade: gradeName(kit, index),
+      chance: item.chance,
+      count: 0,
+    }))
+    .filter((row) => !term || normalizeForSearch(row.name).includes(term));
+  const hasGrades = kit.grades.length > 0;
+
+  const columns: TableColumnsType<ItemRow> = [
+    ...(hasGrades && !narrow
+      ? [
+          {
+            title: '등급',
+            key: 'grade',
+            width: 90,
+            filters: kit.grades.map((grade) => ({ text: grade.name, value: grade.name })),
+            onFilter: (value: unknown, row: ItemRow) => row.grade === value,
+            render: (_value: unknown, row: ItemRow) => <Text>{row.grade ?? '-'}</Text>,
+          },
+        ]
+      : []),
+    {
+      title: '아이템',
+      key: 'name',
+      render: (_value, row) => (
+        <Flex vertical gap={2}>
+          <ItemName kit={kit} item={row.item} />
+          {narrow && row.grade ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {row.grade}
+            </Text>
+          ) : null}
+        </Flex>
+      ),
+    },
+    {
+      title: '확률',
+      key: 'chance',
+      width: 96,
+      align: 'right',
+      sorter: (a, b) => a.chance - b.chance,
+      render: (_value, row) => (
+        <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
+          {formatChance(row.chance)}
+        </Text>
+      ),
+    },
+    {
+      title: '',
+      key: 'target',
+      width: 72,
+      align: 'right',
+      render: (_value, row) => (
+        <Button size="small" onClick={() => onTarget(row.item)} aria-label={`${row.name} 목표로`}>
+          목표로
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <Card title="구성품 확률" size="small">
+      <Flex vertical gap={10}>
+        {hasGrades ? (
+          <Flex gap={8} wrap>
+            {kit.grades.map((grade) => (
+              <Tag key={grade.name} style={{ marginInlineEnd: 0 }}>
+                <span className="tnum">
+                  {grade.name} {grade.chance === null ? '' : formatChance(grade.chance)}
+                </span>
+              </Tag>
+            ))}
+          </Flex>
+        ) : null}
+        <Input
+          aria-label="구성품 이름으로 찾기"
+          value={keyword}
+          onChange={(event) => setKeyword(event.target.value)}
+          placeholder="예: 헤일로"
+          allowClear
+          style={{ maxWidth: 320 }}
+        />
+        <Table<ItemRow>
+          columns={columns}
+          dataSource={rows}
+          rowKey="item"
+          size="small"
+          pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
+        />
+      </Flex>
+    </Card>
+  );
+}
+
+/** 고른 키트를 열어 보는 칸. 키트를 바꾸면 새로 그린다. */
+function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
+  const { token } = theme.useToken();
+  const screens = Grid.useBreakpoint();
+  const [opened, setOpened] = useState(0);
+  const [counts, setCounts] = useState<Map<number, number>>(new Map());
+  const [recent, setRecent] = useState<number[]>([]);
+  const [target, setTarget] = useState<number | null>(null);
+  const [message, setMessage] = useState('');
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [trials, setTrials] = useState(100);
+
+  const chance = target === null ? 0 : kit.items[target].chance;
+
+  const run = (times: number, until: number | null) => {
+    const result = openKit(kit, times, until);
+    setOpened((prev) => prev + result.opened);
+    setCounts((prev) => addCounts(prev, result.counts));
+    setRecent(result.recent);
+    if (until === null) setMessage('');
+    else
+      setMessage(
+        result.hit
+          ? `${formatNumber(result.opened)}번 만에 목표 아이템이 나왔습니다.`
+          : `${formatNumber(times)}번 동안 목표 아이템이 나오지 않았습니다.`,
+      );
+  };
+
+  const reset = () => {
+    setOpened(0);
+    setCounts(new Map());
+    setRecent([]);
+    setMessage('');
+  };
+
+  return (
+    <Flex vertical gap={16} style={{ minWidth: 0 }}>
+      <Card variant="outlined" role="region" aria-label="키트 열기">
+        <Flex vertical gap={14}>
+          <Flex gap={8} align="center" wrap>
+            {onSale ? <Tag color="success">판매 중</Tag> : null}
+            <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
+              {[
+                kit.start ? `${kit.start}${kit.end ? ` ~ ${kit.end}` : ''}` : '',
+                kit.price !== null ? `한 번 ${formatNumber(kit.price)} 캐시` : '',
+                `구성품 ${formatNumber(kit.items.length)}종`,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            </Text>
+          </Flex>
+
+          {/* 여는 칸과 목표 칸. 768px 미만에서는 위아래로 쌓는다. */}
+          <Row gutter={[24, 20]} align="stretch">
+            <Col xs={24} md={12}>
+              <Flex vertical gap={12}>
+                <section
+                  aria-label="이번에 나온 아이템"
+                  style={{
+                    minHeight: 76,
+                    padding: '10px 12px',
+                    borderRadius: token.borderRadius,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    background: token.colorFillQuaternary,
+                  }}
+                >
+                  {recent.length === 0 ? (
+                    <Text type="secondary">열기 전</Text>
+                  ) : (
+                    <Flex vertical gap={4}>
+                      {[...recent].reverse().map((item, index) => (
+                        <ItemName key={`${index}-${item}`} kit={kit} item={item} />
+                      ))}
+                    </Flex>
+                  )}
+                </section>
+                <Flex gap={8} wrap>
+                  {OPEN_COUNTS.map((times, index) => (
+                    <Button
+                      key={times}
+                      type={index === 0 ? 'primary' : 'default'}
+                      icon={index === 0 ? <GiftIcon /> : undefined}
+                      onClick={() => run(times, null)}
+                    >
+                      {formatNumber(times)}번 열기
+                    </Button>
+                  ))}
+                </Flex>
+                <Flex gap={8} wrap>
+                  {AUTO_LIMITS.map((limit) => (
+                    <Button
+                      key={limit}
+                      disabled={target === null}
+                      onClick={() => run(limit, target)}
+                    >
+                      목표까지 최대 {formatNumber(limit)}번
+                    </Button>
+                  ))}
+                </Flex>
+                {/* 결과 문구 자리는 비어 있을 때도 잡아 둔다. 문구가 뜨고 질 때 아래가 밀리지 않게 한다. */}
+                <Text
+                  strong
+                  role="status"
+                  className="tnum"
+                  style={{ minHeight: 22, lineHeight: '22px' }}
+                >
+                  {message}
+                </Text>
+              </Flex>
+            </Col>
+            <Col xs={24} md={12}>
+              <section
+                aria-label="목표 아이템"
+                style={{
+                  height: '100%',
+                  padding: 16,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: token.borderRadius,
+                }}
+              >
+                <Flex vertical gap={10}>
+                  <Text strong>목표 아이템</Text>
+                  <Select<number>
+                    aria-label="목표 아이템"
+                    showSearch
+                    allowClear
+                    placeholder="아이템 고르기"
+                    value={target ?? undefined}
+                    onChange={(item) => {
+                      setTarget(item ?? null);
+                      setMessage('');
+                    }}
+                    onClear={() => setTarget(null)}
+                    optionFilterProp="label"
+                    options={kit.items.map((item, index) => ({ value: index, label: item.name }))}
+                    style={{ width: '100%' }}
+                  />
+                  {target !== null ? (
+                    <Flex gap={8} align="center" wrap>
+                      <Text className="tnum" style={{ fontSize: 13 }}>
+                        한 번에 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
+                        <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
+                        {kit.price !== null ? (
+                          <>
+                            ,{' '}
+                            <Text strong>
+                              {formatNumber(Math.ceil(1 / chance) * kit.price)} 캐시
+                            </Text>
+                          </>
+                        ) : null}
+                      </Text>
+                      <Popover
+                        open={calcOpen}
+                        trigger={[]}
+                        placement={screens.md ? 'bottomLeft' : 'bottom'}
+                        title={
+                          <Flex justify="space-between" align="center" gap={8}>
+                            <span>목표 아이템 기댓값</span>
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<CloseIcon />}
+                              aria-label="목표 아이템 기댓값 닫기"
+                              onClick={() => setCalcOpen(false)}
+                            />
+                          </Flex>
+                        }
+                        content={
+                          <Flex
+                            vertical
+                            gap={10}
+                            style={{ width: 'min(400px, calc(100vw - 88px))' }}
+                          >
+                            <TrialCountInput value={trials} onChange={setTrials} />
+                            <TrialOdds framed={false} trials={trials} chance={chance} verb="열기" />
+                            {kit.price !== null ? (
+                              <Text className="tnum" style={{ fontSize: 13 }}>
+                                <Text strong>{formatNumber(trials * kit.price)} 캐시</Text>
+                              </Text>
+                            ) : null}
+                          </Flex>
+                        }
+                      >
+                        <Button
+                          size="small"
+                          icon={<CalculateIcon />}
+                          aria-expanded={calcOpen}
+                          onClick={() => setCalcOpen(!calcOpen)}
+                        >
+                          목표 아이템 기댓값
+                        </Button>
+                      </Popover>
+                    </Flex>
+                  ) : null}
+                </Flex>
+              </section>
+            </Col>
+          </Row>
+
+          <Divider style={{ margin: 0 }} />
+
+          <Row gutter={[24, 16]} align="middle">
+            <Col xs={12} sm={6}>
+              <Statistic
+                title="연 횟수"
+                value={formatNumber(opened)}
+                suffix="번"
+                styles={NUMERIC}
+              />
+            </Col>
+            {kit.price !== null ? (
+              <Col xs={12} sm={8}>
+                <Statistic
+                  title="쓴 캐시"
+                  value={formatNumber(opened * kit.price)}
+                  styles={NUMERIC}
+                />
+              </Col>
+            ) : null}
+            <Col xs={24} sm={10}>
+              <Button icon={<ResetIcon />} disabled={opened === 0} onClick={reset}>
+                처음부터
+              </Button>
+            </Col>
+          </Row>
+          <TallyTable kit={kit} counts={counts} />
+        </Flex>
+      </Card>
+
+      <ItemTable
+        kit={kit}
+        onTarget={(item) => {
+          setTarget(item);
+          setMessage('');
+        }}
+      />
+    </Flex>
+  );
+}
+
+function KitPicker({
+  archive,
+  value,
+  onChange,
+}: {
+  archive: KitArchive;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <Flex vertical gap={4} style={{ maxWidth: 560 }}>
+      <label htmlFor="kit-select">
+        <Text strong style={{ fontSize: 13 }}>
+          키트
+        </Text>
+      </label>
+      <Select<string>
+        id="kit-select"
+        showSearch
+        value={value}
+        onChange={onChange}
+        optionFilterProp="label"
+        options={archive.kits.map((kit) => ({
+          value: kit.id,
+          label: isOnSale(archive, kit) ? `${kitLabel(kit)} 판매 중` : kitLabel(kit),
+        }))}
+      />
+    </Flex>
+  );
+}
+
+/** 키트 시뮬레이터. 모아 둔 키트 가운데 하나를 골라 열어 본다. 처음에는 지금 파는 것 가운데 가장 최근 것을 고른다. */
+export function KitSimulatorView() {
+  const query = useKitArchiveQuery();
+  const archive = query.data;
+  const [picked, setPicked] = useState<string | null>(null);
+  const kit = useMemo(() => {
+    if (!archive) return null;
+    return (
+      archive.kits.find((each) => each.id === picked) ??
+      archive.kits.find((each) => isOnSale(archive, each)) ??
+      archive.kits[0] ??
+      null
+    );
+  }, [archive, picked]);
+
+  if (query.isPending)
+    return (
+      <Card aria-busy="true">
+        <Skeleton active paragraph={{ rows: 8 }} />
+      </Card>
+    );
+
+  return (
+    <QueryState
+      isLoading={false}
+      error={query.error}
+      isEmpty={!kit}
+      emptyMessage="아직 모아 둔 키트가 없습니다."
+    >
+      {archive && kit ? (
+        <Flex vertical gap={16} style={{ minWidth: 0 }}>
+          <Flex vertical gap={6}>
+            <KitPicker archive={archive} value={kit.id} onChange={setPicked} />
+            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              키트 {formatNumber(archive.kits.length)}개, 판매 중{' '}
+              {formatNumber(archive.current.length)}개
+              {archive.updated ? `, ${archive.updated} 갱신` : ''}
+            </Text>
+          </Flex>
+          <KitOpener key={kit.id} kit={kit} onSale={isOnSale(archive, kit)} />
+        </Flex>
+      ) : null}
+    </QueryState>
+  );
+}

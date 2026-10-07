@@ -12,6 +12,7 @@ import contentCopySvg from '@material-symbols/svg-400/rounded/content_copy.svg?r
 import darkModeSvg from '@material-symbols/svg-400/rounded/dark_mode.svg?raw';
 import deleteSvg from '@material-symbols/svg-400/rounded/delete.svg?raw';
 import diamondSvg from '@material-symbols/svg-400/rounded/diamond.svg?raw';
+import redeemSvg from '@material-symbols/svg-400/rounded/redeem.svg?raw';
 import documentScannerSvg from '@material-symbols/svg-400/rounded/document_scanner.svg?raw';
 import gavelSvg from '@material-symbols/svg-400/rounded/gavel.svg?raw';
 import gridViewSvg from '@material-symbols/svg-400/rounded/grid_view.svg?raw';
@@ -122,6 +123,7 @@ export const CloseIcon = createIcon(closeSvg, 'CloseIcon');
 export const DarkModeIcon = createIcon(darkModeSvg, 'DarkModeIcon');
 export const DeleteIcon = createIcon(deleteSvg, 'DeleteIcon');
 export const GemIcon = createIcon(diamondSvg, 'GemIcon');
+export const GiftIcon = createIcon(redeemSvg, 'GiftIcon');
 export const GridIcon = createIcon(gridViewSvg, 'GridIcon');
 export const HammerIcon = createIcon(hardwareSvg, 'HammerIcon');
 export const HelpIcon = createIcon(helpSvg, 'HelpIcon');

@@ -30,13 +30,14 @@ async function openDrawer() {
 }
 
 describe('서랍 메뉴', () => {
-  it('묶음마다 제목이 하나씩이고, 시뮬레이터는 장비, 아르카나, 유물로 갈린다', async () => {
+  it('묶음마다 제목이 하나씩이고, 시뮬레이터는 장비, 아르카나, 아이템샵, 유물로 갈린다', async () => {
     renderAt('/auction');
     const drawer = await openDrawer();
 
     expect(drawer).toHaveTextContent('NPC 상점');
     expect(drawer).toHaveTextContent('시뮬레이터 · 장비');
     expect(drawer).toHaveTextContent('시뮬레이터 · 아르카나');
+    expect(drawer).toHaveTextContent('시뮬레이터 · 아이템샵');
     expect(drawer).toHaveTextContent('시뮬레이터 · 유물');
     // 제목이 연달아 두 줄로 서지 않는다: 묶음 이름만 있는 "시뮬레이터" 제목은 없다.
     const headings = Array.from(drawer.querySelectorAll('.ant-menu-item-group-title')).map((node) => node.textContent);
@@ -46,6 +47,7 @@ describe('서랍 메뉴', () => {
       '계산기',
       '시뮬레이터 · 장비',
       '시뮬레이터 · 아르카나',
+      '시뮬레이터 · 아이템샵',
       '시뮬레이터 · 유물',
     ]);
   });
