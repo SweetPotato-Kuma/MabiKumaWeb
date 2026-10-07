@@ -42,7 +42,7 @@ describe('그림 목록 주소', () => {
     // "모자/가발" 처럼 / 가 든 카테고리가 있다. 워커의 iconMapKey 와 같은 규칙이어야 한다.
     const url = await iconMapUrl('모자/가발');
 
-    expect(url).toMatch(/^https:\/\/icons\.example\/maps\/[0-9a-f]{8}\.js$/);
+    expect(url).toMatch(/^https:\/\/icons\.example\/maps\/[0-9a-f]{8}\.js\?v=\d+$/);
   });
 });
 

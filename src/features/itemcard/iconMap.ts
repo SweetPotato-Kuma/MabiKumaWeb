@@ -47,11 +47,18 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 /**
+ * 목록 모양이나 그림이 통째로 바뀌었을 때 올린다. 브라우저와 CDN 은 목록을 한 시간 붙잡고 하루까지
+ * 옛 것을 한 번 더 내주므로, 주소가 그대로면 바꾼 뒤에도 옛 그림 이름이 보인다. 2 는 그림을 WebP 로
+ * 바꾸고 염색 정보를 실은 목록이다(2026-10). R2 는 물음표 뒤를 보지 않아 같은 파일이 나간다.
+ */
+const MAP_VERSION = 2;
+
+/**
  * 목록 파일 주소. 워커의 iconMapKey 와 같은 규칙이다. 카테고리 이름에 `/` 가 들어가는 것이 있어
  * (모자/가발) 이름 대신 해시를 쓴다. 확장자가 `.js` 인 이유는 워커 쪽 주석에 있다(CDN 캐시).
  */
 export async function iconMapUrl(category: string): Promise<string> {
-  return `${iconBaseUrl()}/maps/${(await sha256Hex(category)).slice(0, 8)}.js`;
+  return `${iconBaseUrl()}/maps/${(await sha256Hex(category)).slice(0, 8)}.js?v=${MAP_VERSION}`;
 }
 
 export function parseIconMap(raw: unknown): IconMap {
