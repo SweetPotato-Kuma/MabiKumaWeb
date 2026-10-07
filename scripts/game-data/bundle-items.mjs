@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
 
 /**
@@ -24,19 +25,21 @@ import { resolve } from 'node:path';
  *   `&&`                    게임이 & 를 적는 방식. 화면에는 하나만 보인다
  */
 export function cleanDescription(text) {
-  return text
-    .replace(/\\n/g, '\n')
-    // n 이 빠진 줄바꿈. 문장 끝 바로 뒤의 외톨이 \ 만 바꾼다(알렉산드라이트, 풍등 제작 키트).
-    .replace(/([.!?])\\(?=\S)/g, '$1\n')
-    .replace(/<hotkey\b[^>]*\/?>/g, '[단축키]')
-    .replace(/<username\b[^>]*\/?>/g, '[캐릭터 이름]')
-    .replace(/<\/?color\b[^>]*>/g, '')
-    .replace(/\{\d+\}/g, '…')
-    // 게임은 & 를 && 로 적고 화면에는 하나만 보인다.
-    .replace(/&&/g, '&')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (
+    text
+      .replace(/\\n/g, '\n')
+      // n 이 빠진 줄바꿈. 문장 끝 바로 뒤의 외톨이 \ 만 바꾼다(알렉산드라이트, 풍등 제작 키트).
+      .replace(/([.!?])\\(?=\S)/g, '$1\n')
+      .replace(/<hotkey\b[^>]*\/?>/g, '[단축키]')
+      .replace(/<username\b[^>]*\/?>/g, '[캐릭터 이름]')
+      .replace(/<\/?color\b[^>]*>/g, '')
+      .replace(/\{\d+\}/g, '…')
+      // 게임은 & 를 && 로 적고 화면에는 하나만 보인다.
+      .replace(/&&/g, '&')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
 }
 
 const rows = (path) =>
@@ -54,7 +57,10 @@ export function koreaFeatures(run, now = koreaNow()) {
     if (state.profile !== 'Regular, Korea' || !names.has(state.name_hash)) continue;
     const start = state.time_conditions.find((t) => t.slot === 'StartTime')?.date;
     const end = state.time_conditions.find((t) => t.slot === 'EndTime')?.date;
-    enabled.set(names.get(state.name_hash), Boolean(state.base_enabled) && (!start || start <= now) && (!end || now < end));
+    enabled.set(
+      names.get(state.name_hash),
+      Boolean(state.base_enabled) && (!start || start <= now) && (!end || now < end),
+    );
   }
   return enabled;
 }
@@ -70,7 +76,11 @@ export function koreaDescription(entity, enabled) {
     (variant) =>
       (variant.description ?? '').trim() &&
       variant.conditions.every(([kind, value]) =>
-        kind === 'locale' ? String(value).toLowerCase() === 'korea' : kind === 'feature' ? enabled.get(value) === true : false,
+        kind === 'locale'
+          ? String(value).toLowerCase() === 'korea'
+          : kind === 'feature'
+            ? enabled.get(value) === true
+            : false,
       ),
   );
   const korea = live.filter((variant) => variant.conditions.some(([kind]) => kind === 'locale'));
@@ -82,10 +92,22 @@ export function koreaDescription(entity, enabled) {
  * 임시로 둔 것. 이름이 설명과 같은 것은 설명 자리를 채워 둔 것뿐이다.
  */
 export function isHiddenItem(name, description) {
-  if (/^[\x20-\x7e]+$/.test(name)) return true;
-  if (/^NPC\s|몬스터 ?전용|몬스터용|사용 ?안 ?함|배포 ?(금지|불가)|^\(임시\)/.test(name)) return true;
-  if (/^\(임시\)|^임시설명$|^\(?(유저)? ?배포 ?(금지|불가)\)?$|^\(번역 불필요\)$/.test(description.trim())) return true;
-  return description.trim() === name.trim();
+  return hiddenReason(name, description) !== null;
+}
+
+/** 숨기는 이유. 숨기지 않으면 null. 목록 스크립트(hidden-items.mjs)가 이유별로 묶는다. */
+export function hiddenReason(name, description) {
+  const text = description.trim();
+  if (/^[\x20-\x7e]+$/.test(name)) return '영어 내부 이름';
+  if (/^NPC\s/.test(name)) return 'NPC 장비';
+  if (/몬스터 ?전용|몬스터용/.test(name)) return '몬스터 장비';
+  if (/배포 ?(금지|불가)/.test(name) || /^\(?(유저)? ?배포 ?(금지|불가)\)?$/.test(text))
+    return '배포 금지';
+  if (/사용 ?안 ?함/.test(name)) return '사용 안 함';
+  if (/^\(임시\)/.test(name) || /^\(임시\)|^임시설명$|^\(번역 불필요\)$/.test(text))
+    return '임시 데이터';
+  if (text === name.trim()) return '설명이 이름과 같음';
+  return null;
 }
 
 /** 내보내기의 아이템을 번호 -> { name, description } 으로. 설명은 고르고 정리한 것이다. */
@@ -98,4 +120,70 @@ export function loadBundleItems(run, enabled = koreaFeatures(run)) {
     });
   }
   return items;
+}
+
+export function defaultBundleRoot() {
+  return resolve(
+    process.cwd(),
+    process.env.MABIKUMA_CLIENT_BUNDLE ?? '.cache/client-src/exports/client-bundle',
+  );
+}
+
+/** 지역 조건이 한국 서버에서 성립하는지. "!usa" 처럼 다른 지역을 빼는 조건도 있다. */
+function localeHolds(expression) {
+  const value = String(expression).toLowerCase();
+  return value.startsWith('!') ? value.slice(1) !== 'korea' : value === 'korea';
+}
+
+/**
+ * 한 아이템의 여러 줄 가운데 한국 정식 서버에서 쓰이는 줄. 설명과 같은 규칙이다. 조건이 모두 성립하는
+ * 줄만 남기고, 한국 지역 조건이 붙은 줄이 먼저, 같은 급이면 원본에서 나중 줄이 이긴다.
+ */
+export function koreaRecord(records, enabled) {
+  const live = records.filter((record) =>
+    (record.condition_evidence ?? []).every((condition) =>
+      condition.kind === 'locale'
+        ? localeHolds(condition.expression)
+        : condition.kind === 'feature'
+          ? enabled.get(condition.expression) === true
+          : false,
+    ),
+  );
+  const korea = live.filter((record) =>
+    (record.condition_evidence ?? []).some((c) => c.kind === 'locale'),
+  );
+  return korea.at(-1) ?? live.at(-1) ?? null;
+}
+
+/** `<xml a="1" b="2"/>` 의 속성을 객체로. 장비 도구가 받던 아이템 JSON 의 XML 칸과 같은 모양이다. */
+export function parseXmlAttributes(text) {
+  const out = {};
+  for (const [, key, value] of String(text ?? '').matchAll(/([A-Za-z_][\w.-]*)\s*=\s*"([^"]*)"/g))
+    out[key] = value;
+  return out;
+}
+
+/**
+ * 아이템 번호 -> 아이템 JSON(게임 아이템 데이터 한 줄). 장비 도구가 아이템마다 따로 받던 것과 같은 칸이다.
+ * 받기가 막혀도 내보내기만 있으면 장비 정보를 만들 수 있다.
+ */
+export function loadBundleItemJsons(run, enabled = koreaFeatures(run)) {
+  const byId = new Map();
+  const lines = gunzipSync(readFileSync(resolve(run, 'records/items.jsonl.gz')))
+    .toString('utf8')
+    .split('\n');
+  for (const line of lines) {
+    if (!line) continue;
+    const record = JSON.parse(line);
+    const id = record.attributes?.ID;
+    if (!id) continue;
+    (byId.get(id) ?? byId.set(id, []).get(id)).push(record);
+  }
+  const jsons = new Map();
+  for (const [id, records] of byId) {
+    const record = koreaRecord(records, enabled);
+    if (!record) continue;
+    jsons.set(id, { ...record.attributes, XML: parseXmlAttributes(record.attributes.XML) });
+  }
+  return jsons;
 }

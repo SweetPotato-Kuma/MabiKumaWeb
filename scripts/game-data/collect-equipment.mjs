@@ -6,6 +6,8 @@ import { createCardMatcher } from './card-match.mjs';
 import { buildEnchantDef, buildEnchantSources, equipTagsOf } from './enchant-defs.mjs';
 import { parseEquipmentResource } from './mabi-equipment.mjs';
 import { parseItemReference } from './mabi-resource.mjs';
+import { defaultBundleRoot, loadBundleItemJsons } from './bundle-items.mjs';
+import { createHash } from 'node:crypto';
 
 /**
  * 장비 시뮬레이터에 쓸 데이터를 모아 우리 워커에 올린다.
@@ -31,6 +33,15 @@ import { parseItemReference } from './mabi-resource.mjs';
  *   기본 능력치   Par_AttackMin 같은 칸
  *   랜덤 능력치   XML.random_product  "attack_min,0,10;critical,0,10"  (기본값에 더하는 폭)
  *   특별 개조     XML.enhance_type_s / enhance_type_r / enhance_max_lv
+ *
+ * ## 아이템 JSON 은 클라이언트 내보내기에서
+ *
+ * 아이템 JSON 은 게임 아이템 데이터 한 줄이라 클라이언트 내보내기(bundle-items.mjs 의 loadBundleItemJsons)에서
+ * 그대로 만든다. 한국 서버에서 쓰이는 줄을 고르는 규칙이 같아서, 받아 둔 7,988개와 장비 칸이 모두 같다(2026-10).
+ * 내보내기가 있으면 아이템 JSON 을 묻지 않는다. 받는 서버가 막혀 새 아이템의 장비 정보가 비던 것이 채워진다.
+ * 인챈트가 붙는 아이템 목록은 아직 받은 것만 쓴다. 서버가 막혀 있으면 받아 둔 목록으로 계속한다.
+ *
+ * 칸을 올릴 때 지난번에 올린 내용과 같으면 보내지 않는다(.cache/equipment/uploaded-shards.json, --force 로 다시 씀).
  *
  * ## 남의 서버다
  *
@@ -101,6 +112,7 @@ loadEnvFile();
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
+const forceShards = args.has('--force');
 const downloadOnly = args.has('--download');
 const buildOnly = args.has('--build');
 const limitArg = [...args].find((a) => a.startsWith('--limit='));
@@ -687,6 +699,11 @@ function requireUploadConfig() {
   if (!adminKey) throw new Error('.env 에 MABIKUMA_ADMIN_KEY(운영자 키)가 없습니다.');
 }
 
+/**
+ * 지난번에 올린 칸의 내용 해시. 같으면 다시 보내지 않는다. 칸 하나가 KV 쓰기 한 번이다.
+ */
+const SHARD_STATE = resolve(CACHE_DIR, 'uploaded-shards.json');
+
 async function putShard(category, shard) {
   const response = await fetch(`${proxyUrl}/item-equip/shard`, {
     method: 'PUT',
@@ -721,6 +738,22 @@ async function main() {
       .replace(/<\/?[^>]+>/g, '')
       .trim();
 
+  // 아이템 JSON 은 내보내기에서 만든다. 내보내기가 없을 때만 예전처럼 받는다.
+  const bundleRoot = defaultBundleRoot();
+  const bundleJsons = await readFile(resolve(bundleRoot, 'latest.json'), 'utf8')
+    .then((text) => loadBundleItemJsons(resolve(bundleRoot, JSON.parse(text).run)))
+    .catch(() => null);
+  log(
+    bundleJsons
+      ? `아이템 JSON: 클라이언트 내보내기 ${bundleJsons.size}개`
+      : '아이템 JSON: 내보내기가 없어 받아 둔 것을 씁니다',
+  );
+  const itemJson = async (id) => bundleJsons?.get(String(id)) ?? readCachedJson(id);
+  const shardState = await readFile(SHARD_STATE, 'utf8')
+    .then(JSON.parse)
+    .catch(() => ({}));
+  let unchanged = 0;
+
   // 인챈트는 옵션셋 가운데 쓰임새 0(접두)과 1(접미)이다. 나머지는 개조 옵션, 세트 효과 같은 것들.
   const enchantRows = data.OptionSetList.filter((row) => (row.Usage ?? 0) <= 1);
   if (!checkOnly) {
@@ -730,9 +763,12 @@ async function main() {
     } catch (error) {
       if (!(error instanceof ApiBlockedError)) throw error;
       // 막혔으면 아이템 JSON 도 같은 서버라 받을 수 없다. 반쯤 빈 장비 데이터를 올리면 멀쩡한 것을 덮으므로 여기서 멈춘다.
+      // 내보내기가 있으면 아이템 JSON 은 거기서 오므로, 받아 둔 인챈트 목록으로 계속한다.
       await reportBlocked(error);
-      if (willUpload) process.exitCode = 1;
-      return;
+      if (!bundleJsons) {
+        if (willUpload) process.exitCode = 1;
+        return;
+      }
     }
   }
 
@@ -855,12 +891,13 @@ async function main() {
       continue;
     }
 
-    let got;
+    let got = 0;
     try {
-      got = await downloadItemJsons(
-        picked.map((entry) => entry.id),
-        missing,
-      );
+      if (!bundleJsons)
+        got = await downloadItemJsons(
+          picked.map((entry) => entry.id),
+          missing,
+        );
     } catch (error) {
       if (!(error instanceof ApiBlockedError)) throw error;
       // 도중에 막히면 이 카테고리부터는 올리지 않는다. 앞서 올린 카테고리는 다 받은 것이라 그대로 둔다.
@@ -884,7 +921,7 @@ async function main() {
     const usedErgSets = new Set();
 
     for (const { name, id } of picked) {
-      const json = await readCachedJson(id);
+      const json = await itemJson(id);
       if (!json) withoutJson++;
       const xml = json?.XML ?? {};
 
@@ -986,7 +1023,15 @@ async function main() {
       log(`${step}: ${picked.length}개 (${(body.length / 1024).toFixed(0)}KB, 올리지 않음)`);
       continue;
     }
+    const digest = createHash('sha256').update(body).digest('hex');
+    if (!forceShards && shardState[category] === digest) {
+      unchanged++;
+      log(`${step}: ${picked.length}개 그대로(지난번과 같음)`);
+      continue;
+    }
     const { count } = await putShard(category, shard);
+    shardState[category] = digest;
+    await writeFile(SHARD_STATE, JSON.stringify(shardState));
     uploaded += count;
     log(`${step}: ${count}개 올림 (${(body.length / 1024).toFixed(0)}KB)`);
   }
@@ -997,7 +1042,7 @@ async function main() {
   log(`카테고리 ${categories.length}개, 장비 데이터가 붙는 아이템 ${totalItems}개`);
   if (!checkOnly)
     log(`  아이템 JSON 이 없는 것 ${withoutJson}개 (기본 능력치와 특별 개조가 비어 있음)`);
-  if (willUpload) log(`  올린 것 ${uploaded}개`);
+  if (willUpload) log(`  올린 것 ${uploaded}개, 바뀌지 않아 건너뛴 칸 ${unchanged}개`);
   if (checkOnly) log('세기만 했습니다. 받지도 올리지도 않았습니다.');
   if (downloadOnly) log('받기만 했습니다. .cache\\equipment 에 쌓여 있고, 올리려면 다시 돌리세요.');
 }

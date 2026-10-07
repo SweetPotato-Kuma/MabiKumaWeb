@@ -37,6 +37,7 @@ import { cleanDescription, isHiddenItem, loadBundleItems } from './bundle-items.
  *   node collect-item-cards.mjs                  받고 올린다
  *
  *   --limit=<n>    카테고리 n 개까지만 (처음 돌려 볼 때)
+ *   --force        지난번에 올린 것과 내용이 같은 카드 칸도 다시 쓴다
  *   --category=<이름,이름>  그 카테고리만. 이름 사전에 몇 개 더한 뒤 그 칸만 다시 올릴 때
  *   --no-icons     그림은 건드리지 않고 글자만 올린다
  *   --recipe-icons 제작법(public/data/recipes.json)에 나오는 아이템 그림만 받고 올린다. 카드는
@@ -113,6 +114,8 @@ loadEnvFile();
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check') || args.has('--dry-run');
+/** 내용이 같아도 카드 칸을 다시 쓴다. 워커 쪽 칸을 손으로 고쳤거나 지웠을 때 쓴다. */
+const forceShards = args.has('--force');
 const downloadOnly = args.has('--download');
 const skipIcons = args.has('--no-icons');
 const recipeIconsOnly = args.has('--recipe-icons');
@@ -215,6 +218,7 @@ async function loadState() {
     missing: new Map(entries.filter(([, at]) => now - at < MISSING_RETRY_MS)),
     uploaded: new Map(Object.entries(await readJson(resolve(CACHE_DIR, 'uploaded.json'), {}))),
     files: new Set(await readJson(resolve(CACHE_DIR, 'uploaded-files.json'), [])),
+    shards: new Map(Object.entries(await readJson(resolve(CACHE_DIR, 'uploaded-shards.json'), {}))),
   };
 }
 
@@ -228,6 +232,20 @@ async function saveState(state) {
     JSON.stringify(Object.fromEntries(state.uploaded)),
   );
   await writeFile(resolve(CACHE_DIR, 'uploaded-files.json'), JSON.stringify([...state.files].sort()));
+  await writeFile(resolve(CACHE_DIR, 'uploaded-shards.json'), JSON.stringify(Object.fromEntries(state.shards)));
+}
+
+/**
+ * 카드 칸을 올린다. 지난번에 올린 내용과 같으면 보내지 않는다. 칸 하나가 KV 쓰기 한 번이고 그림 목록도
+ * 같이 다시 쓰이므로, 바뀐 칸만 보내면 한 번 돌리는 데 드는 쓰기가 바뀐 카테고리 수로 준다.
+ */
+async function putShard(category, cards, state) {
+  const digest = createHash('sha256').update(JSON.stringify(cards)).digest('hex');
+  if (!forceShards && state.shards.get(category) === digest) return { count: cards.length, skipped: true };
+  const { count } = await callWorker('/item-card/shard', 'PUT', { category, cards });
+  state.shards.set(category, digest);
+  await saveState(state);
+  return { count, skipped: false };
 }
 
 /** 가장 최근에 끝난 내보내기. 없으면 null 이고 그림은 모두 예전 PNG 로 간다. */
@@ -577,8 +595,8 @@ async function uploadUncategorized(dictionary, bundle, bundleItems, state) {
       ...(bundled?.dye ? { dye: bundled.dye } : {}),
     };
   });
-  const { count } = await callWorker('/item-card/shard', 'PUT', { category: UNCATEGORIZED, cards });
-  return { count, hidden };
+  const { count, skipped } = await putShard(UNCATEGORIZED, cards, state);
+  return { count, hidden, skipped };
 }
 
 async function main() {
@@ -610,6 +628,7 @@ async function main() {
   let missed = 0;
   let downloaded = 0;
   let withIcon = 0;
+  let unchanged = 0;
 
   for (const [index, category] of categories.entries()) {
     const step = `(${index + 1}/${categories.length}) ${category}`;
@@ -680,8 +699,9 @@ async function main() {
     });
     withIcon += payload.filter((card) => card.icon).length;
 
-    const { count } = await callWorker('/item-card/shard', 'PUT', { category, cards: payload });
-    log(`${step}: ${count}장 올림`);
+    const { count, skipped } = await putShard(category, payload, state);
+    if (skipped) unchanged++;
+    log(`${step}: ${count}장 ${skipped ? '그대로(지난번과 같음)' : '올림'}`);
   }
 
   const uncategorized =
@@ -690,7 +710,10 @@ async function main() {
       : null;
 
   log('');
-  if (uncategorized) log(`${UNCATEGORIZED}: ${uncategorized.count}장, 볼 수 없는 아이템 ${uncategorized.hidden}개 뺌`);
+  if (uncategorized) {
+    log(`${UNCATEGORIZED}: ${uncategorized.count}장${uncategorized.skipped ? '(지난번과 같아 그대로)' : ''}, 볼 수 없는 아이템 ${uncategorized.hidden}개 뺌`);
+  }
+  if (willUpload) log(`  바뀌지 않아 건너뛴 칸 ${unchanged}`);
   log(`카테고리 ${categories.length}개`);
   log(`  목록에서 찾음   ${matched} (그중 띄어쓰기/&& 보정 ${fuzzy})`);
   log(`  못 찾음         ${missed}`);
