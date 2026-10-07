@@ -69,12 +69,12 @@ function koreaNow() {
   return new Date(Date.now() + 9 * 3600_000).toISOString().replace(/\D/g, '').slice(0, 12);
 }
 
-/** 위 규칙으로 고른 설명. 없으면 빈 문자열. */
-export function koreaDescription(entity, enabled) {
-  if ((entity.description ?? '').trim()) return entity.description;
+/** 위 규칙으로 고른 글(field 는 description 이나 name). 없으면 빈 문자열. */
+export function koreaText(entity, enabled, field) {
+  if ((entity[field] ?? '').trim()) return entity[field];
   const live = (entity.variants ?? []).filter(
     (variant) =>
-      (variant.description ?? '').trim() &&
+      (variant[field] ?? '').trim() &&
       variant.conditions.every(([kind, value]) =>
         kind === 'locale'
           ? String(value).toLowerCase() === 'korea'
@@ -84,7 +84,12 @@ export function koreaDescription(entity, enabled) {
       ),
   );
   const korea = live.filter((variant) => variant.conditions.some(([kind]) => kind === 'locale'));
-  return (korea.at(-1) ?? live.at(-1))?.description ?? '';
+  return (korea.at(-1) ?? live.at(-1))?.[field] ?? '';
+}
+
+/** 위 규칙으로 고른 설명. 없으면 빈 문자열. */
+export function koreaDescription(entity, enabled) {
+  return koreaText(entity, enabled, 'description');
 }
 
 /**
@@ -115,7 +120,8 @@ export function loadBundleItems(run, enabled = koreaFeatures(run)) {
   const items = new Map();
   for (const entity of rows(resolve(run, 'assets/items.jsonl'))) {
     items.set(String(entity.id), {
-      name: entity.name ?? '',
+      // 게임은 일부 이름 앞에 @ 를 붙인다. 경매장 사전은 떼고 적으므로 같이 뗀다.
+      name: koreaText(entity, enabled, 'name').replace(/^@/, ''),
       description: cleanDescription(koreaDescription(entity, enabled)),
     });
   }
@@ -186,4 +192,37 @@ export function loadBundleItemJsons(run, enabled = koreaFeatures(run)) {
     jsons.set(id, { ...record.attributes, XML: parseXmlAttributes(record.attributes.XML) });
   }
   return jsons;
+}
+
+/**
+ * 경매장 이름 -> 아이템 번호를 고를 후보. card-match.mjs 가 받는 모양({ items, candidates })이다.
+ * 이름이 같은 후보가 여럿이면 카테고리의 모양으로 고르는데, 동점일 때의 순서가 예전 데이터와 달라
+ * 161건이 다른 번호를 골랐다. 그 이름들은 item-id-pins.json 에 예전 선택을 고정해 두었다(pickItemId).
+ */
+export function loadBundleCandidates(run, enabled = koreaFeatures(run)) {
+  const texts = loadBundleItems(run, enabled);
+  const jsons = loadBundleItemJsons(run, enabled);
+  const items = new Map();
+  const candidates = new Map();
+  for (const id of [...jsons.keys()].sort((a, b) => Number(a) - Number(b))) {
+    const text = texts.get(id);
+    if (!text?.name) continue;
+    const json = jsons.get(id);
+    const candidate = {
+      id: Number(id),
+      description: text.description,
+      source: /_LT\[xml\.([^\]]+)\.\d+\]/.exec(json.Text_Name1 ?? '')?.[1] ?? '',
+      equipType: '',
+      equippable: String(json.Category ?? '').startsWith('/equip/'),
+    };
+    (candidates.get(text.name) ?? candidates.set(text.name, []).get(text.name)).push(candidate);
+    if (!items.has(text.name))
+      items.set(text.name, { id: candidate.id, description: candidate.description });
+  }
+  return { items, candidates };
+}
+
+/** 이름이 같은 아이템 가운데 예전에 고른 번호. 카테고리 -> 이름 -> 번호. */
+export function loadItemIdPins() {
+  return JSON.parse(readFileSync(new URL('./item-id-pins.json', import.meta.url), 'utf8'));
 }
