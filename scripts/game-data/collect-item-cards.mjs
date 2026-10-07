@@ -15,6 +15,13 @@ import { parseScrollName, scrollSubtitle } from '../lib/enchant-scrolls.mjs';
  * **받기**는 공개 주소에서 파일을 가져오는 것뿐이라 아무 자격 증명도 필요 없다.
  * 받은 것은 `.cache/` 에 그대로 쌓인다.
  *
+ * ## 그림은 클라이언트 내보내기에서
+ *
+ * 그림은 클라이언트 내보내기 결과(`.cache/client-src/exports/client-bundle`, 다른 곳이면
+ * MABIKUMA_CLIENT_BUNDLE)의 무손실 WebP 를 올린다. 레이어마다 기본 색을 칠한 그림과, 경매장 매물
+ * 색으로 다시 칠할 회색 레이어 시트를 같이 올리고 시트 정보는 카드의 `dye` 에 싣는다(src/features/itemcard/dye.ts).
+ * 내보내기에 그림이 없는 아이템만 예전처럼 공개 주소의 PNG 를 받아 올린다.
+ *
  * **올리기**는 우리 워커의 쓰기 경로를 두드리는 일이라 운영자 키가 있어야 한다. 그 경로가
  * 열려 있으면 아무나 우리 사전에 아무거나 밀어 넣고 저장 용량을 태울 수 있다.
  *
@@ -53,6 +60,10 @@ const ICON_URL = (id) => `${RESOURCE_HOST}/invimage/kr/${id}/${id}.png`;
 
 const CACHE_DIR = resolve(process.cwd(), '.cache/item-cards');
 const ICON_DIR = resolve(CACHE_DIR, 'icons');
+const BUNDLE_ROOT = resolve(
+  process.cwd(),
+  process.env.MABIKUMA_CLIENT_BUNDLE ?? '.cache/client-src/exports/client-bundle',
+);
 const ITEMS_DIR = resolve(process.cwd(), 'public/data/items');
 
 /** 워커의 ICON_BATCH_MAX 와 같아야 한다. 넘겨 보내면 400 이 돌아온다. */
@@ -184,6 +195,7 @@ async function readJson(path, fallback) {
  * 안 된다. 참룡검처럼 그때는 404 였다가 지금은 받아지는 것이 60개 넘게 있었다. 그래서 하루가
  * 지난 기록은 버리고 다시 묻는다. 옛 모양(번호 배열)은 시각이 없으니 바로 다시 묻는다.
  * `uploaded` 는 올리고 나서 워커가 돌려준 파일 이름이다. 이게 있으면 같은 그림을 두 번 올리지 않는다.
+ * `files` 는 내보내기에서 올린 파일 이름들이다. 이름이 내용 해시라 있으면 다시 보내지 않는다.
  */
 const MISSING_RETRY_MS = 24 * 60 * 60 * 1000;
 
@@ -194,6 +206,7 @@ async function loadState() {
   return {
     missing: new Map(entries.filter(([, at]) => now - at < MISSING_RETRY_MS)),
     uploaded: new Map(Object.entries(await readJson(resolve(CACHE_DIR, 'uploaded.json'), {}))),
+    files: new Set(await readJson(resolve(CACHE_DIR, 'uploaded-files.json'), [])),
   };
 }
 
@@ -206,6 +219,83 @@ async function saveState(state) {
     resolve(CACHE_DIR, 'uploaded.json'),
     JSON.stringify(Object.fromEntries(state.uploaded)),
   );
+  await writeFile(resolve(CACHE_DIR, 'uploaded-files.json'), JSON.stringify([...state.files].sort()));
+}
+
+/** 가장 최근에 끝난 내보내기. 없으면 null 이고 그림은 모두 예전 PNG 로 간다. */
+async function loadBundle() {
+  const latest = await readJson(resolve(BUNDLE_ROOT, 'latest.json'), null);
+  if (!latest?.run) return null;
+  const run = resolve(BUNDLE_ROOT, latest.run);
+  const images = await readJson(resolve(run, 'images/item-images.json'), null);
+  if (!images) return null;
+  return { run, images, layers: await readJson(resolve(run, 'images/item-layers.json'), {}) };
+}
+
+/**
+ * 내보내기의 그림과 레이어 시트를 올리고 아이템마다 카드에 실을 값을 돌려준다.
+ * 레이어 시트의 순번은 원래 레이어 번호 그대로라 `[번호, 파트, 기본 색]` 을 그대로 옮긴다.
+ */
+async function attachBundleIcons(ids, bundle, state) {
+  const found = new Map();
+  if (!bundle) return found;
+  const files = new Map();
+  const read = async (rel) => {
+    const bytes = await readFile(resolve(bundle.run, rel));
+    const file = iconFileName(bytes, 'webp');
+    files.set(file, bytes);
+    return file;
+  };
+  for (const id of ids) {
+    const rel = bundle.images[String(id)]?.[0];
+    if (!rel) continue;
+    const icon = await read(rel);
+    const layers = bundle.layers[String(id)];
+    const dye = layers
+      ? [
+          await read(layers.sheet),
+          layers.width,
+          layers.height,
+          layers.layers.map((layer) => [layer.layer, layer.part ?? '', layer.colour ?? '']),
+        ]
+      : null;
+    found.set(String(id), { icon, dye });
+  }
+  if (willUpload) await uploadFiles(files, state);
+  for (const [id, entry] of found) {
+    if (willUpload && !state.files.has(entry.icon)) {
+      found.delete(id);
+      continue;
+    }
+    if (entry.dye && willUpload && !state.files.has(entry.dye[0])) entry.dye = null;
+    if (willUpload) state.uploaded.set(id, entry.icon);
+  }
+  return found;
+}
+
+/** 파일 이름 -> 내용. 올라가 있지 않은 것만 40장씩 보낸다. */
+async function uploadFiles(files, state) {
+  const pending = [...files].filter(([file]) => !state.files.has(file));
+  const batches = [];
+  for (let i = 0; i < pending.length; i += ICON_BATCH) batches.push(pending.slice(i, i + ICON_BATCH));
+  for (let i = 0; i < batches.length; i += UPLOAD_CONCURRENCY) {
+    await Promise.all(
+      batches.slice(i, i + UPLOAD_CONCURRENCY).map(async (batch) => {
+        const { files: written } = await callWorker('/item-card/icons', 'POST', {
+          icons: batch.map(([file, bytes]) => ({ key: file, base64: bytes.toString('base64') })),
+        });
+        for (const [file] of batch) {
+          if (!written[file]) continue;
+          if (written[file] !== file) {
+            throw new Error(`워커가 붙인 파일 이름(${written[file]})이 예상(${file})과 다릅니다.`);
+          }
+          state.files.add(file);
+        }
+      }),
+    );
+    await saveState(state);
+  }
+  return pending.length;
 }
 
 const iconPath = (id) => resolve(ICON_DIR, `${id}.png`);
@@ -304,8 +394,8 @@ async function callWorker(path, method, body) {
  * 워커가 붙이는 파일 이름과 같은 규칙. 그림 내용의 SHA-256 앞 16자리.
  * 올리기 전에 여기서 알 수 있으면 같은 그림을 두 번 보낼 이유가 없다.
  */
-const iconFileName = (bytes) =>
-  `${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}.png`;
+const iconFileName = (bytes, extension = 'png') =>
+  `${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}.${extension}`;
 
 /**
  * 받아 둔 그림을 워커로 올린다. 여기부터 운영자 키가 필요하다.
@@ -446,7 +536,10 @@ async function uploadRecipeIcons() {
   if (!recipes) throw new Error('public/data/recipes.json 이 없습니다. 먼저 제작법을 모으세요.');
   const state = await loadState();
   const ids = Object.keys(recipes.items).map(Number);
-  const todo = ids.filter((id) => !state.uploaded.has(String(id)));
+  const fromBundle = await attachBundleIcons(ids, await loadBundle(), state);
+  await saveState(state);
+  log(`제작법 아이템 중 내보내기 그림을 붙인 것 ${fromBundle.size}개`);
+  const todo = ids.filter((id) => !fromBundle.has(String(id)) && !state.uploaded.has(String(id)));
   log(`제작법 아이템 ${ids.length}개, 그림이 아직 없는 것 ${todo.length}개`);
   if (checkOnly) return;
 
@@ -479,6 +572,8 @@ async function main() {
   const enchantScrolls = (await readJson(resolve(process.cwd(), 'public/data/enchant-scrolls.json'), null))?.scrolls ?? {};
 
   const state = await loadState();
+  const bundle = await loadBundle();
+  log(bundle ? `그림: 클라이언트 내보내기 ${bundle.run}` : '그림: 내보내기가 없어 예전 PNG 를 씁니다');
   const categories = [...dictionary.keys()]
     .filter((category) => onlyCategories.size === 0 || onlyCategories.has(category))
     .sort((a, b) => a.localeCompare(b, 'ko'))
@@ -526,8 +621,11 @@ async function main() {
       continue;
     }
 
+    const fromBundle = skipIcons ? new Map() : await attachBundleIcons(ids, bundle, state);
+    const pngIds = ids.filter((id) => !fromBundle.has(String(id)));
+
     if (!skipIcons) {
-      const got = await downloadIcons(ids, state, (done, total) => {
+      const got = await downloadIcons(pngIds, state, (done, total) => {
         if (done % 200 === 0 || done === total) log(`${step}: 그림 ${done}/${total} 받는 중`);
       });
       downloaded += got;
@@ -540,16 +638,20 @@ async function main() {
     }
 
     if (!skipIcons) {
-      await uploadIcons(ids, state);
+      await uploadIcons(pngIds, state);
       await saveState(state);
     }
 
-    const payload = cards.map((card) => ({
-      name: card.name,
-      subtitle: card.subtitle,
-      description: card.description,
-      icon: state.uploaded.get(String(card.id)) ?? '',
-    }));
+    const payload = cards.map((card) => {
+      const bundled = fromBundle.get(String(card.id));
+      return {
+        name: card.name,
+        subtitle: card.subtitle,
+        description: card.description,
+        icon: bundled?.icon ?? state.uploaded.get(String(card.id)) ?? '',
+        ...(bundled?.dye ? { dye: bundled.dye } : {}),
+      };
+    });
     withIcon += payload.filter((card) => card.icon).length;
 
     const { count } = await callWorker('/item-card/shard', 'PUT', { category, cards: payload });
