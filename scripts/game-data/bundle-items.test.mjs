@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { cleanDescription, hiddenReason, isHiddenItem, koreaDescription } from './bundle-items.mjs';
+import {
+  cleanDescription,
+  featureHolds,
+  hiddenReason,
+  isHiddenItem,
+  koreaDescription,
+} from './bundle-items.mjs';
 
 const variant = (description, conditions = []) => ({ description, conditions });
 
@@ -91,5 +97,25 @@ describe('isHiddenItem', () => {
     expect(
       isHiddenItem('생명력과 해독의 크리스탈 (R.100)', '생명력 100을 회복할 수 있는 크리스탈.'),
     ).toBe(false);
+  });
+});
+
+describe('featureHolds', () => {
+  const enabled = new Map([
+    ['gfA', true],
+    ['gfB', false],
+  ]);
+
+  it('기능 하나, 부정, 엮은 조건을 푼다', () => {
+    expect(featureHolds('gfA', enabled)).toBe(true);
+    expect(featureHolds('!gfB', enabled)).toBe(true);
+    expect(featureHolds('gfA&gfB', enabled)).toBe(false);
+    expect(featureHolds('gfA & !gfB', enabled)).toBe(true);
+    expect(featureHolds('gfB|gfA', enabled)).toBe(true);
+    expect(featureHolds('!(gfA|gfB)', enabled)).toBe(false);
+  });
+
+  it('모르는 기능은 꺼진 것이다', () => {
+    expect(featureHolds('gfUnknown', enabled)).toBe(false);
   });
 });

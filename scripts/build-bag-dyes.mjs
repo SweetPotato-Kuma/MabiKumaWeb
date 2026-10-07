@@ -38,13 +38,13 @@
  * 실행: NEXON_API_KEY=... node scripts/build-bag-dyes.mjs
  * 산출: public/bag-dyes.json
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
 const API_ORIGIN = 'https://open.api.nexon.com';
-/** 게임 클라이언트 아이콘. 아이템 사전 아이콘을 받는 곳과 같다(scripts/local 참고). */
-const CLIENT_ICON_URL = (id) => `https://mabires2.pril.cc/invimage/kr/${id}/${id}.png`;
+/** 게임 클라이언트 아이콘(PNG). 이 PC 에 남겨 둔 것을 읽는다. 게임 그림은 저장소에 두지 않는다. */
+const CLIENT_ICON_PATH = (id) => resolve(process.cwd(), '.cache/item-cards/icons', `${id}.png`);
 
 /**
  * 게임 화면 캡처. 인벤토리의 아이콘을 원래 크기로 찍은 것과, 그 주머니의 파트 색(툴팁 값).
@@ -504,17 +504,11 @@ function fillUnderPlus(cells, plus) {
   return out;
 }
 
-/** 클라이언트 아이콘을 받는다. 게임 아이콘은 완전히 투명하거나 불투명하다. */
+/** 클라이언트 아이콘을 읽는다. 게임 아이콘은 완전히 투명하거나 불투명하다. */
 async function fetchIcon(id) {
-  // 아이콘 서버가 가끔 503 을 준다. 잠깐 쉬었다가 두 번 더 묻는다.
-  let response;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    response = await fetch(CLIENT_ICON_URL(id));
-    if (response.ok) break;
-    await sleep(1000 * (attempt + 1));
-  }
-  if (!response.ok) throw new Error(`아이콘 ${id}: HTTP ${response.status}`);
-  const { width, pixels } = decodePng(Buffer.from(await response.arrayBuffer()));
+  const bytes = await readFile(CLIENT_ICON_PATH(id)).catch(() => null);
+  if (!bytes) throw new Error(`아이콘 ${id} 가 ${CLIENT_ICON_PATH(id)} 에 없습니다.`);
+  const { width, pixels } = decodePng(bytes);
   if (width !== SIZE) throw new Error(`아이콘 ${id} 가 ${SIZE}px 이 아닙니다(${width}px).`);
   return pixels;
 }

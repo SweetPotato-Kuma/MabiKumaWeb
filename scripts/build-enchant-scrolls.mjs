@@ -9,62 +9,36 @@
  * 이름은 게임 데이터의 두 번째 이름이다. 첫 번째 이름(320개가 다르다)은 사양의 alt 와 사전 항목의 alt 로
  * 남겨 그 이름으로도 검색되게 한다.
  *
- * 받아 둔 리소스(.cache/item-cards)와 인챈트(.cache/equipment/enchants)를 읽는다. 없으면
- * `node scripts/game-data/collect-equipment.mjs --download` 를 먼저 돌린다.
+ * 인챈트 정의는 클라이언트 내보내기의 옵션셋(game-data/client-tables.mjs)에서 읽는다.
  *
  * 실행: node scripts/build-enchant-scrolls.mjs
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { latestBundleRun } from './game-data/bundle-items.mjs';
+import { loadClientTables, tableText } from './game-data/client-tables.mjs';
 import { buildEnchantDef, buildEnchantSources } from './game-data/enchant-defs.mjs';
-import { parseEquipmentResource } from './game-data/mabi-equipment.mjs';
 import { readCategories, readDictionary, readExcluded, writeDictionary } from './lib/dictionary.mjs';
 import { SCROLL_CATEGORY, altNames, groupScrolls, parseScrollName } from './lib/enchant-scrolls.mjs';
 
-const RESOURCE = resolve(process.cwd(), '.cache/item-cards/resourcedata.bin.br');
-const ENCHANT_DIR = resolve(process.cwd(), '.cache/equipment/enchants');
 const OUT = resolve(process.cwd(), 'public/data/enchant-scrolls.json');
 
 const today = new Date().toISOString().slice(0, 10);
 
 async function main() {
-  const resource = await readFile(RESOURCE).catch(() => null);
-  if (!resource) {
-    throw new Error(
-      '받아 둔 리소스가 없습니다. node scripts/game-data/collect-equipment.mjs --download 를 먼저 돌리세요.',
-    );
-  }
-
-  const data = parseEquipmentResource(resource);
-  const strings = new Map(data.StringTable.map((row) => [row.Id, row.Str ?? '']));
-  const text = (key) =>
-    (key ? (strings.get(key) ?? '') : '')
-      .replace(/\\n/g, ' ')
-      .replace(/<\/?[^>]+>/g, '')
-      .trim();
+  const data = loadClientTables(latestBundleRun());
+  const text = tableText(data);
 
   const sources = buildEnchantSources(data, text);
   const defs = [];
   for (const row of data.OptionSetList.filter((entry) => (entry.Usage ?? 0) <= 1)) {
-    const file = await readFile(resolve(ENCHANT_DIR, `${row.Id}.json`), 'utf8')
-      .then(JSON.parse)
-      .catch(() => null);
-    if (!file?.json) continue;
-    defs.push(buildEnchantDef(row, file, text, new Set(), sources));
+    const enchant = data.enchants.get(row.Id);
+    if (!enchant) continue;
+    defs.push(buildEnchantDef(row, enchant, text, new Set(), sources));
   }
 
-  /*
-   * 쓸 수 있는 인챈트가 하나도 없으면 받지 못한 것이다(받기를 건너뛰었거나 데이터 서버가 막았다). 빈 사양으로
-   * 덮으면 사이트의 인챈트 스크롤 사양과 사전 항목이 통째로 사라지므로, 지금 파일을 그대로 두고 알리기만 한다.
-   */
-  if (defs.length === 0) {
-    const message =
-      '쓸 수 있는 인챈트가 없어 인챈트 스크롤 사양과 사전을 그대로 둡니다. ' +
-      'node scripts/game-data/collect-equipment.mjs --download 로 받은 뒤 다시 돌리세요.';
-    console.log(message);
-    if (process.env.GITHUB_ACTIONS) console.log(`::warning::${message}`);
-    return;
-  }
+  // 인챈트가 하나도 없으면 내보내기가 잘못된 것이다. 빈 사양으로 덮지 않고 멈춘다.
+  if (defs.length === 0) throw new Error('클라이언트 내보내기에 인챈트가 없습니다.');
 
   const groups = groupScrolls(defs);
   const scrolls = Object.fromEntries(

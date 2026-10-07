@@ -5,8 +5,8 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createCardMatcher } from './card-match.mjs';
 import { buildEnchantDef, buildEnchantSources, equipTagsOf } from './enchant-defs.mjs';
-import { defaultBundleRoot, loadBundleCandidates, loadItemIdPins } from './bundle-items.mjs';
-import { loadClientTables } from './client-tables.mjs';
+import { latestBundleRun, loadBundleCandidates, loadItemIdPins } from './bundle-items.mjs';
+import { loadClientTables, tableText } from './client-tables.mjs';
 import { loadArtisanOdds } from './artisan-odds.mjs';
 
 /**
@@ -83,19 +83,6 @@ const proxyUrl = (process.env.VITE_PROXY_URL ?? '').trim().replace(/\/+$/, '');
 const adminKey = (process.env.MABIKUMA_ADMIN_KEY ?? '').trim();
 
 const log = (...parts) => console.log('[equipment]', ...parts);
-
-/** 클라이언트 내보내기의 마지막 실행 폴더. 없으면 만들 수 없다. */
-async function loadBundleRun() {
-  const root = defaultBundleRoot();
-  const latest = await readFile(resolve(root, 'latest.json'), 'utf8')
-    .then(JSON.parse)
-    .catch(() => null);
-  if (!latest?.run)
-    throw new Error(
-      `${root} 에 클라이언트 내보내기가 없습니다. Run-ClientExport.ps1 을 먼저 돌리세요.`,
-    );
-  return resolve(root, latest.run);
-}
 
 async function loadDictionary() {
   const byCategory = new Map();
@@ -398,7 +385,7 @@ async function putShard(category, shard) {
 async function main() {
   if (willUpload) requireUploadConfig();
 
-  const run = await loadBundleRun();
+  const run = latestBundleRun();
   log(`클라이언트 내보내기 ${run}`);
   const dictionary = await loadDictionary();
   const data = loadClientTables(run);
@@ -415,13 +402,7 @@ async function main() {
       row.ArtisanOdds = odds.get(row.LuckyUpgradeId);
   }
 
-  const strings = new Map(data.StringTable.map((row) => [row.Id, row.Str ?? '']));
-  // 게임 안 표기(<color> 등)와 줄바꿈 글자를 걷어 낸다.
-  const text = (key) =>
-    (key ? (strings.get(key) ?? '') : '')
-      .replace(/\\n/g, ' ')
-      .replace(/<\/?[^>]+>/g, '')
-      .trim();
+  const text = tableText(data);
 
   const itemJson = (id) => data.itemJsons.get(String(id)) ?? null;
   const shardState = await readFile(SHARD_STATE, 'utf8')

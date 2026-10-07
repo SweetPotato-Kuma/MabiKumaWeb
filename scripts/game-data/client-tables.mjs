@@ -105,6 +105,16 @@ export function racesOfItem(json) {
   return races;
 }
 
+/** 표의 문자열 열쇠를 글로 푼다. 게임 안 표기(<color> 등)와 줄바꿈 글자는 걷어 낸다. */
+export function tableText(tables) {
+  const strings = new Map(tables.StringTable.map((row) => [row.Id, row.Str ?? '']));
+  return (key) =>
+    (key ? (strings.get(key) ?? '') : '')
+      .replace(/\\n/g, ' ')
+      .replace(/<\/?[^>]+>/g, '')
+      .trim();
+}
+
 /** 개조 값. "10", "-5", 폭이 있는 "-(4~6)" 은 [-6, -4]. */
 function parseRange(text) {
   const match = /^(-?)\(?\s*(-?[\d.]+)\s*(?:~\s*(-?[\d.]+))?\s*\)?$/.exec(
@@ -458,6 +468,58 @@ export function loadClientTables(run) {
   }));
   const ContentsRewardPoolList = [...poolsById.values()];
 
+  /**
+   * 세트 효과(SetItemDesc.xml). 효과는 Element(이름, 발동 기준 "10:37" 의 앞 수), 아이템마다 Item 의
+   * element "fast_attack:1~4 stamina_saving:2~4", 품질 조건이 붙은 수치는 그 아래 quality 다.
+   */
+  const setRecords = records('equipment-effects.jsonl.gz').filter((r) =>
+    r.source.endsWith('SetItemDesc.xml'),
+  );
+  const setElements = (text) =>
+    String(text ?? '')
+      .trim()
+      // 띄어 쓰거나 쉼표로 가른다("a:10, b:10").
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .map((part) => {
+        const at = part.lastIndexOf(':');
+        const [min, max] = parseRange(part.slice(at + 1));
+        return { Name: part.slice(0, at), Min: min, Max: max };
+      });
+  const SetItemDescElementList = [
+    ...pickById(
+      setRecords.filter((r) => r.tag === 'Element'),
+      'id',
+      enabled,
+    ).values(),
+  ].map(({ attributes: a }) => ({
+    Id: Number(a.id),
+    Key: a.name,
+    Name: textKey(a.localname),
+    Desc: textKey(a.description),
+    ThresholdCount: Number(String(a.threshold ?? '').split(':')[0]) || 0,
+  }));
+  const setItems = new Map();
+  for (const record of setRecords) {
+    if (!live(record)) continue;
+    if (record.tag === 'Item') {
+      setItems.set(record.path, {
+        Id: Number(record.attributes.id),
+        Elements: setElements(record.attributes.element),
+        QualityElements: [],
+      });
+    }
+  }
+  for (const record of setRecords) {
+    if (record.tag !== 'quality' || !live(record)) continue;
+    const item = setItems.get(record.path.replace(/\[\d+\]\/quality$/, ''));
+    item?.QualityElements.push({
+      Quality: Number(record.attributes.threshold) || 0,
+      Elements: setElements(record.attributes.bonus),
+    });
+  }
+  const ItemExtendSetItemDescList = [...setItems.values()];
+
   const ergPins = JSON.parse(readFileSync(new URL('./erg-pins.json', import.meta.url), 'utf8'));
   const ergRecords = records('upgrades.jsonl.gz').filter((r) =>
     r.source.endsWith('ErgEnhanceClient.xml'),
@@ -530,6 +592,10 @@ export function loadClientTables(run) {
 
   return {
     StringTable,
+    // 클라이언트 데이터를 꺼낸 날(원본이 바뀌지 않았으면 마지막으로 바뀐 날). 화면의 "갱신" 날짜로 쓴다.
+    clientDate: String(
+      JSON.parse(readFileSync(resolve(bundle.source_raw, 'report.json'), 'utf8')).started_utc ?? '',
+    ).slice(0, 10),
     ItemList,
     RaceList,
     OptionSetList,
@@ -544,6 +610,8 @@ export function loadClientTables(run) {
     ContentsRewardGroupList,
     ContentsRewardPoolList,
     ContentsRewardList,
+    SetItemDescElementList,
+    ItemExtendSetItemDescList,
     itemJsons: jsons,
   };
 }

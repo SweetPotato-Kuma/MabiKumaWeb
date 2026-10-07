@@ -1,5 +1,5 @@
 {
-"updated":"2026-10-01",
+"updated":"2026-10-05",
 "effects":{
 "poison_immune":{"name":"독 면역","desc":"독 계열 컨디션 방지","need":10},
 "stone_immune":{"name":"석화 면역","desc":"석화 계열 컨디션 방지","need":10},

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSetEffects, cleanSetDesc } from './set-effects.mjs';
 
-/** parseEquipmentResource 가 돌려주는 모양을 줄여 만든다. 값은 2026-10 게임 데이터에서 옮겼다. */
+/** client-tables.mjs 가 돌려주는 모양을 줄여 만든다. 값은 2026-10 게임 데이터에서 옮겼다. */
 const RESOURCE = {
   StringTable: [
     { Id: 'itemdb.1', Str: '얼티밋 기아스 데버스테이션 써클릿' },

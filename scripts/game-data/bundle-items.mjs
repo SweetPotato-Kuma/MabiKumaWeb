@@ -65,6 +65,42 @@ export function koreaFeatures(run, now = koreaNow()) {
   return enabled;
 }
 
+/**
+ * 기능 조건이 켜져 있는지. 조건은 기능 이름 하나이거나 "gfA&gfB", "gfA & !gfB", "!gfA|gfB" 처럼 엮은 것이다.
+ * ! 가 & 보다, & 가 | 보다 먼저 묶인다. 모르는 기능은 꺼진 것으로 본다.
+ */
+export function featureHolds(expression, enabled) {
+  const tokens = String(expression).match(/[A-Za-z0-9_]+|[&|!()]/g) ?? [];
+  let at = 0;
+  const any = () => {
+    let value = all();
+    while (tokens[at] === '|') {
+      at++;
+      value = all() || value;
+    }
+    return value;
+  };
+  const all = () => {
+    let value = one();
+    while (tokens[at] === '&') {
+      at++;
+      value = one() && value;
+    }
+    return value;
+  };
+  const one = () => {
+    const token = tokens[at++];
+    if (token === '!') return !one();
+    if (token === '(') {
+      const value = any();
+      at++;
+      return value;
+    }
+    return enabled.get(token) === true;
+  };
+  return tokens.length > 0 && any();
+}
+
 function koreaNow() {
   return new Date(Date.now() + 9 * 3600_000).toISOString().replace(/\D/g, '').slice(0, 12);
 }
@@ -79,7 +115,7 @@ export function koreaText(entity, enabled, field) {
         kind === 'locale'
           ? String(value).toLowerCase() === 'korea'
           : kind === 'feature'
-            ? enabled.get(value) === true
+            ? featureHolds(value, enabled)
             : false,
       ),
   );
@@ -135,6 +171,21 @@ export function defaultBundleRoot() {
   );
 }
 
+/** 클라이언트 내보내기의 마지막 실행 폴더. 내보내기가 없으면 알기 쉬운 말로 멈춘다. */
+export function latestBundleRun(root = defaultBundleRoot()) {
+  let latest;
+  try {
+    latest = JSON.parse(readFileSync(resolve(root, 'latest.json'), 'utf8'));
+  } catch {
+    latest = null;
+  }
+  if (!latest?.run)
+    throw new Error(
+      `${root} 에 클라이언트 내보내기가 없습니다. Run-ClientExport.ps1 을 먼저 돌리세요.`,
+    );
+  return resolve(root, latest.run);
+}
+
 /** 지역 조건이 한국 서버에서 성립하는지. "!usa" 처럼 다른 지역을 빼는 조건도 있다. */
 function localeHolds(expression) {
   const value = String(expression).toLowerCase();
@@ -151,7 +202,7 @@ export function koreaRecord(records, enabled) {
       condition.kind === 'locale'
         ? localeHolds(condition.expression)
         : condition.kind === 'feature'
-          ? enabled.get(condition.expression) === true
+          ? featureHolds(condition.expression, enabled)
           : // 시즌 조건은 내보내기가 한국 프로필로 이미 걸렀다. 남은 행은 지금 시즌에 쓰인다.
             condition.kind === 'season',
     ),
