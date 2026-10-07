@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { createCardMatcher } from './card-match.mjs';
 import { parseItemReference } from './mabi-resource.mjs';
 import { parseScrollName, scrollSubtitle } from '../lib/enchant-scrolls.mjs';
+import { cleanDescription, isHiddenItem, loadBundleItems } from './bundle-items.mjs';
 
 /**
  * 아이템 설명과 아이콘을 모아 우리 워커에 올린다.
@@ -21,6 +22,10 @@ import { parseScrollName, scrollSubtitle } from '../lib/enchant-scrolls.mjs';
  * MABIKUMA_CLIENT_BUNDLE)의 무손실 WebP 를 올린다. 레이어마다 기본 색을 칠한 그림과, 경매장 매물
  * 색으로 다시 칠할 회색 레이어 시트를 같이 올리고 시트 정보는 카드의 `dye` 에 싣는다(src/features/itemcard/dye.ts).
  * 내보내기에 그림이 없는 아이템만 예전처럼 공개 주소의 PNG 를 받아 올린다.
+ *
+ * 설명도 내보내기에서 한국 서버에 보이는 그대로 고른다(bundle-items.mjs). 경매장에 오른 적 없어
+ * 사전 카테고리가 없는 제작법 아이템은 `분류 없음` 칸에 올린다. 상세 화면이 카테고리가 비어 있으면
+ * 그 칸에서 찾는다. 플레이어가 볼 수 없는 아이템(NPC, 몬스터 장비, 내부 이름)은 올리지 않는다.
  *
  * **올리기**는 우리 워커의 쓰기 경로를 두드리는 일이라 운영자 키가 있어야 한다. 그 경로가
  * 열려 있으면 아무나 우리 사전에 아무거나 밀어 넣고 저장 용량을 태울 수 있다.
@@ -65,6 +70,9 @@ const BUNDLE_ROOT = resolve(
   process.env.MABIKUMA_CLIENT_BUNDLE ?? '.cache/client-src/exports/client-bundle',
 );
 const ITEMS_DIR = resolve(process.cwd(), 'public/data/items');
+
+/** 사전 카테고리가 없는 아이템의 카드 칸. src/features/itemcard/cards.ts 의 UNCATEGORIZED_CARDS 와 같아야 한다. */
+const UNCATEGORIZED = '분류 없음';
 
 /** 워커의 ICON_BATCH_MAX 와 같아야 한다. 넘겨 보내면 400 이 돌아온다. */
 const ICON_BATCH = 40;
@@ -472,27 +480,6 @@ async function uploadIcons(ids, state) {
 }
 
 /**
- * 게임 안에서만 뜻이 있는 표기를 웹에서 읽을 수 있게 바꾼다.
- *
- *   `\n` 글자 그대로      2,254건  진짜 줄바꿈으로
- *   `<color=1>…</color>`    382건  강조 색. 글자만 남긴다(화면 규칙상 장식 색은 안 쓴다)
- *   `<hotkey name="…"/>`     68건  그 사람이 지정한 단축키 자리. 웹에서는 모르니 [단축키] 로
- *   `{0}` `{1}`               1건  아이템마다 게임이 채우는 자리. 비워 둘 수 없으니 … 로
- *
- * 건수는 2026-09 기준 우리 사전 15,202개에서 센 값이다.
- */
-function cleanDescription(text) {
-  return text
-    .replace(/\\n/g, '\n')
-    .replace(/<hotkey\b[^>]*\/?>/g, '[단축키]')
-    .replace(/<\/?color\b[^>]*>/g, '')
-    .replace(/\{\d+\}/g, '…')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-/**
  * 이름이 조금 다르게 적힌 것을 잇는 열쇠.
  *
  * 경매장 이름과 게임 데이터 이름은 거의 같지만 두 군데가 어긋난다(2026-09, 95건).
@@ -556,6 +543,44 @@ async function uploadRecipeIcons() {
   log(`  올린 그림 ${sent}장, 그림이 붙은 아이템 ${attached}/${todo.length}`);
 }
 
+/**
+ * 제작법에만 나오고 경매장에 오른 적 없는 아이템의 카드. 사전 카테고리가 없어 상세 화면에 설명이
+ * 비어 있던 것들이다. 설명이 없거나 플레이어가 볼 수 없는 아이템은 뺀다.
+ */
+async function uploadUncategorized(dictionary, bundle, bundleItems, state) {
+  const recipes = await readJson(resolve(process.cwd(), 'public/data/recipes.json'), null);
+  if (!recipes) return null;
+  const known = new Set([...dictionary.values()].flat());
+  const picked = new Map();
+  let hidden = 0;
+  for (const [id, [name]] of Object.entries(recipes.items)) {
+    if (known.has(name) || picked.has(name)) continue;
+    const description = bundleItems.get(id)?.description ?? '';
+    if (!description) continue;
+    if (isHiddenItem(name, description)) {
+      hidden++;
+      continue;
+    }
+    picked.set(name, { id, description });
+  }
+  if (checkOnly) return { count: picked.size, hidden };
+  const icons = await attachBundleIcons([...picked.values()].map((card) => card.id), bundle, state);
+  await saveState(state);
+  if (downloadOnly) return { count: picked.size, hidden };
+  const cards = [...picked].map(([name, card]) => {
+    const bundled = icons.get(card.id);
+    return {
+      name,
+      subtitle: '',
+      description: card.description,
+      icon: bundled?.icon ?? '',
+      ...(bundled?.dye ? { dye: bundled.dye } : {}),
+    };
+  });
+  const { count } = await callWorker('/item-card/shard', 'PUT', { category: UNCATEGORIZED, cards });
+  return { count, hidden };
+}
+
 async function main() {
   if (willUpload) requireUploadConfig();
   if (recipeIconsOnly) return uploadRecipeIcons();
@@ -573,7 +598,8 @@ async function main() {
 
   const state = await loadState();
   const bundle = await loadBundle();
-  log(bundle ? `그림: 클라이언트 내보내기 ${bundle.run}` : '그림: 내보내기가 없어 예전 PNG 를 씁니다');
+  log(bundle ? `그림과 설명: 클라이언트 내보내기 ${bundle.run}` : '그림: 내보내기가 없어 예전 PNG 를 씁니다');
+  const bundleItems = bundle ? loadBundleItems(bundle.run) : null;
   const categories = [...dictionary.keys()]
     .filter((category) => onlyCategories.size === 0 || onlyCategories.has(category))
     .sort((a, b) => a.localeCompare(b, 'ko'))
@@ -605,7 +631,7 @@ async function main() {
       cards.push({
         name,
         id: found.id,
-        description: cleanDescription(found.description),
+        description: bundleItems?.get(String(found.id))?.description || cleanDescription(found.description),
         subtitle: scroll && enchantScrolls[name] ? scrollSubtitle(enchantScrolls[name]) : '',
       });
       if (!skipIcons) ids.push(found.id);
@@ -658,7 +684,13 @@ async function main() {
     log(`${step}: ${count}장 올림`);
   }
 
+  const uncategorized =
+    bundleItems && categoryLimit === Infinity && (onlyCategories.size === 0 || onlyCategories.has(UNCATEGORIZED))
+      ? await uploadUncategorized(dictionary, bundle, bundleItems, state)
+      : null;
+
   log('');
+  if (uncategorized) log(`${UNCATEGORIZED}: ${uncategorized.count}장, 볼 수 없는 아이템 ${uncategorized.hidden}개 뺌`);
   log(`카테고리 ${categories.length}개`);
   log(`  목록에서 찾음   ${matched} (그중 띄어쓰기/&& 보정 ${fuzzy})`);
   log(`  못 찾음         ${missed}`);

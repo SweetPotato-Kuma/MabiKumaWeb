@@ -49,6 +49,17 @@ const CARD_PATH = '/item-card';
 const VERIFY_PATH = '/item-card/verify';
 const ICON_PATH = '/item-card/icons/';
 
+/**
+ * 사전 카테고리가 없는 아이템(경매장에 오른 적 없는 제작 재료 등)의 카드가 들어 있는 칸.
+ * scripts/game-data/collect-item-cards.mjs 의 UNCATEGORIZED 와 같아야 한다.
+ */
+export const UNCATEGORIZED_CARDS = '분류 없음';
+
+/** 카드를 찾을 칸. 카테고리가 비어 있으면 분류 없음 칸에서 찾는다. */
+export function cardCategoryOf(category: string): string {
+  return category || UNCATEGORIZED_CARDS;
+}
+
 /** 워커의 LOOKUP_MAX_NAMES 와 같아야 한다. 넘겨 보내면 400 이 돌아온다. */
 export const LOOKUP_MAX_NAMES = 60;
 

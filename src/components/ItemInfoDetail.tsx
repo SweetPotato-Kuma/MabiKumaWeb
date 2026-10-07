@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button, Card, Flex, Skeleton } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
 import {
+  cardCategoryOf,
   isCardStoreConfigured,
   useItemCard,
   usePrefetchItemCards,
@@ -31,9 +32,11 @@ export function ItemInfoDetail({
   children?: ReactNode;
 }) {
   const lookupName = cardName ?? name;
-  const keys = useMemo(() => [{ category, name: lookupName }], [category, lookupName]);
+  // 사전 카테고리가 없는 아이템도 설명이 있다. 카드는 분류 없음 칸에서 찾고, 화면의 카테고리는 그대로 둔다.
+  const cardCategory = cardCategoryOf(category);
+  const keys = useMemo(() => [{ category: cardCategory, name: lookupName }], [cardCategory, lookupName]);
   usePrefetchItemCards(keys);
-  const card = useItemCard(category, lookupName);
+  const card = useItemCard(cardCategory, lookupName);
 
   const configured = isCardStoreConfigured();
   const loading = configured && card === undefined;

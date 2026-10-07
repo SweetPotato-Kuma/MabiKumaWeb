@@ -1,0 +1,101 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+/**
+ * 클라이언트 내보내기(client-bundle)의 아이템 이름과 설명을 한국 서버에서 보이는 그대로 고른다.
+ *
+ * 한 아이템에 조건별 설명이 여럿 있는 경우가 있다(한국 전용 문구, 기능이 켜졌을 때의 문구).
+ * 지금 사이트에 보이는 설명 19,084장과 하나하나 대조해 아래 규칙으로 모두 같아지는 것을 확인했다(2026-10).
+ *
+ * 1. 조건 없이 하나로 정해진 설명이 있으면 그것
+ * 2. 아니면 한국 정식 서버에서 성립하는 변형만 남긴다. 지역 조건은 한국이어야 하고, 기능 조건은
+ *    한국 정식 서버에서 켜져 있어야 한다(기간이 있는 기능은 오늘이 기간 안이어야 한다)
+ * 3. 그중 한국 전용 변형이 먼저고, 같은 급이면 원본에서 나중에 나온 것이 이긴다(뒤 정의가 앞을 덮는다)
+ */
+
+/**
+ * 게임 안에서만 뜻이 있는 표기를 웹에서 읽을 수 있게 바꾼다.
+ *
+ *   `\n` 글자 그대로        진짜 줄바꿈으로
+ *   `<color=1>…</color>`    강조 색. 글자만 남긴다(화면 규칙상 장식 색은 안 쓴다)
+ *   `<hotkey name="…"/>`    그 사람이 지정한 단축키 자리. 웹에서는 모르니 [단축키] 로
+ *   `<username/>`           읽는 사람의 캐릭터 이름 자리
+ *   `{0}` `{1}`             아이템마다 게임이 채우는 자리. 비워 둘 수 없으니 … 로
+ *   `&&`                    게임이 & 를 적는 방식. 화면에는 하나만 보인다
+ */
+export function cleanDescription(text) {
+  return text
+    .replace(/\\n/g, '\n')
+    // n 이 빠진 줄바꿈. 문장 끝 바로 뒤의 외톨이 \ 만 바꾼다(알렉산드라이트, 풍등 제작 키트).
+    .replace(/([.!?])\\(?=\S)/g, '$1\n')
+    .replace(/<hotkey\b[^>]*\/?>/g, '[단축키]')
+    .replace(/<username\b[^>]*\/?>/g, '[캐릭터 이름]')
+    .replace(/<\/?color\b[^>]*>/g, '')
+    .replace(/\{\d+\}/g, '…')
+    // 게임은 & 를 && 로 적고 화면에는 하나만 보인다.
+    .replace(/&&/g, '&')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const rows = (path) =>
+  readFileSync(path, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+
+/** 한국 정식 서버에서 켜진 기능. 이름 -> 참/거짓. now 는 한국 시각 YYYYMMDDhhmm. */
+export function koreaFeatures(run, now = koreaNow()) {
+  const audit = resolve(run, 'condition-audit');
+  const names = new Map(rows(resolve(audit, 'features.jsonl')).map((f) => [f.name_hash, f.name]));
+  const enabled = new Map();
+  for (const state of rows(resolve(audit, 'static-profile-states.jsonl'))) {
+    if (state.profile !== 'Regular, Korea' || !names.has(state.name_hash)) continue;
+    const start = state.time_conditions.find((t) => t.slot === 'StartTime')?.date;
+    const end = state.time_conditions.find((t) => t.slot === 'EndTime')?.date;
+    enabled.set(names.get(state.name_hash), Boolean(state.base_enabled) && (!start || start <= now) && (!end || now < end));
+  }
+  return enabled;
+}
+
+function koreaNow() {
+  return new Date(Date.now() + 9 * 3600_000).toISOString().replace(/\D/g, '').slice(0, 12);
+}
+
+/** 위 규칙으로 고른 설명. 없으면 빈 문자열. */
+export function koreaDescription(entity, enabled) {
+  if ((entity.description ?? '').trim()) return entity.description;
+  const live = (entity.variants ?? []).filter(
+    (variant) =>
+      (variant.description ?? '').trim() &&
+      variant.conditions.every(([kind, value]) =>
+        kind === 'locale' ? String(value).toLowerCase() === 'korea' : kind === 'feature' ? enabled.get(value) === true : false,
+      ),
+  );
+  const korea = live.filter((variant) => variant.conditions.some(([kind]) => kind === 'locale'));
+  return (korea.at(-1) ?? live.at(-1))?.description ?? '';
+}
+
+/**
+ * 플레이어가 게임에서 볼 수 없는 아이템. NPC 와 몬스터 장비, 영어 내부 이름, 쓰지 않거나
+ * 임시로 둔 것. 이름이 설명과 같은 것은 설명 자리를 채워 둔 것뿐이다.
+ */
+export function isHiddenItem(name, description) {
+  if (/^[\x20-\x7e]+$/.test(name)) return true;
+  if (/^NPC\s|몬스터 ?전용|몬스터용|사용 ?안 ?함|배포 ?(금지|불가)|^\(임시\)/.test(name)) return true;
+  if (/^\(임시\)|^임시설명$|^\(?(유저)? ?배포 ?(금지|불가)\)?$|^\(번역 불필요\)$/.test(description.trim())) return true;
+  return description.trim() === name.trim();
+}
+
+/** 내보내기의 아이템을 번호 -> { name, description } 으로. 설명은 고르고 정리한 것이다. */
+export function loadBundleItems(run, enabled = koreaFeatures(run)) {
+  const items = new Map();
+  for (const entity of rows(resolve(run, 'assets/items.jsonl'))) {
+    items.set(String(entity.id), {
+      name: entity.name ?? '',
+      description: cleanDescription(koreaDescription(entity, enabled)),
+    });
+  }
+  return items;
+}

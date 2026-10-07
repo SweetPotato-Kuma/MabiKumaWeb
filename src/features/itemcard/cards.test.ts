@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LOOKUP_MAX_GROUPS,
   LOOKUP_MAX_NAMES,
+  UNCATEGORIZED_CARDS,
   canonicalItemName,
+  cardCategoryOf,
   packLookupBatches,
   type ItemCard,
   type ItemCardKey,
@@ -203,6 +205,13 @@ describe('브라우저에 남겨 둔 카드', () => {
 
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(renderHook(() => cards.useItemCard('검', '롱 소드')).result.current).toBeUndefined();
+  });
+});
+
+describe('cardCategoryOf', () => {
+  it('사전 카테고리가 없는 아이템은 분류 없음 칸에서 찾는다', () => {
+    expect(cardCategoryOf('')).toBe(UNCATEGORIZED_CARDS);
+    expect(cardCategoryOf('포션')).toBe('포션');
   });
 });
 
