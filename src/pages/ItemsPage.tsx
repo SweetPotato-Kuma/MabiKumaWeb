@@ -33,6 +33,7 @@ import { EnchantScrollSpec } from '@/components/EnchantScrollSpec';
 import { SelectableScrolls } from '@/components/SelectableScrolls';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
 import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
+import { PetSpeciesSection } from '@/components/PetSpeciesSection';
 import { QueryState } from '@/components/QueryState';
 import {
   ITEM_PATH_PREFIX,
@@ -41,6 +42,7 @@ import {
   normalizeForSearch,
 } from '@/features/auction/dictionary';
 import { itemNameFromSlug } from '@/features/auction/itemSlug.mjs';
+import { PET_CATEGORY } from '@/features/auction/optionFilter';
 import {
   searchNames,
   useItemNameIndexQuery,
@@ -226,6 +228,10 @@ export function ItemsPage() {
               {selectionSourceOf(detailName) ? <SelectableScrolls name={detailName} /> : null}
             </ItemInfoDetail>
           )}
+          {/* 분양 메달은 이름이 모두 같고 담긴 펫(종족)으로 값이 갈린다. 종족별로 묶어 보여 준다. */}
+          {category === PET_CATEGORY && !resolvingCategory ? (
+            <PetSpeciesSection key={detailName} name={detailName} />
+          ) : null}
           {/* 만들 수 있는 아이템이면 재료 트리와 제작 비용. 없으면 아무것도 그리지 않는다. */}
           <CraftingSection
             key={`${detailName}\u0000${recipeParam ?? ''}`}
