@@ -171,20 +171,22 @@ function compute(values: Values, { quote }: { quote: (name: string) => number | 
   };
 
   const share =
-    people > 1 && best.net !== null ? [{ label: `${people}명이 나누면 1인당`, gold: Math.floor(best.net / people) }] : [];
+    people > 1 && best.net !== null
+      ? [{ label: `${people}명이 나누면 1인당`, gold: Math.floor(best.net / people), strong: true }]
+      : [];
   const nothing = outcomes[0];
 
   return {
     headline: [
       { label: '가장 유리한 쿠폰', text: best.id === 'none' ? '쿠폰 안 씀' : best.label },
       { label: '수령액', gold: best.net, strong: true },
+      ...share,
     ],
     table,
     details: [
       { label: `수수료 (${rate * 100}%)`, gold: nothing.fee },
       { label: '쿠폰 없이 받는 돈', gold: nothing.net },
       ...(best.id === 'none' ? [] : [{ label: '쿠폰으로 아끼는 수수료', gold: best.saved }]),
-      ...share,
     ],
     formula:
       '수수료 = 판매가 × 5%(프리미엄·콤비네이션 4%), 할인액 = 수수료 × 쿠폰 할인율, 수령액 = 판매가 − 수수료 + 할인액 − 쿠폰 값 − 기타 비용. 쿠폰은 수령액이 가장 큰 것을 고릅니다.',

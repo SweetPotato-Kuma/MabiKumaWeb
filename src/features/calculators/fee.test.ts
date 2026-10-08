@@ -161,11 +161,12 @@ describe('수수료 계산기 틀', () => {
     expect(result.headline[1].gold).toBe(93_000_000);
   });
 
-  it('분배 인원이 둘 이상이면 1인당 금액을 상세에 적는다', () => {
+  it('분배 인원이 둘 이상이면 1인당 금액을 핵심 숫자에 적는다', () => {
     const result = feeCalculator.compute(valuesOf({ people: 4 }), context);
 
-    expect(result.details).toContainEqual({ label: '4명이 나누면 1인당', gold: 24_000_000 });
-    expect(feeCalculator.compute(valuesOf(), context).details?.some((row) => row.label.includes('1인당'))).toBe(false);
+    expect(result.headline).toContainEqual({ label: '4명이 나누면 1인당', gold: 24_000_000, strong: true });
+    expect(result.details?.some((row) => row.label.includes('1인당'))).toBe(false);
+    expect(feeCalculator.compute(valuesOf(), context).headline.some((row) => row.label.includes('1인당'))).toBe(false);
   });
 
   it('시세가 없는 쿠폰은 비교에서 빼고 알린다', () => {
