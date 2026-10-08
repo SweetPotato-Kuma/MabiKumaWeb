@@ -183,6 +183,12 @@ function NewsListView() {
   );
 }
 
+/**
+ * 글 한 편 단의 폭. 공식 홈페이지 본문 칸의 가장 넓은 것(이벤트 그림 840px)에 카드 안쪽 여백과 테두리를 더한 값이다.
+ * 더 넓히면 글 줄이 너무 길어지고, 좁히면 이벤트 그림이 줄어든다.
+ */
+const POST_COLUMN_WIDTH = 890;
+
 const revisionLabel = (revision: NewsRevision) => {
   const when = formatNewsDateTime(revision.seenAt).slice(5);
   return revision.rev === 1 ? `처음 ${when}` : `고침 ${revision.rev - 1} ${when}`;
@@ -232,8 +238,13 @@ function NewsPostView({ id }: { id: number }) {
     label: revisionLabel(revision),
   }));
 
+  // 글 한 편은 가운데 한 단에 둔다. 넓은 화면에서 본문이 왼쪽에 붙고 오른쪽이 비어 보였다. 글은 그 단의 왼쪽부터 시작한다.
   return (
-    <Flex vertical gap={20}>
+    <Flex
+      vertical
+      gap={20}
+      style={{ width: '100%', maxWidth: POST_COLUMN_WIDTH, marginInline: 'auto' }}
+    >
       <div>
         <Button type="link" onClick={back} style={{ paddingInline: 0 }}>
           새소식 목록
