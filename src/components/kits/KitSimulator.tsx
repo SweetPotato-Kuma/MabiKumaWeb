@@ -33,7 +33,6 @@ import {
   isOnSale,
   isTopGrade,
   openKit,
-  RECENT_LIMIT,
   kitIconOf,
   useKitIndexQuery,
   useKitQuery,
@@ -429,13 +428,151 @@ function KitStage({
   );
 }
 
+interface LuckRow {
+  index: number;
+  name: string;
+  chance: number | null;
+  expected: number | null;
+  actual: number;
+}
+
+const formatExpected = (value: number) =>
+  value.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/**
+ * 지금까지 연 결과. 연 횟수와 쓴 캐시, 등급이 있는 키트는 등급마다 확률대로라면 몇 번 나왔어야 하는지(기대)와
+ * 실제로 나온 횟수를 나란히 둔다. 차이가 곧 운이다.
+ */
+function ResultPanel({
+  kit,
+  opened,
+  gradeCounts,
+  boxStyle,
+}: {
+  kit: Kit;
+  opened: number;
+  gradeCounts: number[];
+  boxStyle: CSSProperties;
+}) {
+  const narrow = useNarrowScreen();
+  const { token } = theme.useToken();
+  const rows: LuckRow[] = kit.grades.map((grade, index) => ({
+    index,
+    name: grade.name,
+    chance: grade.chance,
+    expected: grade.chance === null ? null : opened * grade.chance,
+    actual: gradeCounts[index] ?? 0,
+  }));
+  const diffOf = (row: LuckRow) => (row.expected === null ? null : row.actual - row.expected);
+  const columns: TableColumnsType<LuckRow> = [
+    {
+      title: '등급',
+      key: 'name',
+      render: (_value, row) => (
+        <Flex vertical gap={0}>
+          <Text>{row.name}</Text>
+          {narrow && row.chance !== null ? (
+            <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
+              {formatChance(row.chance)}
+            </Text>
+          ) : null}
+        </Flex>
+      ),
+    },
+    ...(narrow
+      ? []
+      : [
+          {
+            title: '확률',
+            key: 'chance',
+            align: 'right' as const,
+            render: (_value: unknown, row: LuckRow) => (
+              <Text className="tnum">{row.chance === null ? '-' : formatChance(row.chance)}</Text>
+            ),
+          },
+        ]),
+    {
+      title: '기대',
+      key: 'expected',
+      align: 'right',
+      render: (_value, row) => (
+        <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
+          {row.expected === null ? '-' : `${formatExpected(row.expected)}번`}
+        </Text>
+      ),
+    },
+    {
+      title: '실제',
+      key: 'actual',
+      align: 'right',
+      render: (_value, row) => (
+        <Text strong className="tnum" style={{ whiteSpace: 'nowrap' }}>
+          {formatNumber(row.actual)}번
+        </Text>
+      ),
+    },
+    {
+      title: '차이',
+      key: 'diff',
+      align: 'right',
+      render: (_value, row) => {
+        const diff = diffOf(row);
+        if (diff === null || opened === 0) return <Text type="secondary">-</Text>;
+        // 가장 높은 등급이 기대보다 많이 나왔으면 다른 금빛 결과처럼 금색으로 칠한다.
+        const lucky = row.index === 0 && kit.grades.length > 1 && diff > 0;
+        return (
+          <Text
+            className="tnum"
+            style={{ whiteSpace: 'nowrap', color: lucky ? token.gold8 : undefined }}
+            strong={lucky}
+          >
+            {diff > 0 ? '+' : ''}
+            {formatExpected(diff)}
+          </Text>
+        );
+      },
+    },
+  ];
+  return (
+    <section aria-label="결과" style={boxStyle}>
+      <Flex vertical gap={12}>
+        <Text strong>결과</Text>
+        <Row gutter={[16, 12]}>
+          <Col span={12}>
+            <Statistic title="연 횟수" value={formatNumber(opened)} suffix="번" styles={NUMERIC} />
+          </Col>
+          {kit.price !== null ? (
+            <Col span={12}>
+              <Statistic
+                title="쓴 캐시"
+                value={formatNumber(opened * kit.price)}
+                styles={NUMERIC}
+              />
+            </Col>
+          ) : null}
+        </Row>
+        {rows.length > 0 ? (
+          <Table<LuckRow>
+            columns={columns}
+            dataSource={rows}
+            rowKey="index"
+            size="small"
+            pagination={false}
+          />
+        ) : null}
+      </Flex>
+    </section>
+  );
+}
+
 /** 고른 키트를 열어 보는 칸. 키트를 바꾸면 새로 그린다. */
 function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const [opened, setOpened] = useState(0);
   const [counts, setCounts] = useState<Map<number, number>>(new Map());
-  const [recent, setRecent] = useState<number[]>([]);
+  /** 마지막에 나온 아이템. 상자 판에 놓인다. */
+  const [last, setLast] = useState<number | null>(null);
   const [target, setTarget] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [calcOpen, setCalcOpen] = useState(false);
@@ -445,11 +582,9 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
   const [fxOn, setFxOn] = useState(readFxSetting);
   const [batch, setBatch] = useState(0);
   const [play, setPlay] = useState<number | null>(null);
-  const [reveal, setReveal] = useState<number | null>(null);
-  const last = recent.length > 0 ? recent[recent.length - 1] : null;
 
   /*
-   * 한 번 열기 연출이 도는 동안에는 방금 나온 것을 통계와 목록에 넣지 않는다. 먼저 올라가면 상자가 열리기 전에
+   * 한 번 열기 연출이 도는 동안에는 방금 나온 것을 통계와 기록에 넣지 않는다. 먼저 올라가면 상자가 열리기 전에
    * 무엇이 나왔는지 알려 버린다. 연출이 끝나면 넣는다.
    */
   const [settled, setSettled] = useState(0);
@@ -469,12 +604,6 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
     return next;
   }, [counts, pending]);
   const shownOpened = opened - (pending === null ? 0 : 1);
-  /*
-   * 연출하는 동안 목록은 누르기 전 모습 그대로 둔다. 새 줄만 숨기면 목록이 10줄로 잘리며 맨 아래 줄이 먼저
-   * 빠져 한 줄 짧아졌다가 연출이 끝나면 다시 길어져, 아래 단추들이 들썩였다.
-   */
-  const [before, setBefore] = useState<number[]>([]);
-  const shownRecent = pending === null ? recent : before;
 
   const chance = target === null ? 0 : kit.items[target].chance;
   const gradeCounts = useMemo(() => countByGrade(kit, shownCounts), [kit, shownCounts]);
@@ -485,14 +614,9 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
     setBatch(next);
     setOpened((prev) => prev + result.opened);
     setCounts((prev) => addCounts(prev, result.counts));
-    // 한 번씩 열 때는 지난 결과에 이어 붙여 최근 것을 쌓아 보이고, 여러 번 열면 이번 것만 보인다.
-    setBefore(recent);
-    setRecent((prev) =>
-      times === 1 ? [...prev, ...result.recent].slice(-RECENT_LIMIT) : result.recent,
-    );
-    const single = times === 1 && until === null;
-    setPlay(fxOn && single ? next : null);
-    setReveal(fxOn && !single ? next : null);
+    setLast(result.recent[result.recent.length - 1] ?? null);
+    // 연출은 한 번 열기에만 돈다. 여러 번 열면 마지막에 나온 것이 바로 판에 놓인다.
+    setPlay(fxOn && times === 1 && until === null ? next : null);
     if (until === null) setMessage('');
     else
       setMessage(
@@ -505,12 +629,16 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
   const reset = () => {
     setOpened(0);
     setCounts(new Map());
-    setRecent([]);
+    setLast(null);
     setMessage('');
     setPlay(null);
-    setReveal(null);
   };
 
+  const boxStyle: CSSProperties = {
+    padding: 16,
+    border: `1px solid ${token.colorBorderSecondary}`,
+    borderRadius: token.borderRadius,
+  };
   const stageScale = screens.md ? 1.1 : 1;
   const fxStyle = {
     '--fx-accent': token.colorPrimary,
@@ -550,39 +678,6 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
             <Col xs={24} md={12}>
               <Flex vertical gap={12}>
                 <KitStage kit={kit} item={last} play={play} fxStyle={fxStyle} scale={stageScale} />
-                <section
-                  aria-label="이번에 나온 아이템"
-                  style={{
-                    minHeight: 76,
-                    padding: '10px 12px',
-                    borderRadius: token.borderRadius,
-                    border: `1px solid ${token.colorBorderSecondary}`,
-                    background: token.colorFillQuaternary,
-                  }}
-                >
-                  {shownRecent.length === 0 ? (
-                    <Text type="secondary">{pending === null ? '열기 전' : '여는 중'}</Text>
-                  ) : (
-                    // 여러 번 열면 줄이 차례로 드러난다. key 로 열 때마다 새로 그려 연출을 처음부터 돌린다.
-                    <Flex
-                      key={reveal ?? 'still'}
-                      vertical
-                      gap={4}
-                      className={reveal !== null ? 'kt-reveal' : undefined}
-                      style={fxStyle}
-                    >
-                      {[...shownRecent].reverse().map((item, index) => (
-                        <div
-                          key={`${index}-${item}`}
-                          className={isTopGrade(kit, item) ? 'kt-line kt-line--top' : 'kt-line'}
-                          style={{ '--i': index } as CSSProperties}
-                        >
-                          <ItemName kit={kit} item={item} iconSize={24} />
-                        </div>
-                      ))}
-                    </Flex>
-                  )}
-                </section>
                 <Flex gap={8} wrap>
                   {OPEN_COUNTS.map((times, index) => (
                     <Button
@@ -601,7 +696,6 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                     onChange={(on) => {
                       setFxOn(on);
                       setPlay(null);
-                      setReveal(null);
                       writeFxSetting(on);
                     }}
                     aria-label="키트 연출"
@@ -631,130 +725,101 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
               </Flex>
             </Col>
             <Col xs={24} md={12}>
-              <section
-                aria-label="목표 아이템"
-                style={{
-                  height: '100%',
-                  padding: 16,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  borderRadius: token.borderRadius,
-                }}
-              >
-                <Flex vertical gap={10}>
-                  <Text strong>목표 아이템</Text>
-                  <Select<number>
-                    aria-label="목표 아이템"
-                    showSearch
-                    allowClear
-                    placeholder="아이템 고르기"
-                    value={target ?? undefined}
-                    onChange={(item) => {
-                      setTarget(item ?? null);
-                      setMessage('');
-                    }}
-                    onClear={() => setTarget(null)}
-                    optionFilterProp="label"
-                    options={kit.items.map((item, index) => ({ value: index, label: item.name }))}
-                    style={{ width: '100%' }}
-                  />
-                  {target !== null ? (
-                    <Flex gap={8} align="center" wrap>
-                      <Text className="tnum" style={{ fontSize: 13 }}>
-                        한 번에 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
-                        <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
-                        {kit.price !== null ? (
-                          <>
-                            ,{' '}
-                            <Text strong>
-                              {formatNumber(Math.ceil(1 / chance) * kit.price)} 캐시
-                            </Text>
-                          </>
-                        ) : null}
-                      </Text>
-                      <Popover
-                        open={calcOpen}
-                        trigger={[]}
-                        placement={screens.md ? 'bottomLeft' : 'bottom'}
-                        title={
-                          <Flex justify="space-between" align="center" gap={8}>
-                            <span>목표 아이템 기댓값</span>
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={<CloseIcon />}
-                              aria-label="목표 아이템 기댓값 닫기"
-                              onClick={() => setCalcOpen(false)}
-                            />
-                          </Flex>
-                        }
-                        content={
-                          <Flex
-                            vertical
-                            gap={10}
-                            style={{ width: 'min(400px, calc(100vw - 88px))' }}
-                          >
-                            <TrialCountInput value={trials} onChange={setTrials} />
-                            <TrialOdds framed={false} trials={trials} chance={chance} verb="열기" />
-                            {kit.price !== null ? (
-                              <Text className="tnum" style={{ fontSize: 13 }}>
-                                <Text strong>{formatNumber(trials * kit.price)} 캐시</Text>
+              <Flex vertical gap={12}>
+                <section aria-label="목표 아이템" style={boxStyle}>
+                  <Flex vertical gap={10}>
+                    <Text strong>목표 아이템</Text>
+                    <Select<number>
+                      aria-label="목표 아이템"
+                      showSearch
+                      allowClear
+                      placeholder="아이템 고르기"
+                      value={target ?? undefined}
+                      onChange={(item) => {
+                        setTarget(item ?? null);
+                        setMessage('');
+                      }}
+                      onClear={() => setTarget(null)}
+                      optionFilterProp="label"
+                      options={kit.items.map((item, index) => ({ value: index, label: item.name }))}
+                      style={{ width: '100%' }}
+                    />
+                    {target !== null ? (
+                      <Flex gap={8} align="center" wrap>
+                        <Text className="tnum" style={{ fontSize: 13 }}>
+                          한 번에 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
+                          <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
+                          {kit.price !== null ? (
+                            <>
+                              ,{' '}
+                              <Text strong>
+                                {formatNumber(Math.ceil(1 / chance) * kit.price)} 캐시
                               </Text>
-                            ) : null}
-                          </Flex>
-                        }
-                      >
-                        <Button
-                          size="small"
-                          icon={<CalculateIcon />}
-                          aria-expanded={calcOpen}
-                          onClick={() => setCalcOpen(!calcOpen)}
+                            </>
+                          ) : null}
+                        </Text>
+                        <Popover
+                          open={calcOpen}
+                          trigger={[]}
+                          placement={screens.md ? 'bottomLeft' : 'bottom'}
+                          title={
+                            <Flex justify="space-between" align="center" gap={8}>
+                              <span>목표 아이템 기댓값</span>
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<CloseIcon />}
+                                aria-label="목표 아이템 기댓값 닫기"
+                                onClick={() => setCalcOpen(false)}
+                              />
+                            </Flex>
+                          }
+                          content={
+                            <Flex
+                              vertical
+                              gap={10}
+                              style={{ width: 'min(400px, calc(100vw - 88px))' }}
+                            >
+                              <TrialCountInput value={trials} onChange={setTrials} />
+                              <TrialOdds
+                                framed={false}
+                                trials={trials}
+                                chance={chance}
+                                verb="열기"
+                              />
+                              {kit.price !== null ? (
+                                <Text className="tnum" style={{ fontSize: 13 }}>
+                                  <Text strong>{formatNumber(trials * kit.price)} 캐시</Text>
+                                </Text>
+                              ) : null}
+                            </Flex>
+                          }
                         >
-                          목표 아이템 기댓값
-                        </Button>
-                      </Popover>
-                    </Flex>
-                  ) : null}
-                </Flex>
-              </section>
+                          <Button
+                            size="small"
+                            icon={<CalculateIcon />}
+                            aria-expanded={calcOpen}
+                            onClick={() => setCalcOpen(!calcOpen)}
+                          >
+                            목표 아이템 기댓값
+                          </Button>
+                        </Popover>
+                      </Flex>
+                    ) : null}
+                  </Flex>
+                </section>
+                <ResultPanel
+                  kit={kit}
+                  opened={shownOpened}
+                  gradeCounts={gradeCounts}
+                  boxStyle={boxStyle}
+                />
+              </Flex>
             </Col>
           </Row>
 
           <Divider style={{ margin: 0 }} />
 
-          <Row gutter={[24, 16]} align="middle">
-            <Col xs={12} sm={6} lg={4}>
-              <Statistic
-                title="연 횟수"
-                value={formatNumber(shownOpened)}
-                suffix="번"
-                styles={NUMERIC}
-              />
-            </Col>
-            {kit.price !== null ? (
-              <Col xs={12} sm={6} lg={4}>
-                <Statistic
-                  title="쓴 캐시"
-                  value={formatNumber(shownOpened * kit.price)}
-                  styles={NUMERIC}
-                />
-              </Col>
-            ) : null}
-            {/* 등급이 있는 키트는 등급마다 몇 번 나왔는지. 제목에 그 등급 확률을 붙여 견주어 보게 한다. */}
-            {kit.grades.map((grade, index) => (
-              <Col key={grade.name} xs={12} sm={6} lg={3}>
-                <Statistic
-                  title={
-                    grade.chance === null
-                      ? grade.name
-                      : `${grade.name} ${formatChance(grade.chance)}`
-                  }
-                  value={formatNumber(gradeCounts[index] ?? 0)}
-                  suffix="번"
-                  styles={NUMERIC}
-                />
-              </Col>
-            ))}
-          </Row>
           <div>
             <Button icon={<ResetIcon />} disabled={opened === 0} onClick={reset}>
               처음부터

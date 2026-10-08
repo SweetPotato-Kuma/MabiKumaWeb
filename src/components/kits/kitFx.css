@@ -3,13 +3,13 @@
  *
  * 주화 창(coins/coinFx.css)과 같은 규칙을 따른다. 색은 컴포넌트가 테마 토큰을 CSS 변수(--fx-*)로
  * 넘겨 주고, 움직이는 것은 transform 과 opacity 뿐이며, 크기는 모두 --rf 배율을 곱한다.
- * 연출은 .kt-play 와 .kt-reveal 이 붙은 곳에서만 돈다. "키트 연출" 을 끄면 붙지 않는다. 움직임 줄이기 설정과는 무관하다.
+ * 연출은 .kt-play 가 붙은 곳에서만 돈다. "키트 연출" 을 끄면 붙지 않는다. 움직임 줄이기 설정과는 무관하다.
  *
  * 한 번 열기: 상자가 흔들리다 터지고, 나온 아이템 카드가 튀어나온다. 등급이 높을수록 위로 갈수록 더해진다.
  *  - 세 번째 등급(.kt-t1): 가운데가 번쩍인다.
  *  - 두 번째 등급(.kt-t2): 빛살이 뻗는다.
  *  - 가장 높은 등급(.kt-t3): 둘레가 반짝이고 판이 흔들리며, 금빛이 두 번 번쩍이고 빛살이 돌며 퍼지고 별빛이 튄다.
- * 여러 번 열기: 나온 아이템 줄이 차례로 드러나고, 가장 높은 등급 줄은 금빛 줄기가 한 번 훑고 지나간다.
+ * 여러 번 열기는 연출 없이 마지막에 나온 것을 판에 바로 놓는다.
  */
 
 .kt-stage {
@@ -241,29 +241,6 @@
   animation-delay: calc(var(--fx-dur) * 0.6);
 }
 
-/* ---------- 여러 번 열기 ---------- */
-
-.kt-reveal .kt-line {
-  animation: kt-reveal 320ms ease-out both;
-  animation-delay: calc(var(--i, 0) * 70ms);
-}
-
-.kt-line--top {
-  position: relative;
-  overflow: hidden;
-}
-
-.kt-reveal .kt-line--top::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, transparent 30%, var(--fx-gold) 50%, transparent 70%);
-  opacity: 0;
-  pointer-events: none;
-  animation: kt-shine 900ms ease-in-out both;
-  animation-delay: calc(var(--i, 0) * 70ms + 320ms);
-}
-
 @keyframes kt-spin {
   from {
     transform: rotate(0deg);
@@ -461,30 +438,5 @@
   100% {
     opacity: 0;
     transform: scale(1.7) rotate(220deg);
-  }
-}
-
-@keyframes kt-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes kt-shine {
-  0% {
-    opacity: 0;
-    transform: translateX(-100%);
-  }
-  20% {
-    opacity: 0.45;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(100%);
   }
 }

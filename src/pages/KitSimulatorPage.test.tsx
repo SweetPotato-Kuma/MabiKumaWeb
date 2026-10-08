@@ -93,12 +93,18 @@ describe('키트 시뮬레이터', () => {
     fireEvent.click(within(region).getByRole('button', { name: /10번 열기/ }));
     expect(within(statistic('연 횟수')).getByText('10')).toBeInTheDocument();
     expect(within(statistic('쓴 캐시')).getByText('12,000')).toBeInTheDocument();
-    // 등급별 횟수의 합은 연 횟수와 같다.
-    const graded = ['S 등급 10%', 'C 등급 90%'].map((title) =>
-      Number(within(statistic(title)).getByText(/^\d+$/).textContent),
+    // 결과 칸은 등급마다 확률대로라면 몇 번(기대), 실제로 몇 번 나왔는지 나란히 둔다.
+    const result = within(region).getByRole('region', { name: '결과' });
+    const rows = within(result).getAllByRole('row').slice(1);
+    expect(within(rows[0]).getByText('S 등급')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('1.0번')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('9.0번')).toBeInTheDocument();
+    const actual = rows.map((row) =>
+      Number(row.querySelectorAll('td')[3].textContent?.replace(/\D/g, '')),
     );
-    expect(graded[0] + graded[1]).toBe(10);
-    expect(within(region).queryByText('열기 전')).toBeNull();
+    expect(actual[0] + actual[1]).toBe(10);
+    // 지난 결과 줄을 따로 늘어놓지 않는다. 쌓인 것은 아래 얻은 아이템 표에 있다.
+    expect(within(region).queryByRole('region', { name: '이번에 나온 아이템' })).toBeNull();
   });
 
   it('구성품 표에서 목표로 고르면 한 번에 나올 확률과 목표까지 열기가 생긴다', async () => {
@@ -112,7 +118,7 @@ describe('키트 시뮬레이터', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: '찬란한 나이트메어 판타지아 데몬 윙 목표로' }),
     );
-    expect(within(region).getByText('10%')).toBeInTheDocument();
+    expect(within(region).getByText(/한 번에/)).toHaveTextContent('10%');
     fireEvent.click(auto);
     expect(within(region).getByRole('status')).toHaveTextContent(/목표 아이템이 나/);
   });
@@ -123,23 +129,14 @@ describe('키트 시뮬레이터', () => {
     const region = await screen.findByRole('region', { name: '키트 열기' });
     fireEvent.click(within(region).getByRole('button', { name: /^1번 열기$/ }));
     expect(within(statistic('연 횟수')).getByText('0')).toBeInTheDocument();
-    expect(within(region).getByText('여는 중')).toBeInTheDocument();
     await waitFor(() => expect(within(statistic('연 횟수')).getByText('1')).toBeInTheDocument(), {
       timeout: 4000,
     });
 
-    // 다시 열면 연출하는 동안 목록은 누르기 전 모습(한 줄) 그대로다. 줄이 빠졌다 들어오며 들썩이지 않는다.
-    const list = within(region).getByRole('region', { name: '이번에 나온 아이템' });
-    const lines = () => list.querySelectorAll('.kt-line').length;
-    expect(lines()).toBe(1);
-    fireEvent.click(within(region).getByRole('button', { name: /^1번 열기$/ }));
-    expect(lines()).toBe(1);
-    await waitFor(() => expect(lines()).toBe(2), { timeout: 4000 });
-
     fireEvent.click(within(region).getByRole('switch', { name: '키트 연출' }));
     expect(window.localStorage.getItem('mabikuma:kitFx')).toBe('off');
     fireEvent.click(within(region).getByRole('button', { name: /^1번 열기$/ }));
-    expect(within(statistic('연 횟수')).getByText('3')).toBeInTheDocument();
+    expect(within(statistic('연 횟수')).getByText('2')).toBeInTheDocument();
     window.localStorage.removeItem('mabikuma:kitFx');
   });
 });
