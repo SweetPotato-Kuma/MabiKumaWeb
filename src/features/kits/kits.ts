@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
  * 키트(확률형 상품) 시뮬레이터.
  *
  * 확률표는 scripts/build-kits.mjs 가 공식 확률 정보 화면에서 주기적으로 모아 public/data/kits.json 에 쌓는다.
+ * 화면은 그 전체를 받지 않고 목록(data/kits/index.json)과 고른 키트 한 파일(data/kits/<id>.json)만 받는다.
  * 아이템 확률은 키트 전체에 대한 확률이라 한 번 열 때 그 확률대로 아이템 하나가 나온다. 등급 확률은 그 등급
  * 아이템 확률의 합이라 따로 뽑지 않는다.
  */
@@ -38,28 +39,59 @@ export interface Kit {
   firstSeen?: string;
   grades: KitGrade[];
   items: KitItem[];
+  /** 키트 이름과 보상 이름 -> 그림 파일 이름. 게임 데이터에서 찾지 못한 이름은 없다. */
+  icons?: Record<string, string>;
 }
 
-export interface KitArchive {
+/** 목록의 키트 한 줄. 고르는 데 필요한 것만 있다. */
+export interface KitSummary {
+  id: string;
+  name: string;
+  start: string | null;
+  end: string | null;
+  price: number | null;
+  firstSeen?: string;
+  /** 키트 상자 그림 파일 이름. */
+  icon?: string;
+  /** 구성품 수. */
+  count: number;
+}
+
+export interface KitIndex {
   updated: string | null;
   /** 지금 파는 키트의 id. */
   current: string[];
   /** 최근에 판매를 시작한 것부터. */
-  kits: Kit[];
+  kits: KitSummary[];
 }
 
-export function useKitArchiveQuery() {
+async function readKitFile<T>(path: string, signal: AbortSignal): Promise<T> {
+  const response = await fetch(`${import.meta.env.BASE_URL}data/kits/${path}`, { signal });
+  if (!response.ok) throw new Error(`키트 확률표를 받지 못했습니다. (HTTP ${response.status})`);
+  return (await response.json()) as T;
+}
+
+export function useKitIndexQuery() {
   return useQuery({
-    queryKey: ['kits', 'archive'],
-    queryFn: async ({ signal }): Promise<KitArchive> => {
-      const response = await fetch(`${import.meta.env.BASE_URL}data/kits.json`, { signal });
-      if (!response.ok) throw new Error(`키트 확률표를 받지 못했습니다. (HTTP ${response.status})`);
-      return (await response.json()) as KitArchive;
-    },
+    queryKey: ['kits', 'index'],
+    queryFn: ({ signal }) => readKitFile<KitIndex>('index.json', signal),
     staleTime: Infinity,
     gcTime: Infinity,
   });
 }
+
+export function useKitQuery(id: string | null) {
+  return useQuery({
+    queryKey: ['kits', 'kit', id],
+    queryFn: ({ signal }) => readKitFile<Kit>(`${encodeURIComponent(id ?? '')}.json`, signal),
+    enabled: id !== null,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
+/** 이름의 그림 파일. 없으면 빈 글자. */
+export const kitIconOf = (kit: Kit, name: string) => kit.icons?.[name] ?? '';
 
 export type RandomSource = () => number;
 
@@ -149,4 +181,5 @@ export function fxTierOf(kit: Kit, item: number): 0 | 1 | 2 | 3 {
 }
 
 /** 그 키트를 지금 파는지. */
-export const isOnSale = (archive: KitArchive, kit: Kit) => archive.current.includes(kit.id);
+export const isOnSale = (index: KitIndex, kit: Pick<KitSummary, 'id'>) =>
+  index.current.includes(kit.id);

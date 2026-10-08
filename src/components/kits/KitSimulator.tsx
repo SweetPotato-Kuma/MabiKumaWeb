@@ -20,6 +20,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { EmptyState } from '@/components/EmptyState';
+import { ItemIcon } from '@/components/ItemIcon';
 import { QueryState } from '@/components/QueryState';
 import { CalculateIcon, CloseIcon, GiftIcon, ResetIcon, StarFillIcon } from '@/components/icons';
 import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
@@ -32,9 +33,12 @@ import {
   isTopGrade,
   openKit,
   RECENT_LIMIT,
-  useKitArchiveQuery,
+  kitIconOf,
+  useKitIndexQuery,
+  useKitQuery,
   type Kit,
-  type KitArchive,
+  type KitIndex,
+  type KitSummary,
 } from '@/features/kits/kits';
 import { formatChance } from '@/features/simulator/trials';
 import { formatNumber } from '@/lib/format';
@@ -81,7 +85,8 @@ function writeFxSetting(on: boolean): void {
 const angles = (count: number) =>
   Array.from({ length: count }, (_, index) => (360 / count) * index);
 
-const kitLabel = (kit: Kit) => `${kit.name} (${kit.start ?? kit.firstSeen ?? '날짜 모름'})`;
+const kitLabel = (kit: Pick<KitSummary, 'name' | 'start' | 'firstSeen'>) =>
+  `${kit.name} (${kit.start ?? kit.firstSeen ?? '날짜 모름'})`;
 
 /** 지정 색상 상품의 색 견본. 색은 상품의 데이터라 토큰이 아니라 그 값으로 칠한다. */
 function ColorChips({ colors }: { colors: readonly string[] }) {
@@ -107,13 +112,24 @@ function ColorChips({ colors }: { colors: readonly string[] }) {
   );
 }
 
-/** 아이템 이름. 가장 높은 등급이면 금빛, 지정 색상이면 견본을 붙인다. */
-function ItemName({ kit, item }: { kit: Kit; item: number }) {
+/**
+ * 아이템 이름. 가장 높은 등급이면 금빛, 지정 색상이면 견본을 붙인다. iconSize 를 주면 앞에 그림을 둔다.
+ * 게임 데이터에서 찾지 못한 이름은 그림 자리를 비워 두어 줄마다 이름 시작이 어긋나지 않게 한다.
+ */
+function ItemName({ kit, item, iconSize }: { kit: Kit; item: number; iconSize?: number }) {
   const { token } = theme.useToken();
   const each = kit.items[item];
   const top = isTopGrade(kit, item);
+  const icon = kitIconOf(kit, each.name);
   return (
-    <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
+    <Flex gap={6} align="center" wrap={iconSize === undefined} style={{ minWidth: 0 }}>
+      {iconSize !== undefined ? (
+        icon ? (
+          <ItemIcon file={icon} size={iconSize} />
+        ) : (
+          <span aria-hidden style={{ width: iconSize, flex: `0 0 ${iconSize}px` }} />
+        )
+      ) : null}
       {/* 별은 글자 안에 둔다. 따로 두면 좁은 칸에서 별만 윗줄에 남는다. */}
       <Text strong={top} style={top ? { color: token.gold8 } : undefined}>
         {top ? (
@@ -160,7 +176,7 @@ function TallyTable({ kit, counts }: { kit: Kit; counts: ReadonlyMap<number, num
       key: 'name',
       render: (_value, row) => (
         <Flex vertical gap={2}>
-          <ItemName kit={kit} item={row.item} />
+          <ItemName kit={kit} item={row.item} iconSize={32} />
           {narrow && row.grade ? (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {row.grade}
@@ -235,7 +251,7 @@ function ItemTable({ kit, onTarget }: { kit: Kit; onTarget: (item: number) => vo
       key: 'name',
       render: (_value, row) => (
         <Flex vertical gap={2}>
-          <ItemName kit={kit} item={row.item} />
+          <ItemName kit={kit} item={row.item} iconSize={32} />
           {narrow && row.grade ? (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {row.grade}
@@ -312,6 +328,7 @@ function KitStage({
   item,
   play,
   fxStyle,
+  scale,
 }: {
   kit: Kit;
   /** 마지막에 나온 아이템. 아직 열지 않았으면 null 이고 상자가 놓인다. */
@@ -319,11 +336,18 @@ function KitStage({
   /** 연출할 열기의 번호. 연출하지 않으면 null. */
   play: number | null;
   fxStyle: CSSProperties;
+  /** 판 배율(--rf 와 같다). 그림 크기도 같이 키운다. */
+  scale: number;
 }) {
+  // 아이템 그림은 인벤토리 칸(24px) 단위라 48 이면 대부분이 원래 크기 그대로 들어간다.
+  const boxSize = Math.round(64 * scale);
+  const resultSize = Math.round(48 * scale);
   const playing = play !== null && item !== null;
   const tier = item === null ? 0 : fxTierOf(kit, item);
   const top = item !== null && isTopGrade(kit, item);
   const grade = item === null ? null : gradeName(kit, item);
+  const boxIcon = kitIconOf(kit, kit.name);
+  const itemIcon = item === null ? '' : kitIconOf(kit, kit.items[item].name);
   const classes = ['kt-stage'];
   if (playing) {
     classes.push('kt-play');
@@ -361,11 +385,12 @@ function KitStage({
         {playing ? <div className="kt-burst" /> : null}
         {item === null || playing ? (
           <div className="kt-box">
-            <GiftIcon />
+            {boxIcon ? <ItemIcon file={boxIcon} size={boxSize} /> : <GiftIcon />}
           </div>
         ) : null}
         {item !== null ? (
           <div className={top ? 'kt-result kt-result--top' : 'kt-result'}>
+            {itemIcon ? <ItemIcon file={itemIcon} size={resultSize} /> : null}
             <ItemName kit={kit} item={item} />
             {grade ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -466,7 +491,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
     setReveal(null);
   };
 
-  const narrowStage = !screens.md;
+  const stageScale = screens.md ? 1.1 : 1;
   const fxStyle = {
     '--fx-accent': token.colorPrimary,
     '--fx-soft': token.colorPrimaryBg,
@@ -480,7 +505,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
     '--fx-gold-line': token.gold6,
     '--fx-gold-bg': token.gold1,
     '--fx-dur': `${play !== null ? FX_DURATION : 0}ms`,
-    '--rf': narrowStage ? 1 : 1.1,
+    '--rf': stageScale,
   } as CSSProperties;
 
   return (
@@ -504,7 +529,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
           <Row gutter={[24, 20]} align="stretch">
             <Col xs={24} md={12}>
               <Flex vertical gap={12}>
-                <KitStage kit={kit} item={last} play={play} fxStyle={fxStyle} />
+                <KitStage kit={kit} item={last} play={play} fxStyle={fxStyle} scale={stageScale} />
                 <section
                   aria-label="이번에 나온 아이템"
                   style={{
@@ -532,7 +557,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                           className={isTopGrade(kit, item) ? 'kt-line kt-line--top' : 'kt-line'}
                           style={{ '--i': index } as CSSProperties}
                         >
-                          <ItemName kit={kit} item={item} />
+                          <ItemName kit={kit} item={item} iconSize={24} />
                         </div>
                       ))}
                     </Flex>
@@ -731,11 +756,11 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
 }
 
 function KitPicker({
-  archive,
+  index,
   value,
   onChange,
 }: {
-  archive: KitArchive;
+  index: KitIndex;
   value: string;
   onChange: (id: string) => void;
 }) {
@@ -752,29 +777,60 @@ function KitPicker({
         value={value}
         onChange={onChange}
         optionFilterProp="label"
-        options={archive.kits.map((kit) => ({
+        options={index.kits.map((kit) => ({
           value: kit.id,
-          label: isOnSale(archive, kit) ? `${kitLabel(kit)} 판매 중` : kitLabel(kit),
+          label: isOnSale(index, kit) ? `${kitLabel(kit)} 판매 중` : kitLabel(kit),
         }))}
+        // 고르는 줄에 키트 상자 그림을 붙인다. 고른 뒤 입력칸 안은 글자만 둔다.
+        optionRender={(option) => {
+          const kit = index.kits.find((each) => each.id === option.value);
+          return (
+            <Flex gap={8} align="center">
+              {kit?.icon ? <ItemIcon file={kit.icon} size={24} /> : null}
+              <span>{option.label}</span>
+            </Flex>
+          );
+        }}
       />
     </Flex>
   );
 }
 
+/** 고른 키트의 확률표를 받아 여는 칸을 그린다. 받는 동안은 같은 모양의 뼈대를 둔다. */
+function KitLoader({ id, onSale }: { id: string; onSale: boolean }) {
+  const query = useKitQuery(id);
+  if (query.isPending)
+    return (
+      <Card aria-busy="true">
+        <Skeleton active paragraph={{ rows: 8 }} />
+      </Card>
+    );
+  return (
+    <QueryState
+      isLoading={false}
+      error={query.error}
+      isEmpty={!query.data}
+      emptyMessage="이 키트의 확률표가 없습니다."
+    >
+      {query.data ? <KitOpener key={id} kit={query.data} onSale={onSale} /> : null}
+    </QueryState>
+  );
+}
+
 /** 키트 시뮬레이터. 모아 둔 키트 가운데 하나를 골라 열어 본다. 처음에는 지금 파는 것 가운데 가장 최근 것을 고른다. */
 export function KitSimulatorView() {
-  const query = useKitArchiveQuery();
-  const archive = query.data;
+  const query = useKitIndexQuery();
+  const index = query.data;
   const [picked, setPicked] = useState<string | null>(null);
   const kit = useMemo(() => {
-    if (!archive) return null;
+    if (!index) return null;
     return (
-      archive.kits.find((each) => each.id === picked) ??
-      archive.kits.find((each) => isOnSale(archive, each)) ??
-      archive.kits[0] ??
+      index.kits.find((each) => each.id === picked) ??
+      index.kits.find((each) => isOnSale(index, each)) ??
+      index.kits[0] ??
       null
     );
-  }, [archive, picked]);
+  }, [index, picked]);
 
   if (query.isPending)
     return (
@@ -790,17 +846,16 @@ export function KitSimulatorView() {
       isEmpty={!kit}
       emptyMessage="아직 모아 둔 키트가 없습니다."
     >
-      {archive && kit ? (
+      {index && kit ? (
         <Flex vertical gap={16} style={{ minWidth: 0 }}>
           <Flex vertical gap={6}>
-            <KitPicker archive={archive} value={kit.id} onChange={setPicked} />
+            <KitPicker index={index} value={kit.id} onChange={setPicked} />
             <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-              키트 {formatNumber(archive.kits.length)}개, 판매 중{' '}
-              {formatNumber(archive.current.length)}개
-              {archive.updated ? `, ${archive.updated} 갱신` : ''}
+              키트 {formatNumber(index.kits.length)}개, 판매 중 {formatNumber(index.current.length)}
+              개{index.updated ? `, ${index.updated} 갱신` : ''}
             </Text>
           </Flex>
-          <KitOpener key={kit.id} kit={kit} onSale={isOnSale(archive, kit)} />
+          <KitLoader key={kit.id} id={kit.id} onSale={isOnSale(index, kit)} />
         </Flex>
       ) : null}
     </QueryState>

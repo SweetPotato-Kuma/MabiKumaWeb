@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createCardMatcher } from './card-match.mjs';
+import { buildKitNameIndex, kitIconIds } from './kit-names.mjs';
 import { parseScrollName, scrollSubtitle } from '../lib/enchant-scrolls.mjs';
 import {
   defaultBundleRoot,
@@ -38,6 +39,8 @@ import {
  *   --no-icons     그림은 건드리지 않고 글자만 올린다
  *   --recipe-icons 제작법(public/data/recipes.json)에 나오는 아이템 그림만 올린다. 카드는 건드리지 않는다.
  *                  올린 뒤 `node scripts/build-recipes.mjs --icons-only` 로 제작법 데이터에 그림 이름을 적는다
+ *   --kit-icons    키트 기록(public/data/kits.json)의 키트 상자와 보상 그림만 올린다. 카드는 건드리지 않는다.
+ *                  올린 뒤 `node scripts/build-kits.mjs --icons-only` 로 키트 기록에 그림 이름을 적는다
  *
  * 올리려면 저장소 뿌리의 `.env` 에 두 줄이 있어야 한다.
  *
@@ -93,6 +96,7 @@ const compareOnly = args.has('--compare');
 const forceShards = args.has('--force');
 const skipIcons = args.has('--no-icons');
 const recipeIconsOnly = args.has('--recipe-icons');
+const kitIconsOnly = args.has('--kit-icons');
 const limitArg = [...args].find((a) => a.startsWith('--limit='));
 const categoryLimit = limitArg ? Number(limitArg.split('=')[1]) : Infinity;
 const onlyCategories = new Set(
@@ -337,6 +341,25 @@ async function uploadRecipeIcons() {
   log(`제작법 아이템 ${ids.length}개 가운데 내보내기 그림을 붙인 것 ${fromBundle.size}개`);
 }
 
+/** 키트 상자와 보상 그림만 올린다(--kit-icons). 이름을 번호로 잇는 규칙은 kit-names.mjs 에 있다. */
+async function uploadKitIcons() {
+  const archive = await readJson(resolve(process.cwd(), 'public/data/kits.json'), null);
+  if (!archive) throw new Error('public/data/kits.json 이 없습니다. 먼저 키트를 모으세요.');
+  const bundle = await loadBundle();
+  const index = buildKitNameIndex(loadBundleItems(bundle.run), (id) =>
+    Boolean(bundle.images[String(id)]),
+  );
+  const { ids, boxOf, itemOf } = kitIconIds(archive.kits, index);
+  const state = await loadState();
+  const missing = [...ids].filter((id) => !state.uploaded.has(id));
+  const fromBundle = await attachBundleIcons(missing, bundle, state);
+  if (willUpload) await saveState(state);
+  log(
+    `키트 상자 ${boxOf.size}/${archive.kits.length}개, 보상 이름 ${itemOf.size}개를 아이템 번호로 이었고, ` +
+      `새로 그림을 붙인 것 ${fromBundle.size}/${missing.length}개`,
+  );
+}
+
 /**
  * 제작법에만 나오고 경매장에 오른 적 없는 아이템의 카드. 사전 카테고리가 없어 상세 화면에 설명이
  * 비어 있던 것들이다. 설명이 없거나 플레이어가 볼 수 없는 아이템은 뺀다.
@@ -381,6 +404,7 @@ async function uploadUncategorized(dictionary, bundle, bundleItems, state) {
 async function main() {
   if (willUpload) requireUploadConfig();
   if (recipeIconsOnly) return uploadRecipeIcons();
+  if (kitIconsOnly) return uploadKitIcons();
 
   const bundle = await loadBundle();
   log(`클라이언트 내보내기 ${bundle.run}`);

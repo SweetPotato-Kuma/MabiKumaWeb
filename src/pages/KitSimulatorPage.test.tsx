@@ -3,39 +3,60 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
-import type { KitArchive } from '@/features/kits/kits';
+import type { Kit, KitIndex } from '@/features/kits/kits';
 import { KitSimulatorPage } from '@/pages/KitSimulatorPage';
 
-const ARCHIVE: KitArchive = {
+const KITS: Kit[] = [
+  {
+    id: 'official-495',
+    name: '나이트메어 판타지아 박스',
+    start: '2026-10-01',
+    end: '2026-10-14',
+    price: 1200,
+    grades: [
+      { name: 'S 등급', chance: 0.1 },
+      { name: 'C 등급', chance: 0.9 },
+    ],
+    items: [
+      { name: '찬란한 나이트메어 판타지아 데몬 윙', chance: 0.1, grade: 0 },
+      { name: '베인 풍선(5번)', chance: 0.9, grade: 1 },
+    ],
+  },
+  {
+    id: 'archive-2017-01-12',
+    name: '이세계 동화집',
+    start: '2017-01-12',
+    end: null,
+    price: null,
+    grades: [],
+    items: [{ name: '동화 속 날개', chance: 1 }],
+  },
+];
+
+/** 화면이 받는 목록. 키트마다 고르는 데 필요한 것만 있다. */
+const INDEX: KitIndex = {
   updated: '2026-10-08',
   current: ['official-495'],
-  kits: [
-    {
-      id: 'official-495',
-      name: '나이트메어 판타지아 박스',
-      start: '2026-10-01',
-      end: '2026-10-14',
-      price: 1200,
-      grades: [
-        { name: 'S 등급', chance: 0.1 },
-        { name: 'C 등급', chance: 0.9 },
-      ],
-      items: [
-        { name: '찬란한 나이트메어 판타지아 데몬 윙', chance: 0.1, grade: 0 },
-        { name: '베인 풍선(5번)', chance: 0.9, grade: 1 },
-      ],
-    },
-    {
-      id: 'archive-2017-01-12',
-      name: '이세계 동화집',
-      start: '2017-01-12',
-      end: null,
-      price: null,
-      grades: [],
-      items: [{ name: '동화 속 날개', chance: 1 }],
-    },
-  ],
+  kits: KITS.map(({ id, name, start, end, price, items }) => ({
+    id,
+    name,
+    start,
+    end,
+    price,
+    count: items.length,
+  })),
 };
+
+/** 목록과 키트 한 파일을 주소로 갈라 돌려준다. */
+const serve = vi.fn(async (input: RequestInfo | URL) => {
+  const url = String(input);
+  const body = url.endsWith('/index.json')
+    ? INDEX
+    : KITS.find((kit) => url.endsWith(`/${kit.id}.json`));
+  return body
+    ? new Response(JSON.stringify(body), { status: 200 })
+    : new Response('', { status: 404 });
+});
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -57,10 +78,7 @@ const statistic = (title: string) =>
 
 describe('키트 시뮬레이터', () => {
   beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify(ARCHIVE), { status: 200 })),
-    );
+    vi.stubGlobal('fetch', serve);
   });
 
   afterEach(() => {

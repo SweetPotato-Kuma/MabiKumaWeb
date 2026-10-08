@@ -8,16 +8,26 @@
  *   [등급, 등급 확률, 아이템, 아이템 확률, ...]. 등급이 없는 키트는 등급 칸이 "없음" 이다.
  *   아이템 확률은 키트 전체에 대한 확률이라 모두 더하면 100% 다.
  * - 판매 가격과 기간: 같은 이름의 공지 본문에서 읽는다. 공지를 못 찾으면 비워 둔다.
+ * - 그림: 키트 이름과 보상 이름 -> 그림 파일 이름 표(icons). 같은 보상이 여러 키트에 되풀이되므로 키트마다
+ *   적지 않고 이름으로 한 번만 둔다. 클라이언트 내보내기와 그림을 올린 기록이 있는 PC 에서만 만들 수 있어
+ *   `--icons-only` 로 따로 적는다(scripts/game-data/sync-all.mjs 가 부른다). 주기적으로 돌 때는 표를 건드리지 않는다.
+ *
+ * 화면은 기록 전체(수 MB)를 받지 않는다. 목록(public/data/kits/index.json)과 키트마다 한 파일
+ * (public/data/kits/<id>.json, 그 키트 보상의 그림 이름 포함)로 나눠 내보내고, 고른 키트만 받는다.
  *
  * 실행: node scripts/build-kits.mjs
- * 산출: public/data/kits.json
+ *       node scripts/build-kits.mjs --icons-only   다시 모으지 않고 그림 파일 이름만 새로 적는다
+ * 산출: public/data/kits.json(기록 원본), public/data/kits/
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { latestBundleRun, loadBundleItems } from './game-data/bundle-items.mjs';
+import { buildKitNameIndex, kitIconIds } from './game-data/kit-names.mjs';
 
 const ORIGIN = 'https://mabinogi.nexon.com';
 const OUT = resolve('public/data/kits.json');
+const SPLIT_DIR = resolve('public/data/kits');
 /** 이름이 같은 공지를 찾을 때 훑는 공지 목록 쪽 수. 키트 공지는 판매 시작 무렵에 올라온다. */
 const NOTICE_PAGES = 6;
 
@@ -141,6 +151,52 @@ function parseNoticeList(html) {
   }));
 }
 
+/**
+ * 화면용 파일을 쓴다. 목록에는 키트마다 고르는 데 필요한 것만, 키트 파일에는 확률표와 그 키트에 나오는 이름의
+ * 그림만 둔다. 내용이 같으면 다시 쓰지 않고, 기록에 없는 키트 파일은 지운다.
+ */
+export async function writeKitFiles(archive, dir = SPLIT_DIR) {
+  const icons = archive.icons ?? {};
+  await mkdir(dir, { recursive: true });
+  const files = new Map();
+  files.set('index.json', {
+    updated: archive.updated,
+    current: archive.current ?? [],
+    kits: archive.kits.map(({ id, name, start, end, price, firstSeen, items }) => ({
+      id,
+      name,
+      start,
+      end,
+      price,
+      ...(firstSeen ? { firstSeen } : {}),
+      ...(icons[name] ? { icon: icons[name] } : {}),
+      count: items.length,
+    })),
+  });
+  for (const kit of archive.kits) {
+    const own = {};
+    for (const name of [kit.name, ...kit.items.map((item) => item.name)])
+      if (icons[name]) own[name] = icons[name];
+    files.set(`${kit.id}.json`, { ...kit, icons: own });
+  }
+  let written = 0;
+  for (const [file, body] of files) {
+    const text = `${JSON.stringify(body)}\n`;
+    const path = resolve(dir, file);
+    const previous = await readFile(path, 'utf8').catch(() => null);
+    if (previous === text) continue;
+    await writeFile(path, text);
+    written += 1;
+  }
+  let removed = 0;
+  for (const file of await readdir(dir))
+    if (file.endsWith('.json') && !files.has(file)) {
+      await rm(resolve(dir, file));
+      removed += 1;
+    }
+  console.log(`화면용 키트 파일 ${files.size}개 (새로 씀 ${written}, 지움 ${removed})`);
+}
+
 const today = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
 
 async function readArchive() {
@@ -211,6 +267,7 @@ async function main() {
 
   if (!changed) {
     console.log('바뀐 키트가 없습니다.');
+    await writeKitFiles(archive);
     return;
   }
   // 최근에 판매를 시작한 것부터. 시작일을 모르면 처음 본 날로 줄 세운다.
@@ -220,8 +277,43 @@ async function main() {
   archive.updated = date;
   await writeFile(OUT, `${JSON.stringify(archive)}\n`);
   console.log(`키트 ${archive.kits.length}개 -> ${OUT}`);
+  await writeKitFiles(archive);
+}
+
+/**
+ * 다시 모으지 않고 그림 표(icons)만 새로 만든다. 키트 이름과 보상 이름을 아이템 번호로 잇고(kit-names.mjs),
+ * 그 번호로 올린 그림(.cache/item-cards/uploaded.json, collect-item-cards.mjs --kit-icons)을 찾는다.
+ */
+async function iconsOnly() {
+  const archive = await readArchive();
+  const uploaded = JSON.parse(await readFile(resolve('.cache/item-cards/uploaded.json'), 'utf8'));
+  const run = latestBundleRun();
+  const images = JSON.parse(await readFile(resolve(run, 'images/item-images.json'), 'utf8'));
+  const index = buildKitNameIndex(loadBundleItems(run), (id) => Boolean(images[String(id)]));
+  const { boxOf, itemOf } = kitIconIds(archive.kits, index);
+  const icons = {};
+  for (const [name, id] of [...boxOf, ...itemOf]) if (uploaded[id]) icons[name] = uploaded[id];
+  const sorted = Object.fromEntries(
+    Object.entries(icons).sort(([a], [b]) => a.localeCompare(b, 'ko')),
+  );
+  const boxes = archive.kits.filter((kit) => sorted[kit.name]).length;
+  console.log(
+    `그림을 붙인 키트 ${boxes}/${archive.kits.length}, 이름 ${Object.keys(sorted).length}개`,
+  );
+  if (JSON.stringify(archive.icons ?? {}) === JSON.stringify(sorted)) {
+    console.log('바뀐 그림이 없습니다.');
+    await writeKitFiles(archive);
+    return;
+  }
+  const { updated, current, kits } = archive;
+  await writeFile(
+    OUT,
+    `${JSON.stringify({ updated, current, icons: sorted, kits })}
+`,
+  );
+  await writeKitFiles({ ...archive, icons: sorted });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
+  await (process.argv.includes('--icons-only') ? iconsOnly() : main());
 }

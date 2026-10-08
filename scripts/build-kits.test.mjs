@@ -1,5 +1,8 @@
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseKitList, parseKitTable, parseNotice } from './build-kits.mjs';
+import { parseKitList, parseKitTable, parseNotice, writeKitFiles } from './build-kits.mjs';
 
 const page = (seq, rows) =>
   `<li><a id="list_on_${seq}" href="javascript:showEw2(${seq})" >비단 운문 한복 상자</a></li>
@@ -45,5 +48,40 @@ describe('키트 확률표 읽기', () => {
       '<img alt="나이트메어 판타지아 박스 / 판매 가격 : 1,200 캐시 / 판매 기간 : 2026. 10. 1(목) 점검 후 ~ 2026. 10. 14(수) 23:59:00">';
     expect(parseNotice(html)).toEqual({ price: 1200, start: '2026-10-01', end: '2026-10-14' });
     expect(parseNotice('<p>이용 안내</p>')).toEqual({ price: null, start: null, end: null });
+  });
+
+  it('화면용으로 목록과 키트마다 한 파일을 쓰고, 키트 파일에는 그 키트 이름의 그림만 담는다', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kits-'));
+    await writeFile(join(dir, 'old-kit.json'), '{}');
+    const archive = {
+      updated: '2026-10-08',
+      current: ['official-1'],
+      icons: { 상자: 'box.webp', 날개: 'wing.webp', 풍선: 'balloon.webp' },
+      kits: [
+        {
+          id: 'official-1',
+          name: '상자',
+          start: '2026-10-01',
+          end: null,
+          price: 1200,
+          grades: [],
+          items: [{ name: '날개', chance: 1 }],
+        },
+      ],
+    };
+    await writeKitFiles(archive, dir);
+    expect((await readdir(dir)).sort()).toEqual(['index.json', 'official-1.json']);
+    const index = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8'));
+    expect(index.kits[0]).toEqual({
+      id: 'official-1',
+      name: '상자',
+      start: '2026-10-01',
+      end: null,
+      price: 1200,
+      icon: 'box.webp',
+      count: 1,
+    });
+    const kit = JSON.parse(await readFile(join(dir, 'official-1.json'), 'utf8'));
+    expect(kit.icons).toEqual({ 상자: 'box.webp', 날개: 'wing.webp' });
   });
 });

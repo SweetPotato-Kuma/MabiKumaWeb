@@ -8,7 +8,7 @@
  *
  *   1. 클라이언트 내보내기       .cache/client-src/offline-audit/Run-ClientExport.ps1 (바뀐 패키지만 다시 푼다)
  *   2. 저장소 파일 만들기        제작법, 아르카나, 세트 효과, 인챈트 스크롤, 상세 검색 이름, 세공 도구 확률표
- *   3. 아이템 카드 올리기        제작법 재료 그림 -> 제작법 그림 이름 -> 경매장 사전의 카드
+ *   3. 아이템 카드 올리기        제작법 재료 그림 -> 제작법 그림 이름 -> 키트 상자와 보상 그림 -> 경매장 사전의 카드
  *   4. 장비 정보 올리기
  *   5. 스킬, 오검 그림 올리기
  *
@@ -74,6 +74,8 @@ node('세공 도구 확률표', 'scripts/build-reforge.mjs');
 if (upload) {
   node('제작법 재료 그림', 'scripts/game-data/collect-item-cards.mjs', ['--recipe-icons']);
   node('제작법 그림 이름', 'scripts/build-recipes.mjs', ['--icons-only']);
+  node('키트 상자와 보상 그림', 'scripts/game-data/collect-item-cards.mjs', ['--kit-icons']);
+  node('키트 그림 이름', 'scripts/build-kits.mjs', ['--icons-only']);
   node('아이템 카드', 'scripts/game-data/collect-item-cards.mjs');
   node('장비 정보', 'scripts/game-data/collect-equipment.mjs');
   node('스킬, 오검 그림', 'scripts/game-data/upload-game-images.mjs');
