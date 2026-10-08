@@ -113,7 +113,7 @@ export function koreaText(entity, enabled, field) {
       (variant[field] ?? '').trim() &&
       variant.conditions.every(([kind, value]) =>
         kind === 'locale'
-          ? String(value).toLowerCase() === 'korea'
+          ? localeHolds(value)
           : kind === 'feature'
             ? featureHolds(value, enabled)
             : false,
@@ -186,10 +186,19 @@ export function latestBundleRun(root = defaultBundleRoot()) {
   return resolve(root, latest.run);
 }
 
-/** 지역 조건이 한국 서버에서 성립하는지. "!usa" 처럼 다른 지역을 빼는 조건도 있다. */
-function localeHolds(expression) {
-  const value = String(expression).toLowerCase();
-  return value.startsWith('!') ? value.slice(1) !== 'korea' : value === 'korea';
+const KOREA = new Map([['korea', true]]);
+
+/**
+ * 지역 조건이 한국 서버에서 성립하는지. "!usa" 처럼 다른 지역을 빼는 조건, "korea|usa", "korea;taiwan",
+ * "korea china taiwan usa" 처럼 여러 지역을 늘어놓은 조건, "!usa&!china" 처럼 엮은 조건이 있다. 늘어놓은 것은
+ * 또는(|)으로 읽는다.
+ */
+export function localeHolds(expression) {
+  const value = String(expression)
+    .toLowerCase()
+    .replace(/\s*[;,]\s*/g, '|')
+    .replace(/(\w)\s+(?=\w)/g, '$1|');
+  return featureHolds(value, KOREA);
 }
 
 /**

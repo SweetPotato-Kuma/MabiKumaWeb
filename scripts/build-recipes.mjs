@@ -1,13 +1,8 @@
 /**
  * 제작법 모으기
  *
- * 넥슨 오픈 API 에는 제작법이 없다. 게임 클라이언트 데이터를 풀어 둔 공개 도구가 있어서, 그 도구가
- * 쓰는 리소스 묶음 한 파일을 받아 제작 스킬로 만드는 아이템과 재료만 뽑는다.
- *
- * 리소스 묶음은 protobuf 바이너리이고 스키마는 따로 공개돼 있지 않다. 그 도구의 번들 안에
- * protobuf-ts 가 만든 메시지 정의(`super("prilus.X", [필드...])`)가 그대로 들어 있어서, 번들을
- * 받아 필드 목록을 읽고 그것으로 바이너리를 푼다. 번들 파일 이름은 배포마다 바뀌므로 첫 화면
- * HTML 에서 매번 찾아 들어간다.
+ * 넥슨 오픈 API 에는 제작법이 없다. 클라이언트 내보내기의 제작 데이터(game-data/client-recipes.mjs)에서
+ * 제작 스킬로 만드는 아이템과 재료만 뽑는다.
  *
  * 뽑는 것:
  * - 제작법마다 만드는 아이템, 스킬, 랭크, 필요한 설비, 한 번에 나오는 개수
@@ -45,11 +40,9 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { brotliDecompressSync } from 'node:zlib';
+import { latestBundleRun } from './game-data/bundle-items.mjs';
+import { loadClientRecipes } from './game-data/client-recipes.mjs';
 
-const SITE = 'https://prilus.gitlab.io/';
-const RESOURCE_ORIGIN = 'https://mabires.pril.cc/';
-const REGION = 'kr';
 const OUT = resolve('public/data/recipes.json');
 const UPLOADED_ICONS = resolve('.cache/item-cards/uploaded.json');
 
@@ -140,9 +133,6 @@ const plainText = (value) =>
     .replace(/<[^>]*>/g, '')
     .trim();
 
-/** 거래 불가 표시(RestrictionFlags). 그 도구의 ITEM_RESTRICTION_NO_TRADE 와 같다. */
-const NO_TRADE = 2;
-
 const COOKING_SKILL = 10020;
 
 /**
@@ -150,12 +140,6 @@ const COOKING_SKILL = 10020;
  * 스킬 랭크가 아닌 값(20)이 들어 있고, 재료도 이벤트 재료다.
  */
 const SKIPPED_COOKING_ACTIONS = new Set(['ie_expedition_cooking']);
-
-async function fetchOk(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${url} -> HTTP ${response.status}`);
-  return response;
-}
 
 /**
  * 원본 기반 장비 목록에 잘못 들어간 후보. 제작 아이템 -> 뺄 아이템 묶음.
@@ -167,223 +151,13 @@ const MISLISTED_BASES = new Map([
   [14138, new Set([2230046, 2230047])],
 ]);
 
-const SCHEMA_PATTERN = () =>
-  /([\w$]+)=new class extends [\w$]+\{constructor\(\)\{super\(`([^`]+)`,\[/g;
-
-/** 번들에서 메시지 정의를 모두 읽는다. 이름 -> 필드 목록. */
-function extractSchemas(bundle) {
-  const pattern = SCHEMA_PATTERN();
-  const schemas = {};
-  const nameOfVar = {};
-  // 필드 목록 안의 T:()=>Xy 는 다른 메시지 변수를 가리킨다. 없는 이름은 이름 문자열로 돌려받는다.
-  const scope = new Proxy(
-    {},
-    { has: () => true, get: (_target, key) => (typeof key === 'string' ? key : undefined) },
-  );
-  let match;
-  while ((match = pattern.exec(bundle))) {
-    const start = pattern.lastIndex - 1;
-    let depth = 0;
-    let end = start;
-    for (; end < bundle.length; end += 1) {
-      if (bundle[end] === '[') depth += 1;
-      else if (bundle[end] === ']' && --depth === 0) break;
-    }
-    const fields = new Function(
-      'scope',
-      `with (scope) { return ${bundle.slice(start, end + 1)}; }`,
-    )(scope);
-    nameOfVar[match[1]] = match[2];
-    schemas[match[2]] = fields;
-  }
-  const messageOf = (T) => {
-    const target = T();
-    return Array.isArray(target) ? target[0] : (nameOfVar[target] ?? target);
-  };
-  for (const fields of Object.values(schemas)) {
-    for (const field of fields) {
-      if (field.kind === 'message') field.message = messageOf(field.T);
-      if (field.kind === 'map' && field.V.kind === 'message')
-        field.V.message = messageOf(field.V.T);
-    }
-  }
-  // 변수 이름은 배포마다 바뀐다. 제작법 목록을 필드로 가진 메시지가 리소스 묶음 전체다.
-  const root = Object.keys(schemas).find((name) =>
-    schemas[name].some((field) => field.name === 'ProductionList'),
-  );
-  if (!root) throw new Error('리소스 묶음 메시지를 찾지 못했습니다.');
-  return { schemas, root };
-}
-
-/** protobuf 바이너리를 스키마대로 푸는 최소한의 읽개. 필요한 스칼라 종류만 다룬다. */
-function decode(buffer, schemas, rootName) {
-  // varint() 가 pos 를 옮긴다. `pos + Number(varint())` 처럼 한 식에 섞으면 옮기기 전 pos 를 읽으므로
-  // 길이는 언제나 먼저 읽어 두고 더한다.
-  let pos = 0;
-  const varint = () => {
-    let result = 0n;
-    let shift = 0n;
-    for (;;) {
-      const byte = buffer[pos++];
-      result |= BigInt(byte & 127) << shift;
-      if (!(byte & 128)) return result;
-      shift += 7n;
-    }
-  };
-  const scalar = (T) => {
-    switch (T) {
-      case 1: {
-        const v = buffer.readDoubleLE(pos);
-        pos += 8;
-        return v;
-      }
-      case 2: {
-        const v = buffer.readFloatLE(pos);
-        pos += 4;
-        return v;
-      }
-      case 7: {
-        const v = buffer.readUInt32LE(pos);
-        pos += 4;
-        return v;
-      }
-      case 15: {
-        const v = buffer.readInt32LE(pos);
-        pos += 4;
-        return v;
-      }
-      case 6:
-      case 16: {
-        const v = buffer.readBigInt64LE(pos);
-        pos += 8;
-        return Number(v);
-      }
-      case 8:
-        return varint() !== 0n;
-      case 9: {
-        const n = Number(varint());
-        const v = buffer.toString('utf8', pos, pos + n);
-        pos += n;
-        return v;
-      }
-      case 12: {
-        const n = Number(varint());
-        pos += n;
-        return null;
-      }
-      case 5:
-        return Number(BigInt.asIntN(32, varint()));
-      case 3:
-        return Number(BigInt.asIntN(64, varint()));
-      case 17:
-      case 18: {
-        const v = varint();
-        return Number((v >> 1n) ^ -(v & 1n));
-      }
-      default:
-        return Number(varint());
-    }
-  };
-  const skip = (wireType) => {
-    if (wireType === 0) varint();
-    else if (wireType === 1) pos += 8;
-    else if (wireType === 2) {
-      const n = Number(varint());
-      pos += n;
-    } else if (wireType === 5) pos += 4;
-    else throw new Error(`알 수 없는 wire type ${wireType}`);
-  };
-  const message = (length, name) => {
-    const fields = schemas[name];
-    if (!fields) throw new Error(`스키마 없음: ${name}`);
-    const byNumber = Object.fromEntries(fields.map((field) => [field.no, field]));
-    const out = {};
-    const end = pos + length;
-    while (pos < end) {
-      const tag = Number(varint());
-      const field = byNumber[tag >>> 3];
-      const wireType = tag & 7;
-      if (!field) {
-        skip(wireType);
-        continue;
-      }
-      if (field.kind === 'message') {
-        const value = message(Number(varint()), field.message);
-        if (field.repeat) (out[field.name] ??= []).push(value);
-        else out[field.name] = value;
-      } else if (field.kind === 'map') {
-        const entryLength = Number(varint());
-        const entryEnd = pos + entryLength;
-        let key;
-        let value;
-        while (pos < entryEnd) {
-          const entryTag = Number(varint());
-          if (entryTag >>> 3 === 1) key = scalar(field.K);
-          else
-            value =
-              field.V.kind === 'message'
-                ? message(Number(varint()), field.V.message)
-                : scalar(field.V.T ?? 5);
-        }
-        (out[field.name] ??= {})[key] = value;
-      } else {
-        const T = field.kind === 'enum' ? 5 : field.T;
-        if (field.repeat && wireType === 2 && T !== 9 && T !== 12) {
-          const packedLength = Number(varint());
-          const packedEnd = pos + packedLength;
-          const list = (out[field.name] ??= []);
-          while (pos < packedEnd) list.push(scalar(T));
-        } else {
-          const value = scalar(T);
-          if (field.repeat) (out[field.name] ??= []).push(value);
-          else out[field.name] = value;
-        }
-      }
-    }
-    return out;
-  };
-  return message(buffer.length, rootName);
-}
-
 async function main() {
-  const html = await (await fetchOk(SITE)).text();
-  const entry = html.match(/src="\/?(assets\/index-[\w-]+\.js)"/)?.[1];
-  if (!entry) throw new Error('첫 화면에서 번들 주소를 찾지 못했습니다.');
-  // 메시지 정의는 배포마다 다른 청크로 옮겨 다닌다. 첫 화면이 미리 읽는 청크까지 모두 받아,
-  // 정의가 든 것만 이어 붙인다.
-  const chunkPaths = [
-    entry,
-    ...new Set([...html.matchAll(/href="\/?(assets\/[\w.-]+\.js)"/g)].map((m) => m[1])),
-  ];
-  const chunks = await Promise.all(
-    chunkPaths.map(async (path) => (await fetchOk(new URL(path, SITE))).text()),
-  );
-  const bundle = chunks.filter((chunk) => SCHEMA_PATTERN().test(chunk)).join('\n');
-  const { schemas, root } = extractSchemas(bundle);
-  console.log(`스키마 ${Object.keys(schemas).length}개, 루트 ${root}`);
+  const data = loadClientRecipes(latestBundleRun());
+  const text = (value) => value ?? '';
+  const itemById = data.items;
+  const skillById = data.skills;
 
-  const version = await (
-    await fetchOk(`${RESOURCE_ORIGIN}resourceversion/${REGION}/${REGION}_resourceversion.json`)
-  ).json();
-  const packed = Buffer.from(
-    await (
-      await fetchOk(`${RESOURCE_ORIGIN}resourcedata/${REGION}/${REGION}_resourcedata.bin.br`)
-    ).arrayBuffer(),
-  );
-  const data = decode(brotliDecompressSync(packed), schemas, root);
-
-  const strings = new Map(data.StringTable.map((entry) => [entry.Id, entry.Str]));
-  const text = (key) => {
-    const value = strings.get(key);
-    return value && !value.startsWith('not found key') ? value : '';
-  };
-  const itemById = new Map(data.ItemList.map((item) => [item.Id, item]));
-  const skillById = new Map(data.SkillList.map((skill) => [skill.Id, skill]));
-
-  const nameOfId = (id) => {
-    const item = itemById.get(id);
-    return item ? text(item.Name) : '';
-  };
+  const nameOfId = (id) => itemById.get(id)?.name ?? '';
 
   /**
    * 재료 칸. 이름 문자열이 없는 아이템은 게임에서 더는 쓰지 않는 옛 대체품이다(2026-09 수집에서
@@ -485,7 +259,7 @@ async function main() {
     const item = itemById.get(id);
     const name = nameOfId(id);
     if (!name) unnamed.push(id);
-    items[id] = [name || `#${id}`, item && (item.RestrictionFlags ?? 0) & NO_TRADE ? 0 : 1];
+    items[id] = [name || `#${id}`, item && !item.tradeable ? 0 : 1];
   }
   if (unnamed.length)
     console.warn(`이름이 없는 아이템 ${unnamed.length}개: ${unnamed.slice(0, 10).join(', ')}`);
@@ -495,11 +269,11 @@ async function main() {
   const skills = skillIds
     .map((id) => {
       const skill = skillById.get(id);
-      const category = SKILL_CATEGORY[skill?.Category];
-      const desc = plainText(text(skill?.Desc));
+      const category = SKILL_CATEGORY[skill?.category];
+      const desc = plainText(skill?.desc ?? '');
       return {
         id,
-        name: text(skill?.Name) || `스킬 ${id}`,
+        name: skill?.name || `스킬 ${id}`,
         count: recipes.filter((recipe) => recipe.skill === id).length,
         ...(category ? { category } : {}),
         ...(desc ? { desc } : {}),
@@ -513,8 +287,7 @@ async function main() {
       a.skill - b.skill || a.rank - b.rank || nameOf(a.item).localeCompare(nameOf(b.item), 'ko'),
   );
 
-  const updated = new Date(version.CreatedAt * 1000).toISOString().slice(0, 10);
-  await writeOutput({ updated, skills, items, recipes });
+  await writeOutput({ updated: data.updated, skills, items, recipes });
 }
 
 /** 다시 모으지 않고 지금 파일에 그림 파일 이름만 새로 적는다. */

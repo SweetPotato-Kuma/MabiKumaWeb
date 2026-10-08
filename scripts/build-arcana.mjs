@@ -3,7 +3,7 @@
  *
  * 무리아스의 유물 옵션은 스킬 하나를 강화한다("오버 드라이브 폭발 공격 대미지"). 유물 시세 화면은
  * 옵션을 그 스킬의 아르카나로 묶어 보여 주는데, 넥슨 오픈 API 에는 어느 스킬이 어느 아르카나인지가
- * 없다. 게임 클라이언트 데이터의 아르카나 목록(스킬 번호가 딸려 있다)에서 그것을 뽑는다.
+ * 없다. 클라이언트 내보내기의 아르카나 목록(MultiClassCommon.xml, 스킬 번호가 딸려 있다)에서 그것을 뽑는다.
  *
  * 뽑는 것:
  * - 아르카나마다 번호, 이름, 각성 스킬 번호, 딸린 스킬(번호와 이름)
@@ -16,35 +16,45 @@
  */
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { loadResourceData, stringLookup } from './lib/resource-data.mjs';
+import { latestBundleRun } from './game-data/bundle-items.mjs';
+import { loadSkills } from './game-data/client-recipes.mjs';
+import { loadClientRecords } from './game-data/client-tables.mjs';
 
-const REGION = 'kr';
 const OUT = resolve('public/data/arcana.json');
 
 async function main() {
-  const { data, updated } = await loadResourceData(REGION);
-  const text = stringLookup(data);
-  const skillById = new Map(data.SkillList.map((skill) => [skill.Id, skill]));
-  const skillName = (id) => text(skillById.get(id)?.Name).trim();
+  const run = latestBundleRun();
+  const { pick, updated, enabled } = loadClientRecords(run);
+  const skills = loadSkills(run, enabled);
+  const skillName = (id) => skills.get(Number(id))?.name ?? '';
+  const arcana = (tag, key) => pick('arcana.jsonl.gz', (r) => r.tag === tag, key);
+  const ultimate = new Map(
+    [...arcana('ArcanaUltimateSkillListInfo', 'classId')].map(([id, { attributes: a }]) => [
+      id,
+      Number(a.UltimateSkill_Id),
+    ]),
+  );
 
-  const arcanas = data.MultiClassList.map((entry) => ({
-    id: entry.Id,
-    name: text(entry.Name).trim(),
-    awakening: entry.AwakeningSkillId,
-    skills: (entry.SkillBindingIds ?? [])
-      .map((id) => ({ id, name: skillName(id) }))
-      .filter((skill) => skill.name),
-  }))
-    .filter((arcana) => arcana.name && arcana.skills.length > 0)
+  const arcanas = [...arcana('MultiClassInfo', 'classId')]
+    .map(([id, record]) => ({
+      id: Number(id),
+      name: (record.localized?.localName ?? '').trim(),
+      awakening: ultimate.get(id),
+      skills: String(record.attributes.classSkillBinding ?? '')
+        .split('|')
+        .filter(Boolean)
+        .map((skill) => ({ id: Number(skill), name: skillName(skill) }))
+        .filter((skill) => skill.name),
+    }))
+    .filter((entry) => entry.name && entry.skills.length > 0)
     .sort((a, b) => a.id - b.id);
-
 
   // 아르카나 한 줄에 하나씩 적어 다음 수집 때 무엇이 바뀌었는지 diff 로 보이게 한다.
   const body = [
     '{',
     `"updated":${JSON.stringify(updated)},`,
     '"arcanas":[',
-    arcanas.map((arcana) => JSON.stringify(arcana)).join(',\n'),
+    arcanas.map((entry) => JSON.stringify(entry)).join(',\n'),
     ']}',
     '',
   ].join('\n');

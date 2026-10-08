@@ -30,13 +30,18 @@ function tokenize(text) {
   return tokens;
 }
 
-function globRegExp(glob) {
+function globRegExp(glob, contains) {
   const body = glob.replace(/[.+?^${}[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${body}$`, 'i');
+  return new RegExp(contains ? body : `^${body}$`, 'i');
 }
 
-/** 식을 함수로. 고를 것이 없으면 null. */
-export function compileItemFilter(text) {
+/**
+ * 식을 함수로. 고를 것이 없으면 null.
+ *
+ * contains 면 글롭이 경로의 일부와 맞아도 된다. 제작 재료(Production.xml 의 Essentials)는
+ * "/material/weaving/yarn/01/*" 처럼 앞을 열어 두지 않고 적어도 "/stack_item/material/..." 에 맞는다.
+ */
+export function compileItemFilter(text, { contains = false } = {}) {
   const tokens = tokenize(text);
   if (!tokens.some((token) => token.type === 'term')) return null;
   let position = 0;
@@ -55,7 +60,7 @@ export function compileItemFilter(text) {
       return inner;
     }
     if (token.type === 'term') {
-      const re = globRegExp(token.value);
+      const re = globRegExp(token.value, contains);
       return (value) => re.test(value);
     }
     // 짝이 안 맞는 ) 나 연산자는 건너뛴다.

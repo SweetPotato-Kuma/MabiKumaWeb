@@ -13,12 +13,15 @@
  *   1랭크 최대 레벨과 한계 돌파 레벨(MetalWareLevelList). 레벨 자동완성이 그 세공에서 나올 수
  *   없는 레벨을 권하지 않게 한다. 장비 시뮬레이터(features/equipment/reforge.ts)와 같은 규칙이다
  *
+ * 게임 데이터는 클라이언트 내보내기(game-data/client-tables.mjs)에서 읽는다.
+ *
  * 실행: node scripts/build-option-names.mjs
  * 산출: public/data/option-names.json
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { loadResourceData, stringLookup } from './lib/resource-data.mjs';
+import { latestBundleRun } from './game-data/bundle-items.mjs';
+import { loadClientTables } from './game-data/client-tables.mjs';
 
 const OUT = resolve('public/data/option-names.json');
 const SUFFIX_USAGE = 1;
@@ -30,8 +33,10 @@ const isRealName = (name) => Boolean(name) && !/^[\d\s]+$/.test(name);
 const sortKo = (names) =>
   [...new Set(names.filter(isRealName))].sort((a, b) => a.localeCompare(b, 'ko'));
 
-const { data, updated } = await loadResourceData();
-const text = stringLookup(data);
+const data = loadClientTables(latestBundleRun());
+const updated = data.clientDate;
+const strings = new Map(data.StringTable.map((entry) => [entry.Id, entry.Str]));
+const text = (key) => strings.get(key) ?? '';
 
 const reforges = sortKo(data.MetalWareAbilityList.map((ability) => text(ability.Desc)));
 const prefixes = sortKo(

@@ -153,6 +153,29 @@ export function parseUpgradeEffect(text) {
 /**
  * @param run 클라이언트 내보내기 실행 폴더(client-bundle/runs/<시각>)
  */
+/**
+ * 클라이언트 데이터를 꺼낸 날(원본이 바뀌지 않았으면 마지막으로 바뀐 날). 화면의 "갱신" 날짜로 쓴다.
+ */
+export function clientDataDate(run) {
+  const bundle = JSON.parse(readFileSync(resolve(run, 'bundle.json'), 'utf8'));
+  const report = JSON.parse(readFileSync(resolve(bundle.source_raw, 'report.json'), 'utf8'));
+  return String(report.started_utc ?? '').slice(0, 10);
+}
+
+/**
+ * 표 하나만 필요한 도구가 쓰는 기록 읽기. pick 은 번호(key)마다 한국 서버에서 쓰이는 행 하나를 고른다.
+ */
+export function loadClientRecords(run) {
+  const enabled = koreaFeatures(run);
+  const cache = new Map();
+  const records = (file) => {
+    if (!cache.has(file)) cache.set(file, rows(resolve(run, 'records', file)));
+    return cache.get(file);
+  };
+  const pick = (file, predicate, key) => pickById(records(file).filter(predicate), key, enabled);
+  return { enabled, records, pick, updated: clientDataDate(run) };
+}
+
 export function loadClientTables(run) {
   const enabled = koreaFeatures(run);
   const records = (file) => rows(resolve(run, 'records', file));
@@ -592,10 +615,7 @@ export function loadClientTables(run) {
 
   return {
     StringTable,
-    // 클라이언트 데이터를 꺼낸 날(원본이 바뀌지 않았으면 마지막으로 바뀐 날). 화면의 "갱신" 날짜로 쓴다.
-    clientDate: String(
-      JSON.parse(readFileSync(resolve(bundle.source_raw, 'report.json'), 'utf8')).started_utc ?? '',
-    ).slice(0, 10),
+    clientDate: clientDataDate(run),
     ItemList,
     RaceList,
     OptionSetList,
