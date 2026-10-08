@@ -4,7 +4,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import type { Kit, KitIndex } from '@/features/kits/kits';
+import type * as Settings from '@/lib/settings';
 import { KitSimulatorPage } from '@/pages/KitSimulatorPage';
+
+// 테스트 환경에는 워커 주소가 없다. 있는 것으로 두고 fetch 로 답한다.
+vi.mock('@/lib/settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof Settings>()),
+  getProxyUrl: () => 'https://w.example',
+}));
 
 const KITS: Kit[] = [
   {
@@ -47,12 +54,15 @@ const INDEX: KitIndex = {
   })),
 };
 
-/** 목록과 키트 한 파일을 주소로 갈라 돌려준다. */
+/** 워커의 목록과 키트 하나를 주소로 갈라 돌려준다. */
 const serve = vi.fn(async (input: RequestInfo | URL) => {
-  const url = String(input);
-  const body = url.endsWith('/index.json')
-    ? INDEX
-    : KITS.find((kit) => url.endsWith(`/${kit.id}.json`));
+  const url = new URL(String(input));
+  const body =
+    url.pathname === '/kits/index'
+      ? INDEX
+      : url.pathname === '/kits/kit'
+        ? KITS.find((kit) => kit.id === url.searchParams.get('id'))
+        : undefined;
   return body
     ? new Response(JSON.stringify(body), { status: 200 })
     : new Response('', { status: 404 });

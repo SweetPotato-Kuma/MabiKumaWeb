@@ -379,6 +379,21 @@ npx wrangler d1 migrations apply mabikuma-news --remote
 curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY"   "https://mabikuma-api.inbox7.workers.dev/news/collect?pages=10"
 ```
 
+## 키트 확률표 기록 (/kits)
+
+공식 확률 정보 화면은 지금 파는 키트만 보여 주고 판매가 끝나면 지웁니다. 지난 확률표는 다시 볼 수 없으므로
+새소식 크론이 한 시간에 한 번 확률 정보 화면을 읽어 `NEWS` D1 의 `kits` 표에 더합니다. 한 번 담은 키트는 지우지 않습니다.
+판매 가격과 기간은 새소식 기록에 받아 둔 같은 이름의 공지에서 읽습니다. 코드는 `kits.js`, 표는 `migrations-news/0002_kits.sql` 입니다.
+
+| 경로 | 누가 | 하는 일 |
+| --- | --- | --- |
+| `GET /kits/index` | 공개 | 키트 목록(지금 파는 키트, 상자 그림, 구성품 수) |
+| `GET /kits/kit?id=` | 공개 | 키트 하나의 확률표와 그 키트에 나오는 이름의 그림 |
+| `GET /kits/archive` | 운영자 | 기록 전체와 그림 이름 표. PC 스크립트가 읽는다 |
+| `POST /kits/import` | 운영자 | 지난 키트 더하기. 이미 있는 id 는 건드리지 않는다 |
+| `POST /kits/icons` | 운영자 | 그림 이름 표 통째로 바꾸기(`scripts/build-kits.mjs --icons-only`) |
+| `POST /kits/collect` | 운영자 | 한 시간을 기다리지 않고 지금 모으기 |
+
 ## 경매장 장비 매물 모아 두기 (/auction/snapshot)
 
 넥슨 경매장 API 는 옵션으로 찾지 못하고, 한 쪽 500건을 앞 쪽의 커서로만 넘깁니다. 세공이나 인챈트로

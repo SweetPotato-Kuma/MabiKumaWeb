@@ -493,7 +493,7 @@ describe('새소식 찾기', () => {
     expect((await call('/news/list', { method: 'POST' })).status).toBe(405);
   });
 
-  it('새소식 크론은 새소식만 모은다', async () => {
+  it('새소식 크론은 공식 홈페이지에만 묻는다', async () => {
     const db = fakeD1();
     const originalFetch = globalThis.fetch;
     const asked = [];

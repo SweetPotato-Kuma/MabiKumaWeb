@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchGameData } from '@/lib/gameData';
+import { getProxyUrl } from '@/lib/settings';
 
 /**
  * 키트(확률형 상품) 시뮬레이터.
  *
- * 확률표는 scripts/build-kits.mjs 가 공식 확률 정보 화면에서 주기적으로 모아 public/data/kits.json 에 쌓는다.
- * 화면은 그 전체를 받지 않고 목록(data/kits/index.json)과 고른 키트 한 파일(data/kits/<id>.json)만 받는다.
+ * 확률표는 워커가 공식 확률 정보 화면에서 한 시간마다 모아 D1 에 쌓는다(worker/kits.js). 판매가 끝나면 공식 화면에서
+ * 사라지므로 저장소가 아니라 그 기록이 원본이다. 화면은 그 전체를 받지 않고 목록(GET /kits/index)과 고른 키트
+ * 하나(GET /kits/kit?id=)만 받는다.
  * 아이템 확률은 키트 전체에 대한 확률이라 한 번 열 때 그 확률대로 아이템 하나가 나온다. 등급 확률은 그 등급
  * 아이템 확률의 합이라 따로 뽑지 않는다.
  */
@@ -66,8 +67,15 @@ export interface KitIndex {
   kits: KitSummary[];
 }
 
-async function readKitFile<T>(path: string, signal: AbortSignal): Promise<T> {
-  const response = await fetchGameData(`kits/${path}`, { signal });
+async function readKits<T>(path: string, signal: AbortSignal): Promise<T> {
+  if (!getProxyUrl())
+    throw new Error('조회 서버 주소가 설정되지 않아 키트 확률표를 받을 수 없습니다.');
+  const response = await fetch(`${getProxyUrl()}${path}`, {
+    headers: { accept: 'application/json' },
+    signal,
+  });
+  if (response.status === 429)
+    throw new Error('조회가 잠시 몰렸습니다. 1분쯤 뒤에 다시 열어 주세요.');
   if (!response.ok) throw new Error(`키트 확률표를 받지 못했습니다. (HTTP ${response.status})`);
   return (await response.json()) as T;
 }
@@ -75,7 +83,7 @@ async function readKitFile<T>(path: string, signal: AbortSignal): Promise<T> {
 export function useKitIndexQuery() {
   return useQuery({
     queryKey: ['kits', 'index'],
-    queryFn: ({ signal }) => readKitFile<KitIndex>('index.json', signal),
+    queryFn: ({ signal }) => readKits<KitIndex>('/kits/index', signal),
     staleTime: Infinity,
     gcTime: Infinity,
   });
@@ -84,7 +92,7 @@ export function useKitIndexQuery() {
 export function useKitQuery(id: string | null) {
   return useQuery({
     queryKey: ['kits', 'kit', id],
-    queryFn: ({ signal }) => readKitFile<Kit>(`${encodeURIComponent(id ?? '')}.json`, signal),
+    queryFn: ({ signal }) => readKits<Kit>(`/kits/kit?id=${encodeURIComponent(id ?? '')}`, signal),
     enabled: id !== null,
     staleTime: Infinity,
     gcTime: Infinity,

@@ -261,12 +261,12 @@ const listPath = (board, page) =>
   page > 1 ? `${BOARDS[board].list}?page=${page}` : BOARDS[board].list;
 const viewPath = (board, id) => `${BOARDS[board].view}?id=${id}`;
 
-async function getMeta(db, key) {
+export async function getMeta(db, key) {
   const row = await db.prepare('SELECT value FROM news_meta WHERE key = ?').bind(key).first();
   return row ? row.value : null;
 }
 
-function setMeta(db, key, value) {
+export function setMeta(db, key, value) {
   return db
     .prepare(
       'INSERT INTO news_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',

@@ -44,6 +44,9 @@
  * 공식 홈페이지 새소식 기록(GET /news/list, /news/post, /news/events)은 news.js 에 있다. 따로 둔 크론이
  * 10분마다 공지사항, 개발자 노트, 이벤트 목록을 읽어 쌓고, 올린 지 7일 안 된 글은 다시 읽어 고친 판을 남긴다.
  *   NEWS  (D1 바인딩, 새소식 기록에 필수) 시세 기록과 다른 데이터베이스
+ *
+ * 키트 확률표 기록(GET /kits/index, /kits/kit)은 kits.js 에 있다. 같은 크론이 한 시간에 한 번 확률 정보 화면을 읽어
+ * NEWS 에 쌓는다. 판매가 끝나면 공식 화면에서 사라지는 확률표를 남겨 두려는 것이다.
  */
 
 import {
@@ -80,6 +83,17 @@ import {
   newsList,
   newsPost,
 } from './news.js';
+import {
+  KITS_ARCHIVE_PATH,
+  KITS_COLLECT_PATH,
+  KITS_ICONS_PATH,
+  KITS_IMPORT_PATH,
+  KITS_INDEX_PATH,
+  KITS_KIT_PATH,
+  collectKitsIfDue,
+  kitsAdmin,
+  kitsRead,
+} from './kits.js';
 import {
   SNAPSHOT_COLLECT_PATH,
   SNAPSHOT_PATH,
@@ -1546,6 +1560,21 @@ export default {
       return newsEvents(request, env, cors);
     }
 
+    // 키트 확률표. 목록과 키트 하나.
+    if (url.pathname === KITS_INDEX_PATH || url.pathname === KITS_KIT_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('KITS_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return kitsRead(request, url, env, cors);
+    }
+
+    // 키트 기록 전체 읽기, 지난 키트 올리기, 그림 이름 표 바꾸기, 지금 모으기는 운영자만.
+    if ([KITS_ARCHIVE_PATH, KITS_IMPORT_PATH, KITS_ICONS_PATH, KITS_COLLECT_PATH].includes(url.pathname)) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      return kitsAdmin(request, url, env, cors);
+    }
+
     // 새소식 지금 모으기는 운영자만. ?pages= 로 지난 글을 한 번에 더 채운다.
     if (url.pathname === NEWS_COLLECT_PATH) {
       const problem = adminProblem(request, env, cors);
@@ -1731,13 +1760,15 @@ export default {
    * 매물을 모아 둔다. 둘은 서로 기다리지 않는다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
    * 5분 어긋난 크론은 이름으로 묻는 시세를 모은다. 넥슨 요청이 한 실행에 몰리지 않게 나눴다.
    * 뿔피리는 두 크론 모두에서 받는다. 류트는 30분이면 API 의 1,000건이 차므로 5분마다 받아야 빠지지 않는다.
-   * 2분 어긋난 크론은 공식 홈페이지 새소식만 모은다. 요청 사이를 1초씩 띄우므로 1~2분 걸린다.
+   * 2분 어긋난 크론은 공식 홈페이지 새소식을 모으고, 한 시간에 한 번 키트 확률표도 모은다. 요청 사이를 1초씩 띄우므로 1~2분 걸린다.
    */
   async scheduled(controller, env) {
     const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
     if (controller?.cron === NEWS_CRON) {
+      // 키트는 판매 공지를 새소식 기록에서 찾으므로 새소식을 먼저 모은다.
       const [news] = await Promise.allSettled([collectNews(env)]);
-      console.log(JSON.stringify({ news: outcome(news) }));
+      const [kits] = await Promise.allSettled([collectKitsIfDue(env)]);
+      console.log(JSON.stringify({ news: outcome(news), kits: outcome(kits) }));
       return;
     }
     if (controller?.cron === PRICE_CRON) {

@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { createCardMatcher } from './card-match.mjs';
 import { buildKitNameIndex, kitIconIds } from './kit-names.mjs';
 import { parseScrollName, scrollSubtitle } from '../lib/enchant-scrolls.mjs';
+import { readKitArchive } from '../lib/kit-archive.mjs';
 import {
   defaultBundleRoot,
   isHiddenItem,
@@ -39,8 +40,8 @@ import {
  *   --no-icons     그림은 건드리지 않고 글자만 올린다
  *   --recipe-icons 제작법(public/data/recipes.json)에 나오는 아이템 그림만 올린다. 카드는 건드리지 않는다.
  *                  올린 뒤 `node scripts/build-recipes.mjs --icons-only` 로 제작법 데이터에 그림 이름을 적는다
- *   --kit-icons    키트 기록(public/data/kits.json)의 키트 상자와 보상 그림만 올린다. 카드는 건드리지 않는다.
- *                  올린 뒤 `node scripts/build-kits.mjs --icons-only` 로 키트 기록에 그림 이름을 적는다
+ *   --kit-icons    키트 기록(워커 D1, worker/kits.js)의 키트 상자와 보상 그림만 올린다. 카드는 건드리지 않는다.
+ *                  올린 뒤 `node scripts/build-kits.mjs --icons-only` 로 그림 이름 표를 워커에 올린다
  *
  * 올리려면 저장소 뿌리의 `.env` 에 두 줄이 있어야 한다.
  *
@@ -343,8 +344,8 @@ async function uploadRecipeIcons() {
 
 /** 키트 상자와 보상 그림만 올린다(--kit-icons). 이름을 번호로 잇는 규칙은 kit-names.mjs 에 있다. */
 async function uploadKitIcons() {
-  const archive = await readJson(resolve(process.cwd(), 'public/data/kits.json'), null);
-  if (!archive) throw new Error('public/data/kits.json 이 없습니다. 먼저 키트를 모으세요.');
+  // 키트 기록은 워커 D1 이 원본이다(worker/kits.js).
+  const archive = await readKitArchive();
   const bundle = await loadBundle();
   const index = buildKitNameIndex(loadBundleItems(bundle.run), (id) =>
     Boolean(bundle.images[String(id)]),
