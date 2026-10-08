@@ -295,10 +295,11 @@ export function RootLayout() {
                 글자 속만 밝게 칠한 판을 쓴다. 외곽선은 짙게 남겨야 글자끼리 붙어 보이지 않는다.
                 라이트 판도 같은 이유로 '마비' 속을 외곽선보다 한참 밝은 캐러멜색으로 둔다(대비 약 3.9:1).
                 곰은 다크 모드에서 크림색 테두리를 두른 판을 쓴다.
+                글자가 그림이라 alt 에 이름을 적는다. 구글은 첫 화면의 글자로도 사이트 이름을 가늠한다.
               */}
               <img
                 src={isDark ? wordmarkDark : wordmark}
-                alt=""
+                alt="마비쿠마"
                 width={102}
                 height={28}
                 style={{ display: 'block' }}

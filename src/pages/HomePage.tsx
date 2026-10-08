@@ -84,7 +84,11 @@ export function HomePage() {
   return (
     <Flex vertical gap={24}>
       <Flex vertical gap={4}>
-        <Title level={3} style={{ margin: 0 }}>
+        {/*
+          사이트 이름은 이 쪽의 h1 이다. 구글은 구조화 데이터와 함께 첫 화면의 제목 태그로도 이름을 가늠한다.
+          크기는 다른 화면의 제목(h3)과 맞춘다.
+        */}
+        <Title level={1} style={{ margin: 0, fontSize: token.fontSizeHeading3, lineHeight: token.lineHeightHeading3 }}>
           마비쿠마
         </Title>
         <Text type="secondary">마비노기 경매장 시세와 아이템 정보, 시뮬레이터와 계산기</Text>
