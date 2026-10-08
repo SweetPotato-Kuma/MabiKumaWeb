@@ -512,3 +512,50 @@ describe('새소식 찾기', () => {
     expect(asked.every((url) => url.startsWith('https://mabinogi.nexon.com/'))).toBe(true);
   }, 30_000);
 });
+
+describe('키트 공지 표시', () => {
+  it('샵과 이벤트 글이 새로 오거나 고쳐지면 세고, 공지와 지난 글 채우기는 세지 않는다', async () => {
+    const db = fakeD1();
+    const pages = basicSite();
+    // 둘째 쪽(지난 글 채우기)에 옛 샵 글이 있어도 키트 기록을 다시 읽을 까닭이 아니다.
+    pages['/page/news/notice_list.asp?page=2'] = listPage(
+      [noticeRow(4893249, '마비노기 복구 서비스 개편 안내')],
+      [noticeRow(4880002, '옛 샵 상자', { type: '샵', date: '2012.05.24' })],
+    );
+    pages['/page/news/notice_view.asp?id=4880002'] = viewPage(
+      '[샵] 옛 샵 상자',
+      '2012.05.24 14:10',
+      '<p>옛 상자</p>',
+    );
+
+    // basicSite 의 새 글은 공지 둘과 이벤트(가갸날 잔치) 하나다.
+    const first = await collectNews({ NEWS: db }, NOW, { get: fakeSite(pages).get });
+    expect(first.added).toBe(5);
+    expect(first.kitNotices).toBe(1);
+    expect((await getPost(db, 4880002))?.post.category).toBe('샵');
+
+    const quiet = await collectNews({ NEWS: db }, NOW + 600_000, { get: fakeSite(pages).get });
+    expect(quiet.kitNotices).toBe(0);
+
+    // 공지 글을 고치는 것은 세지 않고, 이벤트 글을 고치는 것은 센다.
+    pages['/page/news/notice_view.asp?id=4893864'] = viewPage(
+      '[공지] 10/8(목) 이터니티 새로운 소식',
+      '2026.10.08 11:37',
+      '<p>고쳤다</p>',
+    );
+    const noticeEdit = await collectNews({ NEWS: db }, NOW + 1_200_000, {
+      get: fakeSite(pages).get,
+    });
+    expect(noticeEdit).toMatchObject({ edited: 1, kitNotices: 0 });
+
+    pages['/page/news/notice_view.asp?id=4893871'] = viewPage(
+      '가갸날 잔치',
+      '',
+      '<img src="bg2.jpg">',
+    );
+    const eventEdit = await collectNews({ NEWS: db }, NOW + 1_800_000, {
+      get: fakeSite(pages).get,
+    });
+    expect(eventEdit).toMatchObject({ edited: 1, kitNotices: 1 });
+  });
+});

@@ -1,8 +1,9 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker from './worker.js';
+import { NEWS_CRON } from './news.js';
 import {
   COLLECT_EVERY_SECONDS,
   collectKits,
@@ -19,7 +20,7 @@ import {
 /** D1 흉내. news.test.js 와 같다. 표는 배포에 쓰는 마이그레이션 파일로 만든다. */
 function fakeD1() {
   const sqlite = new DatabaseSync(':memory:');
-  for (const file of ['0001_news.sql', '0002_kits.sql'])
+  for (const file of ['0001_news.sql', '0002_kits.sql', '0003_previews.sql'])
     sqlite.exec(readFileSync(new URL(`./migrations-news/${file}`, import.meta.url), 'utf8'));
   return {
     sqlite,
@@ -78,13 +79,13 @@ function probSite(entries) {
 }
 
 /** 받아 둔 판매 공지 하나를 새소식 기록에 넣는다. */
-function addNotice(db, id, title, body) {
+function addNotice(db, id, title, body, { postedAt = NOW_SEC - 86400, category = '샵' } = {}) {
   db.sqlite
     .prepare(
       `INSERT INTO news_posts (id, board, category, title, posted_at, first_seen, checked_at, revisions, body_hash)
-       VALUES (?, 'notice', '샵', ?, ?, ?, ?, 1, 'h')`,
+       VALUES (?, 'notice', ?, ?, ?, ?, ?, 1, 'h')`,
     )
-    .run(id, title, NOW_SEC - 86400, NOW_SEC, NOW_SEC);
+    .run(id, category, title, postedAt, NOW_SEC, NOW_SEC);
   db.sqlite
     .prepare(
       `INSERT INTO news_revisions (post_id, rev, title, body, hash, seen_at) VALUES (?, 1, ?, ?, 'h', ?)`,
@@ -302,4 +303,172 @@ describe('키트 경로', () => {
     });
     expect(await icons.json()).toEqual({ icons: 1, skipped: 0 });
   });
+});
+
+/** 공지를 고친 것처럼 마지막 판의 본문을 바꾼다. */
+function editNotice(db, id, body) {
+  db.sqlite.prepare('UPDATE news_revisions SET body = ? WHERE post_id = ?').run(body, id);
+}
+
+const saleNotice = (name, price, from, to) =>
+  `<img alt="${name} / 판매 가격 : ${price} 캐시 / 판매 기간 : ${from} 점검 후 ~ ${to} 23:59:00">`;
+
+describe('키트 공지와 함께 갱신', () => {
+  it('판매 공지를 고쳐 기간을 늘리거나 가격을 바로잡으면 다음에 모을 때 따라간다', async () => {
+    const db = fakeD1();
+    addNotice(db, 4893863, '나이트메어 판타지아 박스', SALE_NOTICE);
+    const site = probSite([[495, '나이트메어 판타지아 박스', FANTASIA]]);
+    await collectKits({ NEWS: db }, NOW, { get: site.get });
+    expect(await kitById(db, 'official-495')).toMatchObject({ price: 1200, end: '2026-10-14' });
+
+    editNotice(
+      db,
+      4893863,
+      saleNotice('나이트메어 판타지아 박스', '1,500', '2026. 10. 1(목)', '2026. 10. 21(수)'),
+    );
+    const summary = await collectKits({ NEWS: db }, NOW + 600_000, { get: site.get });
+    expect(summary.filled).toEqual(['나이트메어 판타지아 박스']);
+    expect(await kitById(db, 'official-495')).toMatchObject({
+      price: 1500,
+      start: '2026-10-01',
+      end: '2026-10-21',
+    });
+  });
+
+  it('공지가 값을 적지 않았거나 공지를 못 찾으면 기록해 둔 값을 지우지 않는다', async () => {
+    const db = fakeD1();
+    addNotice(db, 4893863, '나이트메어 판타지아 박스', SALE_NOTICE);
+    const site = probSite([[495, '나이트메어 판타지아 박스', FANTASIA]]);
+    await collectKits({ NEWS: db }, NOW, { get: site.get });
+    editNotice(db, 4893863, '<p>점검 안내로 바꿨다</p>');
+    await collectKits({ NEWS: db }, NOW + 600_000, { get: site.get });
+    expect(await kitById(db, 'official-495')).toMatchObject({ price: 1200, end: '2026-10-14' });
+  });
+
+  it('키트 공지가 왔다는 표시가 있으면 한 시간을 기다리지 않고 바로 모은다', async () => {
+    const db = fakeD1();
+    const site = probSite([[495, '박스', FANTASIA]]);
+    await collectKitsIfDue({ NEWS: db }, NOW, { get: site.get });
+    // 한 시간이 안 지났고 기다리는 공지도 없다.
+    expect(await collectKitsIfDue({ NEWS: db }, NOW + 60_000, { get: site.get })).toEqual({
+      skipped: 'not due',
+    });
+    const forced = await collectKitsIfDue({ NEWS: db }, NOW + 60_000, {
+      get: site.get,
+      force: true,
+    });
+    expect(forced).toMatchObject({ reason: 'notice', onSale: 1 });
+    const hourly = await collectKitsIfDue(
+      { NEWS: db },
+      NOW + 60_000 + COLLECT_EVERY_SECONDS * 1000,
+      {
+        get: site.get,
+      },
+    );
+    expect(hourly.reason).toBe('hourly');
+  });
+
+  it('판매 공지는 왔는데 확률 화면에 키트가 아직 없으면 크론마다 다시 보고, 키트가 오르면 그만 본다', async () => {
+    const db = fakeD1();
+    const name = '나이트메어 판타지아 박스';
+    addNotice(db, 4893863, name, SALE_NOTICE, { postedAt: NOW_SEC - 3600 });
+    const empty = probSite([]);
+    await collectKitsIfDue({ NEWS: db }, NOW, { get: empty.get });
+    // 한 시간이 안 지났어도 판매 공지가 기다리고 있어 다시 본다.
+    const waiting = await collectKitsIfDue({ NEWS: db }, NOW + 600_000, { get: empty.get });
+    expect(waiting).toMatchObject({ reason: 'waiting', onSale: 0 });
+
+    const listed = probSite([[495, name, FANTASIA]]);
+    const arrived = await collectKitsIfDue({ NEWS: db }, NOW + 1_200_000, { get: listed.get });
+    expect(arrived).toMatchObject({ reason: 'waiting', added: [name] });
+    expect(await collectKitsIfDue({ NEWS: db }, NOW + 1_800_000, { get: listed.get })).toEqual({
+      skipped: 'not due',
+    });
+  });
+
+  it('오래된 공지, 판매 정보가 없는 공지, 다른 분류의 공지는 기다리지 않는다', async () => {
+    const db = fakeD1();
+    await collectKitsIfDue({ NEWS: db }, NOW, { get: probSite([]).get });
+    addNotice(db, 1, '사흘 전 박스', SALE_NOTICE, { postedAt: NOW_SEC - 3 * 86400 });
+    addNotice(db, 2, '가격이 없는 샵 공지', '<p>점검 안내</p>', { postedAt: NOW_SEC - 3600 });
+    addNotice(db, 3, '공지 분류의 박스', SALE_NOTICE, {
+      postedAt: NOW_SEC - 3600,
+      category: '공지',
+    });
+    expect(await collectKitsIfDue({ NEWS: db }, NOW + 600_000, { get: probSite([]).get })).toEqual({
+      skipped: 'not due',
+    });
+  });
+});
+
+describe('새소식 크론과 키트', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** 공식 홈페이지 흉내. 경로마다 정해 둔 화면을 돌려주고 없는 경로는 500 이다. */
+  const stubSite = (pages) => {
+    const asked = [];
+    vi.stubGlobal('fetch', async (input) => {
+      const path = String(input).replace('https://mabinogi.nexon.com', '');
+      asked.push(path);
+      if (!(path in pages)) return new Response('', { status: 500 });
+      return new Response(pages[path], { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    });
+    return asked;
+  };
+
+  const listRow = (id, category, title) =>
+    `<li><div class="type"><p>${category}</p></div><dl><dt><a href="notice_view.asp?id=${id}">${title}</a></dt><dd>마비노기</dd></dl><p class="info_r"><span class="date">2026.10.08</span></p></li>`;
+  const listPage = (rows) => `<div class="board_common01"><ul>${rows.join('')}</ul></div>`;
+  const viewPage = (title, body) =>
+    `<div class="board_view01"><dl><dt>${title}</dt><dd class="view_info"><p class="fr"><span class="date">2026.10.08 11:00</span></p></dd><dd class="view_cont_wrap"><div class="view_cont">${body}</div></dd><dd class="link"></dd></dl></div><!-- //view -->`;
+  const EMPTY = listPage([]);
+  const NO_EVENTS = '<div class="board_event"><ul></ul></div>';
+
+  it('키트 공지(샵)를 받은 크론에서 그 키트의 확률표까지 받아 시뮬레이터 목록에 올린다', async () => {
+    const db = fakeD1();
+    const name = '나이트메어 판타지아 박스';
+    const asked = stubSite({
+      '/page/news/notice_list.asp': listPage([listRow(4893863, '샵', name)]),
+      '/page/news/update_list.asp': EMPTY,
+      '/page/news/event_list.asp': NO_EVENTS,
+      '/page/news/notice_view.asp?id=4893863': viewPage(name, SALE_NOTICE),
+      '/page/news/notice_list.asp?page=2': EMPTY,
+      '/page/news/update_list.asp?page=2': EMPTY,
+      '/ItemShop/prob.asp': `<ul>${kitEntry(495, name, FANTASIA)}</ul>`,
+      '/ItemShop/prob.asp?seq=495': kitEntry(495, name, FANTASIA),
+    });
+    // 지금 시각에서 한 시간 안에 이미 모은 기록이 있어도 키트 공지가 왔으니 확률 화면을 읽는다.
+    db.sqlite
+      .prepare("INSERT INTO news_meta (key, value) VALUES ('kits_at', ?)")
+      .run(String(Math.floor(Date.now() / 1000)));
+    await worker.scheduled({ cron: NEWS_CRON }, { NEWS: db });
+
+    expect(asked).toContain('/ItemShop/prob.asp?seq=495');
+    // 가격과 기간은 방금 받은 공지에서 왔다.
+    expect(await kitIndex(db)).toMatchObject({
+      current: ['official-495'],
+      kits: [
+        { id: 'official-495', name, price: 1200, start: '2026-10-01', end: '2026-10-14', count: 2 },
+      ],
+    });
+  }, 60_000);
+
+  it('키트와 상관없는 공지만 받은 크론은 한 시간 안에 확률 화면을 다시 읽지 않는다', async () => {
+    const db = fakeD1();
+    db.sqlite
+      .prepare("INSERT INTO news_meta (key, value) VALUES ('kits_at', ?)")
+      .run(String(Math.floor(Date.now() / 1000)));
+    const asked = stubSite({
+      '/page/news/notice_list.asp': listPage([listRow(4893864, '공지', '정기 점검 안내')]),
+      '/page/news/update_list.asp': EMPTY,
+      '/page/news/event_list.asp': NO_EVENTS,
+      '/page/news/notice_view.asp?id=4893864': viewPage('정기 점검 안내', '<p>점검</p>'),
+      '/page/news/notice_list.asp?page=2': EMPTY,
+      '/page/news/update_list.asp?page=2': EMPTY,
+    });
+    await worker.scheduled({ cron: NEWS_CRON }, { NEWS: db });
+    expect(asked.some((path) => path.includes('/ItemShop/'))).toBe(false);
+  }, 60_000);
 });

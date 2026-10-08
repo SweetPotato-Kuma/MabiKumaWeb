@@ -4,9 +4,11 @@
  * 공식 확률 정보 화면은 지금 파는 키트만 보여 주고, 판매가 끝나면 목록에서 지운다. 지난 확률표는 다시 볼 수
  * 없으므로 보이는 동안 받아 D1(NEWS)의 kits 표에 쌓는다. 한 번 담은 키트는 지우지 않는다.
  *
- *   - 새소식 크론이 COLLECT_EVERY_SECONDS 마다 한 번 부른다. 확률 정보 목록과 판매 중인 키트의 확률표를 읽는다.
+ *   - 새소식 크론이 공지를 받은 뒤에 부른다(collectKitsIfDue). 키트 공지가 새로 오거나 고쳐졌을 때, 판매 공지는 있는데 그
+ *     키트가 아직 기록에 없을 때, 그리고 COLLECT_EVERY_SECONDS 마다 한 번 확률 정보 목록과 판매 중인 키트의 확률표를 읽는다.
  *   - 판매 가격과 기간은 같은 이름의 공지 본문에서 읽는다. 공지는 새소식 기록(news.js)이 이미 받아 두었으므로
- *     공식 홈페이지에 다시 묻지 않는다. 공지를 못 찾으면 비워 두고 다음에 다시 찾는다.
+ *     공식 홈페이지에 다시 묻지 않는다. 모을 때마다 공지를 다시 읽어 공지가 고쳐지면 따라간다. 공지를 못 찾으면 비워 두고
+ *     다음에 다시 찾는다.
  *   - 이 기능 전에 모아 둔 지난 키트는 운영자가 한 번 올린다(POST /kits/import). 이미 있는 키트는 건드리지 않는다.
  *   - 그림 이름 표는 게임 클라이언트가 있어야 만들 수 있어 운영자 PC 가 통째로 올린다(POST /kits/icons).
  *
@@ -15,7 +17,7 @@
  */
 
 import { rateLimited, withEdgeCache } from './market.js';
-import { getMeta, nexonPageClient, setMeta } from './news.js';
+import { KIT_CATEGORIES, getMeta, nexonPageClient, setMeta } from './news.js';
 
 export const KITS_INDEX_PATH = '/kits/index';
 export const KITS_KIT_PATH = '/kits/kit';
@@ -26,7 +28,10 @@ export const KITS_COLLECT_PATH = '/kits/collect';
 
 const PROB_PATH = '/ItemShop/prob.asp';
 
-/** 키트는 목요일 점검 뒤에 바뀌고 2주쯤 판다. 한 시간에 한 번이면 놓치지 않는다. */
+/**
+ * 키트는 목요일 점검 뒤에 바뀌고 2주쯤 판다. 키트 공지를 받으면 그때 바로 모으므로(collectKitsIfDue) 이 간격은 공지 없이 바뀐
+ * 확률표를 놓치지 않으려는 보루다.
+ */
 export const COLLECT_EVERY_SECONDS = 3600;
 
 /** 판매 공지를 찾을 기간. 키트 공지는 판매 시작 무렵에 올라온다. */
@@ -154,22 +159,71 @@ const kstDate = (now) => new Date(now + 9 * 3600_000).toISOString().slice(0, 10)
 
 const KIT_COLUMNS = 'id, name, start, "end", price, first_seen, grades, items, item_count';
 
-/** 같은 이름의 판매 공지를 받아 둔 새소식에서 찾아 가격과 기간을 읽는다. 못 찾으면 null. */
+/** 받아 둔 공지 한 편의 마지막 판 본문. 없으면 null. */
+async function noticeBody(db, id) {
+  const row = await db
+    .prepare(
+      `SELECT r.body FROM news_posts p JOIN news_revisions r ON r.post_id = p.id AND r.rev = p.revisions
+       WHERE p.id = ?`,
+    )
+    .bind(id)
+    .first();
+  return row ? row.body : null;
+}
+
+/**
+ * 같은 이름의 판매 공지를 받아 둔 새소식에서 찾아 가격과 기간을 읽는다. 못 찾으면 null.
+ * 본문(20KB 안팎)을 모두 읽지 않고 제목만 훑어 한 편을 고른 다음 그 본문만 읽는다. 키트마다 크론마다 부르기 때문이다.
+ */
 async function noticeInfo(db, name, nowSec) {
-  const rows =
+  const titles =
     (
       await db
         .prepare(
-          `SELECT p.id, p.title, r.body FROM news_posts p
-           JOIN news_revisions r ON r.post_id = p.id AND r.rev = p.revisions
-           WHERE p.board = 'notice' AND p.posted_at >= ? ORDER BY p.posted_at DESC`,
+          `SELECT id, title FROM news_posts
+           WHERE board = 'notice' AND deleted_at IS NULL AND posted_at >= ? ORDER BY posted_at DESC`,
         )
         .bind(nowSec - NOTICE_LOOKBACK_DAYS * 86400)
         .all()
     ).results ?? [];
   const wanted = squash(name);
-  const notice = rows.find((row) => squash(row.title) === wanted);
-  return notice ? parseNotice(notice.body) : null;
+  const notice = titles.find((row) => squash(row.title) === wanted);
+  const body = notice ? await noticeBody(db, notice.id) : null;
+  return body === null ? null : parseNotice(body);
+}
+
+/** 이 시간 안에 올라온 판매 공지의 키트는 확률 화면에 오를 때까지 기다려 본다. */
+const WAIT_FOR_SALE_DAYS = 2;
+
+/**
+ * 판매 가격이나 기간이 적힌 최근 공지인데 같은 이름의 키트가 아직 기록에 없는가. 공지는 판매 시작보다 먼저 올라오기도
+ * 해서 그때는 확률 화면에 그 키트가 없다. 있다면 한 시간을 기다리지 않고 크론마다 확률 화면을 다시 읽는다.
+ * WAIT_FOR_SALE_DAYS 가 지나도 안 나타나는 공지(이름이 다른 공지 등)는 더 기다리지 않는다.
+ */
+export async function hasUnmatchedSaleNotice(db, nowSec) {
+  const recent =
+    (
+      await db
+        .prepare(
+          `SELECT id, title FROM news_posts
+           WHERE board = 'notice' AND deleted_at IS NULL AND posted_at >= ?
+             AND category IN (${KIT_CATEGORIES.map(() => '?').join(',')})`,
+        )
+        .bind(nowSec - WAIT_FOR_SALE_DAYS * 86400, ...KIT_CATEGORIES)
+        .all()
+    ).results ?? [];
+  if (recent.length === 0) return false;
+  const known = new Set(
+    ((await db.prepare('SELECT name FROM kits').all()).results ?? []).map((row) =>
+      squash(row.name),
+    ),
+  );
+  for (const notice of recent) {
+    if (known.has(squash(notice.title))) continue;
+    const body = await noticeBody(db, notice.id);
+    if (body !== null && parseNotice(body).price !== null) return true;
+  }
+  return false;
 }
 
 /**
@@ -198,23 +252,20 @@ export async function collectKits(env, now = Date.now(), options = {}) {
         .first();
       const grades = JSON.stringify(table.grades);
       const items = JSON.stringify(table.items);
-      let info = {
+      // 가격과 기간은 판매 공지가 정한다. 공지를 고쳐 기간을 늘리거나 가격을 바로잡으면 그대로 따라간다.
+      // 공지가 어느 값을 적지 않았거나 공지를 못 찾으면 기록해 둔 값을 그대로 둔다.
+      const found = await noticeInfo(db, name, nowSec);
+      const before = {
         price: stored?.price ?? null,
         start: stored?.start ?? null,
         end: stored?.end ?? null,
       };
-      if (info.price === null || info.start === null) {
-        const found = await noticeInfo(db, name, nowSec);
-        if (found) {
-          const before = JSON.stringify(info);
-          info = {
-            price: info.price ?? found.price,
-            start: info.start ?? found.start,
-            end: info.end ?? found.end,
-          };
-          if (stored && JSON.stringify(info) !== before) summary.filled.push(name);
-        }
-      }
+      const info = {
+        price: found?.price ?? before.price,
+        start: found?.start ?? before.start,
+        end: found?.end ?? before.end,
+      };
+      if (stored && JSON.stringify(info) !== JSON.stringify(before)) summary.filled.push(name);
       if (!stored) {
         statements.push(
           db
@@ -285,12 +336,23 @@ export async function collectKits(env, now = Date.now(), options = {}) {
   return summary;
 }
 
-/** 지난번에 모은 지 COLLECT_EVERY_SECONDS 가 지났으면 모은다. 새소식 크론이 부른다. */
+/**
+ * 모을 때가 되었으면 모은다. 새소식 크론이 공지를 받은 뒤에 부른다. 모으는 때는 셋이다.
+ *   - force: 이번 크론에서 키트 공지(KIT_CATEGORIES)가 새로 왔거나 고쳐졌다. 확률표와 가격, 기간을 바로 받는다.
+ *   - 판매 공지는 있는데 그 키트가 아직 기록에 없다(hasUnmatchedSaleNotice). 확률 화면에 오를 때까지 크론마다 본다.
+ *   - 지난번에 모은 지 COLLECT_EVERY_SECONDS 가 지났다. 공지 없이 바뀐 확률표를 놓치지 않으려는 마지막 보루다.
+ * 모았으면 이유(reason)를 결과에 적는다.
+ */
 export async function collectKitsIfDue(env, now = Date.now(), options = {}) {
   if (!env.NEWS) return { skipped: 'NEWS 바인딩이 없습니다.' };
+  const nowSec = Math.floor(now / 1000);
   const last = Number(await getMeta(env.NEWS, 'kits_at')) || 0;
-  if (Math.floor(now / 1000) - last < COLLECT_EVERY_SECONDS) return { skipped: 'not due' };
-  return collectKits(env, now, options);
+  let reason = null;
+  if (options.force) reason = 'notice';
+  else if (nowSec - last >= COLLECT_EVERY_SECONDS) reason = 'hourly';
+  else if (await hasUnmatchedSaleNotice(env.NEWS, nowSec)) reason = 'waiting';
+  if (!reason) return { skipped: 'not due' };
+  return { reason, ...(await collectKits(env, now, options)) };
 }
 
 async function iconMap(db) {

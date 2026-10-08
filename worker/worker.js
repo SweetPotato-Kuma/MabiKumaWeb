@@ -1794,7 +1794,9 @@ export default {
     if (controller?.cron === NEWS_CRON) {
       // 키트는 판매 공지를 새소식 기록에서 찾으므로 새소식을 먼저 모은다.
       const [news] = await Promise.allSettled([collectNews(env)]);
-      const [kits] = await Promise.allSettled([collectKitsIfDue(env)]);
+      // 키트 공지(샵, 이벤트)가 새로 왔거나 고쳐졌으면 한 시간을 기다리지 않고 확률 화면을 바로 읽는다.
+      const fresh = news.status === 'fulfilled' && (news.value?.kitNotices ?? 0) > 0;
+      const [kits] = await Promise.allSettled([collectKitsIfDue(env, Date.now(), { force: fresh })]);
       // 미리보기 그림의 사본을 조금씩 만든다. 새소식이 먼저 색인한 것부터 따라간다.
       const [previews] = await Promise.allSettled([mirrorPreviews(env)]);
       console.log(JSON.stringify({ news: outcome(news), kits: outcome(kits), previews: outcome(previews) }));

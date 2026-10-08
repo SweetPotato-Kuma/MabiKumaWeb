@@ -49,6 +49,12 @@ const EVENT_LIST_PATH = '/page/news/event_list.asp';
 
 /** 화면의 분류. 공지사항 목록의 분류 칸과 개발자 노트. */
 export const CATEGORIES = ['공지', '점검', '이벤트', '샵', '개발자 노트'];
+
+/**
+ * 키트 판매 공지가 올라오는 분류. 이 분류의 글이 새로 오거나 고쳐지면 키트 기록(kits.js)이 확률 화면을 바로 다시 읽는다.
+ * 한 시간을 기다리면 새 키트가 그만큼 늦게 시뮬레이터에 오른다.
+ */
+export const KIT_CATEGORIES = ['샵', '이벤트'];
 const UPDATE_CATEGORY = '개발자 노트';
 
 /** 올린 지 이만큼 안 된 글은 계속 다시 읽는다. */
@@ -374,13 +380,15 @@ async function recheckPost(db, get, post, now) {
   return 'edited';
 }
 
-const RECHECK_COLUMNS = 'id, board, revisions, body_hash, posted_at';
+const RECHECK_COLUMNS = 'id, board, category, revisions, body_hash, posted_at';
 
 /**
  * 목록에서 읽은 줄을 넣는다. 처음 보는 글은 본문을 받고, 목록의 제목이나 분류가 바뀐 글은 그 자리에서 다시 읽는다.
  * 다시 읽은 글은 checked 에 넣어 같은 실행에서 두 번 읽지 않게 한다.
+ * live 면 키트 공지(KIT_CATEGORIES)가 새로 오거나 고쳐진 것을 summary.kitNotices 로 센다. 지난 글 채우기(live 아님)는 세지 않는다.
+ * 지난 키트 공지를 채울 때마다 키트 기록을 다시 읽을 까닭이 없다.
  */
-async function ingestRows(db, get, board, rows, now, summary, checked) {
+async function ingestRows(db, get, board, rows, now, summary, checked, live = true) {
   if (rows.length === 0) return;
   const ids = rows.map((row) => row.id);
   const known = new Map(
@@ -388,7 +396,7 @@ async function ingestRows(db, get, board, rows, now, summary, checked) {
       (
         await db
           .prepare(
-            `SELECT ${RECHECK_COLUMNS}, title, category FROM news_posts WHERE id IN (${ids.map(() => '?').join(',')})`,
+            `SELECT ${RECHECK_COLUMNS}, title FROM news_posts WHERE id IN (${ids.map(() => '?').join(',')})`,
           )
           .bind(...ids)
           .all()
@@ -398,7 +406,10 @@ async function ingestRows(db, get, board, rows, now, summary, checked) {
   for (const row of rows) {
     const stored = known.get(row.id);
     if (!stored) {
-      if (await addPost(db, get, board, row, now)) summary.added += 1;
+      if (await addPost(db, get, board, row, now)) {
+        summary.added += 1;
+        if (live && KIT_CATEGORIES.includes(row.category)) summary.kitNotices += 1;
+      }
       checked.add(row.id);
       continue;
     }
@@ -410,7 +421,10 @@ async function ingestRows(db, get, board, rows, now, summary, checked) {
     if (checked.has(row.id)) continue;
     checked.add(row.id);
     const outcome = await recheckPost(db, get, stored, now);
-    if (outcome === 'edited') summary.edited += 1;
+    if (outcome === 'edited') {
+      summary.edited += 1;
+      if (live && KIT_CATEGORIES.includes(row.category)) summary.kitNotices += 1;
+    }
   }
 }
 
@@ -472,6 +486,7 @@ export async function collectNews(env, now = Date.now(), options = {}) {
   const summary = {
     added: 0,
     edited: 0,
+    kitNotices: 0,
     rechecked: 0,
     deleted: 0,
     events: null,
@@ -519,7 +534,10 @@ export async function collectNews(env, now = Date.now(), options = {}) {
       checked.add(post.id);
       const outcome = await recheckPost(db, get, post, nowSec);
       summary.rechecked += 1;
-      if (outcome === 'edited') summary.edited += 1;
+      if (outcome === 'edited') {
+        summary.edited += 1;
+        if (KIT_CATEGORIES.includes(post.category)) summary.kitNotices += 1;
+      }
       if (outcome === 'deleted') summary.deleted += 1;
     }
   } catch (error) {
@@ -545,7 +563,7 @@ export async function collectNews(env, now = Date.now(), options = {}) {
           summary.backfill[board] = 'done';
           break;
         }
-        await ingestRows(db, get, board, own, nowSec, summary, checked);
+        await ingestRows(db, get, board, own, nowSec, summary, checked, false);
         await setMeta(db, `backfill:${board}`, page + 1).run();
         summary.backfill[board] = page;
       }
