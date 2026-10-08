@@ -7,8 +7,8 @@ import { itemSlug } from './itemSlug.mjs';
  * 아이템 이름 사전.
  *
  * 넥슨 API 에는 아이템 목록 엔드포인트가 없어서, scripts/harvest-auction.mjs 가 경매장을
- * 훑어 모은 이름을 public/data/items 아래 카테고리별 파일로 떨어뜨려 둔다. 자동완성은 그 파일을
- * 읽는다. 서버에 묻는 게 아니라 정적 파일이라 한 번 받으면 다시 받지 않는다.
+ * 훑어 모은 이름을 캐시에 모아 Cloudflare에 게시한다. 자동완성은 공개 목록의 같은 판에 속한
+ * 카테고리별 파일을 읽는다. 조회 실패는 오류 화면에서 재시도하며 고정 사전으로 대체하지 않는다.
  *
  * 사전은 "경매장에 올라온 적이 있는" 이름이지 게임의 전체 아이템 목록이 아니다.
  * 그래서 자동완성에 없는 이름도 검색은 되어야 하고, 입력을 막지 않는다.
@@ -36,14 +36,12 @@ export function normalizeForSearch(value: string): string {
 
 const FOREVER = Infinity;
 
-/** 카테고리별 사전 파일 목록. 사전이 아직 수집되지 않았으면 빈 목록으로 둔다. */
+/** 공개된 카테고리별 사전 파일 목록. */
 export function useItemIndexQuery() {
   return useQuery({
     queryKey: ['itemDictionary', 'index'],
     queryFn: async ({ signal }): Promise<ItemIndex | null> => {
       const response = await fetchGameData('items/index.json', { signal });
-      // 사전을 아직 한 번도 수집하지 않은 빌드에서는 없는 게 정상이다. 화면을 깨지 않는다.
-      if (!response.ok) return null;
       return (await response.json()) as ItemIndex;
     },
     staleTime: FOREVER,

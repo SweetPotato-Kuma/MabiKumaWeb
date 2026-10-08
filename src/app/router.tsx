@@ -5,6 +5,7 @@ import { ITEM_PATH_PREFIX } from '@/features/auction/dictionary';
 import { CALCULATORS, calculatorPath } from '@/features/calculators/registry';
 import { RootLayout } from '@/components/RootLayout';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
+import { GameDataErrorPage } from '@/pages/GameDataErrorPage';
 import { AuctionPage } from '@/pages/AuctionPage';
 import { HomePage } from '@/pages/HomePage';
 import { ItemsPage } from '@/pages/ItemsPage';
@@ -25,16 +26,33 @@ const HornPage = lazyPage(() => import('@/pages/HornPage'), 'HornPage');
 const NewsPage = lazyPage(() => import('@/pages/NewsPage'), 'NewsPage');
 const DungeonCoinsPage = lazyPage(() => import('@/pages/DungeonCoinsPage'), 'DungeonCoinsPage');
 const RelicsPage = lazyPage(() => import('@/pages/RelicsPage'), 'RelicsPage');
-const RelicSimulatorPage = lazyPage(() => import('@/pages/RelicSimulatorPage'), 'RelicSimulatorPage');
-const ReforgeSimulatorPage = lazyPage(() => import('@/pages/ReforgeSimulatorPage'), 'ReforgeSimulatorPage');
-const HolyWaterSimulatorPage = lazyPage(() => import('@/pages/HolyWaterSimulatorPage'), 'HolyWaterSimulatorPage');
-const OghamSimulatorPage = lazyPage(() => import('@/pages/OghamSimulatorPage'), 'OghamSimulatorPage');
-const EchostoneSimulatorPage = lazyPage(() => import('@/pages/EchostoneSimulatorPage'), 'EchostoneSimulatorPage');
+const RelicSimulatorPage = lazyPage(
+  () => import('@/pages/RelicSimulatorPage'),
+  'RelicSimulatorPage',
+);
+const ReforgeSimulatorPage = lazyPage(
+  () => import('@/pages/ReforgeSimulatorPage'),
+  'ReforgeSimulatorPage',
+);
+const HolyWaterSimulatorPage = lazyPage(
+  () => import('@/pages/HolyWaterSimulatorPage'),
+  'HolyWaterSimulatorPage',
+);
+const OghamSimulatorPage = lazyPage(
+  () => import('@/pages/OghamSimulatorPage'),
+  'OghamSimulatorPage',
+);
+const EchostoneSimulatorPage = lazyPage(
+  () => import('@/pages/EchostoneSimulatorPage'),
+  'EchostoneSimulatorPage',
+);
 const KitSimulatorPage = lazyPage(() => import('@/pages/KitSimulatorPage'), 'KitSimulatorPage');
 const CoinSimulatorPage = lazyPage(() => import('@/pages/CoinSimulatorPage'), 'CoinSimulatorPage');
 const CalculatorListPage = lazyPage(() => import('@/pages/CalculatorPages'), 'CalculatorListPage');
 // 계산기 화면은 id 를 받으므로 lazyPage(속성 없는 화면)를 쓰지 않는다.
-const CalculatorPage = lazy(async () => ({ default: (await import('@/pages/CalculatorPages')).CalculatorPage }));
+const CalculatorPage = lazy(async () => ({
+  default: (await import('@/pages/CalculatorPages')).CalculatorPage,
+}));
 const ItemCardPage = lazyPage(() => import('@/pages/ItemCardPage'), 'ItemCardPage');
 const NotFoundPage = lazyPage(() => import('@/pages/NotFoundPage'), 'NotFoundPage');
 const PrivacyPage = lazyPage(() => import('@/pages/PrivacyPage'), 'PrivacyPage');
@@ -50,6 +68,8 @@ const ADMIN_ROUTES = [{ path: 'item-card', element: <ItemCardPage /> }];
 
 export const router = createBrowserRouter(
   [
+    // 배경의 검색·미리 받기 조회가 오류 화면에서 다시 실행되지 않도록 레이아웃 밖에 둔다.
+    { path: '/data-error', element: <GameDataErrorPage /> },
     {
       path: '/',
       element: <RootLayout />,

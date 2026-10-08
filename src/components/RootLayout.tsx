@@ -35,6 +35,7 @@ import { IssueReportModal, IssueReportTrigger } from '@/components/IssueReportBu
 import { SettingsButton, SettingsPanel } from '@/components/SettingsPanel';
 import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
+import { GAME_DATA_FAILURE_EVENT } from '@/lib/gameData';
 import { searchShortcutLabel, useSearchShortcut } from '@/lib/searchShortcut';
 import { useServerClockSync } from '@/lib/serverClock';
 import { useEndpointMode } from '@/lib/settings';
@@ -65,9 +66,18 @@ function toMenuItem(entry: NavEntry): MenuItem {
     children: entry.sections.flatMap((section, position): MenuItem[] => {
       const items = section.items.map((leaf) => leafItem(leaf));
       const body: MenuItem[] = section.title
-        ? [{ key: `${entry.key}:${section.title}`, type: 'group', label: section.title, children: items }]
+        ? [
+            {
+              key: `${entry.key}:${section.title}`,
+              type: 'group',
+              label: section.title,
+              children: items,
+            },
+          ]
         : items;
-      return position === 0 ? body : [{ key: `${entry.key}:divider:${position}`, type: 'divider' }, ...body];
+      return position === 0
+        ? body
+        : [{ key: `${entry.key}:divider:${position}`, type: 'divider' }, ...body];
     }),
   };
 }
@@ -82,9 +92,7 @@ function leafItem(leaf: NavLeaf, withIcon = true): MenuItem {
 
 /** 서랍 메뉴의 소제목. 항목과 글씨 크기와 색으로 갈라 한눈에 제목인 줄 알게 한다. */
 function drawerHeading(text: string): ReactNode {
-  return (
-    <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.2 }}>{text}</span>
-  );
+  return <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.2 }}>{text}</span>;
 }
 
 /**
@@ -99,7 +107,8 @@ function toDrawerItems(entries: NavEntry[]): MenuItem[] {
   entries.forEach((entry, position) => {
     if (!isNavGroup(entry)) {
       // 묶음 뒤에 오는 최상위 칸은 선으로 갈라 묶음의 마지막 항목처럼 보이지 않게 한다.
-      if (position > 0 && isNavGroup(entries[position - 1])) items.push(divider(`divider:after:${entry.path}`));
+      if (position > 0 && isNavGroup(entries[position - 1]))
+        items.push(divider(`divider:after:${entry.path}`));
       items.push(leafItem(entry));
       return;
     }
@@ -122,7 +131,13 @@ function toDrawerItems(entries: NavEntry[]): MenuItem[] {
  * 헤더의 검색 단추. 아주 넓은 화면(1600px 이상)에서는 "검색" 과 단축키를 함께 적는다. 그보다 좁으면 아이콘만 두어
  * 가로 메뉴가 한 줄에 들 자리를 남기고, 가로 메뉴가 있는 폭에서는 단축키를 툴팁으로 알린다.
  */
-function SearchButton({ onOpen, size }: { onOpen: () => void; size: 'full' | 'icon' | 'iconWithHint' }) {
+function SearchButton({
+  onOpen,
+  size,
+}: {
+  onOpen: () => void;
+  size: 'full' | 'icon' | 'iconWithHint';
+}) {
   if (size !== 'full') {
     const button = (
       <Button type="text" aria-label="전체 검색 열기" icon={<SearchIcon />} onClick={onOpen} />
@@ -206,6 +221,15 @@ export function RootLayout() {
   const headerHeight = headerHeightFor(screens);
 
   const navigate = useNavigate();
+  useEffect(() => {
+    const onFailure = () =>
+      navigate('/data-error', {
+        replace: true,
+        state: { returnTo: location.pathname + location.search + location.hash },
+      });
+    window.addEventListener(GAME_DATA_FAILURE_EVENT, onFailure);
+    return () => window.removeEventListener(GAME_DATA_FAILURE_EVENT, onFailure);
+  }, [navigate, location.pathname, location.search, location.hash]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const toggleSearch = useCallback(() => setSearchOpen((open) => !open), []);
@@ -259,7 +283,13 @@ export function RootLayout() {
           <Link to="/" aria-label="마비쿠마 홈">
             <Space size={8}>
               {/* 원본은 2배 크기로 담았다. 너비와 높이를 적어 두어야 그림이 늦게 떠도 글자가 밀리지 않는다. */}
-              <img src={isDark ? logoMarkDark : logoMark} alt="" width={34} height={40} style={{ display: 'block' }} />
+              <img
+                src={isDark ? logoMarkDark : logoMark}
+                alt=""
+                width={34}
+                height={40}
+                style={{ display: 'block' }}
+              />
               {/*
                 로고 글자도 그림이다. 진한 갈색 글자는 어두운 배경에 묻혀서, 다크 모드에서는
                 글자 속만 밝게 칠한 판을 쓴다. 외곽선은 짙게 남겨야 글자끼리 붙어 보이지 않는다.

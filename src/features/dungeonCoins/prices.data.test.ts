@@ -16,7 +16,7 @@ import priceNames from './priceNames.json';
 describe('priceNames.json', () => {
   it('워커가 모으는 이름이 던전 코인 화면이 묻는 이름을 모두 담는다', () => {
     const raw = JSON.parse(
-      readFileSync(resolve(__dirname, '../../../public/data/recipes.json'), 'utf8'),
+      readFileSync(resolve(process.cwd(), '.cache/game-data/current/recipes.json'), 'utf8'),
     ) as RawRecipeData;
     const book = buildRecipeBook(raw);
     const needed = new Set<string>();

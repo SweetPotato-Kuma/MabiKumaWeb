@@ -3,9 +3,12 @@ import { resolve } from 'node:path';
 import { itemSlug } from '../src/features/auction/itemSlug.mjs';
 import { INDEXNOW_KEY, MANIFEST_FILE, fingerprint } from './lib/indexnow.mjs';
 import { collectItemPages, escapeHtml, renderItemBody } from './lib/item-pages.mjs';
+import { publishedGameData } from './lib/published-game-data.mjs';
 
 const distDir = resolve(process.cwd(), 'dist');
-const pageMeta = JSON.parse(await readFile(resolve(process.cwd(), 'src/app/pageMeta.json'), 'utf8'));
+const pageMeta = JSON.parse(
+  await readFile(resolve(process.cwd(), 'src/app/pageMeta.json'), 'utf8'),
+);
 
 const indexHtml = await readFile(resolve(distDir, 'index.html'), 'utf8');
 
@@ -65,7 +68,10 @@ const websiteLd = origin
 // 첫 화면의 사본으로 읽히면 안 된다. 첫 화면(index.html)은 아래에서 화면별 HTML 과 같은 방식으로 굽는다.
 const rootHead = [...ogImageTags, ...websiteLd];
 if (rootHead.length) {
-  await writeFile(resolve(distDir, '404.html'), indexHtml.replace('</head>', `  ${rootHead.join('\n    ')}\n  </head>`));
+  await writeFile(
+    resolve(distDir, '404.html'),
+    indexHtml.replace('</head>', `  ${rootHead.join('\n    ')}\n  </head>`),
+  );
 }
 
 /**
@@ -86,14 +92,19 @@ function renderHtml({ path, title, description, head = [], body = '' }) {
     `<meta property="og:site_name" content="${escapeHtml(pageMeta.siteName)}" />`,
     `<meta property="og:title" content="${safeTitle}" />`,
     `<meta property="og:description" content="${safeDescription}" />`,
-    ...(url ? [`<link rel="canonical" href="${url}" />`, `<meta property="og:url" content="${url}" />`] : []),
+    ...(url
+      ? [`<link rel="canonical" href="${url}" />`, `<meta property="og:url" content="${url}" />`]
+      : []),
     ...ogImageTags,
     ...head,
   ].join('\n    ');
 
   return indexHtml
     .replace(/<title>[^<]*<\/title>/, `<title>${safeTitle}</title>`)
-    .replace(/<meta name="description" content="[^"]*" \/>/, `<meta name="description" content="${safeDescription}" />`)
+    .replace(
+      /<meta name="description" content="[^"]*" \/>/,
+      `<meta name="description" content="${safeDescription}" />`,
+    )
     .replace('</head>', `  ${tags}\n  </head>`)
     .replace('<div id="root"></div>', `<div id="root">${body}</div>`);
 }
@@ -109,7 +120,8 @@ const PAGE_PRELOADS = { '/relic-simulator': ['prices/murias-relics.js'] };
 const preloadTags = (path) =>
   iconBase
     ? (PAGE_PRELOADS[path] ?? []).map(
-        (file) => `<link rel="preload" href="${iconBase}/${file}" as="fetch" crossorigin="anonymous" />`,
+        (file) =>
+          `<link rel="preload" href="${iconBase}/${file}" as="fetch" crossorigin="anonymous" />`,
       )
     : [];
 
@@ -180,9 +192,13 @@ const itemPrefix = pageMeta.item.pathPrefix;
 const itemPath = (name) => `${itemPrefix}${itemSlug(name)}`;
 const fill = (template, name) => template.replaceAll('{name}', name);
 
-const namesJson = await readFile(resolve(distDir, 'data/items/names.json'), 'utf8').catch(() => '');
-const recipesJson = await readFile(resolve(distDir, 'data/recipes.json'), 'utf8').catch(() => '');
-const itemPages = namesJson ? collectItemPages(JSON.parse(namesJson), recipesJson ? JSON.parse(recipesJson) : null) : [];
+const published = await publishedGameData();
+const [names, recipes] = await Promise.all([
+  published.read('items/names.json'),
+  published.read('recipes.json'),
+]);
+const itemPages = collectItemPages(names, recipes);
+console.log(`[postbuild] 게임 데이터 ${published.manifest.revision}, 아이템 ${itemPages.length}쪽`);
 const known = new Set(itemPages.map((page) => page.name));
 
 if (itemPages.length) {
@@ -205,8 +221,18 @@ if (itemPages.length) {
                 '@type': 'BreadcrumbList',
                 itemListElement: [
                   { '@type': 'ListItem', position: 1, name: pageMeta.siteName, item: `${origin}/` },
-                  { '@type': 'ListItem', position: 2, name: '아이템 정보', item: `${origin}/items` },
-                  { '@type': 'ListItem', position: 3, name: page.name, item: `${origin}${encodeURI(path)}` },
+                  {
+                    '@type': 'ListItem',
+                    position: 2,
+                    name: '아이템 정보',
+                    item: `${origin}/items`,
+                  },
+                  {
+                    '@type': 'ListItem',
+                    position: 3,
+                    name: page.name,
+                    item: `${origin}${encodeURI(path)}`,
+                  },
                 ],
               }),
             ]
@@ -239,7 +265,10 @@ if (itemPages.length) {
  */
 function renderRedirect(redirect) {
   const target = pageMeta.pages.find((page) => page.path === redirect.to);
-  if (!target) throw new Error(`[postbuild] ${redirect.from} 가 가리키는 ${redirect.to} 가 pages 에 없습니다.`);
+  if (!target)
+    throw new Error(
+      `[postbuild] ${redirect.from} 가 가리키는 ${redirect.to} 가 pages 에 없습니다.`,
+    );
   const title = escapeHtml(`${target.title} · ${pageMeta.siteName}`);
   const to = escapeHtml(redirect.to);
   const canonical = origin ? `\n    <link rel="canonical" href="${origin}${to}" />` : '';
@@ -261,7 +290,9 @@ function renderRedirect(redirect) {
 
 for (const redirect of pageMeta.redirects) {
   if (await stat(resolve(distDir, redirect.from.slice(1))).catch(() => null)) {
-    throw new Error(`[postbuild] dist${redirect.from} 폴더가 예전 경로 ${redirect.from} 와 겹칩니다.`);
+    throw new Error(
+      `[postbuild] dist${redirect.from} 폴더가 예전 경로 ${redirect.from} 와 겹칩니다.`,
+    );
   }
   await writeFile(resolve(distDir, `${redirect.from.slice(1)}.html`), renderRedirect(redirect));
 }
@@ -278,7 +309,9 @@ if (origin) {
       .join('\n')}\n</urlset>\n`;
   const sitemaps = [
     ['sitemap-pages.xml', ['/', ...pageMeta.pages.map((page) => page.path)]],
-    ...(itemPages.length ? [['sitemap-items.xml', itemPages.map((page) => itemPath(page.name))]] : []),
+    ...(itemPages.length
+      ? [['sitemap-items.xml', itemPages.map((page) => itemPath(page.name))]]
+      : []),
   ];
   for (const [file, paths] of sitemaps) await writeFile(resolve(distDir, file), urlset(paths));
   await writeFile(
@@ -287,7 +320,10 @@ if (origin) {
       .map(([file]) => `  <sitemap><loc>${origin}/${file}</loc></sitemap>`)
       .join('\n')}\n</sitemapindex>\n`,
   );
-  await writeFile(resolve(distDir, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n`);
+  await writeFile(
+    resolve(distDir, 'robots.txt'),
+    `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n`,
+  );
 
   // IndexNow 키 파일과 쪽별 지문. 키 파일은 검색엔진이 알림을 보낸 곳이 이 사이트인지 확인하는 데 쓴다.
   await writeFile(resolve(distDir, `${INDEXNOW_KEY}.txt`), INDEXNOW_KEY);

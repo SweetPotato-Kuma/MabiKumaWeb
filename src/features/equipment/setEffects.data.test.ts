@@ -12,7 +12,7 @@ import { itemSetEffects, type SetEffectData } from './setEffects';
 
 describe('세트 효과 표 파일', () => {
   const data = JSON.parse(
-    readFileSync(resolve(process.cwd(), 'public/data/set-effects.json'), 'utf8'),
+    readFileSync(resolve(process.cwd(), '.cache/game-data/current/set-effects.json'), 'utf8'),
   ) as SetEffectData;
 
   it('아이템이 가리키는 효과가 모두 정의돼 있다', () => {

@@ -34,7 +34,8 @@ export default defineConfig(({ mode }) => {
               response.setHeader('Cache-Control', 'no-store');
               response.end(bytes);
             } catch {
-              next();
+              response.statusCode = 404;
+              response.end('게임 데이터 캐시가 없습니다.');
             }
           });
         },
@@ -77,9 +78,8 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       /**
-       * 다른 사이트에서 받아 온 게임 데이터 파일을 그대로 읽어 검사하는 시험은 *.data.test.ts 로 따로 둔다. 그 사이트가
-       * 막거나 형식을 바꾸면 우리 코드와 상관없이 깨지므로 기본 시험(배포와 동기화)에서는 빼고, `npm run test:data`
-       * (--mode data)로만 돈다. 데이터를 우리 쪽으로 옮기면 기본 시험에 다시 넣는다.
+       * 생성 자료를 읽는 검증은 *.data.test.ts로 분리한다. 게임 클라이언트와 .cache가 없는 배포 환경에서는
+       * 코드 시험만 실행하고, 로컬 갱신 뒤 npm run test:data로 생성 자료를 확인한다.
        */
       ...(mode === 'data'
         ? { include: ['src/**/*.data.test.ts'] }

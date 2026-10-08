@@ -8,14 +8,39 @@ node scripts/game-data/sync-all.mjs
 
 더블클릭으로 쓰려면 `scripts/local/게임-데이터-갱신.bat` 를 엽니다. 이 파일은 이 PC 에만 있습니다.
 
+스케줄러에서는 아래처럼 `--scheduled`를 넘깁니다. 메뉴와 `pause` 없이 실행하고 실패 종료 코드를 전달합니다.
+클라이언트 내보내기도 포함합니다. 마지막 내보내기만 쓰려면 뒤에 `--skip-export`를 추가합니다.
+
+```
+"C:\Claude\mabiKuma\scripts\local\게임-데이터-갱신.bat" --scheduled
+```
+
 | 메뉴 | 명령 | 언제 |
 | --- | --- | --- |
 | [1] 전부 | `sync-all.mjs` | 게임 업데이트 뒤. 클라이언트에서 다시 꺼내고 올리기까지 |
 | [2] 내보내기 빼고 | `sync-all.mjs --skip-export` | 클라이언트는 그대로이고 사전이나 스크립트만 바뀌었을 때 |
-| [3] 파일만 | `sync-all.mjs --skip-export --no-upload` | 올리지 않고 저장소 파일만 만들어 볼 때 |
+| [3] 파일만 | `sync-all.mjs --skip-export --no-upload` | 올리지 않고 `.cache`에 만들어 비교할 때 |
 
-끝나면 바뀐 저장소 파일 목록을 보여 줍니다. **커밋과 푸시는 하지 않습니다.** 목록을 보고 직접 커밋하고 푸시하면
-GitHub Pages 가 사이트를 다시 배포합니다.
+생성 JSON은 `.cache/game-data/current`에 모으고 **Cloudflare R2에 게시합니다.** 바뀐 객체만 올리고 공개 목록은 마지막에
+교체합니다. 데이터 갱신에는 커밋/푸시나 사이트 재배포가 필요 없습니다. 이 코드 변경은 최초 한 번 사이트에 배포해야 합니다.
+게임 실행 파일, 런처, 안티치트는 실행하거나 변경하지 않습니다.
+
+### 최초 설정
+
+이 PC는 Cloudflare에 로그인된 Wrangler와 `.env`의 기존 `MABIKUMA_ADMIN_KEY`를 사용합니다. 운영자 키는 명령 인수나 로그에
+넣지 않고 stdin으로 전달합니다. 경매장/새소식 워커와 분리된 `mabikuma-game-data` 워커가 같은 `mabikuma-icons` 버킷의
+`game-data/` 영역에만 씁니다.
+
+```
+node scripts/game-data/sync-all.mjs --setup-storage --setup-only
+```
+
+`MABIKUMA_WRANGLER`에 설치된 `wrangler/bin/wrangler.js` 경로가 필요합니다(프로젝트에 설치했다면 생략).
+워커 주소 `MABIKUMA_GAME_DATA_UPLOAD_URL`은 Git에서 제외한 `.env.local`에 자동 기록됩니다.
+화면은 `VITE_GAME_DATA_BASE_URL`을 읽고, 생략하면 기존 `VITE_ICON_BASE_URL`을 씁니다.
+개발 서버에서는 같은 `/data/` 주소로 `.cache/game-data/current`만 읽습니다.
+운영 화면에서는 Cloudflare의 공개 목록과 객체를 읽습니다. 목록·파일 조회나 JSON 해석에 실패하면
+`/data-error`로 이동합니다. 오래된 배포본 JSON으로 대체하지 않으며, 다시 조회하면 원래 주소와 검색 조건으로 돌아갑니다.
 
 ## 미리 있어야 하는 것
 
@@ -34,29 +59,51 @@ GitHub Pages 가 사이트를 다시 배포합니다.
 | 순서 | 단계 | 무엇을 | 대략 |
 | --- | --- | --- | --- |
 | 1 | 클라이언트 내보내기 | 바뀐 패키지만 다시 풀고, 그림은 바뀐 것만 다시 그린다 | 30분 |
-| 2 | 저장소 파일 | 제작법, 아르카나, 세트 효과, 인챈트 스크롤, 상세 검색 이름, 세공 도구 확률표 | 2분 |
-| 3 | 아이템 카드 | 제작법 재료 그림 → 경매장 사전의 카드(그림, 설명) | 1분 |
+| 2 | 로컬 JSON 생성 | 제작법, 아르카나, 세트 효과, 인챈트 스크롤, 상세 검색 이름, 세공 도구 확률표, 에코스톤, 공식 특별 개조 표 | 5분 |
+| 3 | 아이템 카드 | 제작법 재료 그림 → 경매장 사전의 카드(그림, 설명) | 수 분~수십 분, 캐시와 변경량에 따라 |
 | 4 | 장비 정보 | 개조, 세공, 인챈트, 에르그, 기본·랜덤 능력치 | 1분 |
 | 5 | 스킬, 오검 그림 | | 몇 초 |
+| 6 | JSON 게시 | 내용 해시 객체 → 공개 목록 교체 → 게시 확인 | 최초 수 분, 다음에는 변경량에 따라 |
 
 올리는 단계는 지난번과 같은 칸, 같은 그림을 건너뜁니다. 바뀐 것이 없으면 아무것도 보내지 않습니다.
+한 실행은 같은 클라이언트 내보내기를 계속 사용합니다. 스케줄러와 수동 실행이 겹치면 두 번째 실행은 실패 코드로 종료됩니다.
 
 ## 파일이 나오는 곳
 
-**저장소 안 (커밋 대상)**
+**현재 생성 결과 (커밋하지 않음)**
+
+`C:\Claude\mabiKuma\.cache\game-data\current\`에 아래 표 이름과 같은 JSON이 생깁니다.
+`echostone.json`, `special-upgrades.json`, `game-images.json`도 같은 폴더에 있습니다.
+`comparison.json`과 `manifest.json`은 그 위 `.cache/game-data/`에 남깁니다.
+
+`public/data`의 JSON은 저장소와 배포본에서 제거했습니다. `--refresh-public-data` 옵션은 폐지했습니다.
+캐시에 없는 표는 우리 Cloudflare 게시본에서만 준비하며, 갱신한 로컬 결과를 덮어쓰지 않습니다.
+사이트 빌드는 같은 공개 목록의 아이템 이름과 제작법을 `.cache/game-data/build`에 해시 검증 후 받아
+검색엔진용 아이템 HTML을 만듭니다. 빌드 입력 조회가 실패하면 배포를 중단합니다.
+게임 클라이언트가 없는 GitHub Actions에서는 수집을 하지 않습니다.
+
+클라이언트 패치 후 한국 기능 상태표가 비어 있으면 갱신을 중단합니다. 날짜만 새로 적힌 채 아르카나나 스킬이
+누락된 자료를 게시하지 않도록 기능 판독 코드의 정적 검증과 내보내기를 먼저 갱신해야 합니다.
 
 | 파일 | 내용 |
 | --- | --- |
-| `public/data/recipes.json` | 제작법 |
-| `public/data/arcana.json` | 아르카나와 스킬 |
-| `public/data/set-effects.json` | 세트 효과 |
-| `public/data/enchant-scrolls.json` | 인챈트 스크롤 사양 |
-| `public/data/option-names.json` | 경매장 상세 검색 자동완성 이름 |
-| `public/data/reforge.json` | 세공 도구 확률표 |
-| `public/data/items/*.json` | 아이템 이름 사전. 제작법에만 나오는 이름이 더해질 때 바뀐다 |
-| `src/features/itemcard/generated/gameImages.json` | 스킬, 오검 그림 파일 이름 |
+| `.cache/game-data/current/recipes.json` | 제작법 |
+| `.cache/game-data/current/arcana.json` | 아르카나와 스킬 |
+| `.cache/game-data/current/set-effects.json` | 세트 효과 |
+| `.cache/game-data/current/enchant-scrolls.json` | 인챈트 스크롤 사양 |
+| `.cache/game-data/current/option-names.json` | 경매장 상세 검색 자동완성 이름 |
+| `.cache/game-data/current/reforge.json` | 세공 도구 확률표 |
+| `.cache/game-data/current/items/*.json` | 아이템 이름 사전. 제작법에만 나오는 이름이 더해질 때 바뀐다 |
+| `.cache/game-data/current/game-images.json` | 게시하는 스킬, 오검 그림 파일 이름 |
 
-**우리 서버 (워커, KV, R2)**: 아이템 카드의 그림과 설명, 장비 정보, 스킬과 오검 그림. 게임 그림은 저장소에 두지 않습니다.
+**우리 서버 (워커, KV, R2)**: 아이템 카드의 그림과 설명, 장비 정보, 스킬과 오검 그림, 제작법 등 JSON.
+JSON 공개 목록은 `https://icons.spkuma.com/game-data/manifest.json`, 실제 파일은 `game-data/objects/<SHA256>.js`입니다.
+확장자는 CDN 캐시용이며 내용과 Content-Type은 JSON입니다. 새로고침한 화면은 공개 목록의 같은 판을 사용합니다.
+게임 그림은 저장소에 두지 않습니다.
+
+오검 시뮬레이터의 기존 정리 표는 이번에 저장 위치만 옮겼습니다. 아직 클라이언트에서 다시 만드는 단계는 없습니다.
+특별 개조는 공식 공지에서 수치를 확인한 악기/힐링 원드(S/R)와 한손 도끼/양손 무기만 보완합니다.
+일부 실린더 및 기존 표의 미확인 칸은 그대로 미확인입니다. 장인 개조의 범위 및 기존 처리 방식은 유지합니다.
 
 **이 PC 의 `.cache` (깃 밖)**
 
@@ -77,7 +124,8 @@ GitHub Pages 가 사이트를 다시 배포합니다.
 - **게임 클라이언트**: 거의 전부. 다른 사람의 서버는 쓰지 않습니다.
 - **넥슨 공식 홈페이지**: 클라이언트에 없는 것만. 장인 개조 확률(확률 공개 페이지), 세공 도구 확률표. 받은 것은
   `.cache` 에 남기고 처음 보는 것만 1초 간격으로 묻습니다.
-- **넥슨 오픈 API**: 경매장 이름 사전. 이 스크립트가 아니라 `harvest.yml` 이 매주 따로 모읍니다.
+- **넥슨 오픈 API**: 경매장 이름 사전. `NEXON_API_KEY`가 있으면 같은 `sync-all` 실행에서 수집합니다.
+  별도의 `harvest.yml` 및 사전 JSON을 자동 커밋하던 작업은 제거했습니다.
 
 ## 클라이언트만으로 정할 수 없어 적어 둔 것
 
@@ -89,7 +137,7 @@ GitHub Pages 가 사이트를 다시 배포합니다.
 ## 이럴 때는
 
 - **새 아이템 그림이 곰 모양 빈 그림으로 나온다**: 그 아이템이 마지막 내보내기에 없거나 이름 사전에 없는 것입니다.
-  게임 업데이트 뒤 [1] 전부를 돌립니다. 경매장에 갓 올라온 이름이면 다음 사전 수집(`harvest.yml`) 뒤에 다시 돌립니다.
+  게임 업데이트 뒤 [1] 전부를 돌립니다. 경매장에 갓 올라온 이름이면 공식 API 키를 설정하고 같은 갱신을 실행합니다.
 - **장인 개조에 확률이 없다**: 공식 확률 페이지에 아직 올라오지 않은 개조입니다. 하루에 한 번 목록을 다시 보고,
   올라오면 다음 실행 때 채워집니다.
 - **"클라이언트 내보내기가 없습니다"**: [1] 전부로 내보내기를 한 번 돌립니다.

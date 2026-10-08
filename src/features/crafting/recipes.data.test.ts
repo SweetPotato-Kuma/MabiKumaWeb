@@ -12,7 +12,7 @@ import { buildRecipeBook, usesOfName, type RawRecipeData } from './recipes';
 
 describe('실제 제작법 데이터', () => {
   const raw = JSON.parse(
-    readFileSync(resolve(__dirname, '../../../public/data/recipes.json'), 'utf8'),
+    readFileSync(resolve(process.cwd(), '.cache/game-data/current/recipes.json'), 'utf8'),
   ) as RawRecipeData;
   const book = buildRecipeBook(raw);
 

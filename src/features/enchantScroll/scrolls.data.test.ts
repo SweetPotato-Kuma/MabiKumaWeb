@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { scrollsFromSource, isEnchantScrollName, type ScrollFile } from './scrolls';
 
 const file = JSON.parse(
-  readFileSync(resolve(__dirname, '../../../public/data/enchant-scrolls.json'), 'utf8'),
+  readFileSync(resolve(process.cwd(), '.cache/game-data/current/enchant-scrolls.json'), 'utf8'),
 ) as ScrollFile;
 
 describe('수집한 인챈트 스크롤 사양', () => {
@@ -44,7 +44,7 @@ describe('수집한 인챈트 스크롤 사양', () => {
 
   it('모든 이름이 아이템 사전의 인챈트 스크롤 카테고리에 있다', () => {
     const dictionary = JSON.parse(
-      readFileSync(resolve(__dirname, '../../../public/data/items/920b5aa6.json'), 'utf8'),
+      readFileSync(resolve(process.cwd(), '.cache/game-data/current/items/920b5aa6.json'), 'utf8'),
     ) as { category: string; items: { name: string }[] };
     expect(dictionary.category).toBe('인챈트 스크롤');
     const names = new Set(dictionary.items.map((item) => item.name));

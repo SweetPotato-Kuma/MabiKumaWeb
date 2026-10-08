@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { levelCaps, TYPE_ICONS, TYPE_TREE, typeTree, UNGROUPED, type ReforgeData } from './data';
 
 const data = JSON.parse(
-  readFileSync(resolve(process.cwd(), 'public/data/reforge.json'), 'utf8'),
+  readFileSync(resolve(process.cwd(), '.cache/game-data/current/reforge.json'), 'utf8'),
 ) as ReforgeData;
 
 describe('아이템 타입 트리', () => {

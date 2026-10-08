@@ -1,16 +1,13 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { DUCAT_GEM, DUCAT_ITEMS, FARM_ORDERS, FARM_RECIPES, REWARD_ITEMS, shortName } from './data';
 import {
-  DUCAT_GEM,
-  DUCAT_ITEMS,
-  FARM_ORDERS,
-  FARM_PRICE_NAMES,
-  FARM_RECIPES,
-  REWARD_ITEMS,
-  shortName,
-} from './data';
-import { byGainDesc, ducatOutcome, goldPerDucat, materialsTotal, orderOutcome, recipeOutcome } from './value';
+  byGainDesc,
+  ducatOutcome,
+  goldPerDucat,
+  materialsTotal,
+  orderOutcome,
+  recipeOutcome,
+} from './value';
 
 const P = '탈틴 농장 ';
 
@@ -45,15 +42,8 @@ describe('탈틴 농장 데이터', () => {
     const recipeNames = new Set(FARM_RECIPES.map((recipe) => recipe.name));
     for (const recipe of FARM_RECIPES) expect(ducatNames).toContain(recipe.name);
     for (const order of FARM_ORDERS)
-      for (const [name] of order.materials) expect(ducatNames.has(name) || recipeNames.has(name)).toBe(true);
-  });
-
-  it('시세를 묻는 이름이 모두 아이템 사전에 있다', () => {
-    const raw = JSON.parse(readFileSync(resolve(process.cwd(), 'public/data/items/names.json'), 'utf8')) as {
-      items: [string, number][];
-    };
-    const known = new Set(raw.items.map(([name]) => name));
-    expect(FARM_PRICE_NAMES.filter((name) => !known.has(name))).toEqual([]);
+      for (const [name] of order.materials)
+        expect(ducatNames.has(name) || recipeNames.has(name)).toBe(true);
   });
 
   it('목록 안에서는 "탈틴 농장" 을 뗀다', () => {
@@ -112,7 +102,11 @@ describe('orderOutcome', () => {
   });
 
   it('보상을 고르지 않았으면 보상 가치와 손익이 없다', () => {
-    expect(orderOutcome(order, [], REWARD_ITEMS, {}, quote)).toEqual({ cost: 17_000, reward: null, profit: null });
+    expect(orderOutcome(order, [], REWARD_ITEMS, {}, quote)).toEqual({
+      cost: 17_000,
+      reward: null,
+      profit: null,
+    });
   });
 });
 
@@ -136,7 +130,11 @@ describe('두카트', () => {
 
   it('두카트로 받는 값에서 경매장 판매가를 빼고, 골드는 반올림한다', () => {
     const blackberry = DUCAT_ITEMS.find((item) => item.name === `${P}일반 블랙베리`)!;
-    expect(ducatOutcome(blackberry, 2, quote)).toEqual({ market: 1_000, exchanged: 1_200, gain: 200 });
+    expect(ducatOutcome(blackberry, 2, quote)).toEqual({
+      market: 1_000,
+      exchanged: 1_200,
+      gain: 200,
+    });
     expect(ducatOutcome(blackberry, 1.0004, quote).exchanged).toBe(600);
     expect(ducatOutcome(blackberry, null, quote).gain).toBeNull();
   });
