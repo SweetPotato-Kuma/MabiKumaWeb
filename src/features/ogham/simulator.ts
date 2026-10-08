@@ -198,68 +198,81 @@ export interface OghamTarget {
   minLevel: number;
 }
 
-/** 목표는 세 개까지다. 워드 한 개의 옵션이 세 줄이다. */
+/** 목표는 세 개까지다. 그 가운데 먼저 나오는 것을 잠그고 나머지 줄을 다시 돌린다. */
 export const MAX_TARGETS = LINE_COUNT;
 
 /** 그 줄이 그 목표를 채우는지. */
 export const lineMeets = (line: OghamLine | null, target: OghamTarget) =>
   line !== null && line.option === target.option && line.level >= target.minLevel;
 
-/** 세 줄이 목표를 모두 채우는지. 목표가 없으면 false 다. */
+/** 잠그지 않은 줄 가운데 하나라도 목표 하나를 채우는지. 목표가 없으면 false 다. */
 export function meetsTargets(
   lines: readonly (OghamLine | null)[],
   targets: readonly OghamTarget[],
 ): boolean {
-  if (targets.length === 0) return false;
-  return targets.every((target) => lines.some((line) => lineMeets(line, target)));
+  return lines.some(
+    (line) => line !== null && !line.locked && targets.some((target) => lineMeets(line, target)),
+  );
 }
 
+const choose = (n: number, k: number) => {
+  if (k < 0 || k > n) return 0;
+  let result = 1;
+  for (let index = 0; index < k; index += 1) result = (result * (n - index)) / (index + 1);
+  return result;
+};
+
 /**
- * 한 번 재설정해 목표를 모두 채울 확률.
+ * 한 번 재설정해 잠그지 않은 줄에 목표가 하나라도 나올 확률.
  *
- * 잠근 줄이 이미 채운 목표는 빼고 남은 목표 t 개를 센다. 잠그지 않은 k 줄은 잠근 옵션을 뺀 M 개에서
- * 겹치지 않게 뽑히고 어느 조합이든 확률이 같으므로, 정한 t 개가 모두 뽑힐 확률은
- * k/M x (k-1)/(M-1) x ... (t 개) 이다. 레벨은 옵션마다 따로 정해지니 곱한다. 잠근 줄에 목표 옵션이
- * 모자란 레벨로 묶여 있거나, 이 워드에 붙지 않는 옵션이 있거나, 남은 목표가 열린 줄보다 많으면 0.
+ * 잠근 줄에 묶인 옵션은 다시 나오지 않으니 그 목표는 뺀다. 잠그지 않은 k 줄은 잠근 옵션을 뺀 M 개에서
+ * 겹치지 않게 뽑히고 어느 조합이든 확률이 같다. 남은 목표 t 개 가운데 정확히 어떤 묶음 A 만 뽑힐 확률은
+ * C(M-t, k-|A|) / C(M, k) 이고, 뽑힌 A 가 모두 레벨이 모자랄 확률을 곱해 더하면 하나도 못 채울 확률이다.
  */
 export function targetChance(
   lines: readonly (OghamLine | null)[],
   pool: readonly OghamOption[],
   targets: readonly OghamTarget[],
 ): number {
-  if (targets.length === 0) return 0;
-  const locked = lines.filter((line): line is OghamLine => line !== null && line.locked);
-  const open = LINE_COUNT - locked.length;
-  const remaining =
-    pool.length - locked.filter((line) => pool.some((each) => each.id === line.option)).length;
-  let chance = 1;
-  let needed = 0;
-  for (const target of targets) {
-    const held = locked.find((line) => line.option === target.option);
-    if (held) {
-      if (held.level < target.minLevel) return 0;
-      continue;
-    }
+  const lockedIds = new Set(
+    lines.filter((line) => line !== null && line.locked).map((line) => line!.option),
+  );
+  const remaining = pool.filter((option) => !lockedIds.has(option.id)).length;
+  const draws = Math.min(LINE_COUNT - lockedIds.size, remaining);
+  // 남은 목표마다 뽑혀도 레벨이 모자랄 확률.
+  const misses = targets.flatMap((target) => {
+    if (lockedIds.has(target.option)) return [];
     const option = pool.find((each) => each.id === target.option);
-    if (!option) return 0;
+    if (!option) return [];
     const minLevel = Math.min(Math.max(target.minLevel, 1), option.maxLevel);
-    chance *= (option.maxLevel - minLevel + 1) / option.maxLevel;
-    needed += 1;
+    return [(minLevel - 1) / option.maxLevel];
+  });
+  if (misses.length === 0 || draws <= 0) return 0;
+  const total = choose(remaining, draws);
+  let fail = 0;
+  for (let mask = 0; mask < 1 << misses.length; mask += 1) {
+    let drawn = 0;
+    let short = 1;
+    misses.forEach((miss, index) => {
+      if (mask & (1 << index)) {
+        drawn += 1;
+        short *= miss;
+      }
+    });
+    fail += (choose(remaining - misses.length, draws - drawn) / total) * short;
   }
-  if (needed > open || needed > remaining) return 0;
-  for (let index = 0; index < needed; index += 1) chance *= (open - index) / (remaining - index);
-  return chance;
+  return Math.max(0, 1 - fail);
 }
 
 export interface RerollRun {
   lines: (OghamLine | null)[];
   /** 재설정한 횟수. */
   tries: number;
-  /** 목표를 모두 채웠는지. 목표 없이 돌리면 true. */
+  /** 목표가 하나라도 나왔는지. 목표 없이 돌리면 true. */
   hit: boolean;
 }
 
-/** 목표를 모두 채울 때까지(또는 limit 번까지) 재설정한다. 목표가 없으면 한 번만. */
+/** 목표가 하나라도 나올 때까지(또는 limit 번까지) 재설정한다. 목표가 없으면 한 번만. */
 export function rerollUntil(
   lines: readonly (OghamLine | null)[],
   pool: readonly OghamOption[],

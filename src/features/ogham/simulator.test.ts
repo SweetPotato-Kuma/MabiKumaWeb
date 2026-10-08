@@ -24,6 +24,12 @@ import {
 } from './simulator';
 
 /** 정해 둔 값을 차례로 돌려주는 난수. 다 쓰면 처음으로 돌아간다. */
+const choose = (n: number, k: number) => {
+  let result = 1;
+  for (let index = 0; index < k; index += 1) result = (result * (n - index)) / (index + 1);
+  return result;
+};
+
 const sequence = (...values: number[]) => {
   let index = 0;
   return () => values[index++ % values.length];
@@ -109,18 +115,24 @@ describe('재설정', () => {
     expect(meetsTargets(run.lines, targets)).toBe(true);
   });
 
-  it('목표가 여럿이면 모두 채워야 멈춘다', () => {
-    // 언제나 앞의 셋이 나온다. 그 셋을 목표로 두면 한 번에, 하나라도 다른 옵션이면 끝내 못 채운다.
-    const three = [0, 1, 2].map((index) => ({ option: pool[index].id, minLevel: 1 }));
-    expect(rerollUntil(emptyLines(), pool, three, 5, () => 0)).toMatchObject({
+  it('목표가 여럿이면 하나라도 나오면 멈춘다', () => {
+    // 언제나 앞의 셋이 나온다. 그 가운데 하나만 목표에 있어도 한 번에, 하나도 없으면 끝내 못 채운다.
+    const one = [pool[2], pool[9]].map((option) => ({ option: option.id, minLevel: 1 }));
+    expect(rerollUntil(emptyLines(), pool, one, 5, () => 0)).toMatchObject({
       hit: true,
       tries: 1,
     });
-    const other = [...three.slice(0, 2), { option: pool[9].id, minLevel: 1 }];
-    expect(rerollUntil(emptyLines(), pool, other, 5, () => 0)).toMatchObject({
+    const none = [pool[8], pool[9]].map((option) => ({ option: option.id, minLevel: 1 }));
+    expect(rerollUntil(emptyLines(), pool, none, 5, () => 0)).toMatchObject({
       hit: false,
       tries: 5,
     });
+  });
+
+  it('잠근 줄에 있는 목표는 나온 것으로 치지 않는다', () => {
+    const held: OghamLine = { option: pool[0].id, level: 1, locked: true };
+    const targets = [{ option: pool[0].id, minLevel: 1 }];
+    expect(meetsTargets([held, null, null], targets)).toBe(false);
   });
 
   it('목표가 끝내 나오지 않으면 상한만큼 돌리고 멈춘다', () => {
@@ -144,29 +156,31 @@ describe('재설정', () => {
     ).toBeCloseTo((2 / (pool.length - 1)) * ((option.maxLevel - half + 1) / option.maxLevel));
   });
 
-  it('목표 여럿은 열린 줄에 모두 뽑힐 확률을 차례로 곱한다', () => {
+  it('목표 여럿은 그 가운데 하나라도 레벨을 채워 뽑힐 확률이다', () => {
     const [a, b] = [pool[4], pool[6]];
     const both = [
       { option: a.id, minLevel: 1 },
       { option: b.id, minLevel: b.maxLevel },
     ];
     const n = pool.length;
-    expect(targetChance(emptyLines(), pool, both)).toBeCloseTo(
-      (3 / n) * (2 / (n - 1)) * (1 / b.maxLevel),
-    );
+    // a 가 뽑히거나, a 없이 b 가 뽑혀 최대 레벨이 나오거나.
+    const withoutA = choose(n - 2, 2) / choose(n, 3);
+    expect(targetChance(emptyLines(), pool, both)).toBeCloseTo(3 / n + withoutA / b.maxLevel);
   });
 
-  it('잠근 줄이 채운 목표는 빼고 세며, 모자란 레벨로 잠겼거나 열린 줄보다 목표가 많으면 0 이다', () => {
+  it('잠근 줄에 묶인 목표는 빼고 세며, 남은 목표가 없으면 0 이다', () => {
     const held: OghamLine = { option: pool[0].id, level: 5, locked: true };
     const lines = [held, null, null];
     const other = { option: pool[4].id, minLevel: 1 };
-    // pool[0] 은 이미 채웠으니 pool[4] 만 남은 두 줄에 들면 된다.
+    // pool[0] 은 잠근 줄에 있으니 pool[4] 만 남은 두 줄에 들면 된다.
     expect(targetChance(lines, pool, [{ option: pool[0].id, minLevel: 5 }, other])).toBeCloseTo(
       2 / (pool.length - 1),
     );
     expect(targetChance(lines, pool, [{ option: pool[0].id, minLevel: 6 }])).toBe(0);
     const twoLocked = [held, { option: pool[1].id, level: 1, locked: true }, null];
-    expect(targetChance(twoLocked, pool, [other, { option: pool[5].id, minLevel: 1 }])).toBe(0);
+    expect(targetChance(twoLocked, pool, [other, { option: pool[5].id, minLevel: 1 }])).toBeCloseTo(
+      2 / (pool.length - 2),
+    );
   });
 });
 

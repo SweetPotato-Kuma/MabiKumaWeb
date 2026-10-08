@@ -466,8 +466,8 @@ function targetOptions(pool: readonly OghamOption[], arcana: OghamArcana) {
 }
 
 /**
- * 목표 옵션 고르기. 세 개까지, 옵션마다 바라는 가장 낮은 레벨. 옵션이 백 개 가까이 되어 미리 아무 옵션이나
- * 넣어 두지 않고, 빈 칸에서 골라 더한다.
+ * 목표 옵션 고르기. 세 개까지, 옵션마다 바라는 가장 낮은 레벨. 셋 가운데 먼저 나오는 것을 잠그고 이어
+ * 돌린다. 옵션이 백 개 가까이 되어 미리 아무 옵션이나 넣어 두지 않고, 빈 칸에서 골라 더한다.
  */
 function TargetEditor({
   pool,
@@ -593,8 +593,8 @@ function RerollPanel({
     else
       setMessage(
         result.hit
-          ? `${formatNumber(result.tries)}번 만에 목표 옵션을 모두 채웠습니다.`
-          : `${formatNumber(limit)}번 동안 목표 옵션을 모두 채우지 못했습니다.`,
+          ? `${formatNumber(result.tries)}번 만에 목표 옵션이 나왔습니다.`
+          : `${formatNumber(limit)}번 동안 목표 옵션이 나오지 않았습니다.`,
       );
   };
 
@@ -710,7 +710,7 @@ function RerollPanel({
                   <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
                 </>
               ) : (
-                '지금 잠근 줄로는 목표를 모두 채울 수 없습니다.'
+                '잠그지 않은 줄에서 나올 목표 옵션이 없습니다.'
               )}
             </Text>
             {chance > 0 ? (

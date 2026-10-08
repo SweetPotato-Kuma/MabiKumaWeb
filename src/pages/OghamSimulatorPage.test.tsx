@@ -76,7 +76,7 @@ describe('오검 워드 옵션 시뮬레이터', () => {
     expect(screen.getByRole('button', { name: '1번 칸 베헤' })).toBeInTheDocument();
   });
 
-  it('목표 옵션은 세 개까지 고를 수 있고, 고르면 한 번에 모두 채울 확률을 보여 준다', async () => {
+  it('목표 옵션은 세 개까지 고를 수 있고, 고르면 한 번에 하나라도 나올 확률을 보여 준다', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '1번 칸 비어 있음' }));
     const picker = await screen.findByRole('dialog');
