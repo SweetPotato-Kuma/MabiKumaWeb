@@ -132,5 +132,5 @@ const uploaded = new Set(await readJson(STATE).catch(() => []));
 const sent = await upload(files, uploaded);
 await writeFile(STATE, JSON.stringify([...uploaded].sort()));
 await mkdir(resolve(OUT, '..'), { recursive: true });
-await writeFile(OUT, JSON.stringify({ skills, ogham }, null, 1) + '\n');
+await writeFile(OUT, JSON.stringify({ skills, ogham }, null, 2) + '\n');
 console.log(`새로 올린 그림 ${sent}장, 이미 있던 것 ${files.size - sent}장 -> ${OUT}`);
