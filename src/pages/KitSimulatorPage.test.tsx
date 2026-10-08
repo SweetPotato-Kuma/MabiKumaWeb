@@ -106,8 +106,11 @@ describe('키트 시뮬레이터', () => {
     const region = await screen.findByRole('region', { name: '키트 열기' });
     const auto = within(region).getByRole('button', { name: '목표까지 최대 1,000번' });
     expect(auto).toBeDisabled();
+    // 구성품 표는 접혀 있다. 펼치면 그린다.
+    expect(screen.queryByRole('button', { name: /목표로$/ })).toBeNull();
+    fireEvent.click(screen.getByText('구성품 확률 2종'));
     fireEvent.click(
-      screen.getByRole('button', { name: '찬란한 나이트메어 판타지아 데몬 윙 목표로' }),
+      await screen.findByRole('button', { name: '찬란한 나이트메어 판타지아 데몬 윙 목표로' }),
     );
     expect(within(region).getByText('10%')).toBeInTheDocument();
     fireEvent.click(auto);
@@ -125,10 +128,18 @@ describe('키트 시뮬레이터', () => {
       timeout: 4000,
     });
 
+    // 다시 열면 연출하는 동안 목록은 누르기 전 모습(한 줄) 그대로다. 줄이 빠졌다 들어오며 들썩이지 않는다.
+    const list = within(region).getByRole('region', { name: '이번에 나온 아이템' });
+    const lines = () => list.querySelectorAll('.kt-line').length;
+    expect(lines()).toBe(1);
+    fireEvent.click(within(region).getByRole('button', { name: /^1번 열기$/ }));
+    expect(lines()).toBe(1);
+    await waitFor(() => expect(lines()).toBe(2), { timeout: 4000 });
+
     fireEvent.click(within(region).getByRole('switch', { name: '키트 연출' }));
     expect(window.localStorage.getItem('mabikuma:kitFx')).toBe('off');
     fireEvent.click(within(region).getByRole('button', { name: /^1번 열기$/ }));
-    expect(within(statistic('연 횟수')).getByText('2')).toBeInTheDocument();
+    expect(within(statistic('연 횟수')).getByText('3')).toBeInTheDocument();
     window.localStorage.removeItem('mabikuma:kitFx');
   });
 });

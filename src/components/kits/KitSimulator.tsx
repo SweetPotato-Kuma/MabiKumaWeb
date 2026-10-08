@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   Col,
+  Collapse,
   Divider,
   Flex,
   Grid,
@@ -286,36 +287,49 @@ function ItemTable({ kit, onTarget }: { kit: Kit; onTarget: (item: number) => vo
   ];
 
   return (
-    <Card title="구성품 확률" size="small">
-      <Flex vertical gap={10}>
-        {hasGrades ? (
-          <Flex gap={8} wrap>
-            {kit.grades.map((grade) => (
-              <Tag key={grade.name} style={{ marginInlineEnd: 0 }}>
-                <span className="tnum">
-                  {grade.name} {grade.chance === null ? '' : formatChance(grade.chance)}
-                </span>
-              </Tag>
-            ))}
-          </Flex>
-        ) : null}
-        <Input
-          aria-label="구성품 이름으로 찾기"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder="예: 헤일로"
-          allowClear
-          style={{ maxWidth: 320 }}
-        />
-        <Table<ItemRow>
-          columns={columns}
-          dataSource={rows}
-          rowKey="item"
-          size="small"
-          pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
-        />
-      </Flex>
-    </Card>
+    // 표가 길어 처음에는 접어 둔다. 열 때 처음 그린다.
+    <Collapse
+      items={[
+        {
+          key: 'items',
+          label: (
+            <Text strong className="tnum">
+              구성품 확률 {formatNumber(kit.items.length)}종
+            </Text>
+          ),
+          children: (
+            <Flex vertical gap={10}>
+              {hasGrades ? (
+                <Flex gap={8} wrap>
+                  {kit.grades.map((grade) => (
+                    <Tag key={grade.name} style={{ marginInlineEnd: 0 }}>
+                      <span className="tnum">
+                        {grade.name} {grade.chance === null ? '' : formatChance(grade.chance)}
+                      </span>
+                    </Tag>
+                  ))}
+                </Flex>
+              ) : null}
+              <Input
+                aria-label="구성품 이름으로 찾기"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="예: 헤일로"
+                allowClear
+                style={{ maxWidth: 320 }}
+              />
+              <Table<ItemRow>
+                columns={columns}
+                dataSource={rows}
+                rowKey="item"
+                size="small"
+                pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
+              />
+            </Flex>
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -455,7 +469,12 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
     return next;
   }, [counts, pending]);
   const shownOpened = opened - (pending === null ? 0 : 1);
-  const shownRecent = pending === null ? recent : recent.slice(0, -1);
+  /*
+   * 연출하는 동안 목록은 누르기 전 모습 그대로 둔다. 새 줄만 숨기면 목록이 10줄로 잘리며 맨 아래 줄이 먼저
+   * 빠져 한 줄 짧아졌다가 연출이 끝나면 다시 길어져, 아래 단추들이 들썩였다.
+   */
+  const [before, setBefore] = useState<number[]>([]);
+  const shownRecent = pending === null ? recent : before;
 
   const chance = target === null ? 0 : kit.items[target].chance;
   const gradeCounts = useMemo(() => countByGrade(kit, shownCounts), [kit, shownCounts]);
@@ -467,6 +486,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
     setOpened((prev) => prev + result.opened);
     setCounts((prev) => addCounts(prev, result.counts));
     // 한 번씩 열 때는 지난 결과에 이어 붙여 최근 것을 쌓아 보이고, 여러 번 열면 이번 것만 보인다.
+    setBefore(recent);
     setRecent((prev) =>
       times === 1 ? [...prev, ...result.recent].slice(-RECENT_LIMIT) : result.recent,
     );
