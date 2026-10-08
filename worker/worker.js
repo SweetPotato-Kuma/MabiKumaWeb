@@ -45,6 +45,9 @@
  * 10분마다 공지사항, 개발자 노트, 이벤트 목록을 읽어 쌓고, 올린 지 7일 안 된 글은 다시 읽어 고친 판을 남긴다.
  *   NEWS  (D1 바인딩, 새소식 기록에 필수) 시세 기록과 다른 데이터베이스
  *
+ * 공식 미리보기(GET /news/preview?name=)는 previews.js 에 있다. 키트와 이벤트 글의 갤러리에서 뽑은 아이템 이름 -> 그림이나
+ * 영상이다. 그림은 크론이 R2(ICONS)에 사본을 만든다.
+ *
  * 키트 확률표 기록(GET /kits/index, /kits/kit)은 kits.js 에 있다. 같은 크론이 한 시간에 한 번 확률 정보 화면을 읽어
  * NEWS 에 쌓는다. 판매가 끝나면 공식 화면에서 사라지는 확률표를 남겨 두려는 것이다.
  */
@@ -94,6 +97,14 @@ import {
   kitsAdmin,
   kitsRead,
 } from './kits.js';
+import {
+  PREVIEW_MIRROR_PATH,
+  PREVIEW_PATH,
+  PREVIEW_REBUILD_PATH,
+  mirrorPreviews,
+  previewAdmin,
+  previewRead,
+} from './previews.js';
 import {
   SNAPSHOT_COLLECT_PATH,
   SNAPSHOT_PATH,
@@ -1560,6 +1571,21 @@ export default {
       return newsEvents(request, env, cors);
     }
 
+    // 공식 미리보기. 아이템 이름으로 찾는다.
+    if (url.pathname === PREVIEW_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('PREVIEW_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return previewRead(request, url, env, cors);
+    }
+
+    // 미리보기 다시 훑기와 그림 사본 만들기는 운영자만.
+    if (url.pathname === PREVIEW_REBUILD_PATH || url.pathname === PREVIEW_MIRROR_PATH) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      return previewAdmin(request, url, env, cors);
+    }
+
     // 키트 확률표. 목록과 키트 하나.
     if (url.pathname === KITS_INDEX_PATH || url.pathname === KITS_KIT_PATH) {
       if (request.method !== 'GET') {
@@ -1760,7 +1786,8 @@ export default {
    * 매물을 모아 둔다. 둘은 서로 기다리지 않는다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
    * 5분 어긋난 크론은 이름으로 묻는 시세를 모은다. 넥슨 요청이 한 실행에 몰리지 않게 나눴다.
    * 뿔피리는 두 크론 모두에서 받는다. 류트는 30분이면 API 의 1,000건이 차므로 5분마다 받아야 빠지지 않는다.
-   * 2분 어긋난 크론은 공식 홈페이지 새소식을 모으고, 한 시간에 한 번 키트 확률표도 모은다. 요청 사이를 1초씩 띄우므로 1~2분 걸린다.
+   * 2분 어긋난 크론은 공식 홈페이지 새소식을 모으고, 한 시간에 한 번 키트 확률표도 모으고, 미리보기 그림의 사본을 조금씩
+   * 만든다. 요청 사이를 1초씩 띄우므로 1~2분 걸린다.
    */
   async scheduled(controller, env) {
     const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
@@ -1768,7 +1795,9 @@ export default {
       // 키트는 판매 공지를 새소식 기록에서 찾으므로 새소식을 먼저 모은다.
       const [news] = await Promise.allSettled([collectNews(env)]);
       const [kits] = await Promise.allSettled([collectKitsIfDue(env)]);
-      console.log(JSON.stringify({ news: outcome(news), kits: outcome(kits) }));
+      // 미리보기 그림의 사본을 조금씩 만든다. 새소식이 먼저 색인한 것부터 따라간다.
+      const [previews] = await Promise.allSettled([mirrorPreviews(env)]);
+      console.log(JSON.stringify({ news: outcome(news), kits: outcome(kits), previews: outcome(previews) }));
       return;
     }
     if (controller?.cron === PRICE_CRON) {

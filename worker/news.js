@@ -16,6 +16,7 @@
  */
 
 import { rateLimited, withEdgeCache } from './market.js';
+import { indexPreviews } from './previews.js';
 
 export const NEWS_LIST_PATH = '/news/list';
 export const NEWS_POST_PATH = '/news/post';
@@ -303,7 +304,25 @@ async function addPost(db, get, board, row, now) {
       )
       .bind(row.id, view.title, view.body, hash, now),
   ]);
+  await indexPreviewsSafely(db, {
+    postId: row.id,
+    title: row.title || view.title,
+    postedAt: view.postedAt ?? row.postedAt ?? now,
+    body: view.body,
+  });
   return true;
+}
+
+/**
+ * 갤러리가 있는 글이면 미리보기를 색인한다. 색인이 실패해도 글 받기는 그대로 이어 가야 하므로 오류는 삼킨다.
+ * 못 한 색인은 운영자의 다시 훑기(previews.js rebuildPreviews)가 메운다.
+ */
+async function indexPreviewsSafely(db, post) {
+  try {
+    await indexPreviews(db, post);
+  } catch (error) {
+    console.log(JSON.stringify({ previews: post.postId, error: String(error) }));
+  }
 }
 
 /**
@@ -346,10 +365,16 @@ async function recheckPost(db, get, post, now) {
       )
       .bind(rev, hash, now, now, post.id),
   ]);
+  await indexPreviewsSafely(db, {
+    postId: post.id,
+    title: view.title,
+    postedAt: post.posted_at,
+    body: view.body,
+  });
   return 'edited';
 }
 
-const RECHECK_COLUMNS = 'id, board, revisions, body_hash';
+const RECHECK_COLUMNS = 'id, board, revisions, body_hash, posted_at';
 
 /**
  * 목록에서 읽은 줄을 넣는다. 처음 보는 글은 본문을 받고, 목록의 제목이나 분류가 바뀐 글은 그 자리에서 다시 읽는다.

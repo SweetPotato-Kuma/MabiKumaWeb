@@ -379,6 +379,30 @@ npx wrangler d1 migrations apply mabikuma-news --remote
 curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY"   "https://mabikuma-api.inbox7.workers.dev/news/collect?pages=10"
 ```
 
+## 공식 미리보기 (/news/preview)
+
+키트(샵)와 이벤트 글에는 "신규 아이템 미리보기" 갤러리가 있다. 이름 목록의 N 번째 줄이 N 번째 칸의 그림이나 영상이다.
+새소식 기록에 받아 둔 본문에서 그 짝을 뽑아 `NEWS` D1 의 `item_previews` 표에 두고, 아이템 정보 화면이 이름으로 찾아
+의장 아이템의 공식 모습을 보여 준다. 코드는 `previews.js`, 표는 `migrations-news/0003_previews.sql` 이다.
+
+| 경로 | 누가 | 하는 일 |
+| --- | --- | --- |
+| `GET /news/preview?name=` | 공개 | 이름으로 그림이나 영상 하나. 없으면 404. 말머리("[트렌드]")는 떼고 찾는다 |
+| `POST /news/previews/rebuild?after=` | 운영자 | 받아 둔 글을 번호 순으로 8개씩 훑어 색인한다. 이 기능 전의 글을 채울 때 쓴다. `next` 가 null 이 될 때까지 이어 부른다 |
+| `POST /news/previews/mirror?n=` | 운영자 | 그림 사본을 지금 n 장(최대 40) 만든다 |
+
+- 새 글과 고친 글은 본문을 받을 때 바로 색인한다. 같은 이름이 여러 글에 나오면 가장 최근 글의 것이다.
+- 한 칸에 이름 둘이 묶인 줄("A(남성용), B(여성용)")은 이름마다 같은 그림으로 색인한다. 괄호 안의 쉼표는 나누지 않는다.
+- 그림(평균 170KB, 1,500장 남짓)은 새소식 크론이 10분마다 6장씩 R2(`previews/`)에 사본을 만든다. 공식 쪽이 지워도 남기려는
+  것이다. 세 번 실패한 그림은 그만두고 화면은 공식 주소를 쓴다. 영상(평균 6.6MB, 전체 10GB 안팎)은 사본을 두지 않고 공식 주소로 재생한다.
+- 겟잇 뷰티 박스는 목록이 셋이고 영상 하나의 주소를 번호로 바꿔 끼우는 별도 위젯이라, 칸이 따로 있는 줄만 색인된다.
+
+```bash
+npx wrangler d1 migrations apply mabikuma-news --remote
+# 이 기능 전에 받아 둔 글을 한 번 색인한다. next 가 null 이 될 때까지 after 를 바꿔 가며 부른다.
+curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY" "https://mabikuma-api.inbox7.workers.dev/news/previews/rebuild?after=0"
+```
+
 ## 키트 확률표 기록 (/kits)
 
 공식 확률 정보 화면은 지금 파는 키트만 보여 주고 판매가 끝나면 지웁니다. 지난 확률표는 다시 볼 수 없으므로
