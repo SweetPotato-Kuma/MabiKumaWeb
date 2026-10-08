@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LOOKUP_MAX_GROUPS,
@@ -160,6 +160,41 @@ describe('브라우저에 남겨 둔 카드', () => {
     expect((init.headers as Record<string, string>)['content-type']).toMatch(/^text\/plain/);
   });
 
+  it('설명은 있어도 그림이 빈 카드는 하루 대신 한 시간 뒤 다시 확인한다', async () => {
+    const fetchMock = stubLookup([card]);
+    const cards = await freshModule([
+      [key('검', '롱 소드'), Date.now() - 2 * 60 * 60 * 1000, { ...card, icon: '' }],
+    ]);
+    renderHook(() => cards.usePrefetchItemCards([{ category: '검', name: '롱 소드' }]));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('그림 로딩 실패는 하루가 안 된 캐시도 한 번 다시 조회한다', async () => {
+    const fetchMock = stubLookup([{ ...card, icon: 'new.webp' }]);
+    const cards = await freshModule([[key('검', '롱 소드'), Date.now(), card]]);
+    const { result } = renderHook(() => cards.useItemCard('검', '롱 소드'));
+    await act(async () => {
+      cards.refreshItemCardIcon('검', '롱 소드');
+      cards.refreshItemCardIcon('검', '롱 소드');
+    });
+
+    await vi.waitFor(() => expect(result.current?.icon).toBe('new.webp'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('깨진 조회 응답을 카드 없음으로 캐시하지 않는다', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ error: '일시적인 응답 오류' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const cards = await freshModule([]);
+    renderHook(() => cards.usePrefetchItemCards([{ category: '검', name: '롱 소드' }]));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(renderHook(() => cards.useItemCard('검', '롱 소드')).result.current).toBeUndefined();
+    renderHook(() => cards.usePrefetchItemCards([{ category: '검', name: '롱 소드' }]));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
   it('30일이 지난 카드는 버린다', async () => {
     const cards = await freshModule([[key('검', '롱 소드'), Date.now() - 31 * DAY, card]]);
     const { result } = renderHook(() => cards.useItemCard('검', '롱 소드'));
@@ -182,12 +217,17 @@ describe('브라우저에 남겨 둔 카드', () => {
   it('옛 이름으로 남긴 것은 읽지 않고 지운다', async () => {
     // v2 에는 이름이 같은 다른 아이템의 카드가 남아 있다. 그대로 믿으면 검 목록에 간장(음식)이 보인다.
     const legacy = 'mabikuma:itemCards:v2';
-    window.localStorage.setItem(legacy, JSON.stringify([[key('대형 낫', '데빌 슬레이어'), Date.now(), null]]));
+    window.localStorage.setItem(
+      legacy,
+      JSON.stringify([[key('대형 낫', '데빌 슬레이어'), Date.now(), null]]),
+    );
     vi.resetModules();
     const cards = await import('./cards');
 
     expect(window.localStorage.getItem(legacy)).toBeNull();
-    expect(renderHook(() => cards.useItemCard('대형 낫', '데빌 슬레이어')).result.current).toBeUndefined();
+    expect(
+      renderHook(() => cards.useItemCard('대형 낫', '데빌 슬레이어')).result.current,
+    ).toBeUndefined();
   });
 
   it('남긴 모양이 깨져 있어도 화면을 깨지 않는다', async () => {
@@ -220,6 +260,7 @@ describe('canonicalItemName', () => {
     // 이름 사전 수집기가 같은 규칙으로 저장한다. 이게 어긋나면 카드가 안 붙는다.
     expect(canonicalItemName('@롱 소드')).toBe('롱 소드');
     expect(canonicalItemName('  롱 소드 ')).toBe('롱 소드');
+    expect(canonicalItemName('  @롱 소드 ')).toBe('롱 소드');
     expect(canonicalItemName('롱 소드')).toBe('롱 소드');
   });
 });

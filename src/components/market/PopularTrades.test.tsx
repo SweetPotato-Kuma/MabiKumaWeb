@@ -6,13 +6,21 @@ import { AppProviders } from '@/app/AppProviders';
 import { PopularTrades } from '@/components/market/PopularTrades';
 import type { PopularResponse, PopularRow } from '@/features/market/api';
 import type * as Settings from '@/lib/settings';
+import { forgetItemCards } from '@/features/itemcard/cards';
+import { iconMapUrl } from '@/features/itemcard/iconMap';
 
 vi.mock('@/lib/settings', async (importOriginal) => ({
   ...(await importOriginal<typeof Settings>()),
   getProxyUrl: () => 'https://worker.test',
 }));
 
-const row = (name: string, n: number, total: number, avg: number | null, category = '음식'): PopularRow => ({
+const row = (
+  name: string,
+  n: number,
+  total: number,
+  avg: number | null,
+  category = '음식',
+): PopularRow => ({
   name,
   category,
   n,
@@ -22,7 +30,9 @@ const row = (name: string, n: number, total: number, avg: number | null, categor
 });
 
 const many = (count: number): PopularRow[] =>
-  Array.from({ length: count }, (_, index) => row(`아이템 ${index + 1}`, 100 - index, 1000 * (100 - index), 1000));
+  Array.from({ length: count }, (_, index) =>
+    row(`아이템 ${index + 1}`, 100 - index, 1000 * (100 - index), 1000),
+  );
 
 function body(overrides: Partial<PopularResponse> = {}): PopularResponse {
   return {
@@ -30,8 +40,14 @@ function body(overrides: Partial<PopularResponse> = {}): PopularResponse {
     from: '2026-10-01T03:00:00.000Z',
     to: '2026-10-02T03:00:00.000Z',
     partial: false,
-    byCount: [row('낙지', 231, 915_000, 3962), row('깨어난 힘의 정수', 133, 192_000_000, 1_450_000, '기타')],
-    byTotal: [row('깨어난 힘의 정수', 133, 192_000_000, 1_450_000, '기타'), row('낙지', 231, 915_000, 3962)],
+    byCount: [
+      row('낙지', 231, 915_000, 3962),
+      row('깨어난 힘의 정수', 133, 192_000_000, 1_450_000, '기타'),
+    ],
+    byTotal: [
+      row('깨어난 힘의 정수', 133, 192_000_000, 1_450_000, '기타'),
+      row('낙지', 231, 915_000, 3962),
+    ],
     since: '2026-09-23',
     updated: '2026-10-02T02:55:00.000Z',
     ...overrides,
@@ -44,7 +60,9 @@ function stubPopular(data: PopularResponse | Response) {
   fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (!url.includes('/market/popular')) return Response.json({});
-    return data instanceof Response ? data : Response.json({ ...data, window: new URL(url).searchParams.get('window') });
+    return data instanceof Response
+      ? data
+      : Response.json({ ...data, window: new URL(url).searchParams.get('window') });
   });
   vi.stubGlobal('fetch', fetchMock);
 }
@@ -62,8 +80,10 @@ function renderChart(onSearch: (name: string) => void = () => {}, tickMs = 60_00
   );
 }
 
-const popularCalls = () => fetchMock.mock.calls.filter(([input]) => String(input).includes('/market/popular'));
-const expand = () => fireEvent.click(screen.getByRole('button', { name: '인기 거래 아이템 펼치기' }));
+const popularCalls = () =>
+  fetchMock.mock.calls.filter(([input]) => String(input).includes('/market/popular'));
+const expand = () =>
+  fireEvent.click(screen.getByRole('button', { name: '인기 거래 아이템 펼치기' }));
 const wait = (ms: number) =>
   act(async () => {
     await new Promise((resolve) => setTimeout(resolve, ms));
@@ -71,13 +91,87 @@ const wait = (ms: number) =>
 
 beforeEach(() => {
   window.localStorage.clear();
+  forgetItemCards();
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
 describe('인기 거래 아이템 띠', () => {
+  it.each(['이름 누락', '빈 그림'])(
+    'CDN 목록의 %s을 카드 조회로 보완해 띠와 펼친 목록에 그린다',
+    async (missing) => {
+      vi.stubEnv('VITE_ICON_BASE_URL', 'https://icons.example');
+      const foodMap = await iconMapUrl('음식');
+      const fallbackMap = await iconMapUrl('분류 없음');
+      const rows = [row('낙지', 231, 915_000, 3962), row('문어', 200, 800_000, 4000)];
+      const cards = rows.map(({ name, category }) => ({
+        name,
+        category,
+        subtitle: '',
+        description: '',
+        updated: '2026-10-08',
+        icon: `${name}.webp`,
+        iconUrl: `https://icons.example/${name}.webp`,
+      }));
+      const lookup = vi.fn();
+      fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/market/popular')) return Response.json(body({ byCount: rows }));
+        if (url === foodMap)
+          return Response.json({ items: missing === '빈 그림' ? { 낙지: [''], 문어: [''] } : {} });
+        if (url === fallbackMap) return Response.json({ items: {} });
+        if (url.endsWith('/item-card/lookup')) {
+          lookup(JSON.parse(String(init?.body)));
+          return Response.json({ cards });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const view = renderChart();
+
+      await waitFor(() =>
+        expect(
+          view.container.querySelector('img[src="https://icons.example/낙지.webp"]'),
+        ).not.toBeNull(),
+      );
+      expand();
+      await waitFor(() =>
+        expect(
+          view.container.querySelector('img[src="https://icons.example/문어.webp"]'),
+        ).not.toBeNull(),
+      );
+      expect(lookup.mock.calls).toEqual([
+        [{ groups: [{ category: '음식', names: ['낙지', '문어'] }] }],
+      ]);
+    },
+  );
+
+  it('목록에 그림이 있으면 카드 조회 없이 표시한다', async () => {
+    vi.stubEnv('VITE_ICON_BASE_URL', 'https://icons.example');
+    const foodMap = await iconMapUrl('음식');
+    const rows = [row('낙지', 231, 915_000, 3962)];
+    fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/market/popular')) return Response.json(body({ byCount: rows }));
+      if (url === foodMap) return Response.json({ items: { 낙지: ['낙지.webp'] } });
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const view = renderChart();
+
+    await waitFor(() =>
+      expect(
+        view.container.querySelector('img[src="https://icons.example/낙지.webp"]'),
+      ).not.toBeNull(),
+    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/item-card/lookup'))).toBe(
+      false,
+    );
+  });
+
   it('접힌 채로 1위를 한 줄로 보여 준다', async () => {
     stubPopular(body());
     renderChart();
@@ -110,7 +204,8 @@ describe('인기 거래 아이템 띠', () => {
     stubPopular(body());
     const { container } = renderChart(() => {}, 40);
     await screen.findByText('낙지');
-    const strip = container.querySelector('.pt-ticker')?.parentElement?.parentElement as HTMLElement;
+    const strip = container.querySelector('.pt-ticker')?.parentElement
+      ?.parentElement as HTMLElement;
 
     fireEvent.mouseEnter(strip);
     await wait(300);
@@ -180,7 +275,10 @@ describe('인기 거래 아이템 펼침', () => {
 
     expect(await screen.findAllByRole('link')).toHaveLength(10);
     expect(screen.queryByText('아이템 11')).toBeNull();
-    expect(screen.getByRole('button', { name: '인기 거래 아이템 접기' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: '인기 거래 아이템 접기' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '인기 거래 아이템 접기' }));
     expect(screen.queryAllByRole('link')).toHaveLength(0);
@@ -212,7 +310,9 @@ describe('인기 거래 아이템 펼침', () => {
     renderChart();
     await screen.findByText('낙지');
 
-    fireEvent.keyDown(screen.getByRole('button', { name: '인기 거래 아이템 펼치기' }), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('button', { name: '인기 거래 아이템 펼치기' }), {
+      key: 'Enter',
+    });
     expect(await screen.findByRole('link', { name: '낙지' })).toBeInTheDocument();
 
     fireEvent.keyDown(screen.getByRole('button', { name: '인기 거래 아이템 접기' }), { key: ' ' });
@@ -255,7 +355,9 @@ describe('인기 거래 아이템 펼침', () => {
 
     fireEvent.click(screen.getByText('7일'));
 
-    await waitFor(() => expect(popularCalls().some(([input]) => String(input).includes('window=7d'))).toBe(true));
+    await waitFor(() =>
+      expect(popularCalls().some(([input]) => String(input).includes('window=7d'))).toBe(true),
+    );
   });
 
   it('집계 기간과 수집 시각을 적고, 기록을 늦게 모았으면 그 날부터라고 밝힌다', async () => {
@@ -293,7 +395,13 @@ describe('인기 거래 아이템 펼침', () => {
 
   it('유물 옵션 줄은 이름과 검색 단추 모두 경매장의 그 옵션 매물로 간다', async () => {
     const relic: PopularRow = {
-      ...row('무리아스의 유물 - 오버 드라이브 폭발 공격 대미지', 40, 800_000_000, 20_000_000, '유물'),
+      ...row(
+        '무리아스의 유물 - 오버 드라이브 폭발 공격 대미지',
+        40,
+        800_000_000,
+        20_000_000,
+        '유물',
+      ),
       item: '무리아스의 유물',
       relic: '오버 드라이브 폭발 공격 대미지',
     };

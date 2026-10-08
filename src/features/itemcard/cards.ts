@@ -121,7 +121,7 @@ export interface ItemCardKey {
  * 같은 규칙을 거쳐야 경매장 매물과 사전 카드가 이어진다.
  */
 export function canonicalItemName(itemName: string): string {
-  return itemName.replace(/^@/, '').trim();
+  return itemName.trim().replace(/^@/, '').trim();
 }
 
 /**
@@ -223,7 +223,7 @@ const fetchedAt = new Map<string, number>();
 function needsLookup(key: string, now: number): boolean {
   if (!known.has(key)) return true;
   const age = now - (fetchedAt.get(key) ?? 0);
-  return age > (known.get(key) ? CARD_REFRESH_MS : MISSING_TTL_MS);
+  return age > (known.get(key)?.icon ? CARD_REFRESH_MS : MISSING_TTL_MS);
 }
 
 function restoreFromStorage(): void {
@@ -303,6 +303,8 @@ async function lookupBatch(batch: { category: string; names: string[] }[]): Prom
     if (!response.ok) return;
 
     const found = (await response.json()) as Pick<ItemCardFile, 'cards'>;
+    // 잘못된 응답을 '카드 없음'으로 캐시하면 이후의 정상 조회도 한 시간 동안 막힌다.
+    if (!Array.isArray(found?.cards)) return;
     const now = Date.now();
     for (const key of keys) {
       known.set(key, null);
@@ -318,6 +320,39 @@ async function lookupBatch(batch: { category: string; names: string[] }[]): Prom
   }
 }
 
+// 여러 칸과 화면이 같은 렌더에서 요청해도 한 묶음으로 보내고 이름을 중복 조회하지 않는다.
+const queuedLookups = new Map<string, ItemCardKey & { refresh: boolean }>();
+let lookupScheduled = false;
+
+function queueItemCards(keys: readonly ItemCardKey[], refresh = false): void {
+  if (!isCardStoreConfigured()) return;
+  const now = Date.now();
+  for (const item of keys) {
+    const key = keyOf(item.category, item.name);
+    if (!item.category || !item.name || inFlight.has(key) || (!refresh && !needsLookup(key, now)))
+      continue;
+    queuedLookups.set(key, {
+      ...item,
+      refresh: refresh || Boolean(queuedLookups.get(key)?.refresh),
+    });
+  }
+  if (lookupScheduled || queuedLookups.size === 0) return;
+  lookupScheduled = true;
+  queueMicrotask(() => {
+    lookupScheduled = false;
+    const missing = [...queuedLookups]
+      .filter(([key, item]) => !inFlight.has(key) && (item.refresh || needsLookup(key, Date.now())))
+      .map(([, item]) => item);
+    queuedLookups.clear();
+    for (const batch of packLookupBatches(missing)) void lookupBatch(batch);
+  });
+}
+
+/** 실패한 그림 주소는 캐시된 카드도 한 번 다시 확인한다. 호출하는 칸에서 재시도 횟수를 제한한다. */
+export function refreshItemCardIcon(category: string, name: string): void {
+  queueItemCards([{ category, name }], true);
+}
+
 /**
  * 이 이름들의 카드를 미리 받아 둔다. 표를 그리는 화면이 한 번 부른다.
  *
@@ -329,18 +364,13 @@ export function usePrefetchItemCards(keys: readonly ItemCardKey[]): void {
   const signature = keys.map(({ category, name }) => keyOf(category, name)).join('\u0001');
 
   useEffect(() => {
-    if (!isCardStoreConfigured() || signature === '') return;
-
-    const missing: ItemCardKey[] = [];
-    const now = Date.now();
-    for (const key of signature.split('\u0001')) {
-      if (!needsLookup(key, now) || inFlight.has(key)) continue;
-      const [category, name] = key.split('\u0000');
-      if (category && name) missing.push({ category, name });
-    }
-    if (missing.length === 0) return;
-
-    for (const batch of packLookupBatches(missing)) void lookupBatch(batch);
+    if (signature === '') return;
+    queueItemCards(
+      signature.split('\u0001').map((key) => {
+        const [category, name] = key.split('\u0000');
+        return { category, name };
+      }),
+    );
   }, [signature]);
 }
 

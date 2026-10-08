@@ -10,7 +10,7 @@ import { parseDye, type ItemDye } from './dye';
  * 처음 보는 아이템은 그 조회를 한 번 기다려야 해서 그림이 1초 가까이 늦게 떴다. 이 목록은
  * 워커가 카드 칸을 쓸 때 R2 에 같이 써 두고(worker.js 의 writeIconMap), 그림과 같은 CDN 에서
  * 나간다. 화면은 워커를 거치지 않고 가까운 CDN 에서 목록을 받고, 곧바로 그림 10장을 한꺼번에
- * 받는다. 목록에 없는 이름은 카드가 없다는 뜻이라 따로 묻지 않는다.
+ * 받는다. 지난 목록에 없는 이름이나 그림은 화면이 카드 조회로 보완한다.
  *
  * 그림 도메인(`VITE_ICON_BASE_URL`)이 없는 빌드에서는 꺼지고, 예전처럼 카드 조회로 그림을 찾는다.
  * 목록을 받지 못한 카테고리도 마찬가지다.
@@ -50,9 +50,10 @@ async function sha256Hex(text: string): Promise<string> {
 /**
  * 목록 모양이나 그림이 통째로 바뀌었을 때 올린다. 브라우저와 CDN 은 목록을 한 시간 붙잡고 하루까지
  * 옛 것을 한 번 더 내주므로, 주소가 그대로면 바꾼 뒤에도 옛 그림 이름이 보인다. 2 는 그림을 WebP 로
- * 바꾸고 염색 정보를 실은 목록이다(2026-10). R2 는 물음표 뒤를 보지 않아 같은 파일이 나간다.
+ * 바꾸고 염색 정보를 실은 목록이다(2026-10). 3 은 한국 기능 판독을 바로잡아 누락된 그림을
+ * 채운 목록이다. R2 는 물음표 뒤를 보지 않아 같은 파일이 나간다.
  */
-const MAP_VERSION = 2;
+const MAP_VERSION = 3;
 
 /**
  * 목록 파일 주소. 워커의 iconMapKey 와 같은 규칙이다. 카테고리 이름에 `/` 가 들어가는 것이 있어
@@ -131,22 +132,26 @@ export function usePrefetchIconMap(): (category: string) => void {
 
 /**
  * 아이템 하나의 그림과 부제. `undefined` 는 아직 모름(받는 중이거나 목록이 꺼짐), `null` 은
- * 목록에 없음(카드가 없음). 같은 카테고리를 여러 칸이 불러도 목록은 한 번만 받는다.
+ * 목록에 없거나 목록 요청 실패다. 카드 저장소에서 보완할 수 있다.
+ * 같은 카테고리를 여러 칸이 불러도 목록은 한 번만 받는다.
  */
 export function useItemBrief(category: string, name: string): ItemBrief | null | undefined {
-  const { data } = useQuery(iconMapQueryOptions(category));
+  const { data, isError } = useQuery(iconMapQueryOptions(category));
   // 게임에 새로 나온 아이템은 경매장 이름 사전에 오르기 전까지 카테고리를 몰라 분류 없음 목록에만 있다.
   // 그 카테고리 목록에 없는 이름이 있을 때만 분류 없음 목록을 받는다.
-  const missing = Boolean(data && name && !data.has(name) && category !== UNCATEGORIZED_CARDS);
+  const missing = Boolean(
+    data && name && !data.get(name)?.icon && category !== UNCATEGORIZED_CARDS,
+  );
   const fallback = useQuery({
     ...iconMapQueryOptions(UNCATEGORIZED_CARDS),
     enabled: missing && isIconMapConfigured(),
   });
-  if (!data || !name) return undefined;
+  if (!name) return undefined;
+  if (!data) return isError ? null : undefined;
   const found = data.get(name);
-  if (found) return found;
-  if (!missing || fallback.isError) return null;
-  return fallback.data ? (fallback.data.get(name) ?? null) : undefined;
+  if (found?.icon) return found;
+  if (!missing || fallback.isError) return found ?? null;
+  return fallback.data ? (fallback.data.get(name) ?? found ?? null) : undefined;
 }
 
 export interface IconMaps {

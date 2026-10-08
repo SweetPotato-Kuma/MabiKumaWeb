@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { theme } from 'antd';
 import itemMissing from '@/assets/item-missing.png';
-import { iconSrcOf, isCardStoreConfigured, type ItemCard } from '@/features/itemcard/cards';
+import {
+  canonicalItemName,
+  cardCategoryOf,
+  iconSrcOf,
+  isCardStoreConfigured,
+  refreshItemCardIcon,
+  useItemCard,
+  usePrefetchItemCards,
+  type ItemCard,
+} from '@/features/itemcard/cards';
 import { iconFileUrl, isIconMapConfigured, useItemBrief } from '@/features/itemcard/iconMap';
 import { dyeKey, paintFromSheet, type DyeColors, type ItemDye } from '@/features/itemcard/dye';
 import { pixelScale } from '@/features/itemcard/pixelScale';
@@ -10,13 +19,14 @@ interface ItemImageProps {
   src: string;
   /** 정사각 칸 한 변. 그림은 이 안에 들어간다. */
   size: number;
+  onError?: () => void;
 }
 
 /**
  * 그림 한 장을 원래 크기 기준으로 그린다. 크기는 그림이 도착해야 알 수 있어서, 도착하기
  * 전에는 숨겨 두고 칸만 잡아 둔다. 칸이 먼저 있으므로 그림이 와도 표가 들썩이지 않는다.
  */
-export function ItemImage({ src, size }: ItemImageProps) {
+export function ItemImage({ src, size, onError }: ItemImageProps) {
   // 같은 칸에 다른 그림이 들어올 수 있다(표의 줄이 바뀔 때). 크기는 그림 주소와 짝지어 둔다.
   const [natural, setNatural] = useState<{ src: string; width: number; height: number } | null>(
     null,
@@ -54,7 +64,10 @@ export function ItemImage({ src, size }: ItemImageProps) {
         // lazy 로 두면 화면 배치가 끝날 때까지 받기를 미룬다. 2KB 남짓한 그림이라 바로 받는 편이 낫다.
         decoding="async"
         onLoad={(event) => measure(event.currentTarget)}
-        onError={() => setFailedSrc(src)}
+        onError={() => {
+          setFailedSrc(src);
+          onError?.();
+        }}
         style={
           known
             ? { width: known.width * scale, height: known.height * scale, display: 'block' }
@@ -95,8 +108,16 @@ export function ItemIcon({ card, category, name, file, size, colors }: ItemIconP
   if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
   if (file && isIconMapConfigured()) return <ItemImage src={iconFileUrl(file)} size={size} />;
   // 카테고리와 이름을 받은 칸만 목록을 본다. 카드만 넘기는 상세 창은 목록을 받을 이유가 없다.
-  if (category && name)
-    return <MappedItemIcon card={card} category={category} name={name} size={size} colors={colors} />;
+  if (category !== undefined && name)
+    return (
+      <MappedItemIcon
+        card={card}
+        category={cardCategoryOf(category)}
+        name={canonicalItemName(name)}
+        size={size}
+        colors={colors}
+      />
+    );
   const src = card?.icon ? iconSrcOf(card) : '';
   // 상세 창은 카드만 받는다. null 이면 물어봤는데 카드가 없다는 뜻이다. undefined 는 아직 모른다.
   return <IconSlot src={src} missing={card !== undefined && !src} size={size} />;
@@ -110,10 +131,50 @@ function MappedItemIcon({
   colors,
 }: ItemIconProps & { category: string; name: string }) {
   const brief = useItemBrief(category, name);
-  const src = brief?.icon ? iconFileUrl(brief.icon) : card?.icon ? iconSrcOf(card) : '';
-  if (src && brief?.dye && colors) return <DyedItemImage src={src} dye={brief.dye} colors={colors} size={size} />;
-  // 목록을 받았는데 이름이 없으면(null) 그림이 없다고 확정된 것이다. 받는 중(undefined)에는 비워 둔다.
-  return <IconSlot src={src} missing={brief !== undefined && !src} size={size} />;
+  const storedCard = useItemCard(category, name);
+  const key = `${category}\u0000${name}`;
+  const [failures, setFailures] = useState<{ key: string; sources: string[] }>({
+    key,
+    sources: [],
+  });
+  const failed = (src: string) => failures.key === key && failures.sources.includes(src);
+  const mapSrc = brief?.icon ? iconFileUrl(brief.icon) : '';
+  const availableCard = [card, storedCard].find(
+    (value) => value?.icon && !failed(iconSrcOf(value)),
+  );
+  const src = mapSrc && !failed(mapSrc) ? mapSrc : availableCard ? iconSrcOf(availableCard) : '';
+  usePrefetchItemCards(
+    !availableCard && (!isIconMapConfigured() || (brief !== undefined && !brief?.icon))
+      ? [{ category, name }]
+      : [],
+  );
+  const retried = useRef('');
+  const onError = () => {
+    setFailures((previous) => ({
+      key,
+      sources: [...(previous.key === key ? previous.sources : []), src],
+    }));
+    // 새 카드도 같은 주소라면 반복 요청하지 않고 그림 없음으로 남긴다.
+    if (retried.current !== key) {
+      retried.current = key;
+      refreshItemCardIcon(category, name);
+    }
+  };
+  if (src && src === mapSrc && brief?.dye && colors)
+    return (
+      <DyedItemImage src={src} dye={brief.dye} colors={colors} size={size} onError={onError} />
+    );
+  // 목록에도 카드에도 그림이 없으면 기본 표시를 둔다. 뒤늦게 온 카드는 이 칸이 구독한다.
+  if (src) return <ItemImage src={src} size={size} onError={onError} />;
+  return (
+    <IconSlot
+      src=""
+      missing={
+        (brief !== undefined || (failures.key === key && failures.sources.length > 0)) && !src
+      }
+      size={size}
+    />
+  );
 }
 
 /**
@@ -121,9 +182,25 @@ function MappedItemIcon({
  * 표가 들썩이지 않는다. 칠하기는 브라우저가 한가할 때 한다. 첫 화면을 그리는 일을 막지 않는다.
  * 시트를 받지 못하면 기본 그림이 남는다.
  */
-function DyedItemImage({ src, dye, colors, size }: { src: string; dye: ItemDye; colors: DyeColors; size: number }) {
+function DyedItemImage({
+  src,
+  dye,
+  colors,
+  size,
+  onError,
+}: {
+  src: string;
+  dye: ItemDye;
+  colors: DyeColors;
+  size: number;
+  onError?: () => void;
+}) {
   const key = dyeKey(dye, colors);
-  const [result, setResult] = useState<{ key: string; side: number; pixels: Uint8ClampedArray } | null>(null);
+  const [result, setResult] = useState<{
+    key: string;
+    side: number;
+    pixels: Uint8ClampedArray;
+  } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -157,7 +234,7 @@ function DyedItemImage({ src, dye, colors, size }: { src: string; dye: ItemDye; 
     context.putImageData(image, 0, 0);
   }, [ready]);
 
-  if (!ready) return <ItemImage src={src} size={size} />;
+  if (!ready) return <ItemImage src={src} size={size} onError={onError} />;
   const shown = ready.side * pixelScale(ready.side, ready.side, size);
   return (
     <div

@@ -5,8 +5,8 @@ import { ArrowDownIcon, SearchIcon, TrendingUpIcon } from '@/components/icons';
 import { EmptyState } from '@/components/EmptyState';
 import { ItemIcon } from '@/components/ItemIcon';
 import { ItemInfoLink } from '@/components/ItemInfoLink';
-import { canonicalItemName } from '@/features/itemcard/cards';
-import { usePrefetchIconMaps } from '@/features/itemcard/iconMap';
+import { canonicalItemName, usePrefetchItemCards } from '@/features/itemcard/cards';
+import { useIconMaps } from '@/features/itemcard/iconMap';
 import {
   canLookupMarket,
   useMarketPopularQuery,
@@ -39,7 +39,11 @@ const TICK_MS = 3500;
 const SLIDE_MS = 420;
 
 /** 한국 시각의 "10월 2일". 7일, 30일 집계는 날짜로 가르므로 날짜만 적는다. */
-const kstDate = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' });
+const kstDate = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  month: 'long',
+  day: 'numeric',
+});
 const kstDateTime = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul',
   month: 'numeric',
@@ -70,7 +74,12 @@ function Rank({ rank, width }: { rank: number; width: number }) {
     <Text
       className="tnum"
       strong
-      style={{ width, textAlign: 'right', flex: `0 0 ${width}px`, color: rank <= 3 ? token.colorPrimary : undefined }}
+      style={{
+        width,
+        textAlign: 'right',
+        flex: `0 0 ${width}px`,
+        color: rank <= 3 ? token.colorPrimary : undefined,
+      }}
     >
       {rank}
     </Text>
@@ -93,7 +102,11 @@ function TickerItem({ rank, row, basis }: { rank: number; row: PopularRow; basis
       <Text strong ellipsis style={{ minWidth: 0, flex: '0 1 auto' }}>
         {name}
       </Text>
-      <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap', flex: '0 0 auto' }}>
+      <Text
+        type="secondary"
+        className="tnum"
+        style={{ fontSize: 12, whiteSpace: 'nowrap', flex: '0 0 auto' }}
+      >
         {basis === 'count' ? `${formatNumber(row.n)}회` : `총 ${formatGold(row.total)}`}
       </Text>
     </>
@@ -181,7 +194,11 @@ function PopularItem({
       <Flex vertical gap={2} style={{ minWidth: 0, flex: '1 1 auto' }}>
         <Flex gap={6} align="center" wrap>
           <Text strong style={{ minWidth: 0 }}>
-            {relicPath ? <Link to={relicPath}>{name}</Link> : <ItemInfoLink name={name} category={row.category} />}
+            {relicPath ? (
+              <Link to={relicPath}>{name}</Link>
+            ) : (
+              <ItemInfoLink name={name} category={row.category} />
+            )}
           </Text>
           <Tag style={{ margin: 0 }}>{row.category}</Tag>
         </Flex>
@@ -225,8 +242,17 @@ export function PopularTrades({
   const wide = Grid.useBreakpoint().md ?? false;
   const query = useMarketPopularQuery(window, true);
 
-  const rows = query.data ? (basis === 'count' ? query.data.byCount : query.data.byTotal).slice(0, SHOWN_ROWS) : [];
-  usePrefetchIconMaps([...new Set(rows.map((row) => row.category))]);
+  const rows = query.data
+    ? (basis === 'count' ? query.data.byCount : query.data.byTotal).slice(0, SHOWN_ROWS)
+    : [];
+  const iconMaps = useIconMaps(rows.map((row) => row.category));
+  // CDN의 지난 목록에 이름이나 그림이 빠져 있어도 카드 저장소에서 보완한다.
+  // 띠에 아직 나오지 않은 순위도 함께 묶어 조회한다.
+  usePrefetchItemCards(
+    rows
+      .map((row) => ({ category: row.category, name: iconName(row) }))
+      .filter(({ category, name }) => iconMaps.needsLookup(category, name)),
+  );
 
   if (!canLookupMarket()) return null;
   // 띠는 받지 못했거나 거래가 없으면 자리를 차지하지 않는다. 있을 때 덤으로 보이는 것이다.
@@ -258,7 +284,13 @@ export function PopularTrades({
     },
   } as const;
   const arrow = (
-    <ArrowDownIcon style={{ flex: '0 0 auto', transform: open ? 'rotate(180deg)' : undefined, color: token.colorTextSecondary }} />
+    <ArrowDownIcon
+      style={{
+        flex: '0 0 auto',
+        transform: open ? 'rotate(180deg)' : undefined,
+        color: token.colorTextSecondary,
+      }}
+    />
   );
 
   if (!open) {
@@ -284,7 +316,12 @@ export function PopularTrades({
             </Text>
           </Flex>
           {query.isPending ? (
-            <Skeleton.Input active size="small" style={{ height: 28, minWidth: 0, flex: '1 1 auto' }} block />
+            <Skeleton.Input
+              active
+              size="small"
+              style={{ height: 28, minWidth: 0, flex: '1 1 auto' }}
+              block
+            />
           ) : (
             <Ticker rows={rows} basis={basis} paused={hovering} tickMs={tickMs} />
           )}
@@ -297,7 +334,13 @@ export function PopularTrades({
   return (
     <div style={{ ...frame, padding: '10px 12px' }}>
       <Flex vertical gap={12}>
-        <Flex {...toggleProps} justify="space-between" align="center" gap={8} style={{ cursor: 'pointer' }}>
+        <Flex
+          {...toggleProps}
+          justify="space-between"
+          align="center"
+          gap={8}
+          style={{ cursor: 'pointer' }}
+        >
           <Flex gap={8} align="center">
             <TrendingUpIcon />
             <Text strong style={{ fontSize: 16 }}>
@@ -331,12 +374,23 @@ export function PopularTrades({
               display: 'grid',
               // 넓은 화면은 두 칸이고 위에서 아래로 차례로 채운다(1~5위 왼쪽, 6~10위 오른쪽). 좁으면 한 칸이다.
               gridTemplateColumns: wide ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
-              ...(wide ? { gridTemplateRows: `repeat(${Math.ceil(rows.length / 2)}, auto)`, gridAutoFlow: 'column' } : {}),
+              ...(wide
+                ? {
+                    gridTemplateRows: `repeat(${Math.ceil(rows.length / 2)}, auto)`,
+                    gridAutoFlow: 'column',
+                  }
+                : {}),
               gap: '10px 40px',
             }}
           >
             {rows.map((row, index) => (
-              <PopularItem key={row.name} rank={index + 1} row={row} basis={basis} onSearch={onSearch} />
+              <PopularItem
+                key={row.name}
+                rank={index + 1}
+                row={row}
+                basis={basis}
+                onSearch={onSearch}
+              />
             ))}
           </div>
         )}

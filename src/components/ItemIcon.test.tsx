@@ -1,6 +1,25 @@
-import { fireEvent, render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { ItemImage } from '@/components/ItemIcon';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ItemIcon, ItemImage } from '@/components/ItemIcon';
+import { forgetItemCards } from '@/features/itemcard/cards';
+import { iconMapUrl } from '@/features/itemcard/iconMap';
+import type * as Settings from '@/lib/settings';
+
+vi.mock('@/lib/settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof Settings>()),
+  getProxyUrl: () => 'https://worker.test',
+}));
+
+beforeEach(() => {
+  forgetItemCards();
+  vi.stubEnv('VITE_ICON_BASE_URL', 'https://icons.example');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 /**
  * jsdom 은 그림을 실제로 받지 않는다. 받은 것처럼 원래 크기를 심고 load 를 쏜다.
@@ -55,5 +74,138 @@ describe('ItemImage', () => {
     const image = container.querySelector('img') as HTMLImageElement;
     expect(image.getAttribute('src')).toContain('item-missing');
     expect(image.width).toBe(24);
+  });
+});
+
+describe('아이템 그림 복구', () => {
+  const card = (name: string, icon = `${name}.webp`) => ({
+    name,
+    category: '음식',
+    icon,
+    iconUrl: `https://icons.example/${icon}`,
+    subtitle: '',
+    description: '',
+    updated: '2026-10-08',
+  });
+  const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  it.each([404, 500])(
+    '목록 HTTP %i에서도 화면의 사전 조회 없이 카드로 그림을 복구한다',
+    async (status) => {
+      const lookup = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (String(input).includes('/maps/')) return new Response('', { status });
+          lookup(JSON.parse(String(init?.body)));
+          return Response.json({ cards: [card('새 음식')] });
+        }),
+      );
+      const view = render(
+        <QueryClientProvider client={client()}>
+          <ItemIcon category="음식" name="  @새 음식 " size={40} />
+        </QueryClientProvider>,
+      );
+
+      await waitFor(() =>
+        expect(
+          view.container.querySelector('img[src="https://icons.example/새 음식.webp"]'),
+        ).not.toBeNull(),
+      );
+      expect(lookup.mock.calls).toEqual([[{ groups: [{ category: '음식', names: ['새 음식'] }] }]]);
+    },
+  );
+
+  it('카테고리 목록의 빈 그림은 분류 없음의 그림으로 보완한다', async () => {
+    const foodMap = await iconMapUrl('음식');
+    const fallbackMap = await iconMapUrl('분류 없음');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === foodMap) return Response.json({ items: { '새 음식': [''] } });
+      if (String(input) === fallbackMap)
+        return Response.json({ items: { '새 음식': ['new.webp'] } });
+      throw new Error('불필요한 카드 조회');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const view = render(
+      <QueryClientProvider client={client()}>
+        <ItemIcon category="음식" name="새 음식" size={40} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(
+        view.container.querySelector('img[src="https://icons.example/new.webp"]'),
+      ).not.toBeNull(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('빈 카테고리도 분류 없음에서 그림을 찾는다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ items: { '새 재료': ['new.webp'] } })),
+    );
+    const view = render(
+      <QueryClientProvider client={client()}>
+        <ItemIcon category="" name="새 재료" size={40} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(
+        view.container.querySelector('img[src="https://icons.example/new.webp"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  it('오래된 그림 주소가 실패하면 새 카드의 주소로 바꾸며 재시도를 반복하지 않는다', async () => {
+    const queryClient = client();
+    queryClient.setQueryData(
+      ['itemIconMap', '음식'],
+      new Map([['새 음식', { icon: 'old.png', subtitle: '' }]]),
+    );
+    const fetchMock = vi.fn(async () => Response.json({ cards: [card('새 음식', 'new.webp')] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ItemIcon category="음식" name="새 음식" card={card('새 음식', 'old.png')} size={40} />
+      </QueryClientProvider>,
+    );
+    fireEvent.error(view.container.querySelector('img') as HTMLImageElement);
+
+    await waitFor(() =>
+      expect(
+        view.container.querySelector('img[src="https://icons.example/new.webp"]'),
+      ).not.toBeNull(),
+    );
+    fireEvent.error(view.container.querySelector('img') as HTMLImageElement);
+    expect(view.container.querySelector('img')?.getAttribute('src')).toContain('item-missing');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('많은 칸이 누락돼도 이름을 중복 조회하지 않고 60개 한도 안에서 묶는다', async () => {
+    const queryClient = client();
+    queryClient.setQueryData(['itemIconMap', '음식'], new Map());
+    queryClient.setQueryData(['itemIconMap', '분류 없음'], new Map());
+    const fetchMock = vi.fn(async () => Response.json({ cards: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <QueryClientProvider client={queryClient}>
+        {Array.from({ length: 126 }, (_, index) => (
+          <ItemIcon key={index} category="음식" name={`음식 ${index % 125}`} size={40} />
+        ))}
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const names = fetchMock.mock.calls.flatMap((call) => {
+      const [, init] = call as unknown as [string, RequestInit];
+      const groups = JSON.parse(String(init.body)).groups as { names: string[] }[];
+      const batch = groups.flatMap((group) => group.names);
+      expect(batch.length).toBeLessThanOrEqual(60);
+      return batch;
+    });
+    expect(new Set(names).size).toBe(125);
+    expect(names.length).toBe(125);
   });
 });
