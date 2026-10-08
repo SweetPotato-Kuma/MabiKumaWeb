@@ -39,3 +39,20 @@ public/data/**/*.json
 # 운영자가 자기 컴퓨터에서만 쓰는 도구. 올리지 않는다.
 # 여기 있던 것을 지우면 되살릴 곳이 없으니 따로 백업해 둘 것.
 scripts/local/
+
+# 게임 데이터 수집·추출·변환·업로드 도구는 운영자 PC에만 둔다.
+# postbuild/IndexNow와 scripts/lib의 배포용 모듈은 계속 추적한다.
+/scripts/game-data/
+/scripts/build-*.mjs
+/scripts/harvest-auction.mjs
+/scripts/sync-recipe-names.mjs
+/scripts/dictionary-excluded.json
+/scripts/lib/dictionary.mjs
+/scripts/lib/enchant-scrolls*.mjs
+/scripts/lib/kit-archive.mjs
+/scripts/lib/recipe-names*.mjs
+
+# 로컬 갱신 도구가 관리하는 R2 게시 전용 워커. 서비스 API 워커는 제외하지 않는다.
+/worker/game-data-worker.js
+/worker/game-data-worker.test.js
+/worker/wrangler.game-data.toml

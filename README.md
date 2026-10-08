@@ -195,7 +195,7 @@ src/
 ├─ styles/         전역 스타일
 └─ test/           테스트 설정
 
-scripts/           경매장을 훑어 이름 사전을 만드는 수집기
+scripts/           웹 빌드·검색엔진 등록 도구 (데이터 수집기는 로컬에만 보관)
 worker/            키와 카드를 들고 있는 Cloudflare Worker (배포 대상 아님)
 ```
 

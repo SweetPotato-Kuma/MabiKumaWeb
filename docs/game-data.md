@@ -8,6 +8,12 @@ node scripts/game-data/sync-all.mjs
 
 더블클릭으로 쓰려면 `scripts/local/게임-데이터-갱신.bat` 를 엽니다. 이 파일은 이 PC 에만 있습니다.
 
+수집·추출·변환·업로드 스크립트와 보조 파일(`scripts/game-data/`, `scripts/build-*.mjs`, 수집 전용
+`scripts/lib` 모듈 등), R2 게시 전용 워커(`worker/game-data-worker*`, `worker/wrangler.game-data.toml`)는
+`.gitignore`로 제외합니다. 이미 추적하던 파일도 로컬 파일은 유지하고 Git 추적만 해제했습니다.
+새로 복제한 저장소에는 이 도구들이 없으므로 운영자 PC의 파일을 따로 백업·복원해야 합니다.
+웹 빌드용 `scripts/postbuild.mjs`, IndexNow와 해당 보조 모듈, 서비스 API 워커는 계속 저장소에서 관리합니다.
+
 스케줄러에서는 아래처럼 `--scheduled`를 넘깁니다. 메뉴와 `pause` 없이 실행하고 실패 종료 코드를 전달합니다.
 클라이언트 내보내기도 포함합니다. 마지막 내보내기만 쓰려면 뒤에 `--skip-export`를 추가합니다.
 
