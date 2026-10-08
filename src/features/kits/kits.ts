@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 
 /**
  * 키트(확률형 상품) 시뮬레이터.
@@ -66,7 +67,7 @@ export interface KitIndex {
 }
 
 async function readKitFile<T>(path: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(`${import.meta.env.BASE_URL}data/kits/${path}`, { signal });
+  const response = await fetchGameData(`kits/${path}`, { signal });
   if (!response.ok) throw new Error(`키트 확률표를 받지 못했습니다. (HTTP ${response.status})`);
   return (await response.json()) as T;
 }

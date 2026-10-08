@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 import pageMeta from '@/app/pageMeta.json';
 import { itemSlug } from './itemSlug.mjs';
 
@@ -25,11 +26,6 @@ interface ItemIndex {
   categories: ItemIndexEntry[];
 }
 
-/** 사전은 빌드 산출물과 함께 올라가므로 앱의 base 경로를 따른다. */
-function assetUrl(path: string): string {
-  return `${import.meta.env.BASE_URL}data/items/${path}`;
-}
-
 /**
  * 띄어쓰기를 지우고 비교한다. "숏소드" 로 쳐도 "숏 소드" 가 걸려야 한다.
  * 게임 아이템 이름은 띄어쓰기가 일정하지 않아 사용자가 외우고 있을 리 없다.
@@ -45,7 +41,7 @@ export function useItemIndexQuery() {
   return useQuery({
     queryKey: ['itemDictionary', 'index'],
     queryFn: async ({ signal }): Promise<ItemIndex | null> => {
-      const response = await fetch(assetUrl('index.json'), { signal });
+      const response = await fetchGameData('items/index.json', { signal });
       // 사전을 아직 한 번도 수집하지 않은 빌드에서는 없는 게 정상이다. 화면을 깨지 않는다.
       if (!response.ok) return null;
       return (await response.json()) as ItemIndex;

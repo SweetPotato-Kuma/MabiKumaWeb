@@ -1,4 +1,6 @@
 import { fileURLToPath, URL } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
@@ -14,7 +16,30 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: env.VITE_BASE_PATH || DEFAULT_BASE_PATH,
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'local-game-data',
+        configureServer(server) {
+          server.middlewares.use(async (request, response, next) => {
+            const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+            const name = /\/data\/((?:[a-z0-9-]+\/)*[a-z0-9-]+\.json)$/.exec(path)?.[1];
+            if (!name || request.method !== 'GET') return next();
+            const root = resolve('.cache/game-data/current');
+            const file = resolve(root, name);
+            if (!file.startsWith(root + sep)) return next();
+            try {
+              const bytes = await readFile(file);
+              response.setHeader('Content-Type', 'application/json; charset=utf-8');
+              response.setHeader('Cache-Control', 'no-store');
+              response.end(bytes);
+            } catch {
+              next();
+            }
+          });
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -64,7 +89,7 @@ export default defineConfig(({ mode }) => {
        * 개발용 .env 에 실제 워커 주소가 들어 있다. 테스트가 그걸 읽으면 화면을 그릴 때마다
        * 실서버에 카드를 물으러 나간다. 테스트는 워커가 없는 상태에서 돈다.
        */
-      env: { VITE_PROXY_URL: '' },
+      env: { VITE_PROXY_URL: '', VITE_GAME_DATA_BASE_URL: '' },
       /**
        * 화면을 통째로 그리는 시험은 느린 기계에서 기본 5초를 넘긴다. 시험마다 하나씩 늘려 가다 보니 그때마다
        * 배포가 멈췄고, 파일마다 적어 둔 한도가 오히려 이 값보다 낮아지기도 했다. 한도는 여기 한 곳에서만 정하고

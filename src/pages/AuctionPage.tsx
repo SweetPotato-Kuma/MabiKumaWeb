@@ -664,7 +664,7 @@ export function AuctionPage() {
   );
   const iconMaps = useIconMaps(mapCategories);
   const lookupKeys = useMemo(
-    () => cardKeys.filter((key) => iconMaps.needsLookup(key.category)),
+    () => cardKeys.filter((key) => iconMaps.needsLookup(key.category, key.name)),
     [cardKeys, iconMaps],
   );
   usePrefetchItemCards(lookupKeys);

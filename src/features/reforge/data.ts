@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 
 /**
  * 세공 도구 확률표. scripts/build-reforge.mjs 가 모아 둔 정적 파일이다.
@@ -43,7 +44,7 @@ export function useReforgeDataQuery() {
   return useQuery({
     queryKey: ['reforge', 'data'],
     queryFn: async ({ signal }): Promise<ReforgeData> => {
-      const response = await fetch(`${import.meta.env.BASE_URL}data/reforge.json`, { signal });
+      const response = await fetchGameData('reforge.json', { signal });
       if (!response.ok) throw new Error(`세공 확률표를 받지 못했습니다. (HTTP ${response.status})`);
       return (await response.json()) as ReforgeData;
     },

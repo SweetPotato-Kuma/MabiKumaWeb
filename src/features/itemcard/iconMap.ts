@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { UNCATEGORIZED_CARDS } from './cards';
 import { parseDye, type ItemDye } from './dye';
 
 /**
@@ -68,7 +69,11 @@ export function parseIconMap(raw: unknown): IconMap {
   for (const [name, value] of Object.entries(items)) {
     if (!Array.isArray(value)) continue;
     const dye = parseDye(value[2]);
-    map.set(name, { icon: String(value[0] ?? ''), subtitle: String(value[1] ?? ''), ...(dye ? { dye } : {}) });
+    map.set(name, {
+      icon: String(value[0] ?? ''),
+      subtitle: String(value[1] ?? ''),
+      ...(dye ? { dye } : {}),
+    });
   }
   return map;
 }
@@ -117,7 +122,8 @@ export function usePrefetchIconMap(): (category: string) => void {
   const queryClient = useQueryClient();
   return useCallback(
     (category: string) => {
-      if (isIconMapConfigured() && category) void queryClient.prefetchQuery(iconMapQueryOptions(category));
+      if (isIconMapConfigured() && category)
+        void queryClient.prefetchQuery(iconMapQueryOptions(category));
     },
     [queryClient],
   );
@@ -129,17 +135,28 @@ export function usePrefetchIconMap(): (category: string) => void {
  */
 export function useItemBrief(category: string, name: string): ItemBrief | null | undefined {
   const { data } = useQuery(iconMapQueryOptions(category));
+  // 게임에 새로 나온 아이템은 경매장 이름 사전에 오르기 전까지 카테고리를 몰라 분류 없음 목록에만 있다.
+  // 그 카테고리 목록에 없는 이름이 있을 때만 분류 없음 목록을 받는다.
+  const missing = Boolean(data && name && !data.has(name) && category !== UNCATEGORIZED_CARDS);
+  const fallback = useQuery({
+    ...iconMapQueryOptions(UNCATEGORIZED_CARDS),
+    enabled: missing && isIconMapConfigured(),
+  });
   if (!data || !name) return undefined;
-  return data.get(name) ?? null;
+  const found = data.get(name);
+  if (found) return found;
+  if (!missing || fallback.isError) return null;
+  return fallback.data ? (fallback.data.get(name) ?? null) : undefined;
 }
 
 export interface IconMaps {
   brief: (category: string, name: string) => ItemBrief | null | undefined;
   /**
-   * 이 카테고리는 목록 없이 카드 조회로 찾아야 하는지. 목록이 꺼졌거나 받지 못했을 때만 그렇다.
+   * 목록이 꺼졌거나 실패하면 카드 조회를 쓴다. 이름을 주면 목록에 없거나 그림이 빈 항목도
+   * 조회한다. CDN의 이전 목록이나 경매장 사전에 아직 없는 새 아이템을 확정 누락으로 보지 않는다.
    * 받는 중에는 기다린다. 곧 올 목록 대신 워커를 부르면 조회 한도만 깎인다.
    */
-  needsLookup: (category: string) => boolean;
+  needsLookup: (category: string, name?: string) => boolean;
 }
 
 /** 표처럼 여러 카테고리가 섞인 화면이 쓴다. 보이는 카테고리의 목록을 한꺼번에 받는다. */
@@ -158,7 +175,14 @@ export function useIconMaps(categories: readonly string[]): IconMaps {
         const map = byCategory.get(category)?.data;
         return map ? (map.get(name) ?? null) : undefined;
       },
-      needsLookup: (category) => !configured || Boolean(byCategory.get(category)?.failed),
+      needsLookup: (category, name) => {
+        const state = byCategory.get(category);
+        return (
+          !configured ||
+          Boolean(state?.failed) ||
+          Boolean(name && state?.data && !state.data.get(name)?.icon)
+        );
+      },
     };
   }, [unique, states]);
 }

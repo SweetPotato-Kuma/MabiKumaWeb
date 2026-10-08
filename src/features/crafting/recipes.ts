@@ -1,4 +1,5 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 import { formatNumber } from '@/lib/format';
 import { skillImageUrl } from '@/features/itemcard/gameImages';
 
@@ -214,7 +215,11 @@ export function materialUses(recipe: Recipe, itemIds: readonly number[]): Materi
   recipe.materials.forEach((slot, index) => {
     if (!has(slot)) return;
     const percent = ratios[index]?.percent;
-    uses.push(percent === undefined ? { role: 'material', count: slot.count } : { role: 'material', count: slot.count, percent });
+    uses.push(
+      percent === undefined
+        ? { role: 'material', count: slot.count }
+        : { role: 'material', count: slot.count, percent },
+    );
   });
   for (const slot of recipe.finish) if (has(slot)) uses.push({ role: 'finish', count: slot.count });
   for (const slot of recipe.extras) if (has(slot)) uses.push({ role: 'extra', count: slot.count });
@@ -231,7 +236,9 @@ export function materialUseText(recipe: Recipe, uses: readonly MaterialUse[]): s
       if (use.role === 'extra') return '골라 넣는 재료';
       if (use.role === 'finish') return `마무리 ${formatNumber(use.count)}개`;
       if (use.percent !== undefined) return `비율 ${formatPercent(use.percent)}`;
-      return hasWorks(recipe) ? `공정마다 ${formatNumber(use.count)}개` : `${formatNumber(use.count)}개`;
+      return hasWorks(recipe)
+        ? `공정마다 ${formatNumber(use.count)}개`
+        : `${formatNumber(use.count)}개`;
     })
     .join(', ');
 }
@@ -360,7 +367,7 @@ export function formatPercent(value: number): string {
 export const recipeBookQueryOptions = queryOptions({
   queryKey: ['crafting', 'recipes'],
   queryFn: async ({ signal }): Promise<RecipeBook | null> => {
-    const response = await fetch(`${import.meta.env.BASE_URL}data/recipes.json`, { signal });
+    const response = await fetchGameData('recipes.json', { signal });
     // 수집을 한 번도 돌리지 않은 빌드에서는 없는 게 정상이다. 화면을 깨지 않고 빈 상태로 둔다.
     if (!response.ok) return null;
     return buildRecipeBook((await response.json()) as RawRecipeData);

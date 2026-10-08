@@ -346,7 +346,7 @@ function ItemList({
   );
   const maps = useIconMaps(mapCategories);
   const lookupKeys = useMemo(
-    () => nearRows.filter((row) => maps.needsLookup(row.category)),
+    () => nearRows.filter((row) => maps.needsLookup(row.category, row.name)),
     [nearRows, maps],
   );
   const cardOf = useItemCards(lookupKeys);

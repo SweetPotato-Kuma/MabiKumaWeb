@@ -105,6 +105,11 @@ const ISSUE_PATH = '/report/issue';
 const CARD_PATH = '/item-card';
 const CARD_VERIFY_PATH = '/item-card/verify';
 const CARD_LOOKUP_PATH = '/item-card/lookup';
+/**
+ * 카테고리를 모르는 아이템의 카드 칸. 제작 재료와 경매장 이름 사전에 아직 없는 새 아이템이 들어간다.
+ * scripts/game-data/collect-item-cards.mjs 의 UNCATEGORIZED, 화면의 UNCATEGORIZED_CARDS 와 같아야 한다.
+ */
+const UNCATEGORIZED_CATEGORY = '분류 없음';
 /** 일괄 등록용 두 경로. 아이콘과 칸 쓰기를 갈라 둔 이유는 subrequest 한도 때문이다. */
 const CARD_ICONS_PATH = '/item-card/icons';
 const CARD_SHARD_PATH = '/item-card/shard';
@@ -931,11 +936,25 @@ async function lookupCards(request, env, cors) {
 
   const cards = [];
   let fromMemory = 0;
+  /**
+   * 그 카테고리 칸에 없는 이름은 분류 없음 칸에서 찾는다. 게임에 새로 나온 아이템은 경매장 이름 사전에
+   * 오르기 전까지 카테고리를 몰라 분류 없음 칸에 들어 있다. 찾으면 물어본 카테고리로 돌려준다.
+   */
+  let uncategorized = null;
   for (const [category, wanted] of wantedByCategory) {
     const shard = await readShardWithSource(env, category);
     if (shard.fromMemory) fromMemory++;
+    const found = new Set();
     for (const card of shard.cards) {
-      if (wanted.has(card.name)) cards.push(withIconUrl(card, env));
+      if (!wanted.has(card.name)) continue;
+      cards.push(withIconUrl(card, env));
+      found.add(card.name);
+    }
+    if (category === UNCATEGORIZED_CATEGORY || found.size === wanted.size) continue;
+    uncategorized ??= await readShardWithSource(env, UNCATEGORIZED_CATEGORY);
+    for (const card of uncategorized.cards) {
+      if (wanted.has(card.name) && !found.has(card.name))
+        cards.push(withIconUrl({ ...card, category }, env));
     }
   }
 

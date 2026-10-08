@@ -285,6 +285,24 @@ describe('아이템 카드 읽기', () => {
     expect(names).toEqual(["'도' 음 빈 병", '롱 소드']);
   });
 
+  it('그 카테고리에 없는 이름은 분류 없음 칸에서 찾아 물어본 카테고리로 돌려준다', async () => {
+    // 게임에 새로 나온 아이템은 경매장 이름 사전에 오르기 전까지 분류 없음 칸에만 있다.
+    await call('/item-card', {
+      method: 'POST',
+      body: cardBody({ name: '훈민정음 자음 - ㅎ', category: '분류 없음' }),
+      adminKey: ADMIN_KEY,
+    });
+
+    const { cards } = await (
+      await call('/item-card/lookup', {
+        method: 'POST',
+        body: { category: '기타', names: ['훈민정음 자음 - ㅎ', '없는 이름'] },
+      })
+    ).json();
+
+    expect(cards.map((card) => [card.name, card.category])).toEqual([['훈민정음 자음 - ㅎ', '기타']]);
+  });
+
   it('여러 카테고리로 나눠 물어도 이름 수 상한은 합쳐서 센다', async () => {
     const half = (prefix) => Array.from({ length: 31 }, (_, i) => `${prefix} ${i}`);
     const response = await call('/item-card/lookup', {
@@ -341,7 +359,11 @@ describe('아이템 카드 읽기', () => {
 
     await call('/item-card/lookup', { method: 'POST', body: { category: '처음 보는 칸', names: ['없는 이름'] } });
 
-    expect(calls).toEqual([{ type: 'json', cacheTtl: 3600 }]);
+    // 물어본 칸과, 거기 없는 이름을 찾는 분류 없음 칸을 읽는다.
+    expect(calls).toEqual([
+      { type: 'json', cacheTtl: 3600 },
+      { type: 'json', cacheTtl: 3600 },
+    ]);
   });
 
   it('칸을 새로 쓰면 들고 있던 옛 칸도 바로 바뀐다', async () => {

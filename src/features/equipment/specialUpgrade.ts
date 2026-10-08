@@ -4,8 +4,11 @@ import { formatStatValue, statLabel } from './stats';
  * 특별 개조 단계별 효과.
  *
  * 게임 데이터에는 장비가 받는 특별 개조 종류 번호(S 201, R 303 같은)와 단계 상한만 있고 단계별
- * 수치가 없다. 여기 표는 공개된 커뮤니티 자료의 표를 옮긴 것이다. 그 자료 스스로 오래된 문서라고
- * 밝히고 있고 빈칸도 있다. 빈칸은 null 로 두고 화면에 "수치 미확인" 으로 적는다. 짐작해 채우지 않는다.
+ * 수치가 없다. 기존 표 가운데 악기/힐링 원드와 한손 도끼는 넥슨 공식 변경 공지로 확인했다.
+ * https://mabinogi.nexon.com/page/news/notice_view.asp?id=4893148
+ * https://mabinogi.nexon.com/page/news/notice_view.asp?id=4893513
+ * 나머지 기존 값은 이번에 공식 근거로 재검증하지 못했다. 빈칸은 추측으로 채우지 않는다.
+ * 갱신 스크립트는 공식 공지를 캐시하고 R2 표를 만든다. 아래는 연결 실패 때의 기본 표다.
  *
  * 종류 번호와 무기 종류의 짝은 수집한 장비를 번호별로 묶어 확인했다(2026-09).
  *   S201 R301  한손 무기(검, 둔기)          S202 R302  한손 도끼
@@ -57,14 +60,14 @@ const S_TABLE: Record<number, StepTable> = {
     null,
   ],
   202: [
-    s(40, 80, 2),
-    s(45, 90, 2),
-    s(50, 100, 3),
-    s(55, 110, 3),
-    s(60, 120, 4),
-    s(65, 130, 5),
-    s(70, 140, 6),
-    null,
+    s(25, 50, 2),
+    s(30, 60, 3),
+    s(35, 70, 4),
+    s(45, 90, 5),
+    s(55, 110, 6),
+    s(65, 130, 7),
+    s(78, 155, 9),
+    s(85, 170, 10),
   ],
   203: [
     s(25, 50, 2),
@@ -74,7 +77,7 @@ const S_TABLE: Record<number, StepTable> = {
     s(55, 110, 6),
     s(65, 130, 7),
     s(78, 155, 9),
-    null,
+    s(85, 170, 10),
   ],
   204: [
     magic(90, 2),
@@ -96,12 +99,14 @@ const S_TABLE: Record<number, StepTable> = {
     alchemy(33, 9),
     null,
   ],
+  211: [0.5, 1, 1.5, 2.3, 3, 3.8, 4.5, 5.5].map(one('music_buff_attack')),
+  212: [2, 3, 5, 7, 10, 13, 16, 20].map(one('healing_potency')),
 };
 
 /** R 종류. */
 const R_TABLE: Record<number, StepTable> = {
   301: [4, 11, 18, 26, 34, 42, 50].map(crit).concat([null]),
-  302: [5, 14, 23, 33, 43, 53, 63, 89].map(crit),
+  302: [6, 16, 26, 38, 50, 62, 74, 89].map(crit),
   303: [6, 16, 26, 38, 50, 62, 74, 89].map(crit),
   305: [0.5, 1, 1.5, 2.3, 3, 3.8, 4.5, 5.5].map(one('music_buff_attack')),
   306: [2, 3, 5, 7, 10, 13, 16, 20].map(one('healing_potency')),
@@ -114,9 +119,41 @@ const R_TABLE: Record<number, StepTable> = {
  * - undefined: 그 종류 번호 표가 아예 없다
  */
 export function specialStep(kind: 's' | 'r', type: number, level: number): SpecialStep | undefined {
-  const table = (kind === 's' ? S_TABLE : R_TABLE)[type];
+  const table = (liveTables?.[kind] ?? (kind === 's' ? S_TABLE : R_TABLE))[type];
   if (!table || level < 1) return undefined;
   return table[level - 1] ?? null;
+}
+
+let liveTables: { s: Record<number, StepTable>; r: Record<number, StepTable> } | undefined;
+
+/** 앱 시작 전에만 바꾼다. 숫자가 아닌 값이나 잘못된 단계 표는 현재 표를 덮지 못한다. */
+export function installSpecialTables(value: unknown): void {
+  const candidate = value as NonNullable<typeof liveTables>;
+  for (const kind of ['s', 'r'] as const) {
+    if (!candidate?.[kind] || Array.isArray(candidate[kind]))
+      throw new Error('특별 개조 표가 없습니다.');
+    for (const [type, steps] of Object.entries(candidate[kind])) {
+      if (
+        !/^\d+$/.test(type) ||
+        !Array.isArray(steps) ||
+        steps.length !== 8 ||
+        steps.some(
+          (step) =>
+            step !== null &&
+            (!Array.isArray(step) ||
+              step.some(
+                (stat) =>
+                  !Array.isArray(stat) ||
+                  stat.length !== 2 ||
+                  typeof stat[0] !== 'string' ||
+                  !Number.isFinite(stat[1]),
+              )),
+        )
+      )
+        throw new Error('특별 개조 수치 형식이 다릅니다.');
+    }
+  }
+  liveTables = { s: candidate.s, r: candidate.r };
 }
 
 /** 한 단계의 효과를 한 줄로. 모르는 칸이면 그렇다고 적는다. */

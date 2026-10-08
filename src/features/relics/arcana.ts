@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import type { MuriasRow } from './prices';
 
@@ -30,7 +31,7 @@ export function useArcanaQuery() {
   return useQuery({
     queryKey: ['relics', 'arcana'],
     queryFn: async ({ signal }): Promise<ArcanaData | null> => {
-      const response = await fetch(`${import.meta.env.BASE_URL}data/arcana.json`, { signal });
+      const response = await fetchGameData('arcana.json', { signal });
       // 파일이 없으면 아르카나로 묶지 않고 옵션을 한데 보여 준다.
       if (!response.ok) return null;
       return (await response.json()) as ArcanaData;

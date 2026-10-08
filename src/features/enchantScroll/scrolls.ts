@@ -1,4 +1,5 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 
 /**
  * 인챈트 스크롤 사양. public/data/enchant-scrolls.json 한 파일이고 scripts/build-enchant-scrolls.mjs 가 만든다.
@@ -99,7 +100,10 @@ export interface SelectableScroll {
 /** 이 나오는 곳에서 선택할 수 있는 스크롤. 이름순. */
 export function scrollsFromSource(file: ScrollFile, source: string): SelectableScroll[] {
   return Object.entries(file.scrolls)
-    .map(([name, variants]) => ({ name, variants: variants.filter((variant) => variant.src?.includes(source)) }))
+    .map(([name, variants]) => ({
+      name,
+      variants: variants.filter((variant) => variant.src?.includes(source)),
+    }))
     .filter(({ variants }) => variants.length > 0)
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 }
@@ -162,7 +166,7 @@ export function findScrollVariants(
 export const enchantScrollQueryOptions = queryOptions({
   queryKey: ['enchantScrolls'],
   queryFn: async ({ signal }): Promise<ScrollFile | null> => {
-    const response = await fetch(`${import.meta.env.BASE_URL}data/enchant-scrolls.json`, { signal });
+    const response = await fetchGameData('enchant-scrolls.json', { signal });
     if (!response.ok) return null;
     return (await response.json()) as ScrollFile;
   },

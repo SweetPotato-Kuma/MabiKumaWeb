@@ -2,7 +2,14 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { iconMapUrl, parseIconMap, useIconMaps, useItemBrief, usePrefetchIconMap, usePrefetchIconMaps } from './iconMap';
+import {
+  iconMapUrl,
+  parseIconMap,
+  useIconMaps,
+  useItemBrief,
+  usePrefetchIconMap,
+  usePrefetchIconMaps,
+} from './iconMap';
 
 const BASE = 'https://icons.example';
 
@@ -48,7 +55,9 @@ describe('그림 목록 주소', () => {
 
 describe('parseIconMap', () => {
   it('그림 파일과 부제를 읽고, 부제가 없으면 빈 문자열로 둔다', () => {
-    const map = parseIconMap({ items: { '롱 소드': ['a.png', '보통속도 3타'], '숏 소드': ['b.png'] } });
+    const map = parseIconMap({
+      items: { '롱 소드': ['a.png', '보통속도 3타'], '숏 소드': ['b.png'] },
+    });
 
     expect(map.get('롱 소드')).toEqual({ icon: 'a.png', subtitle: '보통속도 3타' });
     expect(map.get('숏 소드')).toEqual({ icon: 'b.png', subtitle: '' });
@@ -72,6 +81,31 @@ describe('useItemBrief', () => {
     await waitFor(() => expect(missing.result.current).toBeNull());
   });
 
+  it('그 카테고리 목록에 없는 이름은 분류 없음 목록에서 찾는다', async () => {
+    // 경매장 이름 사전에 오르기 전의 새 아이템은 분류 없음 목록에만 있다.
+    const maps = stubMaps({
+      기타: { '다른 것': ['b.png'] },
+      '분류 없음': { '훈민정음 자음 - ㅎ': ['h.png'] },
+    });
+    await maps.register('기타', '분류 없음');
+
+    const found = renderHook(() => useItemBrief('기타', '훈민정음 자음 - ㅎ'), { wrapper });
+    await waitFor(() => expect(found.result.current).toEqual({ icon: 'h.png', subtitle: '' }));
+
+    const missing = renderHook(() => useItemBrief('기타', '없는 것'), { wrapper });
+    await waitFor(() => expect(missing.result.current).toBeNull());
+  });
+
+  it('카테고리 목록에 있으면 분류 없음 목록을 받지 않는다', async () => {
+    const maps = stubMaps({ 검: { '롱 소드': ['a.png'] } });
+    await maps.register('검', '분류 없음');
+
+    const { result } = renderHook(() => useItemBrief('검', '롱 소드'), { wrapper });
+    await waitFor(() => expect(result.current).toEqual({ icon: 'a.png', subtitle: '' }));
+
+    expect(maps.fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('그림 도메인이 없는 빌드에서는 받지 않는다', () => {
     vi.stubEnv('VITE_ICON_BASE_URL', '');
     const maps = stubMaps({});
@@ -84,6 +118,21 @@ describe('useItemBrief', () => {
 });
 
 describe('useIconMaps', () => {
+  it('이전 목록에 그림이 비거나 새 이름이 없으면 해당 카드만 다시 조회한다', async () => {
+    const maps = stubMaps({ 음식: { 낙지: [''], 낙지츄: ['chew.webp'] } });
+    await maps.register('음식');
+    const { result } = renderHook(() => useIconMaps(['음식']), { wrapper });
+
+    // 목록을 받는 중에는 같은 이름을 워커에 중복 조회하지 않는다.
+    expect(result.current.needsLookup('음식', '낙지')).toBe(false);
+    await waitFor(() => expect(result.current.brief('음식', '낙지')?.icon).toBe(''));
+    expect(result.current.needsLookup('음식', '낙지')).toBe(true);
+    expect(result.current.needsLookup('음식', '훈민정음 자음 - ㅎ')).toBe(true);
+    expect(result.current.needsLookup('음식', '낙지츄')).toBe(false);
+    expect(result.current.needsLookup('음식')).toBe(false);
+    expect(maps.fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('보이는 카테고리마다 목록을 한 번만 받는다', async () => {
     const maps = stubMaps({ 검: { '롱 소드': ['a.png'] }, 활: { '숏 보우': ['b.png'] } });
     await maps.register('검', '활');

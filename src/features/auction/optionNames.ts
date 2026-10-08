@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 import { EQUIPMENT_CATEGORIES } from '@/features/equipment/api';
 import { RELIC_CATEGORY } from '@/features/relics/murias';
 import { findGroupOf } from './categoryTree';
@@ -27,7 +28,7 @@ export function useOptionNamesQuery() {
   return useQuery({
     queryKey: ['auction', 'optionNames'],
     queryFn: async ({ signal }): Promise<OptionNames | null> => {
-      const response = await fetch(`${import.meta.env.BASE_URL}data/option-names.json`, { signal });
+      const response = await fetchGameData('option-names.json', { signal });
       // 파일이 없는 빌드에서는 불러온 매물의 이름만으로 자동완성한다.
       if (!response.ok) return null;
       return (await response.json()) as OptionNames;
@@ -121,7 +122,10 @@ export function scanCategoriesFor(
   const active = filter.conditions.filter(isConditionActive);
   // 옵션 이름이 따로 있는 조건. 그 옵션이 붙는 카테고리로 좁힌다.
   const typed = active.flatMap((condition) =>
-    (condition.kind === 'sub' || condition.kind === 'named' || condition.kind === 'number' || condition.kind === 'text') &&
+    (condition.kind === 'sub' ||
+      condition.kind === 'named' ||
+      condition.kind === 'number' ||
+      condition.kind === 'text') &&
     condition.optionType
       ? [condition.optionType]
       : [],

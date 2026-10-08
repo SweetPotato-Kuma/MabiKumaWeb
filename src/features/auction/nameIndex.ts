@@ -1,4 +1,5 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 import { normalizeForSearch } from './dictionary';
 
 /**
@@ -44,8 +45,25 @@ const HANGUL_END = 0xd7a3;
 /** 한글 음절 하나에서 초성이 바뀌는 간격. 중성 21개 × 종성 28개. */
 const SYLLABLES_PER_INITIAL = 588;
 const INITIALS = [
-  'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ',
-  'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+  'ㄱ',
+  'ㄲ',
+  'ㄴ',
+  'ㄷ',
+  'ㄸ',
+  'ㄹ',
+  'ㅁ',
+  'ㅂ',
+  'ㅃ',
+  'ㅅ',
+  'ㅆ',
+  'ㅇ',
+  'ㅈ',
+  'ㅉ',
+  'ㅊ',
+  'ㅋ',
+  'ㅌ',
+  'ㅍ',
+  'ㅎ',
 ];
 
 /** 자음으로만 된 입력. 초성 검색으로 본다. */
@@ -79,7 +97,9 @@ export function buildNameIndex(raw: RawNameIndex): NameIndex {
     const [name, categoryIndex, alt] = raw.items[index];
     // 다른 이름은 이름 뒤에 널 문자로 이어 붙인다. 이름과 다른 이름 사이를 가로질러 맞는 일이 없고,
     // 앞글자가 맞는 것(이름)이 중간에 맞는 것(다른 이름)보다 먼저 온다.
-    const norm = alt ? `${normalizeForSearch(name)}\u0000${normalizeForSearch(alt)}` : normalizeForSearch(name);
+    const norm = alt
+      ? `${normalizeForSearch(name)}\u0000${normalizeForSearch(alt)}`
+      : normalizeForSearch(name);
     names[index] = name;
     categoryOf[index] = categoryIndex;
     normalized[index] = norm;
@@ -91,14 +111,18 @@ export function buildNameIndex(raw: RawNameIndex): NameIndex {
     else if (!seen.includes(category)) seen.push(category);
   }
 
-  return { updated: raw.updated, categories: raw.categories, names, categoryOf, normalized, initials, categoriesByName };
+  return {
+    updated: raw.updated,
+    categories: raw.categories,
+    names,
+    categoryOf,
+    normalized,
+    initials,
+    categoriesByName,
+  };
 }
 
 /** 사전은 빌드 산출물과 함께 올라가므로 앱의 base 경로를 따른다. */
-function assetUrl(path: string): string {
-  return `${import.meta.env.BASE_URL}data/items/${path}`;
-}
-
 /**
  * 이름 인덱스. 한 번 받아 전처리까지 끝낸 것을 계속 쓴다.
  * 파일이 없는 빌드에서는 null 을 돌려 자동완성만 빠지고 검색은 그대로 된다.
@@ -107,7 +131,7 @@ function assetUrl(path: string): string {
 export const itemNameIndexQueryOptions = queryOptions({
   queryKey: ['itemDictionary', 'names'],
   queryFn: async ({ signal }): Promise<NameIndex | null> => {
-    const response = await fetch(assetUrl('names.json'), { signal });
+    const response = await fetchGameData('items/names.json', { signal });
     if (!response.ok) return null;
     return buildNameIndex((await response.json()) as RawNameIndex);
   },
@@ -133,7 +157,11 @@ interface SearchOptions {
  * "숏 소드" 가 "주방장 숏 소드" 보다 위에 와야 한다. 중간에 들어 있는 것은 그 뒤에
  * 원래 순서대로 붙인다.
  */
-export function searchNames(index: NameIndex, keyword: string, options: SearchOptions = {}): NameSuggestion[] {
+export function searchNames(
+  index: NameIndex,
+  keyword: string,
+  options: SearchOptions = {},
+): NameSuggestion[] {
   const limit = options.limit ?? 20;
   const categoryIndex = options.category ? index.categories.indexOf(options.category) : -1;
   const restrict = Boolean(options.category);
@@ -194,7 +222,11 @@ export function searchNames(index: NameIndex, keyword: string, options: SearchOp
  * 일부)이고, 여기는 워커가 D1 에 쌓아 둔 거래 원본을 정확한 이름으로 찾는 자리(거래 내역
  * 목록, /market/history)에 쓰므로 이름 그 자체가 필요하다.
  */
-export function matchingNames(index: NameIndex, terms: string[], options: SearchOptions = {}): string[] {
+export function matchingNames(
+  index: NameIndex,
+  terms: string[],
+  options: SearchOptions = {},
+): string[] {
   if (terms.length === 0) return [];
   const limit = options.limit ?? Infinity;
   const categoryIndex = options.category ? index.categories.indexOf(options.category) : -1;
@@ -261,7 +293,9 @@ export function resolveSearch(
   }
 
   const plan = planKeywordSearch(index, splitTerms(keyword));
-  return plan ? { keyword, category: input.category, ...plan } : { keyword, category: input.category };
+  return plan
+    ? { keyword, category: input.category, ...plan }
+    : { keyword, category: input.category };
 }
 
 /** 검색어를 단어로 쪼갠다. 쉼표든 공백이든 구분자로 보고, 띄어쓰기는 지운 채로 비교한다. */
@@ -363,5 +397,8 @@ function wordSpan(name: string, term: string): string | null {
 
 function toSuggestion(index: NameIndex, i: number): NameSuggestion {
   const name = index.names[i];
-  return { name, categories: index.categoriesByName.get(name) ?? [index.categories[index.categoryOf[i]]] };
+  return {
+    name,
+    categories: index.categoriesByName.get(name) ?? [index.categories[index.categoryOf[i]]],
+  };
 }

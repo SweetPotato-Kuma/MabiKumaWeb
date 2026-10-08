@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { fetchGameData } from '@/lib/gameData';
 
 /**
  * 장비 세트 효과. scripts/build-set-effects.mjs 가 게임 클라이언트 데이터에서 모아 둔 정적 파일이다.
@@ -29,7 +30,7 @@ export function useSetEffectsQuery() {
   return useQuery({
     queryKey: ['equipment', 'setEffects'],
     queryFn: async ({ signal }): Promise<SetEffectData> => {
-      const response = await fetch(`${import.meta.env.BASE_URL}data/set-effects.json`, { signal });
+      const response = await fetchGameData('set-effects.json', { signal });
       if (!response.ok)
         throw new Error(`세트 효과 표를 받지 못했습니다. (HTTP ${response.status})`);
       return (await response.json()) as SetEffectData;
