@@ -124,6 +124,16 @@ export function addCounts(total: ReadonlyMap<number, number>, more: ReadonlyMap<
   return next;
 }
 
+/** 등급 자리마다 나온 횟수. 등급이 없는 아이템은 세지 않는다. */
+export function countByGrade(kit: Kit, counts: ReadonlyMap<number, number>): number[] {
+  const byGrade = kit.grades.map(() => 0);
+  for (const [item, count] of counts) {
+    const grade = kit.items[item]?.grade;
+    if (grade !== undefined && grade < byGrade.length) byGrade[grade] += count;
+  }
+  return byGrade;
+}
+
 /** 키트의 가장 높은 등급(표의 첫 등급) 아이템인지. 금빛으로 칠한다. */
 export const isTopGrade = (kit: Kit, item: number) =>
   kit.grades.length > 1 && kit.items[item]?.grade === 0;

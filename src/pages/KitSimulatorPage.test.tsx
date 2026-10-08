@@ -75,6 +75,11 @@ describe('키트 시뮬레이터', () => {
     fireEvent.click(within(region).getByRole('button', { name: /10번 열기/ }));
     expect(within(statistic('연 횟수')).getByText('10')).toBeInTheDocument();
     expect(within(statistic('쓴 캐시')).getByText('12,000')).toBeInTheDocument();
+    // 등급별 횟수의 합은 연 횟수와 같다.
+    const graded = ['S 등급 10%', 'C 등급 90%'].map((title) =>
+      Number(within(statistic(title)).getByText(/^\d+$/).textContent),
+    );
+    expect(graded[0] + graded[1]).toBe(10);
     expect(within(region).queryByText('열기 전')).toBeNull();
   });
 

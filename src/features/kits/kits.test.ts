@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addCounts,
+  countByGrade,
   cumulative,
   isTopGrade,
   openKit,
@@ -76,6 +77,20 @@ describe('키트 열기', () => {
       [0, 3],
       [1, 1],
     ]);
+  });
+
+  it('등급마다 나온 횟수를 센다', () => {
+    expect(
+      countByGrade(
+        kit,
+        new Map([
+          [0, 2],
+          [1, 3],
+          [2, 4],
+        ]),
+      ),
+    ).toEqual([2, 7]);
+    expect(countByGrade({ ...kit, grades: [] }, new Map([[0, 1]]))).toEqual([]);
   });
 
   it('등급이 여럿인 키트의 첫 등급만 가장 높은 등급으로 본다', () => {

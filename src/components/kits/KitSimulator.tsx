@@ -25,6 +25,7 @@ import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import { normalizeForSearch } from '@/features/auction/dictionary';
 import {
   addCounts,
+  countByGrade,
   isOnSale,
   isTopGrade,
   openKit,
@@ -280,6 +281,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
   const [trials, setTrials] = useState(100);
 
   const chance = target === null ? 0 : kit.items[target].chance;
+  const gradeCounts = useMemo(() => countByGrade(kit, counts), [kit, counts]);
 
   const run = (times: number, until: number | null) => {
     const result = openKit(kit, times, until);
@@ -469,7 +471,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
           <Divider style={{ margin: 0 }} />
 
           <Row gutter={[24, 16]} align="middle">
-            <Col xs={12} sm={6}>
+            <Col xs={12} sm={6} lg={4}>
               <Statistic
                 title="연 횟수"
                 value={formatNumber(opened)}
@@ -478,7 +480,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
               />
             </Col>
             {kit.price !== null ? (
-              <Col xs={12} sm={8}>
+              <Col xs={12} sm={6} lg={4}>
                 <Statistic
                   title="쓴 캐시"
                   value={formatNumber(opened * kit.price)}
@@ -486,12 +488,27 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                 />
               </Col>
             ) : null}
-            <Col xs={24} sm={10}>
-              <Button icon={<ResetIcon />} disabled={opened === 0} onClick={reset}>
-                처음부터
-              </Button>
-            </Col>
+            {/* 등급이 있는 키트는 등급마다 몇 번 나왔는지. 제목에 그 등급 확률을 붙여 견주어 보게 한다. */}
+            {kit.grades.map((grade, index) => (
+              <Col key={grade.name} xs={12} sm={6} lg={3}>
+                <Statistic
+                  title={
+                    grade.chance === null
+                      ? grade.name
+                      : `${grade.name} ${formatChance(grade.chance)}`
+                  }
+                  value={formatNumber(gradeCounts[index] ?? 0)}
+                  suffix="번"
+                  styles={NUMERIC}
+                />
+              </Col>
+            ))}
           </Row>
+          <div>
+            <Button icon={<ResetIcon />} disabled={opened === 0} onClick={reset}>
+              처음부터
+            </Button>
+          </div>
           <TallyTable kit={kit} counts={counts} />
         </Flex>
       </Card>
