@@ -10,6 +10,11 @@ import data from './data.json';
  * 2. 능력의 최대 레벨(1, 3, 5, 6, 10, 20)마다 레벨별 가중치가 있다. 낮은 레벨일수록 무겁다.
  * 3. 돌 등급이 그 능력이 나올 수 있는 가장 높은 레벨을 정한다. 30등급이어야 최대 레벨까지 나온다.
  * 4. 고급, 최고급 각성제는 낮은 레벨 몇 개를 빼 준다. 등급 상한이 그보다 낮으면 상한 레벨만 나온다.
+ *
+ * 에코스톤 연마석은 붙어 있는 각성 능력은 그대로 두고 레벨만 한 번 다시 정한다. 게임 설명대로 각성제 보정은
+ * 받지 않으므로 등급 상한 안에서 레벨별 가중치로만 고른다. 원래 레벨보다 낮아지지는 않는다(게임 규칙). 낮게
+ * 나오면 원래 레벨을 그대로 둔다고 본다.
+ * 한 능력에 한 번뿐이고, 각성으로 능력이 바뀌면 다시 할 수 있다.
  */
 
 export interface EchoAbility {
@@ -37,6 +42,8 @@ export interface EchoResult {
   /** ECHO_ABILITIES 의 자리. */
   ability: number;
   level: number;
+  /** 연마석으로 레벨을 다시 정했는지. */
+  rerolled?: boolean;
 }
 
 export interface EchoTarget {
@@ -199,4 +206,30 @@ export function fxTierOf(result: EchoResult): 0 | 1 | 2 | 3 {
   if (isHighLevel(result)) return 3;
   const ratio = result.level / Math.max(1, ECHO_ABILITIES[result.ability].maxLevel);
   return ratio >= 0.75 ? 2 : ratio >= 0.5 ? 1 : 0;
+}
+
+/** 에코스톤 연마석. 레벨을 다시 정할 때 쓰고, 각성제 보정(낮은 레벨 빼 주기)은 받지 않는다. */
+export const POLISH_STONE: EchoBooster = { name: '에코스톤 연마석', floor: {} };
+
+/** 지금 각성 능력의 레벨을 연마석으로 다시 정할 수 있는지. 한 능력에 한 번이다. */
+export const canReroll = (result: EchoResult | null): result is EchoResult =>
+  result !== null && !result.rerolled;
+
+/** 연마석으로 레벨을 다시 정한다. 능력은 그대로고, 원래 레벨보다 낮게 나오면 원래 레벨을 둔다. */
+export function rerollLevel(
+  result: EchoResult,
+  grade: number,
+  random: RandomSource = Math.random,
+): EchoResult {
+  const ability = ECHO_ABILITIES[result.ability];
+  const { level } = pick(levelChances(ability, grade, POLISH_STONE), (row) => row.chance, random);
+  return { ability: result.ability, level: Math.max(result.level, level), rerolled: true };
+}
+
+/** 연마석으로 다시 정했을 때 minLevel 이상이 될 확률. 원래 레벨이 이미 그 이상이면 늘 그렇다. */
+export function rerollChance(result: EchoResult, grade: number, minLevel: number): number {
+  if (result.level >= minLevel) return 1;
+  return levelChances(ECHO_ABILITIES[result.ability], grade, POLISH_STONE)
+    .filter((row) => row.level >= minLevel)
+    .reduce((sum, row) => sum + row.chance, 0);
 }

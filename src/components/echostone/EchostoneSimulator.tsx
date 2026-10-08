@@ -29,6 +29,7 @@ import {
   abilityPool,
   abilityValueText,
   awakenUntil,
+  canReroll,
   ECHO_ABILITIES,
   ECHO_BOOSTERS,
   ECHO_STONES,
@@ -38,7 +39,11 @@ import {
   levelRange,
   MAX_GRADE,
   MIN_GRADE,
+  POLISH_STONE,
+  rerollChance,
+  rerollLevel,
   targetChance,
+  type EchoAbility,
   type EchoResult,
   type EchoTarget,
 } from '@/features/echostone/simulator';
@@ -56,9 +61,15 @@ const AUTO_LIMITS = [1000, 10000] as const;
 const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
 
 const BOOSTER_NAMES = ECHO_BOOSTERS.map((booster) => booster.name);
+/** 시세를 받을 재료. 각성제 셋과 연마석. */
+const PRICE_NAMES = [...BOOSTER_NAMES, POLISH_STONE.name];
 
 /** 각성제 이름을 고르는 단추에 맞게 줄인다. "최고급 에코스톤 각성제" -> "최고급". */
 const boosterLabel = (name: string) => name.replace(/\s*에코스톤 각성제$/, '') || '일반';
+
+/** 통계 칸 이름. 각성제는 줄인 이름, 연마석은 "연마석". */
+const materialLabel = (name: string) =>
+  name === POLISH_STONE.name ? '연마석' : boosterLabel(name);
 
 function lowestOf(state: PriceState | undefined): number | null {
   if (state?.status !== 'ok') return null;
@@ -67,7 +78,11 @@ function lowestOf(state: PriceState | undefined): number | null {
 
 /** 각성 연출 한 번의 길이, 모여드는 빛 구슬, 빛살, 반짝임, 금빛 빛살 수. */
 const FX_DURATION = 1200;
-const ORBS = [0, 120, 240];
+/**
+ * 각성제마다 모여드는 빛 구슬. 일반은 셋이 곧게, 고급은 다섯이 돌며, 최고급은 여덟이 돌며 금빛으로 모이고
+ * 둘레에 도는 고리가 하나 더 생긴다. 어느 각성제를 썼는지 판만 보고도 알게 한다.
+ */
+const ORB_COUNTS = [3, 5, 8] as const;
 const RAYS = 12;
 const SPARKS = 10;
 const GOLD_RAYS = 16;
@@ -104,10 +119,19 @@ const angles = (count: number) =>
  * play 가 바뀌면 판을 새로 그려 연출을 처음부터 돌린다. 연출하지 않을 때는 마지막 각성 능력을 그대로 둔다.
  * 최대 레벨의 90% 이상이면 연출 밖에서도 카드를 금색으로 칠한다.
  */
+/** "19레벨 (9.5)". 수치가 없는 능력은 레벨만. */
+const levelText = (ability: EchoAbility, level: number) => {
+  const value = abilityValueText(ability, level);
+  return value ? `${level}레벨 (${value})` : `${level}레벨`;
+};
+
 function EchoStage({
   stoneName,
   result,
   play,
+  mode,
+  booster,
+  previousLevel,
   fxStyle,
   scale,
 }: {
@@ -115,18 +139,29 @@ function EchoStage({
   result: EchoResult | null;
   /** 연출할 각성의 번호. 연출하지 않으면 null. */
   play: number | null;
+  /** 각성인지, 연마석으로 레벨만 다시 정한 것인지. */
+  mode: 'awaken' | 'polish';
+  /** 쓴 각성제의 자리(0 일반, 1 고급, 2 최고급). */
+  booster: number;
+  /** 연마석으로 다시 정하기 전 레벨. 연출 동안 이 값에서 새 값으로 바뀐다. */
+  previousLevel: number | null;
   fxStyle: CSSProperties;
   /** 판 배율(--rf 와 같다). 돌 그림 크기도 같이 키운다. */
   scale: number;
 }) {
   const { token } = theme.useToken();
   const ability = result ? ECHO_ABILITIES[result.ability] : null;
-  const high = result ? isHighLevel(result) : false;
   const playing = play !== null && result !== null;
+  const polishing = playing && mode === 'polish';
+  // 레벨을 다시 정하는 동안에는 이전 레벨로 칠한다. 새 레벨로 먼저 칠하면 연출 전에 결과를 알려 버린다.
+  const shownLevel = polishing && previousLevel !== null ? previousLevel : result?.level;
+  const high =
+    result && shownLevel !== undefined ? isHighLevel({ ...result, level: shownLevel }) : false;
+  const awakening = playing && mode === 'awaken';
   const tier = result ? fxTierOf(result) : 0;
   const classes = ['es-stage'];
   if (playing) {
-    classes.push('es-play');
+    classes.push('es-play', polishing ? 'es-polish' : `es-b${booster}`);
     // 겹은 아래 것을 모두 품는다. 90% 이상이면 번쩍임, 빛살, 반짝임, 금빛이 함께 돈다.
     for (const step of [1, 2, 3]) if (tier >= step) classes.push(`es-t${step}`);
   }
@@ -160,9 +195,12 @@ function EchoStage({
               ))
             : null}
           {at(1) ? <div className="es-flash" aria-hidden /> : null}
-          {playing ? <div className="es-burst" aria-hidden /> : null}
-          {playing
-            ? ORBS.map((angle, index) => (
+          {awakening ? <div className="es-burst" aria-hidden /> : null}
+          {awakening && booster === 2 ? (
+            <div className="es-ring es-ring--rune" aria-hidden />
+          ) : null}
+          {awakening
+            ? angles(ORB_COUNTS[booster] ?? ORB_COUNTS[0]).map((angle, index) => (
                 <span
                   key={`orb-${angle}`}
                   aria-hidden
@@ -171,13 +209,15 @@ function EchoStage({
                 />
               ))
             : null}
-          {result === null || playing ? (
+          {result === null || awakening ? (
             <div className="es-stone" aria-hidden>
               <ItemIcon category={STONE_CATEGORY} name={stoneName} size={Math.round(48 * scale)} />
             </div>
           ) : null}
           {result && ability ? (
             <div className={high ? 'es-result es-result--top' : 'es-result'}>
+              {/* 연마석: 카드 위를 빛 줄기가 한 번 훑고 레벨이 다시 정해진다. */}
+              {polishing ? <span className="es-polish-shine" aria-hidden /> : null}
               <Text strong style={high ? { color: token.gold8 } : undefined}>
                 {high ? (
                   <StarFillIcon
@@ -195,15 +235,26 @@ function EchoStage({
                 className="tnum"
                 style={{ fontSize: 13, color: high ? token.gold8 : undefined }}
               >
-                {result.level}레벨
-                {abilityValueText(ability, result.level)
-                  ? ` (${abilityValueText(ability, result.level)})`
-                  : ''}
+                {polishing && previousLevel !== null ? (
+                  <span className="es-level-swap">
+                    <span className="es-level-old" aria-hidden>
+                      {levelText(ability, previousLevel)}
+                    </span>
+                    <span className="es-level">{levelText(ability, result.level)}</span>
+                  </span>
+                ) : (
+                  levelText(ability, result.level)
+                )}
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {' '}
                   / 최대 {ability.maxLevel}레벨
                 </Text>
               </Text>
+              {result.rerolled ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  레벨 재부여함
+                </Text>
+              ) : null}
             </div>
           ) : (
             <Text type="secondary" className="es-idle">
@@ -350,9 +401,18 @@ export function EchostoneSimulatorView() {
   // 연출. 누를 때의 스위치 상태로 정한다(끈 채 각성한 뒤 켜도 지난 연출이 돌지 않게).
   const [fxOn, setFxOn] = useState(readFxSetting);
   const [awakened, setAwakened] = useState(0);
-  const [play, setPlay] = useState<{ no: number; booster: string } | null>(null);
+  const [play, setPlay] = useState<{
+    no: number;
+    /** 쓴 재료 이름(각성제나 연마석). */
+    item: string;
+    mode: 'awaken' | 'polish';
+    /** 쓴 각성제 자리. 판의 빛 구슬 모양을 고른다. */
+    booster: number;
+    /** 연마석으로 다시 정하기 전 레벨. */
+    previousLevel: number | null;
+  } | null>(null);
   /*
-   * 각성 연출이 도는 동안에는 방금 쓴 각성제를 횟수와 쓴 골드에 넣지 않는다. 먼저 올라가면 판보다 숫자가
+   * 연출이 도는 동안에는 방금 쓴 각성제나 연마석을 횟수와 쓴 골드에 넣지 않는다. 먼저 올라가면 판보다 숫자가
    * 앞서 간다. 연출이 끝나면 넣는다.
    */
   const [settled, setSettled] = useState(0);
@@ -367,12 +427,12 @@ export function EchostoneSimulatorView() {
   const stone = echoStone(stoneId);
   const booster = ECHO_BOOSTERS.find((each) => each.name === boosterName) ?? ECHO_BOOSTERS[0];
 
-  const priceStates = useMarketPrices(BOOSTER_NAMES);
+  const priceStates = useMarketPrices(PRICE_NAMES);
   const prices = useMemo(
-    () => new Map(BOOSTER_NAMES.map((name) => [name, lowestOf(priceStates.get(name))])),
+    () => new Map(PRICE_NAMES.map((name) => [name, lowestOf(priceStates.get(name))])),
     [priceStates],
   );
-  const pricesLoading = BOOSTER_NAMES.some((name) => priceStates.get(name)?.status === 'loading');
+  const pricesLoading = PRICE_NAMES.some((name) => priceStates.get(name)?.status === 'loading');
   const perTry = prices.get(booster.name) ?? null;
 
   const pool = useMemo(() => abilityPool(stone, grade), [stone, grade]);
@@ -401,11 +461,12 @@ export function EchostoneSimulatorView() {
   const chance = activeTarget ? targetChance(stone, grade, booster, activeTarget) : 0;
 
   const shownUsed = useMemo(
-    () => (pending ? { ...used, [pending.booster]: (used[pending.booster] ?? 1) - 1 } : used),
+    () => (pending ? { ...used, [pending.item]: (used[pending.item] ?? 1) - 1 } : used),
     [used, pending],
   );
-  const totalUsed = Object.values(shownUsed).reduce((sum, count) => sum + count, 0);
-  const spentGold = BOOSTER_NAMES.reduce(
+  // 각성 횟수는 각성제를 쓴 횟수다. 연마석은 따로 센다.
+  const totalUsed = BOOSTER_NAMES.reduce((sum, name) => sum + (shownUsed[name] ?? 0), 0);
+  const spentGold = PRICE_NAMES.reduce(
     (sum, name) => sum + (prices.get(name) ?? 0) * (shownUsed[name] ?? 0),
     0,
   );
@@ -423,7 +484,17 @@ export function EchostoneSimulatorView() {
     setResult(outcome.result);
     setUsed((prev) => ({ ...prev, [booster.name]: (prev[booster.name] ?? 0) + outcome.tries }));
     // 연출은 한 번 각성할 때만 돈다. 목표까지 자동으로 돌리면 마지막 결과를 바로 놓는다.
-    setPlay(fxOn && limit === null ? { no: next, booster: booster.name } : null);
+    setPlay(
+      fxOn && limit === null
+        ? {
+            no: next,
+            item: booster.name,
+            mode: 'awaken',
+            booster: Math.max(0, ECHO_BOOSTERS.indexOf(booster)),
+            previousLevel: null,
+          }
+        : null,
+    );
     if (limit === null) setMessage('');
     else
       setMessage(
@@ -431,6 +502,27 @@ export function EchostoneSimulatorView() {
           ? `${formatNumber(outcome.tries)}번 만에 목표 능력이 나왔습니다.`
           : `${formatNumber(limit)}번 동안 목표 능력이 나오지 않았습니다.`,
       );
+  };
+
+  /** 연마석으로 지금 각성 능력의 레벨을 한 번 다시 정한다. */
+  const polish = () => {
+    if (!canReroll(result)) return;
+    const next = awakened + 1;
+    setAwakened(next);
+    setResult(rerollLevel(result, grade));
+    setUsed((prev) => ({ ...prev, [POLISH_STONE.name]: (prev[POLISH_STONE.name] ?? 0) + 1 }));
+    setPlay(
+      fxOn
+        ? {
+            no: next,
+            item: POLISH_STONE.name,
+            mode: 'polish',
+            booster: 0,
+            previousLevel: result.level,
+          }
+        : null,
+    );
+    setMessage('');
   };
 
   const changeStone = (id: number) => {
@@ -528,6 +620,9 @@ export function EchostoneSimulatorView() {
                 stoneName={stone.name}
                 result={result}
                 play={play?.no ?? null}
+                mode={play?.mode ?? 'awaken'}
+                booster={play?.booster ?? 0}
+                previousLevel={pending?.previousLevel ?? null}
                 fxStyle={fxStyle}
                 scale={stageScale}
               />
@@ -535,6 +630,9 @@ export function EchostoneSimulatorView() {
               <Flex gap={8} wrap>
                 <Button type="primary" icon={<GemIcon />} onClick={() => run(null)}>
                   각성
+                </Button>
+                <Button disabled={!canReroll(result) || pending !== null} onClick={polish}>
+                  {result?.rerolled ? '레벨 재부여함' : '레벨 재부여'}
                 </Button>
                 {AUTO_LIMITS.map((limit) => (
                   <Button key={limit} disabled={chance <= 0} onClick={() => run(limit)}>
@@ -628,6 +726,17 @@ export function EchostoneSimulatorView() {
                       한 번에 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
                       <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
                     </Text>
+                    {/* 지금 붙은 능력이 목표 능력이고 레벨이 모자라면, 연마석으로 레벨만 다시 정했을 때의 확률. */}
+                    {canReroll(result) &&
+                    result.ability === activeTarget.ability &&
+                    result.level < activeTarget.minLevel ? (
+                      <Text className="tnum" style={{ fontSize: 13 }}>
+                        레벨 재부여로 {activeTarget.minLevel}레벨 이상{' '}
+                        <Text strong>
+                          {formatChance(rerollChance(result, grade, activeTarget.minLevel))}
+                        </Text>
+                      </Text>
+                    ) : null}
                     <Popover
                       open={calcOpen}
                       trigger={[]}
@@ -693,10 +802,10 @@ export function EchostoneSimulatorView() {
                 styles={NUMERIC}
               />
             </Col>
-            {BOOSTER_NAMES.map((name) => (
-              <Col key={name} xs={12} sm={6} lg={4}>
+            {PRICE_NAMES.map((name) => (
+              <Col key={name} xs={12} sm={6} lg={3}>
                 <Statistic
-                  title={boosterLabel(name)}
+                  title={materialLabel(name)}
                   value={formatNumber(shownUsed[name] ?? 0)}
                   suffix="개"
                   styles={NUMERIC}
@@ -719,7 +828,7 @@ export function EchostoneSimulatorView() {
             </Button>
           </div>
           <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-            {BOOSTER_NAMES.map((name) => {
+            {PRICE_NAMES.map((name) => {
               const price = prices.get(name);
               return price == null ? `${name} 시세 없음` : `${name} 최저가 ${formatGold(price)}`;
             }).join(', ')}

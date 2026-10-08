@@ -76,4 +76,28 @@ describe('에코스톤 각성 시뮬레이터', () => {
     fireEvent.click(auto);
     expect(within(region).getByRole('status')).toHaveTextContent(/목표 능력이 나/);
   });
+
+  it('연마석 레벨 재부여는 각성 능력마다 한 번이고, 새로 각성하면 다시 할 수 있다', () => {
+    window.localStorage.setItem('mabikuma:echostoneFx', 'off');
+    renderPage();
+    const region = screen.getByRole('region', { name: '에코스톤 각성' });
+    const polish = () => within(region).getByRole('button', { name: /^레벨 재부여/ });
+    expect(polish()).toBeDisabled();
+
+    fireEvent.click(within(region).getByRole('button', { name: /^각성$/ }));
+    const ability = within(region).getByRole('region', { name: '각성 능력' });
+    const name = ability.querySelector('strong')?.textContent;
+    expect(polish()).toBeEnabled();
+    fireEvent.click(polish());
+    // 능력은 그대로고 재부여했다는 표시가 붙는다. 연마석은 각성 횟수와 따로 센다.
+    expect(ability.querySelector('strong')?.textContent).toBe(name);
+    expect(ability).toHaveTextContent('레벨 재부여함');
+    expect(polish()).toBeDisabled();
+    expect(within(statistic('연마석')).getByText('1')).toBeInTheDocument();
+    expect(within(statistic('각성')).getByText('1')).toBeInTheDocument();
+
+    fireEvent.click(within(region).getByRole('button', { name: /^각성$/ }));
+    expect(polish()).toBeEnabled();
+    window.localStorage.removeItem('mabikuma:echostoneFx');
+  });
 });

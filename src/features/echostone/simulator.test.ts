@@ -8,7 +8,10 @@ import {
   ECHO_ABILITIES,
   ECHO_BOOSTERS,
   ECHO_STONES,
+  canReroll,
   echoStone,
+  rerollChance,
+  rerollLevel,
   fxTierOf,
   levelChances,
   levelRange,
@@ -120,5 +123,33 @@ describe('연출 겹 수', () => {
     expect(fxTierOf({ ability: combat, level: 10 })).toBe(1);
     expect(fxTierOf({ ability: combat, level: 15 })).toBe(2);
     expect(fxTierOf({ ability: combat, level: 18 })).toBe(3);
+  });
+});
+
+describe('연마석 레벨 재부여', () => {
+  const combat = ability('컴뱃 마스터리 최소 대미지');
+
+  it('능력은 그대로 두고 레벨만 다시 정하며, 한 번 하면 다시 할 수 없다', () => {
+    const before = { ability: combat, level: 3 };
+    expect(canReroll(before)).toBe(true);
+    const after = rerollLevel(before, 30, sequence(0.999));
+    expect(after).toEqual({ ability: combat, level: 20, rerolled: true });
+    expect(canReroll(after)).toBe(false);
+    expect(canReroll(null)).toBe(false);
+  });
+
+  it('원래 레벨보다 낮게 나오면 원래 레벨을 그대로 둔다', () => {
+    const result = { ability: combat, level: 15 };
+    expect(rerollLevel(result, 30, sequence(0)).level).toBe(15);
+    expect(rerollChance(result, 30, 15)).toBe(1);
+  });
+
+  it('각성제 보정 없이 등급 상한 안의 레벨별 확률을 쓴다', () => {
+    const result = { ability: combat, level: 1 };
+    // 30등급, 20레벨 능력: 1레벨 1000 / 전체 12020.
+    expect(1 - rerollChance(result, 30, 2)).toBeCloseTo(1000 / 12020, 10);
+    expect(rerollChance(result, 30, 1)).toBeCloseTo(1, 10);
+    // 1등급은 1레벨만 나온다.
+    expect(rerollLevel(result, 1, sequence(0.999)).level).toBe(1);
   });
 });
