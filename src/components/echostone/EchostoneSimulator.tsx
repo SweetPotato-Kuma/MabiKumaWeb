@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   Button,
   Card,
@@ -13,11 +13,13 @@ import {
   Segmented,
   Select,
   Statistic,
+  Switch,
   Table,
   Typography,
   theme,
   type TableColumnsType,
 } from 'antd';
+import { ItemIcon } from '@/components/ItemIcon';
 import { CalculateIcon, CloseIcon, GemIcon, ResetIcon, StarFillIcon } from '@/components/icons';
 import { TrialCountInput, TrialOdds } from '@/components/simulator/TrialOdds';
 import { normalizeForSearch } from '@/features/auction/dictionary';
@@ -31,6 +33,7 @@ import {
   ECHO_BOOSTERS,
   ECHO_STONES,
   echoStone,
+  fxTierOf,
   isHighLevel,
   levelRange,
   MAX_GRADE,
@@ -43,6 +46,7 @@ import { formatChance } from '@/features/simulator/trials';
 import { formatNumber } from '@/lib/format';
 import { useNarrowScreen } from '@/lib/narrowScreen';
 import { useGoldFormatter } from '@/lib/useGoldFormatter';
+import './echostoneFx.css';
 
 const { Text } = Typography;
 
@@ -61,49 +65,164 @@ function lowestOf(state: PriceState | undefined): number | null {
   return state.price.offers[0]?.price ?? null;
 }
 
-/** 각성 결과 한 줄. 최대 레벨의 90% 이상이면 금빛으로 칠한다. */
-function ResultBox({ result }: { result: EchoResult | null }) {
+/** 각성 연출 한 번의 길이, 모여드는 빛 구슬, 빛살, 반짝임, 금빛 빛살 수. */
+const FX_DURATION = 1200;
+const ORBS = [0, 120, 240];
+const RAYS = 12;
+const SPARKS = 10;
+const GOLD_RAYS = 16;
+/** 90% 이상은 금빛이 다 퍼질 때까지 결과를 늦게 센다. */
+const GOLD_EXTRA_MS = 500;
+/** "에코스톤 연출" 끄기를 이 브라우저에 기억해 두는 자리. */
+const FX_STORAGE_KEY = 'mabikuma:echostoneFx';
+/** 에코스톤 그림을 찾는 경매장 카테고리. */
+const STONE_CATEGORY = '에코스톤';
+
+function readFxSetting(): boolean {
+  try {
+    return window.localStorage.getItem(FX_STORAGE_KEY) !== 'off';
+  } catch {
+    // 시크릿 모드 등 localStorage 접근이 막힌 환경
+    return true;
+  }
+}
+
+function writeFxSetting(on: boolean): void {
+  try {
+    if (on) window.localStorage.removeItem(FX_STORAGE_KEY);
+    else window.localStorage.setItem(FX_STORAGE_KEY, 'off');
+  } catch {
+    // 저장하지 못해도 이번 방문 동안은 고른 대로 간다.
+  }
+}
+
+const angles = (count: number) =>
+  Array.from({ length: count }, (_, index) => (360 / count) * index);
+
+/**
+ * 각성 판. 가운데에 고른 에코스톤이 놓이고, 각성하면 빛 구슬이 모여 돌이 터지며 각성 능력 카드가 튀어나온다.
+ * play 가 바뀌면 판을 새로 그려 연출을 처음부터 돌린다. 연출하지 않을 때는 마지막 각성 능력을 그대로 둔다.
+ * 최대 레벨의 90% 이상이면 연출 밖에서도 카드를 금색으로 칠한다.
+ */
+function EchoStage({
+  stoneName,
+  result,
+  play,
+  fxStyle,
+  scale,
+}: {
+  stoneName: string;
+  result: EchoResult | null;
+  /** 연출할 각성의 번호. 연출하지 않으면 null. */
+  play: number | null;
+  fxStyle: CSSProperties;
+  /** 판 배율(--rf 와 같다). 돌 그림 크기도 같이 키운다. */
+  scale: number;
+}) {
   const { token } = theme.useToken();
   const ability = result ? ECHO_ABILITIES[result.ability] : null;
   const high = result ? isHighLevel(result) : false;
+  const playing = play !== null && result !== null;
+  const tier = result ? fxTierOf(result) : 0;
+  const classes = ['es-stage'];
+  if (playing) {
+    classes.push('es-play');
+    // 겹은 아래 것을 모두 품는다. 90% 이상이면 번쩍임, 빛살, 반짝임, 금빛이 함께 돈다.
+    for (const step of [1, 2, 3]) if (tier >= step) classes.push(`es-t${step}`);
+  }
+  const at = (step: number) => playing && tier >= step;
   return (
-    <section
-      aria-label="각성 능력"
-      style={{
-        minHeight: 76,
-        padding: '12px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        borderRadius: token.borderRadius,
-        border: `1px solid ${high ? token.gold6 : token.colorBorderSecondary}`,
-        background: high ? token.gold1 : token.colorFillQuaternary,
-      }}
-    >
-      {result && ability ? (
-        <>
-          {high ? (
-            <StarFillIcon style={{ color: token.gold7, fontSize: 18, flex: 'none' }} />
+    <section aria-label="각성 능력">
+      <div key={play ?? 'still'} className={classes.join(' ')} style={fxStyle}>
+        <div className="es-stage-body">
+          <div className="es-ring" aria-hidden />
+          <div className="es-ring es-ring--inner" aria-hidden />
+          {at(3) ? (
+            <div className="es-gold-layer" aria-hidden>
+              <div className="es-gold-flash" />
+              {angles(GOLD_RAYS).map((angle, index) => (
+                <span
+                  key={angle}
+                  className="es-gold-ray"
+                  style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+                />
+              ))}
+            </div>
           ) : null}
-          <Flex vertical gap={2} style={{ minWidth: 0 }}>
-            <Text strong style={high ? { color: token.gold8 } : undefined}>
-              {ability.name}
-            </Text>
-            <Text className="tnum" style={{ fontSize: 13, color: high ? token.gold8 : undefined }}>
-              {result.level}레벨
-              {abilityValueText(ability, result.level)
-                ? ` (${abilityValueText(ability, result.level)})`
-                : ''}
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {' '}
-                / 최대 {ability.maxLevel}레벨
+          {at(2)
+            ? angles(RAYS).map((angle) => (
+                <span
+                  key={`ray-${angle}`}
+                  aria-hidden
+                  className="es-ray"
+                  style={{ '--a': `${angle}deg` } as CSSProperties}
+                />
+              ))
+            : null}
+          {at(1) ? <div className="es-flash" aria-hidden /> : null}
+          {playing ? <div className="es-burst" aria-hidden /> : null}
+          {playing
+            ? ORBS.map((angle, index) => (
+                <span
+                  key={`orb-${angle}`}
+                  aria-hidden
+                  className="es-orb"
+                  style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+                />
+              ))
+            : null}
+          {result === null || playing ? (
+            <div className="es-stone" aria-hidden>
+              <ItemIcon category={STONE_CATEGORY} name={stoneName} size={Math.round(48 * scale)} />
+            </div>
+          ) : null}
+          {result && ability ? (
+            <div className={high ? 'es-result es-result--top' : 'es-result'}>
+              <Text strong style={high ? { color: token.gold8 } : undefined}>
+                {high ? (
+                  <StarFillIcon
+                    style={{
+                      color: token.gold7,
+                      fontSize: 14,
+                      marginInlineEnd: 4,
+                      verticalAlign: -2,
+                    }}
+                  />
+                ) : null}
+                {ability.name}
               </Text>
+              <Text
+                className="tnum"
+                style={{ fontSize: 13, color: high ? token.gold8 : undefined }}
+              >
+                {result.level}레벨
+                {abilityValueText(ability, result.level)
+                  ? ` (${abilityValueText(ability, result.level)})`
+                  : ''}
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {' '}
+                  / 최대 {ability.maxLevel}레벨
+                </Text>
+              </Text>
+            </div>
+          ) : (
+            <Text type="secondary" className="es-idle">
+              각성 전
             </Text>
-          </Flex>
-        </>
-      ) : (
-        <Text type="secondary">각성 전</Text>
-      )}
+          )}
+          {at(3)
+            ? angles(SPARKS).map((angle, index) => (
+                <StarFillIcon
+                  key={`spark-${angle}`}
+                  aria-hidden
+                  className="es-spark"
+                  style={{ '--a': `${angle + 18}deg`, '--i': index } as CSSProperties}
+                />
+              ))
+            : null}
+          {at(3) ? <StarFillIcon aria-hidden className="es-glint" /> : null}
+        </div>
+      </div>
     </section>
   );
 }
@@ -228,6 +347,23 @@ export function EchostoneSimulatorView() {
   const [calcOpen, setCalcOpen] = useState(false);
   const [trials, setTrials] = useState(100);
 
+  // 연출. 누를 때의 스위치 상태로 정한다(끈 채 각성한 뒤 켜도 지난 연출이 돌지 않게).
+  const [fxOn, setFxOn] = useState(readFxSetting);
+  const [awakened, setAwakened] = useState(0);
+  const [play, setPlay] = useState<{ no: number; booster: string } | null>(null);
+  /*
+   * 각성 연출이 도는 동안에는 방금 쓴 각성제를 횟수와 쓴 골드에 넣지 않는다. 먼저 올라가면 판보다 숫자가
+   * 앞서 간다. 연출이 끝나면 넣는다.
+   */
+  const [settled, setSettled] = useState(0);
+  const pending = play !== null && settled < play.no ? play : null;
+  const fxTotal = FX_DURATION + (result && fxTierOf(result) === 3 ? GOLD_EXTRA_MS : 0);
+  useEffect(() => {
+    if (pending === null) return;
+    const timer = window.setTimeout(() => setSettled(pending.no), fxTotal);
+    return () => window.clearTimeout(timer);
+  }, [pending, fxTotal]);
+
   const stone = echoStone(stoneId);
   const booster = ECHO_BOOSTERS.find((each) => each.name === boosterName) ?? ECHO_BOOSTERS[0];
 
@@ -264,9 +400,13 @@ export function EchostoneSimulatorView() {
   const targetLevels = targetAbility ? levelRange(targetAbility, grade, booster) : null;
   const chance = activeTarget ? targetChance(stone, grade, booster, activeTarget) : 0;
 
-  const totalUsed = Object.values(used).reduce((sum, count) => sum + count, 0);
+  const shownUsed = useMemo(
+    () => (pending ? { ...used, [pending.booster]: (used[pending.booster] ?? 1) - 1 } : used),
+    [used, pending],
+  );
+  const totalUsed = Object.values(shownUsed).reduce((sum, count) => sum + count, 0);
   const spentGold = BOOSTER_NAMES.reduce(
-    (sum, name) => sum + (prices.get(name) ?? 0) * (used[name] ?? 0),
+    (sum, name) => sum + (prices.get(name) ?? 0) * (shownUsed[name] ?? 0),
     0,
   );
 
@@ -278,8 +418,12 @@ export function EchostoneSimulatorView() {
       limit === null ? null : activeTarget,
       limit ?? 1,
     );
+    const next = awakened + 1;
+    setAwakened(next);
     setResult(outcome.result);
     setUsed((prev) => ({ ...prev, [booster.name]: (prev[booster.name] ?? 0) + outcome.tries }));
+    // 연출은 한 번 각성할 때만 돈다. 목표까지 자동으로 돌리면 마지막 결과를 바로 놓는다.
+    setPlay(fxOn && limit === null ? { no: next, booster: booster.name } : null);
     if (limit === null) setMessage('');
     else
       setMessage(
@@ -292,8 +436,26 @@ export function EchostoneSimulatorView() {
   const changeStone = (id: number) => {
     setStoneId(id);
     setResult(null);
+    setPlay(null);
     setMessage('');
   };
+
+  const stageScale = screens.md ? 1.1 : 1;
+  const fxStyle = {
+    '--fx-accent': token.colorPrimary,
+    '--fx-soft': token.colorPrimaryBg,
+    '--fx-line': token.colorBorder,
+    '--fx-line-soft': token.colorBorderSecondary,
+    '--fx-surface': token.colorFillQuaternary,
+    '--fx-card': token.colorBgContainer,
+    '--fx-radius': `${token.borderRadius}px`,
+    // 90% 이상 금빛. 다른 시뮬레이터의 최상위 결과와 같은 금색 토큰이다.
+    '--fx-gold': token.gold,
+    '--fx-gold-line': token.gold6,
+    '--fx-gold-bg': token.gold1,
+    '--fx-dur': `${play !== null ? FX_DURATION : 0}ms`,
+    '--rf': stageScale,
+  } as CSSProperties;
 
   const pickTarget = (ability: number) => {
     const each = ECHO_ABILITIES[ability];
@@ -362,7 +524,13 @@ export function EchostoneSimulatorView() {
                 />
               </Flex>
 
-              <ResultBox result={result} />
+              <EchoStage
+                stoneName={stone.name}
+                result={result}
+                play={play?.no ?? null}
+                fxStyle={fxStyle}
+                scale={stageScale}
+              />
 
               <Flex gap={8} wrap>
                 <Button type="primary" icon={<GemIcon />} onClick={() => run(null)}>
@@ -373,6 +541,18 @@ export function EchostoneSimulatorView() {
                     목표까지 최대 {formatNumber(limit)}번
                   </Button>
                 ))}
+              </Flex>
+              <Flex gap={8} align="center">
+                <Switch
+                  checked={fxOn}
+                  onChange={(on) => {
+                    setFxOn(on);
+                    setPlay(null);
+                    writeFxSetting(on);
+                  }}
+                  aria-label="에코스톤 연출"
+                />
+                <Text style={{ fontSize: 13 }}>에코스톤 연출</Text>
               </Flex>
               {/* 결과 문구 자리는 비어 있을 때도 잡아 둔다. 문구가 뜨고 질 때 아래가 밀리지 않게 한다. */}
               <Text
@@ -517,7 +697,7 @@ export function EchostoneSimulatorView() {
               <Col key={name} xs={12} sm={6} lg={4}>
                 <Statistic
                   title={boosterLabel(name)}
-                  value={formatNumber(used[name] ?? 0)}
+                  value={formatNumber(shownUsed[name] ?? 0)}
                   suffix="개"
                   styles={NUMERIC}
                 />
@@ -531,6 +711,7 @@ export function EchostoneSimulatorView() {
               onClick={() => {
                 setUsed({});
                 setResult(null);
+                setPlay(null);
                 setMessage('');
               }}
             >

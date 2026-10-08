@@ -191,3 +191,12 @@ export function abilityValueText(ability: EchoAbility, level: number): string {
 export const HIGH_LEVEL_RATIO = 0.9;
 export const isHighLevel = (result: EchoResult) =>
   result.level / Math.max(1, ECHO_ABILITIES[result.ability].maxLevel) >= HIGH_LEVEL_RATIO;
+
+/**
+ * 연출의 겹 수(0~3). 레벨이 최대 레벨의 50% 이상이면 1, 75% 이상이면 2, 90% 이상(금빛과 같은 기준)이면 3 이다.
+ */
+export function fxTierOf(result: EchoResult): 0 | 1 | 2 | 3 {
+  if (isHighLevel(result)) return 3;
+  const ratio = result.level / Math.max(1, ECHO_ABILITIES[result.ability].maxLevel);
+  return ratio >= 0.75 ? 2 : ratio >= 0.5 ? 1 : 0;
+}

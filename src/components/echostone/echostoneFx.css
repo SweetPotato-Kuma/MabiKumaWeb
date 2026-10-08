@@ -1,0 +1,490 @@
+/*
+ * 에코스톤 각성 창의 연출. 에코스톤 각성 시뮬레이터 한 화면만 쓴다.
+ *
+ * 키트 창(kits/kitFx.css), 주화 창(coins/coinFx.css)과 같은 규칙을 따른다. 색은 컴포넌트가 테마 토큰을 CSS 변수
+ * (--fx-*)로 넘겨 주고, 움직이는 것은 transform 과 opacity 뿐이며, 크기는 모두 --rf 배율을 곱한다.
+ * 연출은 .es-play 가 붙은 곳에서만 돈다. "에코스톤 연출" 을 끄면 붙지 않는다. 움직임 줄이기 설정과는 무관하다.
+ *
+ * 각성: 둘레에서 빛 구슬 셋이 돌로 모여들고, 돌이 흔들리다 터지며 각성 능력 카드가 튀어나온다.
+ * 레벨이 그 능력 최대 레벨의 몇 % 이상인지에 따라 위로 갈수록 더해진다.
+ *  - 50% 이상(.es-t1): 가운데가 번쩍인다.
+ *  - 75% 이상(.es-t2): 빛살이 뻗는다.
+ *  - 90% 이상(.es-t3): 둘레가 반짝이고 판이 흔들리며, 금빛이 두 번 번쩍이고 빛살이 돌며 퍼지고 별빛이 튄다.
+ * 목표까지 자동으로 돌리면 연출 없이 마지막 결과를 판에 바로 놓는다.
+ */
+
+.es-stage {
+  position: relative;
+  width: 100%;
+  height: calc(var(--rf, 1) * 190px);
+  overflow: hidden;
+  border-radius: var(--fx-radius);
+  border: 1px solid var(--fx-line-soft);
+  background: var(--fx-surface);
+}
+
+.es-stage-body {
+  position: absolute;
+  inset: 0;
+}
+
+.es-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 168px);
+  height: calc(var(--rf, 1) * 168px);
+  margin: calc(var(--rf, 1) * -84px) 0 0 calc(var(--rf, 1) * -84px);
+  border-radius: 50%;
+  border: 1px solid var(--fx-line);
+  opacity: 0.7;
+}
+
+.es-ring--inner {
+  width: calc(var(--rf, 1) * 124px);
+  height: calc(var(--rf, 1) * 124px);
+  margin: calc(var(--rf, 1) * -62px) 0 0 calc(var(--rf, 1) * -62px);
+  border-style: dashed;
+}
+
+/* 가운데의 에코스톤. 각성 전과 각성하는 동안에만 보인다. */
+.es-stone {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 64px);
+  height: calc(var(--rf, 1) * 64px);
+  margin: calc(var(--rf, 1) * -32px) 0 0 calc(var(--rf, 1) * -32px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--rf, 1) * 56px);
+  line-height: 1;
+  color: var(--fx-accent);
+}
+
+/* 각성 능력 카드. 능력 이름이 길어 원 안에 넣지 않고 판 가운데에 가로로 둔다. */
+.es-result {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(calc(var(--rf, 1) * 300px), calc(100% - 24px));
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 14px;
+  text-align: center;
+  border-radius: var(--fx-radius);
+  border: 1px solid var(--fx-line);
+  background: var(--fx-card);
+}
+
+/* 각성 전 안내. 돌 아래에 둔다. */
+.es-idle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--rf, 1) * 14px);
+  text-align: center;
+  font-size: 13px;
+}
+
+.es-result--top {
+  border-color: var(--fx-gold-line);
+  background: var(--fx-gold-bg);
+}
+
+.es-orb,
+.es-flash,
+.es-burst,
+.es-ray,
+.es-spark,
+.es-glint,
+.es-gold-layer,
+.es-gold-ray {
+  position: absolute;
+  pointer-events: none;
+}
+
+.es-orb,
+.es-flash,
+.es-burst,
+.es-ray,
+.es-spark,
+.es-glint {
+  opacity: 0;
+}
+
+/* 둘레에서 돌로 모여드는 빛 구슬. --a 가 들어오는 각도, --i 가 순번이다. */
+.es-orb {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 14px);
+  height: calc(var(--rf, 1) * 14px);
+  margin: calc(var(--rf, 1) * -7px) 0 0 calc(var(--rf, 1) * -7px);
+  border-radius: 50%;
+  background: var(--fx-accent);
+}
+
+/* 돌이 터질 때의 작은 고리. 모든 결과에 돈다. */
+.es-burst {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 96px);
+  height: calc(var(--rf, 1) * 96px);
+  margin: calc(var(--rf, 1) * -48px) 0 0 calc(var(--rf, 1) * -48px);
+  border-radius: 50%;
+  border: 2px solid var(--fx-line);
+}
+
+/* 50% 이상: 가운데가 번쩍인다. */
+.es-flash {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 180px);
+  height: calc(var(--rf, 1) * 180px);
+  margin: calc(var(--rf, 1) * -90px) 0 0 calc(var(--rf, 1) * -90px);
+  border-radius: 50%;
+  border: 2px solid var(--fx-accent);
+  background: var(--fx-soft);
+}
+
+/* 75% 이상: 빛살. --a 가 각도다. */
+.es-ray {
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: calc(var(--rf, 1) * 70px);
+  margin: calc(var(--rf, 1) * -70px) 0 0 -1px;
+  border-radius: 1px;
+  background: var(--fx-accent);
+  transform-origin: 50% 100%;
+}
+
+/* 90% 이상: 둘레의 반짝임. --a 가 각도, --i 가 순번이다. */
+.es-spark {
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 12px);
+  height: calc(var(--rf, 1) * 12px);
+  margin: calc(var(--rf, 1) * -6px) 0 0 calc(var(--rf, 1) * -6px);
+  font-size: calc(var(--rf, 1) * 12px);
+  line-height: 1;
+  color: var(--fx-gold);
+}
+
+/* 90% 이상: 카드 오른쪽 위에 튀는 별빛 */
+.es-glint {
+  left: 50%;
+  top: 50%;
+  margin: calc(var(--rf, 1) * -62px) 0 0 calc(var(--rf, 1) * 96px);
+  font-size: calc(var(--rf, 1) * 28px);
+  line-height: 1;
+  color: var(--fx-gold);
+}
+
+.es-gold-layer {
+  inset: 0;
+  overflow: hidden;
+}
+
+.es-gold-flash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--rf, 1) * 320px);
+  height: calc(var(--rf, 1) * 320px);
+  margin: calc(var(--rf, 1) * -160px) 0 0 calc(var(--rf, 1) * -160px);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--fx-gold) 0%, transparent 62%);
+  filter: brightness(1.25) saturate(1.1);
+  opacity: 0;
+}
+
+.es-gold-ray {
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: calc(var(--rf, 1) * 120px);
+  margin: calc(var(--rf, 1) * -120px) 0 0 -1.5px;
+  border-radius: 2px;
+  background: var(--fx-gold);
+  transform-origin: 50% 100%;
+  opacity: 0;
+}
+
+/* ---------- 각성 ---------- */
+
+.es-play .es-ring--inner {
+  animation: es-spin var(--fx-dur) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.es-play .es-stone {
+  animation: es-stone var(--fx-dur) ease-in-out both;
+}
+
+.es-play .es-orb {
+  animation: es-gather var(--fx-dur) ease-in both;
+  animation-delay: calc(var(--i) * 80ms);
+}
+
+.es-play .es-burst {
+  animation: es-burst var(--fx-dur) ease-out both;
+}
+
+.es-play .es-result {
+  animation: es-result-in var(--fx-dur) ease-out both;
+}
+
+.es-play.es-t1 .es-flash {
+  animation: es-flash var(--fx-dur) ease-out both;
+}
+
+.es-play.es-t2 .es-ray {
+  animation: es-ray var(--fx-dur) ease-out both;
+}
+
+.es-play.es-t3 .es-spark {
+  animation: es-twinkle var(--fx-dur) ease-out both;
+  animation-delay: calc(var(--i) * 45ms);
+}
+
+.es-play.es-t3 .es-stage-body {
+  animation: es-shake var(--fx-dur) linear both;
+}
+
+.es-play.es-t3 .es-gold-flash {
+  animation: es-gold-flash 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.55);
+}
+
+.es-play.es-t3 .es-gold-ray {
+  animation: es-gold-ray 1100ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.55 + var(--i) * 15ms);
+}
+
+.es-play.es-t3 .es-glint {
+  animation: es-glint 900ms ease-out both;
+  animation-delay: calc(var(--fx-dur) * 0.6);
+}
+
+@keyframes es-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(180deg);
+  }
+}
+
+@keyframes es-stone {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  8% {
+    transform: scale(1.04) rotate(-8deg);
+  }
+  16% {
+    transform: scale(1.04) rotate(8deg);
+  }
+  24% {
+    transform: scale(1.06) rotate(-10deg);
+  }
+  32% {
+    transform: scale(1.06) rotate(10deg);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.18) rotate(0deg);
+  }
+  50% {
+    opacity: 0;
+    transform: scale(1.6) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes es-gather {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -84px)) scale(0.6);
+  }
+  10% {
+    opacity: 1;
+  }
+  34% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -8px)) scale(1);
+  }
+  40%,
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(0) scale(0.2);
+  }
+}
+
+@keyframes es-burst {
+  0%,
+  42% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@keyframes es-result-in {
+  0%,
+  50% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  64% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes es-flash {
+  0%,
+  46% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  54% {
+    opacity: 0.85;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes es-ray {
+  0%,
+  48% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -30px)) scaleY(0);
+  }
+  60% {
+    opacity: 0.9;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -42px)) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -60px)) scaleY(1.2);
+  }
+}
+
+@keyframes es-twinkle {
+  0%,
+  40% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -76px)) scale(0);
+  }
+  64% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -84px)) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -92px)) scale(0.4);
+  }
+}
+
+@keyframes es-shake {
+  0%,
+  50% {
+    transform: translate(0, 0);
+  }
+  53% {
+    transform: translate(-4px, 2px);
+  }
+  56% {
+    transform: translate(4px, -2px);
+  }
+  59% {
+    transform: translate(-3px, -1px);
+  }
+  62% {
+    transform: translate(2px, 1px);
+  }
+  66%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes es-gold-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  35% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes es-gold-ray {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -20px)) scaleY(0);
+  }
+  25% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(calc(var(--rf, 1) * -50px)) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(calc(var(--a) + 30deg)) translateY(calc(var(--rf, 1) * -96px)) scaleY(1.3);
+  }
+}
+
+@keyframes es-glint {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.5) rotate(90deg);
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(0.9) rotate(150deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7) rotate(220deg);
+  }
+}

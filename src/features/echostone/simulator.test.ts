@@ -9,6 +9,7 @@ import {
   ECHO_BOOSTERS,
   ECHO_STONES,
   echoStone,
+  fxTierOf,
   levelChances,
   levelRange,
   targetChance,
@@ -109,5 +110,15 @@ describe('각성', () => {
     expect(hit).toMatchObject({ hit: true, tries: 2 });
     const miss = awakenUntil(red, 30, plain, { ability: first, minLevel: 1 }, 5, sequence(0.99));
     expect(miss).toMatchObject({ hit: false, tries: 5 });
+  });
+});
+
+describe('연출 겹 수', () => {
+  it('최대 레벨의 50%, 75%, 90% 이상마다 한 겹씩 올라간다', () => {
+    const combat = ability('컴뱃 마스터리 최소 대미지');
+    expect(fxTierOf({ ability: combat, level: 9 })).toBe(0);
+    expect(fxTierOf({ ability: combat, level: 10 })).toBe(1);
+    expect(fxTierOf({ ability: combat, level: 15 })).toBe(2);
+    expect(fxTierOf({ ability: combat, level: 18 })).toBe(3);
   });
 });
