@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -94,5 +94,23 @@ describe('키트 시뮬레이터', () => {
     expect(within(region).getByText('10%')).toBeInTheDocument();
     fireEvent.click(auto);
     expect(within(region).getByRole('status')).toHaveTextContent(/목표 아이템이 나/);
+  });
+
+  it('한 번 열기 연출이 도는 동안에는 연 횟수에 넣지 않고, 끝나면 넣는다. 연출을 끄면 바로 넣는다', async () => {
+    window.localStorage.removeItem('mabikuma:kitFx');
+    renderPage();
+    const region = await screen.findByRole('region', { name: '키트 열기' });
+    fireEvent.click(within(region).getByRole('button', { name: /^1번 열기$/ }));
+    expect(within(statistic('연 횟수')).getByText('0')).toBeInTheDocument();
+    expect(within(region).getByText('여는 중')).toBeInTheDocument();
+    await waitFor(() => expect(within(statistic('연 횟수')).getByText('1')).toBeInTheDocument(), {
+      timeout: 4000,
+    });
+
+    fireEvent.click(within(region).getByRole('switch', { name: '키트 연출' }));
+    expect(window.localStorage.getItem('mabikuma:kitFx')).toBe('off');
+    fireEvent.click(within(region).getByRole('button', { name: /^1번 열기$/ }));
+    expect(within(statistic('연 횟수')).getByText('2')).toBeInTheDocument();
+    window.localStorage.removeItem('mabikuma:kitFx');
   });
 });

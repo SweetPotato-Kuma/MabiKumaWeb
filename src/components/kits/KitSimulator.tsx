@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   Button,
   Card,
@@ -12,6 +12,7 @@ import {
   Select,
   Skeleton,
   Statistic,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -26,9 +27,11 @@ import { normalizeForSearch } from '@/features/auction/dictionary';
 import {
   addCounts,
   countByGrade,
+  fxTierOf,
   isOnSale,
   isTopGrade,
   openKit,
+  RECENT_LIMIT,
   useKitArchiveQuery,
   type Kit,
   type KitArchive,
@@ -36,6 +39,7 @@ import {
 import { formatChance } from '@/features/simulator/trials';
 import { formatNumber } from '@/lib/format';
 import { useNarrowScreen } from '@/lib/narrowScreen';
+import './kitFx.css';
 
 const { Text } = Typography;
 
@@ -45,6 +49,37 @@ const OPEN_COUNTS = [1, 10, 100] as const;
 const AUTO_LIMITS = [1000, 10000] as const;
 
 const NUMERIC = { content: { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } } as const;
+
+/** 한 번 열기 연출의 길이, 빛살, 반짝임, 금빛 빛살 수. */
+const FX_DURATION = 1200;
+const RAYS = 12;
+const SPARKS = 10;
+const GOLD_RAYS = 16;
+/** 가장 높은 등급은 금빛이 다 퍼질 때까지 결과를 늦게 센다. */
+const GOLD_EXTRA_MS = 500;
+/** "키트 연출" 끄기를 이 브라우저에 기억해 두는 자리. */
+const FX_STORAGE_KEY = 'mabikuma:kitFx';
+
+function readFxSetting(): boolean {
+  try {
+    return window.localStorage.getItem(FX_STORAGE_KEY) !== 'off';
+  } catch {
+    // 시크릿 모드 등 localStorage 접근이 막힌 환경
+    return true;
+  }
+}
+
+function writeFxSetting(on: boolean): void {
+  try {
+    if (on) window.localStorage.removeItem(FX_STORAGE_KEY);
+    else window.localStorage.setItem(FX_STORAGE_KEY, 'off');
+  } catch {
+    // 저장하지 못해도 이번 방문 동안은 고른 대로 간다.
+  }
+}
+
+const angles = (count: number) =>
+  Array.from({ length: count }, (_, index) => (360 / count) * index);
 
 const kitLabel = (kit: Kit) => `${kit.name} (${kit.start ?? kit.firstSeen ?? '날짜 모름'})`;
 
@@ -268,6 +303,93 @@ function ItemTable({ kit, onTarget }: { kit: Kit; onTarget: (item: number) => vo
   );
 }
 
+/**
+ * 키트 상자 판. 가운데에 상자가 놓이고, 한 번 열면 상자가 터지며 나온 아이템 카드가 튀어나온다.
+ * play 가 바뀌면 판을 새로 그려 연출을 처음부터 돌린다. 연출하지 않을 때는 마지막에 나온 아이템을 그대로 둔다.
+ */
+function KitStage({
+  kit,
+  item,
+  play,
+  fxStyle,
+}: {
+  kit: Kit;
+  /** 마지막에 나온 아이템. 아직 열지 않았으면 null 이고 상자가 놓인다. */
+  item: number | null;
+  /** 연출할 열기의 번호. 연출하지 않으면 null. */
+  play: number | null;
+  fxStyle: CSSProperties;
+}) {
+  const playing = play !== null && item !== null;
+  const tier = item === null ? 0 : fxTierOf(kit, item);
+  const top = item !== null && isTopGrade(kit, item);
+  const grade = item === null ? null : gradeName(kit, item);
+  const classes = ['kt-stage'];
+  if (playing) {
+    classes.push('kt-play');
+    // 겹은 아래 것을 모두 품는다. 가장 높은 등급이면 번쩍임, 빛살, 반짝임, 금빛이 함께 돈다.
+    for (const step of [1, 2, 3]) if (tier >= step) classes.push(`kt-t${step}`);
+  }
+  const at = (step: number) => playing && tier >= step;
+  return (
+    <div key={play ?? 'still'} className={classes.join(' ')} style={fxStyle} aria-hidden>
+      <div className="kt-stage-body">
+        <div className="kt-ring" />
+        <div className="kt-ring kt-ring--inner" />
+        {at(3) ? (
+          <div className="kt-gold-layer">
+            <div className="kt-gold-flash" />
+            {angles(GOLD_RAYS).map((angle, index) => (
+              <span
+                key={angle}
+                className="kt-gold-ray"
+                style={{ '--a': `${angle}deg`, '--i': index } as CSSProperties}
+              />
+            ))}
+          </div>
+        ) : null}
+        {at(2)
+          ? angles(RAYS).map((angle) => (
+              <span
+                key={`ray-${angle}`}
+                className="kt-ray"
+                style={{ '--a': `${angle}deg` } as CSSProperties}
+              />
+            ))
+          : null}
+        {at(1) ? <div className="kt-flash" /> : null}
+        {playing ? <div className="kt-burst" /> : null}
+        {item === null || playing ? (
+          <div className="kt-box">
+            <GiftIcon />
+          </div>
+        ) : null}
+        {item !== null ? (
+          <div className={top ? 'kt-result kt-result--top' : 'kt-result'}>
+            <ItemName kit={kit} item={item} />
+            {grade ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {grade}
+              </Text>
+            ) : null}
+          </div>
+        ) : null}
+        {at(3)
+          ? angles(SPARKS).map((angle, index) => (
+              <StarFillIcon
+                key={`spark-${angle}`}
+                aria-hidden
+                className="kt-spark"
+                style={{ '--a': `${angle + 18}deg`, '--i': index } as CSSProperties}
+              />
+            ))
+          : null}
+        {at(3) ? <StarFillIcon aria-hidden className="kt-glint" /> : null}
+      </div>
+    </div>
+  );
+}
+
 /** 고른 키트를 열어 보는 칸. 키트를 바꾸면 새로 그린다. */
 function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
   const { token } = theme.useToken();
@@ -280,14 +402,52 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [trials, setTrials] = useState(100);
 
+  // 연출. 누를 때의 스위치 상태로 정한다(끈 채 연 뒤 켜도 지난 연출이 돌지 않게).
+  const [fxOn, setFxOn] = useState(readFxSetting);
+  const [batch, setBatch] = useState(0);
+  const [play, setPlay] = useState<number | null>(null);
+  const [reveal, setReveal] = useState<number | null>(null);
+  const last = recent.length > 0 ? recent[recent.length - 1] : null;
+
+  /*
+   * 한 번 열기 연출이 도는 동안에는 방금 나온 것을 통계와 목록에 넣지 않는다. 먼저 올라가면 상자가 열리기 전에
+   * 무엇이 나왔는지 알려 버린다. 연출이 끝나면 넣는다.
+   */
+  const [settled, setSettled] = useState(0);
+  const pending = play !== null && settled < play && last !== null ? last : null;
+  const fxTotal = FX_DURATION + (last !== null && fxTierOf(kit, last) === 3 ? GOLD_EXTRA_MS : 0);
+  useEffect(() => {
+    if (pending === null || play === null) return;
+    const timer = window.setTimeout(() => setSettled(play), fxTotal);
+    return () => window.clearTimeout(timer);
+  }, [pending, play, fxTotal]);
+  const shownCounts = useMemo(() => {
+    if (pending === null) return counts;
+    const next = new Map(counts);
+    const left = (next.get(pending) ?? 0) - 1;
+    if (left > 0) next.set(pending, left);
+    else next.delete(pending);
+    return next;
+  }, [counts, pending]);
+  const shownOpened = opened - (pending === null ? 0 : 1);
+  const shownRecent = pending === null ? recent : recent.slice(0, -1);
+
   const chance = target === null ? 0 : kit.items[target].chance;
-  const gradeCounts = useMemo(() => countByGrade(kit, counts), [kit, counts]);
+  const gradeCounts = useMemo(() => countByGrade(kit, shownCounts), [kit, shownCounts]);
 
   const run = (times: number, until: number | null) => {
     const result = openKit(kit, times, until);
+    const next = batch + 1;
+    setBatch(next);
     setOpened((prev) => prev + result.opened);
     setCounts((prev) => addCounts(prev, result.counts));
-    setRecent(result.recent);
+    // 한 번씩 열 때는 지난 결과에 이어 붙여 최근 것을 쌓아 보이고, 여러 번 열면 이번 것만 보인다.
+    setRecent((prev) =>
+      times === 1 ? [...prev, ...result.recent].slice(-RECENT_LIMIT) : result.recent,
+    );
+    const single = times === 1 && until === null;
+    setPlay(fxOn && single ? next : null);
+    setReveal(fxOn && !single ? next : null);
     if (until === null) setMessage('');
     else
       setMessage(
@@ -302,7 +462,26 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
     setCounts(new Map());
     setRecent([]);
     setMessage('');
+    setPlay(null);
+    setReveal(null);
   };
+
+  const narrowStage = !screens.md;
+  const fxStyle = {
+    '--fx-accent': token.colorPrimary,
+    '--fx-soft': token.colorPrimaryBg,
+    '--fx-line': token.colorBorder,
+    '--fx-line-soft': token.colorBorderSecondary,
+    '--fx-surface': token.colorFillQuaternary,
+    '--fx-card': token.colorBgContainer,
+    '--fx-radius': `${token.borderRadius}px`,
+    // 가장 높은 등급 금빛. 다른 시뮬레이터의 최상위 결과와 같은 금색 토큰이다.
+    '--fx-gold': token.gold,
+    '--fx-gold-line': token.gold6,
+    '--fx-gold-bg': token.gold1,
+    '--fx-dur': `${play !== null ? FX_DURATION : 0}ms`,
+    '--rf': narrowStage ? 1 : 1.1,
+  } as CSSProperties;
 
   return (
     <Flex vertical gap={16} style={{ minWidth: 0 }}>
@@ -325,6 +504,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
           <Row gutter={[24, 20]} align="stretch">
             <Col xs={24} md={12}>
               <Flex vertical gap={12}>
+                <KitStage kit={kit} item={last} play={play} fxStyle={fxStyle} />
                 <section
                   aria-label="이번에 나온 아이템"
                   style={{
@@ -335,12 +515,25 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                     background: token.colorFillQuaternary,
                   }}
                 >
-                  {recent.length === 0 ? (
-                    <Text type="secondary">열기 전</Text>
+                  {shownRecent.length === 0 ? (
+                    <Text type="secondary">{pending === null ? '열기 전' : '여는 중'}</Text>
                   ) : (
-                    <Flex vertical gap={4}>
-                      {[...recent].reverse().map((item, index) => (
-                        <ItemName key={`${index}-${item}`} kit={kit} item={item} />
+                    // 여러 번 열면 줄이 차례로 드러난다. key 로 열 때마다 새로 그려 연출을 처음부터 돌린다.
+                    <Flex
+                      key={reveal ?? 'still'}
+                      vertical
+                      gap={4}
+                      className={reveal !== null ? 'kt-reveal' : undefined}
+                      style={fxStyle}
+                    >
+                      {[...shownRecent].reverse().map((item, index) => (
+                        <div
+                          key={`${index}-${item}`}
+                          className={isTopGrade(kit, item) ? 'kt-line kt-line--top' : 'kt-line'}
+                          style={{ '--i': index } as CSSProperties}
+                        >
+                          <ItemName kit={kit} item={item} />
+                        </div>
                       ))}
                     </Flex>
                   )}
@@ -356,6 +549,19 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                       {formatNumber(times)}번 열기
                     </Button>
                   ))}
+                </Flex>
+                <Flex gap={8} align="center">
+                  <Switch
+                    checked={fxOn}
+                    onChange={(on) => {
+                      setFxOn(on);
+                      setPlay(null);
+                      setReveal(null);
+                      writeFxSetting(on);
+                    }}
+                    aria-label="키트 연출"
+                  />
+                  <Text style={{ fontSize: 13 }}>키트 연출</Text>
                 </Flex>
                 <Flex gap={8} wrap>
                   {AUTO_LIMITS.map((limit) => (
@@ -474,7 +680,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
             <Col xs={12} sm={6} lg={4}>
               <Statistic
                 title="연 횟수"
-                value={formatNumber(opened)}
+                value={formatNumber(shownOpened)}
                 suffix="번"
                 styles={NUMERIC}
               />
@@ -483,7 +689,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
               <Col xs={12} sm={6} lg={4}>
                 <Statistic
                   title="쓴 캐시"
-                  value={formatNumber(opened * kit.price)}
+                  value={formatNumber(shownOpened * kit.price)}
                   styles={NUMERIC}
                 />
               </Col>
@@ -509,7 +715,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
               처음부터
             </Button>
           </div>
-          <TallyTable kit={kit} counts={counts} />
+          <TallyTable kit={kit} counts={shownCounts} />
         </Flex>
       </Card>
 

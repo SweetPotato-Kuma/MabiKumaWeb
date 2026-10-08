@@ -138,5 +138,15 @@ export function countByGrade(kit: Kit, counts: ReadonlyMap<number, number>): num
 export const isTopGrade = (kit: Kit, item: number) =>
   kit.grades.length > 1 && kit.items[item]?.grade === 0;
 
+/**
+ * 연출의 겹 수(0~3). 등급이 여럿인 키트에서 첫 등급은 3, 둘째는 2, 셋째는 1, 그 아래는 0 이다.
+ * 등급이 없는 키트는 무엇이 드문지 정해 둔 것이 없어 0 으로 둔다.
+ */
+export function fxTierOf(kit: Kit, item: number): 0 | 1 | 2 | 3 {
+  const grade = kit.items[item]?.grade;
+  if (kit.grades.length < 2 || grade === undefined) return 0;
+  return grade === 0 ? 3 : grade === 1 ? 2 : grade === 2 ? 1 : 0;
+}
+
 /** 그 키트를 지금 파는지. */
 export const isOnSale = (archive: KitArchive, kit: Kit) => archive.current.includes(kit.id);

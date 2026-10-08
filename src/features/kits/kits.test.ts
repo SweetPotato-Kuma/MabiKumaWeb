@@ -3,6 +3,7 @@ import {
   addCounts,
   countByGrade,
   cumulative,
+  fxTierOf,
   isTopGrade,
   openKit,
   openOnce,
@@ -91,6 +92,12 @@ describe('키트 열기', () => {
       ),
     ).toEqual([2, 7]);
     expect(countByGrade({ ...kit, grades: [] }, new Map([[0, 1]]))).toEqual([]);
+  });
+
+  it('연출 겹 수는 등급 순서를 따르고 등급이 없으면 0 이다', () => {
+    expect(fxTierOf(kit, 0)).toBe(3);
+    expect(fxTierOf(kit, 1)).toBe(2);
+    expect(fxTierOf({ ...kit, grades: [] }, 0)).toBe(0);
   });
 
   it('등급이 여럿인 키트의 첫 등급만 가장 높은 등급으로 본다', () => {
