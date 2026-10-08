@@ -356,6 +356,29 @@ npx wrangler d1 migrations apply mabikuma-market --remote
 curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY"   https://mabikuma-api.inbox7.workers.dev/horn/collect
 ```
 
+## 새소식 기록 (/news)
+
+공식 홈페이지의 공지사항(공지, 점검, 이벤트, 샵)과 개발자 노트, 진행 중인 이벤트 목록을 모읍니다. 공식 홈페이지는
+글을 고쳐도 새 글을 올리지 않고 올린 글을 바꾸므로, 본문이 바뀔 때마다 판을 하나씩 더 남겨 화면이 무엇이 바뀌었는지
+비교할 수 있게 합니다. 코드는 `news.js`, 표는 `migrations-news/0001_news.sql`, 데이터베이스는 시세 기록과 다른 D1(`NEWS`)입니다.
+
+| 경로 | 누가 | 하는 일 |
+| --- | --- | --- |
+| `GET /news/list?category=&q=&edited=1&page=` | 공개 | 글 목록(20개씩). 제목만 찾는다 |
+| `GET /news/post?id=` | 공개 | 글 한 편과 모든 판의 본문 HTML |
+| `GET /news/events` | 공개 | 진행 중인 이벤트(그림, 기간) |
+| `POST /news/collect?pages=` | 운영자 | 크론을 기다리지 않고 지금 모으기. `pages` 만큼 지난 목록을 더 채운다(최대 30) |
+
+- 크론(`2,12,22,32,42,52 * * * *`)이 10분마다 공지사항과 개발자 노트의 첫 쪽, 이벤트 목록을 읽고 처음 보는 글의 본문을 받습니다.
+- 올린 지 7일 안 된 글과 목록 맨 위 고정 글은 오래 다시 읽지 않은 것부터 20개씩 다시 읽습니다. 지워진 글은 지운 시각만 남깁니다.
+- 지난 글은 크론마다 3쪽씩 둘째 쪽부터 끝까지 채웁니다(`news_meta` 의 `backfill:<board>`). 공지사항은 2012년까지 660쪽 남짓입니다.
+- 공식 홈페이지에는 요청 사이를 1초 띄웁니다. 조회는 60초 엣지 캐시, 제한은 `MARKET_RATE_LIMIT` 를 같이 씁니다.
+
+```bash
+npx wrangler d1 migrations apply mabikuma-news --remote
+curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY"   "https://mabikuma-api.inbox7.workers.dev/news/collect?pages=10"
+```
+
 ## 경매장 장비 매물 모아 두기 (/auction/snapshot)
 
 넥슨 경매장 API 는 옵션으로 찾지 못하고, 한 쪽 500건을 앞 쪽의 커서로만 넘깁니다. 세공이나 인챈트로

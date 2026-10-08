@@ -50,6 +50,8 @@ import storefrontSvg from '@material-symbols/svg-400/rounded/storefront.svg?raw'
 import tollSvg from '@material-symbols/svg-400/rounded/toll.svg?raw';
 import uploadSvg from '@material-symbols/svg-400/rounded/upload.svg?raw';
 import waterDropSvg from '@material-symbols/svg-400/rounded/water_drop.svg?raw';
+import newspaperSvg from '@material-symbols/svg-400/rounded/newspaper.svg?raw';
+import openInNewSvg from '@material-symbols/svg-400/rounded/open_in_new.svg?raw';
 
 /**
  * 아이콘은 구글 Material Symbols(Rounded, 굵기 400) 한 벌만 쓴다. 둥근 모서리가 픽셀 곰 로고와 어울린다.
@@ -156,3 +158,5 @@ export const TrendingUpIcon = createIcon(trendingUpSvg, 'TrendingUpIcon');
 export const TollIcon = createIcon(tollSvg, 'TollIcon');
 export const UploadIcon = createIcon(uploadSvg, 'UploadIcon');
 export const WaterDropIcon = createIcon(waterDropSvg, 'WaterDropIcon');
+export const NewsIcon = createIcon(newspaperSvg, 'NewsIcon');
+export const OpenInNewIcon = createIcon(openInNewSvg, 'OpenInNewIcon');

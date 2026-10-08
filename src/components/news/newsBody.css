@@ -1,0 +1,46 @@
+/*
+ * 공식 홈페이지 본문. 본문 HTML 은 공식 홈페이지가 인라인 style 로 꾸며 둔 그대로라 antd 가 닿지 않는다.
+ * 여기서는 칸을 넘치지 않게 하는 것만 정한다. 색은 theme.ts 가 내보내는 --app-* 에서만 온다.
+ * 무채색 글자색과 밝은 바탕은 sanitize.ts 가 미리 지워 테마 글자색을 따른다.
+ */
+.news-body {
+  line-height: 1.75;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.news-body img,
+.news-body video {
+  max-width: 100%;
+  height: auto;
+}
+
+.news-body iframe {
+  max-width: 100%;
+  border: 0;
+}
+
+.news-body table {
+  max-width: 100%;
+  border-collapse: collapse;
+}
+
+/* 옛 공지는 width:475px 같은 고정 폭 칸에 들어 있다. 휴대폰에서 칸이 화면을 넘지 않게 한다. */
+.news-body div,
+.news-body figure {
+  max-width: 100%;
+}
+
+.news-body figure {
+  margin: 0 auto;
+}
+
+.news-body a {
+  color: var(--app-accent);
+}
+
+/* 이벤트 글 아래의 "이용 시 참고해 주세요" 칸 제목. */
+.news-body .view_cont2 .title {
+  font-weight: 600;
+  margin: 24px 0 8px;
+}

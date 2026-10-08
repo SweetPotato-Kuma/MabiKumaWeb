@@ -71,11 +71,20 @@ database_name = "mabikuma-market"
 database_id = "cba3a0e7-3c6d-4e3f-a0d3-c741d1d53ab0"
 migrations_dir = "migrations"
 
+# 공식 홈페이지 새소식 기록(news.js). 본문 HTML 과 고친 판이 쌓여 커지므로 시세 기록과 나눠 둔다.
+#   npx wrangler d1 migrations apply mabikuma-news --remote
+[[d1_databases]]
+binding = "NEWS"
+database_name = "mabikuma-news"
+database_id = "2586f58f-30e0-4a58-801c-1c942ad50472"
+migrations_dir = "migrations-news"
+
 # 정각 10분마다: 거래 내역과 장비 매물. 5분 어긋나게: 던전 코인 화면의 시세(priceSnapshot.js).
 # 뿔피리(horn.js)는 두 크론 모두에서 받는다. 류트는 30분이면 API 의 1,000건이 차므로 5분마다 받는다.
-# 두 번째 값은 priceSnapshot.js 의 PRICE_CRON 과 글자까지 같아야 한다. 워커가 이 글자로 가른다.
+# 2분 어긋나게: 공식 홈페이지 새소식(news.js).
+# 두 번째, 세 번째 값은 priceSnapshot.js 의 PRICE_CRON, news.js 의 NEWS_CRON 과 글자까지 같아야 한다. 워커가 이 글자로 가른다.
 [triggers]
-crons = ["*/10 * * * *", "5,15,25,35,45,55 * * * *"]
+crons = ["*/10 * * * *", "5,15,25,35,45,55 * * * *", "2,12,22,32,42,52 * * * *"]
 
 # 시세 조회 횟수 제한. 경매장 목록은 쪽을 넘길 때마다, 아이템 정보는 열 때마다 한 번 묻는다.
 [[unsafe.bindings]]

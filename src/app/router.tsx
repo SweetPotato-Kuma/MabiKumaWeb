@@ -22,6 +22,7 @@ const lazyPage = <Name extends string>(
 const BagsPage = lazyPage(() => import('@/pages/BagsPage'), 'BagsPage');
 const MagmellPassPage = lazyPage(() => import('@/pages/MagmellPassPage'), 'MagmellPassPage');
 const HornPage = lazyPage(() => import('@/pages/HornPage'), 'HornPage');
+const NewsPage = lazyPage(() => import('@/pages/NewsPage'), 'NewsPage');
 const DungeonCoinsPage = lazyPage(() => import('@/pages/DungeonCoinsPage'), 'DungeonCoinsPage');
 const RelicsPage = lazyPage(() => import('@/pages/RelicsPage'), 'RelicsPage');
 const RelicSimulatorPage = lazyPage(() => import('@/pages/RelicSimulatorPage'), 'RelicSimulatorPage');
@@ -76,6 +77,8 @@ export const router = createBrowserRouter(
         { path: 'bags', element: <BagsPage /> },
         { path: 'magmell-pass', element: <MagmellPassPage /> },
         { path: 'horn', element: <HornPage /> },
+        // 글 한 편은 /news?id= 다. 경로로 나누면 정적 호스팅이 글마다 404 를 내므로 한 경로에 둔다.
+        { path: 'news', element: <NewsPage /> },
         { path: 'dungeon-coins', element: <DungeonCoinsPage /> },
         { path: 'relics', element: <RelicsPage /> },
         { path: 'calculators', element: <CalculatorListPage /> },

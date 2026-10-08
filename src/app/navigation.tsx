@@ -14,6 +14,7 @@ import {
   HornIcon,
   ImageIcon,
   MuseumIcon,
+  NewsIcon,
   PaidIcon,
   ShopIcon,
   TicketIcon,
@@ -87,6 +88,7 @@ export const NAV_TREE: NavEntry[] = [
     ],
   },
   { path: '/horn', label: '뿔피리', icon: <HornIcon />, keywords: '거대한 외침 확성기 서버' },
+  { path: '/news', label: '새소식', icon: <NewsIcon />, keywords: '공지 공지사항 점검 이벤트 샵 개발자 노트 패치 수정' },
   {
     key: 'calculators',
     label: '계산기',

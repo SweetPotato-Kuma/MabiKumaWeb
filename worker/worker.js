@@ -40,6 +40,10 @@
  *
  * 거대한 외침의 뿔피리 찾기(GET /horn/search)는 horn.js 에 있다. 두 크론 모두 네 서버의 뿔피리를
  * 받아 MARKET 에 쌓고(5분마다), 찾을 때도 1분이 지났으면 먼저 받는다.
+ *
+ * 공식 홈페이지 새소식 기록(GET /news/list, /news/post, /news/events)은 news.js 에 있다. 따로 둔 크론이
+ * 10분마다 공지사항, 개발자 노트, 이벤트 목록을 읽어 쌓고, 올린 지 7일 안 된 글은 다시 읽어 고친 판을 남긴다.
+ *   NEWS  (D1 바인딩, 새소식 기록에 필수) 시세 기록과 다른 데이터베이스
  */
 
 import {
@@ -64,6 +68,18 @@ import {
 import { PRICE_COLLECT_PATH, PRICE_CRON, collectPrices, pricesCollect } from './priceSnapshot.js';
 import { SERVER_CHANNELS } from './servers.js';
 import { HORN_COLLECT_PATH, HORN_SEARCH_PATH, collectHorns, hornCollect, hornSearch } from './horn.js';
+import {
+  NEWS_COLLECT_PATH,
+  NEWS_CRON,
+  NEWS_EVENTS_PATH,
+  NEWS_LIST_PATH,
+  NEWS_POST_PATH,
+  collectNews,
+  newsCollect,
+  newsEvents,
+  newsList,
+  newsPost,
+} from './news.js';
 import {
   SNAPSHOT_COLLECT_PATH,
   SNAPSHOT_PATH,
@@ -1501,6 +1517,26 @@ export default {
       return hornSearch(request, url, env, cors);
     }
 
+    // 새소식 기록. 목록, 글 한 편(모든 판), 진행 중인 이벤트.
+    if (url.pathname === NEWS_LIST_PATH || url.pathname === NEWS_POST_PATH || url.pathname === NEWS_EVENTS_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('NEWS_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      if (url.pathname === NEWS_LIST_PATH) return newsList(request, url, env, cors);
+      if (url.pathname === NEWS_POST_PATH) return newsPost(request, url, env, cors);
+      return newsEvents(request, env, cors);
+    }
+
+    // 새소식 지금 모으기는 운영자만. ?pages= 로 지난 글을 한 번에 더 채운다.
+    if (url.pathname === NEWS_COLLECT_PATH) {
+      const problem = adminProblem(request, env, cors);
+      if (problem) return problem;
+      if (request.method !== 'POST') {
+        return errorResponse('NEWS_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+      }
+      return newsCollect(url, env, cors);
+    }
+
     // 뿔피리 지금 받기는 운영자만.
     if (url.pathname === HORN_COLLECT_PATH) {
       const problem = adminProblem(request, env, cors);
@@ -1676,9 +1712,15 @@ export default {
    * 매물을 모아 둔다. 둘은 서로 기다리지 않는다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
    * 5분 어긋난 크론은 이름으로 묻는 시세를 모은다. 넥슨 요청이 한 실행에 몰리지 않게 나눴다.
    * 뿔피리는 두 크론 모두에서 받는다. 류트는 30분이면 API 의 1,000건이 차므로 5분마다 받아야 빠지지 않는다.
+   * 2분 어긋난 크론은 공식 홈페이지 새소식만 모은다. 요청 사이를 1초씩 띄우므로 1~2분 걸린다.
    */
   async scheduled(controller, env) {
     const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
+    if (controller?.cron === NEWS_CRON) {
+      const [news] = await Promise.allSettled([collectNews(env)]);
+      console.log(JSON.stringify({ news: outcome(news) }));
+      return;
+    }
     if (controller?.cron === PRICE_CRON) {
       const [prices, horn] = await Promise.allSettled([collectPrices(env), collectHorns(env)]);
       console.log(JSON.stringify({ prices: outcome(prices), horn: outcome(horn) }));
