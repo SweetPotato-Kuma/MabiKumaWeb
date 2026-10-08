@@ -2,7 +2,9 @@
  * 공식 홈페이지 본문 HTML 을 우리 화면에 그릴 수 있게 거른다.
  *
  * 워커는 본문을 받은 그대로 두므로(판 비교의 원본이다) 그릴 때 여기서 거른다.
- *   - 스크립트, 스타일 시트, 폼, 다른 페이지를 품는 틀은 지운다. 틀은 유튜브 영상만 남긴다.
+ *   - 스크립트, 폼, 다른 페이지를 품는 틀은 지운다. 틀은 유튜브 영상만 남긴다.
+ *   - 본문 안의 스타일 시트는 `.news-body` 안으로 가둬 남긴다(scopeCss). 키트 글의 미리보기 갤러리처럼 본문이 자기
+ *     꾸밈을 스타일 시트로 들고 오기 때문이다. 갤러리의 움직임은 스크립트를 돌리지 않고 NewsBody 가 따로 붙인다.
  *   - on* 속성과 javascript: 주소를 지운다.
  *   - 상대 주소를 공식 홈페이지 주소로 바꾸고, 받아 둔 새소식 글로 가는 링크는 우리 기록(/news?id=)으로 잇는다.
  *   - 무채색 글자색, 밝은 바탕색, 글꼴 지정을 지운다. 공식 홈페이지는 흰 바탕에 검은 글자를 박아 두어
@@ -14,7 +16,6 @@ const BASE = `${ORIGIN}/page/news/`;
 
 const DROP_TAGS = [
   'script',
-  'style',
   'link',
   'meta',
   'base',
@@ -96,10 +97,29 @@ function findColor(value: string): Rgb | null {
   return null;
 }
 
-/** 지울 바탕색. 밝은 바탕은 다크 모드에서 섬이 되고, 무채색 바탕은 테마 바탕과 부딪친다. */
+/**
+ * 지울 바탕색. 밝은 바탕은 다크 모드에서 섬이 되고, 무채색 바탕은 테마 바탕과 부딪친다.
+ * 순수 검정은 남긴다. 영상과 그림을 담는 칸이 검정이어야 영상 둘레의 여백이 공식 홈페이지처럼 보인다.
+ */
 function dropsBackground(value: string): boolean {
   const color = findColor(value);
-  return color !== null && (isNeutral(color) || lightness(color) > 0.75);
+  if (color === null) return false;
+  if (color.r + color.g + color.b === 0) return false;
+  return isNeutral(color) || lightness(color) > 0.75;
+}
+
+/** 스타일 시트를 가둘 때 통째로 버리는 것. 다른 규칙을 끌어오거나, 글꼴을 싣거나, 화면을 덮을 수 있는 것들이다. */
+const UNSAFE_CSS =
+  /@(?!media\b)[a-z-]+|expression\s*\(|javascript:|vbscript:|behavior\s*:|-moz-binding|position\s*:\s*(?:fixed|sticky)|url\(\s*(?!['"]?\s*https?:\/\/)/i;
+
+/**
+ * 본문 스타일 시트를 `.news-body` 안으로 가둔다. CSS 중첩으로 감싸므로 선택자는 모두 본문 안에서만 맞는다.
+ * 위험한 것이 하나라도 있으면 시트를 통째로 버린다(빈 글자). 일부만 남기면 꾸밈이 어긋난 채로 보인다.
+ */
+export function scopeCss(css: string): string {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+  if (!text || UNSAFE_CSS.test(text)) return '';
+  return `.news-body{${text}}`;
 }
 
 function dropsColor(value: string): boolean {
@@ -138,6 +158,8 @@ function cleanStyle(style: string): string {
 function absolute(value: string): string | null {
   const text = value.trim();
   if (/^(javascript|vbscript|data):/i.test(text)) return null;
+  // 같은 글 안의 앵커(갤러리 목록이 href="#" 를 쓴다)는 그대로 둔다.
+  if (text.startsWith('#')) return text;
   try {
     return new URL(text, BASE).toString();
   } catch {
@@ -159,7 +181,10 @@ function cleanElement(element: Element): void {
       continue;
     }
     if (URL_ATTRS.includes(name)) {
-      const url = absolute(attribute.value);
+      let url = absolute(attribute.value);
+      // 옛 글의 그림은 http:// 로 적혀 있다. 이 사이트는 https 라 그대로 두면 막히거나 경고가 뜬다.
+      if (url && (name === 'src' || name === 'poster'))
+        url = url.replace(/^http:\/\//i, 'https://');
       if (url) element.setAttribute(attribute.name, url);
       else element.removeAttribute(attribute.name);
     }
@@ -190,6 +215,8 @@ function cleanElement(element: Element): void {
     if (id !== null) {
       element.setAttribute('href', `/news?id=${id}`);
       element.removeAttribute('target');
+    } else if (href?.startsWith('#')) {
+      element.removeAttribute('target');
     } else if (href) {
       element.setAttribute('target', '_blank');
       element.setAttribute('rel', 'noopener noreferrer');
@@ -203,6 +230,11 @@ export function sanitizeNewsHtml(html: string): string {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
   for (const tag of DROP_TAGS)
     for (const element of [...doc.body.querySelectorAll(tag)]) element.remove();
+  for (const style of [...doc.body.querySelectorAll('style')]) {
+    const scoped = scopeCss(style.textContent ?? '');
+    if (scoped) style.textContent = scoped;
+    else style.remove();
+  }
   for (const frame of [...doc.body.querySelectorAll('iframe')]) {
     const src = absolute(frame.getAttribute('src') ?? '');
     let host = '';

@@ -39,8 +39,60 @@
   color: var(--app-accent);
 }
 
-/* 이벤트 글 아래의 "이용 시 참고해 주세요" 칸 제목. */
+/*
+ * 키트 글의 미리보기 갤러리 목록. 사이트 전체는 낱말 단위로 줄을 바꾸지만(keep-all), 공식 목록은 칸 안에서 글자
+ * 단위로 줄을 바꾸고 두 줄이 넘을 때만 말줄임을 단다. 같은 줄바꿈을 써야 말줄임이 같은 줄에만 붙는다.
+ * 갤러리 칸과 목록의 나머지 꾸밈은 글이 들고 온 스타일 시트가 정한다(sanitize.ts, gallery.ts).
+ */
+.news-body .img_g_list {
+  word-break: normal;
+}
+
+/*
+ * 이벤트 글 아래의 "이용 시 참고해 주세요" 상자. 공식 모양(어두운 제목 띠, 왼쪽의 i 칸, 아래로 이어지는 상자)을
+ * 따르되 색은 테마에서 만든다. 라이트에서는 어두운 띠에 밝은 글자, 다크에서는 밝은 띠에 어두운 글자가 된다.
+ * 폭은 본문 그림의 가장 넓은 칸(840px)과 같다.
+ */
+.news-body .view_cont2 {
+  max-width: 840px;
+  margin: 24px 0 0;
+  padding-bottom: 24px;
+}
+
 .news-body .view_cont2 .title {
-  font-weight: 600;
-  margin: 24px 0 8px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 22px 8px 60px;
+  border-radius: 10px 10px 0 0;
+  background: color-mix(in srgb, var(--app-text) 72%, var(--app-bg));
+  color: var(--app-bg);
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.news-body .view_cont2 .title::before {
+  content: 'i';
+  position: absolute;
+  inset: 3px auto 3px 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--app-text) 88%, var(--app-bg));
+  font-size: 22px;
+  font-style: italic;
+  font-weight: 700;
+}
+
+.news-body .view_cont2 .txt_box {
+  padding: 30px 21px 40px;
+  border: 1px solid color-mix(in srgb, var(--app-text) 14%, var(--app-bg));
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  font-size: 15px;
+  line-height: 25px;
+  word-break: keep-all;
 }

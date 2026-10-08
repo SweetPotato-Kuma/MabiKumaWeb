@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newsLinkId, sanitizeNewsHtml } from './sanitize';
+import { newsLinkId, sanitizeNewsHtml, scopeCss } from './sanitize';
 
 const parse = (html: string) => {
   const container = document.createElement('div');
@@ -8,11 +8,13 @@ const parse = (html: string) => {
 };
 
 describe('본문 거르기', () => {
-  it('스크립트, 스타일, 폼과 on 속성, javascript: 주소를 지운다', () => {
+  it('스크립트, 폼과 on 속성, javascript: 주소를 지우고 스타일은 본문 안으로 가둔다', () => {
     const body = parse(
       '<p onclick="steal()">글</p><script>alert(1)</script><style>body{display:none}</style><form><input></form><a href="javascript:go_home()">홈</a>',
     );
-    expect(body.querySelector('script, style, form, input')).toBeNull();
+    expect(body.querySelector('script, form, input')).toBeNull();
+    // 스타일 시트는 본문 안으로 갇혀 남는다. 바깥(body 등)에는 닿지 않는다.
+    expect(body.querySelector('style')?.textContent).toBe('.news-body{body{display:none}}');
     expect(body.querySelector('p')?.hasAttribute('onclick')).toBe(false);
     expect(body.querySelector('a')?.hasAttribute('href')).toBe(false);
   });
@@ -71,5 +73,49 @@ describe('본문 거르기', () => {
     expect(body.querySelectorAll('span')[1].getAttribute('style')).toBe(
       'background: #9e3563; color: #ffffff',
     );
+  });
+
+  it('본문의 스타일 시트는 본문 안으로 가둬 남기고, 위험한 시트는 통째로 버린다', () => {
+    const body = parse(
+      '<style>.img_g{display:none}@media screen and (max-width:839px){.img_g_list li{width:33%}}</style>' +
+        '<style>@import url(https://evil.example/x.css);.a{color:red}</style>' +
+        '<style>.b{position:fixed;inset:0}</style>' +
+        '<style>.c{background:url(javascript:alert(1))}</style><p>글</p>',
+    );
+    const sheets = [...body.querySelectorAll('style')].map((style) => style.textContent);
+    expect(sheets).toEqual([
+      '.news-body{.img_g{display:none}@media screen and (max-width:839px){.img_g_list li{width:33%}}}',
+    ]);
+    expect(scopeCss('/* 주석 */ .x{color:red}')).toBe('.news-body{.x{color:red}}');
+    expect(scopeCss('.x{background:url("https://ssl.nexon.com/a.png")}')).toContain('url(');
+    expect(scopeCss('')).toBe('');
+  });
+
+  it('갤러리 목록의 # 링크는 그대로 두어 새 탭으로 열리지 않는다', () => {
+    const link = parse('<ul><li><a href="#" target="_blank">이름</a></li></ul>').querySelector('a');
+    expect(link?.getAttribute('href')).toBe('#');
+    expect(link?.hasAttribute('target')).toBe(false);
+  });
+
+  it('http:// 로 적힌 그림과 영상은 https:// 로 올린다', () => {
+    const body = parse(
+      '<img src="http://file.mabinogi.nexon.com/dataAdmin/UpImg/1.jpg"><video src="http://x.example/v.mp4" poster="http://x.example/p.jpg"></video><a href="http://x.example/page">링크</a>',
+    );
+    expect(body.querySelector('img')?.getAttribute('src')).toBe(
+      'https://file.mabinogi.nexon.com/dataAdmin/UpImg/1.jpg',
+    );
+    expect(body.querySelector('video')?.getAttribute('src')).toBe('https://x.example/v.mp4');
+    expect(body.querySelector('video')?.getAttribute('poster')).toBe('https://x.example/p.jpg');
+    // 링크는 사용자가 눌러 가는 곳이라 건드리지 않는다.
+    expect(body.querySelector('a')?.getAttribute('href')).toBe('http://x.example/page');
+  });
+
+  it('순수 검정 바탕은 남기고 회색 바탕은 지운다', () => {
+    const body = parse(
+      '<div style="background:#000;position:relative">영상</div><div style="background:#1e1e1e">회색</div>',
+    );
+    const [black, gray] = [...body.querySelectorAll('div')];
+    expect(black.getAttribute('style')).toBe('background: #000; position: relative');
+    expect(gray.hasAttribute('style')).toBe(false);
   });
 });
