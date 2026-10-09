@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getProxyUrl } from '@/lib/settings';
+import type { KitPricing } from './pricing';
 
 /**
  * 키트(확률형 상품) 시뮬레이터.
@@ -37,6 +38,8 @@ export interface Kit {
   end: string | null;
   /** 한 번 여는 값(캐시). 모르면 null. */
   price: number | null;
+  /** 공식 상점에서 마지막으로 확인한 구매 옵션. 지난 키트에는 없을 수 있다. */
+  pricing?: KitPricing;
   /** 처음 모은 날. 시작일을 모를 때 대신 줄 세운다. */
   firstSeen?: string;
   grades: KitGrade[];
@@ -80,11 +83,15 @@ async function readKits<T>(path: string, signal: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** 공식 사이트는 워커가 수집하고, 화면은 자체 API의 갱신된 기록만 확인한다. */
+const KIT_REFRESH_MS = 5 * 60 * 1000;
+
 export function useKitIndexQuery() {
   return useQuery({
     queryKey: ['kits', 'index'],
     queryFn: ({ signal }) => readKits<KitIndex>('/kits/index', signal),
-    staleTime: Infinity,
+    staleTime: KIT_REFRESH_MS,
+    refetchInterval: KIT_REFRESH_MS,
     gcTime: Infinity,
   });
 }
@@ -94,7 +101,8 @@ export function useKitQuery(id: string | null) {
     queryKey: ['kits', 'kit', id],
     queryFn: ({ signal }) => readKits<Kit>(`/kits/kit?id=${encodeURIComponent(id ?? '')}`, signal),
     enabled: id !== null,
-    staleTime: Infinity,
+    staleTime: KIT_REFRESH_MS,
+    refetchInterval: KIT_REFRESH_MS,
     gcTime: Infinity,
   });
 }

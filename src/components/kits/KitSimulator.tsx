@@ -43,6 +43,8 @@ import {
 import { formatChance } from '@/features/simulator/trials';
 import { formatNumber } from '@/lib/format';
 import { useNarrowScreen } from '@/lib/narrowScreen';
+import { quoteKitPurchase, type PurchaseMode } from '@/features/kits/pricing';
+import { KitPurchaseEstimate, KitPurchaseOptions } from './KitPurchase';
 import './kitFx.css';
 
 const { Text } = Typography;
@@ -440,7 +442,7 @@ const formatExpected = (value: number) =>
   value.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /**
- * 지금까지 연 결과. 연 횟수와 쓴 캐시, 등급이 있는 키트는 등급마다 확률대로라면 몇 번 나왔어야 하는지(기대)와
+ * 지금까지 연 결과. 연 횟수와 예상 구매 비용·마일리지, 등급이 있는 키트는 확률대로라면 몇 번 나왔어야 하는지(기대)와
  * 실제로 나온 횟수를 나란히 둔다. 차이가 곧 운이다.
  */
 function ResultPanel({
@@ -448,14 +450,17 @@ function ResultPanel({
   opened,
   gradeCounts,
   boxStyle,
+  purchaseMode,
 }: {
   kit: Kit;
   opened: number;
   gradeCounts: number[];
   boxStyle: CSSProperties;
+  purchaseMode: PurchaseMode;
 }) {
   const narrow = useNarrowScreen();
   const { token } = theme.useToken();
+  const purchase = quoteKitPurchase(kit, opened, purchaseMode);
   const rows: LuckRow[] = kit.grades.map((grade, index) => ({
     index,
     name: grade.name,
@@ -541,16 +546,47 @@ function ResultPanel({
           <Col span={12}>
             <Statistic title="연 횟수" value={formatNumber(opened)} suffix="번" styles={NUMERIC} />
           </Col>
-          {kit.price !== null ? (
+          {purchase ? (
             <Col span={12}>
               <Statistic
-                title="쓴 캐시"
-                value={formatNumber(opened * kit.price)}
+                title="예상 구매 비용"
+                value={formatNumber(purchase.cash)}
+                suffix="캐시"
                 styles={NUMERIC}
               />
             </Col>
           ) : null}
+          <Col span={12}>
+            <Statistic
+              title="예상 마일리지"
+              value={formatNumber(purchase?.mileage)}
+              styles={NUMERIC}
+            />
+          </Col>
         </Row>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {purchase?.official
+            ? '연 개수에 딱 맞는 구매 조합으로 다시 계산합니다.'
+            : purchase
+              ? '공식 묶음 가격·적립률 기록이 없어 개별 가격만 계산합니다.'
+              : '공식 가격·마일리지 기록이 없습니다.'}
+          {purchase && purchase.regularCash > purchase.cash
+            ? ` ${formatNumber(purchase.regularCash - purchase.cash)} 캐시 할인.`
+            : ''}
+        </Text>
+        {purchase && purchase.parts.length > 0 ? (
+          <Text className="tnum" style={{ fontSize: 12 }}>
+            구매 조합:{' '}
+            {purchase.parts
+              .map(({ bundle, quantity }) => `${bundle.label} × ${formatNumber(quantity)}`)
+              .join(' + ')}
+          </Text>
+        ) : null}
+        {purchase?.mileage === null ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            마일리지 적립률 미확인
+          </Text>
+        ) : null}
         {rows.length > 0 ? (
           <Table<LuckRow>
             columns={columns}
@@ -568,6 +604,7 @@ function ResultPanel({
 /** 고른 키트를 열어 보는 칸. 키트를 바꾸면 새로 그린다. */
 function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
   const { token } = theme.useToken();
+  const [purchaseMode, setPurchaseMode] = useState<PurchaseMode>('bundles');
   const screens = Grid.useBreakpoint();
   const [opened, setOpened] = useState(0);
   const [counts, setCounts] = useState<Map<number, number>>(new Map());
@@ -673,6 +710,8 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
             </Text>
           </Flex>
 
+          <KitPurchaseOptions kit={kit} mode={purchaseMode} onMode={setPurchaseMode} />
+
           {/* 여는 칸과 목표 칸. 768px 미만에서는 위아래로 쌓는다. */}
           <Row gutter={[24, 20]} align="stretch">
             <Col xs={24} md={12}>
@@ -749,15 +788,12 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                         <Text className="tnum" style={{ fontSize: 13 }}>
                           한 번에 <Text strong>{formatChance(chance)}</Text>, 평균{' '}
                           <Text strong>{formatNumber(Math.ceil(1 / chance))}번</Text>에 한 번
-                          {kit.price !== null ? (
-                            <>
-                              ,{' '}
-                              <Text strong>
-                                {formatNumber(Math.ceil(1 / chance) * kit.price)} 캐시
-                              </Text>
-                            </>
-                          ) : null}
                         </Text>
+                        <KitPurchaseEstimate
+                          kit={kit}
+                          count={Math.ceil(1 / chance)}
+                          mode={purchaseMode}
+                        />
                         <Popover
                           open={calcOpen}
                           trigger={[]}
@@ -787,11 +823,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                                 chance={chance}
                                 verb="열기"
                               />
-                              {kit.price !== null ? (
-                                <Text className="tnum" style={{ fontSize: 13 }}>
-                                  <Text strong>{formatNumber(trials * kit.price)} 캐시</Text>
-                                </Text>
-                              ) : null}
+                              <KitPurchaseEstimate kit={kit} count={trials} mode={purchaseMode} />
                             </Flex>
                           }
                         >
@@ -813,6 +845,7 @@ function KitOpener({ kit, onSale }: { kit: Kit; onSale: boolean }) {
                   opened={shownOpened}
                   gradeCounts={gradeCounts}
                   boxStyle={boxStyle}
+                  purchaseMode={purchaseMode}
                 />
               </Flex>
             </Col>

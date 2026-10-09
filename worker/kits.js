@@ -6,7 +6,8 @@
  *
  *   - 새소식 크론이 공지를 받은 뒤에 부른다(collectKitsIfDue). 키트 공지가 새로 오거나 고쳐졌을 때, 판매 공지는 있는데 그
  *     키트가 아직 기록에 없을 때, 그리고 COLLECT_EVERY_SECONDS 마다 한 번 확률 정보 목록과 판매 중인 키트의 확률표를 읽는다.
- *   - 판매 가격과 기간은 같은 이름의 공지 본문에서 읽는다. 공지는 새소식 기록(news.js)이 이미 받아 두었으므로
+ *   - 묶음 가격과 옵션별 적립률은 공식 상점에서 읽어 news_meta의 kit_shop:<id>에 보관한다.
+ *   - 판매 기간과 가격의 초기값은 같은 이름의 공지 본문에서 읽는다. 공지는 새소식 기록(news.js)이 이미 받아 두었으므로
  *     공식 홈페이지에 다시 묻지 않는다. 모을 때마다 공지를 다시 읽어 공지가 고쳐지면 따라간다. 공지를 못 찾으면 비워 두고
  *     다음에 다시 찾는다.
  *   - 이 기능 전에 모아 둔 지난 키트는 운영자가 한 번 올린다(POST /kits/import). 이미 있는 키트는 건드리지 않는다.
@@ -73,6 +74,129 @@ export const squash = (text) =>
   String(text)
     .replace(/[\s()[\]·.,:/-]/g, '')
     .toLowerCase();
+
+/** 공개 상품 목록에서만 이름과 상품 번호를 연결한다. 비슷한 이름을 추측하지 않는다. */
+export function parseShopProducts(html) {
+  const products = new Map();
+  for (const [row] of String(html).matchAll(/<li\b[\s\S]*?<\/li>/gi)) {
+    const productId = /product_detail\.asp\?product_no=(\d+)/i.exec(row)?.[1];
+    const name = plainText(/class=["']txt["'][^>]*>([\s\S]*?)<\/div>/i.exec(row)?.[1] ?? '');
+    if (productId && name) products.set(productId, { productId, name });
+  }
+  return [...products.values()];
+}
+
+/** 각 구매 옵션의 원가와 실제 판매가. 모르는 수량/가격이 있으면 일부 옵션만 채택하지 않는다. */
+export function parseShopBundles(html) {
+  const fields = new Map();
+  const radios = [];
+  for (const [tag] of String(html).matchAll(/<input\b[^>]*>/gi)) {
+    const attr = (key) => new RegExp(`\\b${key}=["']([^"']*)["']`, 'i').exec(tag)?.[1];
+    const name = attr('name');
+    const value = attr('value');
+    if (/^(product_price|sale_price)\d+$/.test(name ?? '')) fields.set(name, value);
+    if (name === 'product_no' && attr('type')?.toLowerCase() === 'radio') radios.push(value);
+  }
+  const labels = new Map(
+    [...String(html).matchAll(/<input\b[^>]*>\s*<label\b[^>]*>([\s\S]*?)<\/label>/gi)].map(
+      ([row, label]) => [/\bvalue=["'](\d+)["']/i.exec(row)?.[1], plainText(label)],
+    ),
+  );
+  const bundles = radios.map((productId) => {
+    const label = labels.get(productId) ?? '';
+    const unitsText = /^(\d[\d,]*)\s*개$/.exec(label)?.[1];
+    const cash = (key) => {
+      const value = fields.get(`${key}${productId}`);
+      return /^\d+$/.test(value ?? '') ? Number(value) : NaN;
+    };
+    const units = unitsText ? Number(unitsText.replace(/,/g, '')) : NaN;
+    const regularCash = cash('product_price');
+    const saleCash = cash('sale_price');
+    if (
+      !/^\d+$/.test(productId ?? '') ||
+      !Number.isSafeInteger(units) ||
+      units < 1 ||
+      units > 1000 ||
+      !Number.isSafeInteger(regularCash) ||
+      !Number.isSafeInteger(saleCash) ||
+      saleCash < 1 ||
+      regularCash < saleCash
+    )
+      throw new Error('공식 구매 옵션의 수량 또는 가격을 읽지 못했습니다.');
+    return { productId, label, units, regularCash, saleCash };
+  });
+  if (!bundles.length || !bundles.some((bundle) => bundle.units === 1))
+    throw new Error('개별 구매 옵션을 확인하지 못했습니다.');
+  if (new Set(radios).size !== radios.length) throw new Error('구매 옵션 번호가 중복됩니다.');
+  return bundles;
+}
+
+export function parseShopMileage(html) {
+  const match = /^\+?(\d+(?:\.\d+)?)\s*%$/.exec(plainText(html));
+  const rate = match ? Number(match[1]) : null;
+  return rate !== null && rate >= 0 && rate <= 100 ? rate : null;
+}
+
+const shopKey = (id) => `kit_shop:${id}`;
+
+/** 기존 키트 크론에서 함께 갱신한다. 지난 기록은 남기고, 실패한 가격을 추정하지 않는다. */
+async function collectShopPricing(db, list, get, now, summary) {
+  if (!list.length) return;
+  let products;
+  try {
+    products = parseShopProducts(
+      await get('/ItemShop/item_list.asp', {
+        category_no: '2302',
+        orderby_type: '0',
+        id: '',
+      }),
+    );
+    if (!products.length) throw new Error('공식 상품 목록을 읽지 못했습니다.');
+  } catch (error) {
+    summary.pricingErrors.push(String(error instanceof Error ? error.message : error));
+    return;
+  }
+  for (const { seq, name } of list) {
+    const matches = products.filter((product) => squash(product.name) === squash(name));
+    // 판매 종료 상품, 캐시 상품이 아닌 확률표, 이름이 모호한 상품에는 현행 정책을 붙이지 않는다.
+    if (matches.length !== 1) continue;
+    try {
+      const id = `official-${seq}`;
+      const path = `/ItemShop/product_detail.asp?product_no=${matches[0].productId}`;
+      const bundles = parseShopBundles(await get(path));
+      for (const bundle of bundles) {
+        bundle.mileageRatePercent = null;
+        bundle.mileageSource = `https://mabinogi.nexon.com/ItemShop/mileage.asp?nismsid=${bundle.productId}`;
+        try {
+          const response = await get(`/ItemShop/mileage.asp?nismsid=${bundle.productId}`);
+          bundle.mileageText = plainText(response).slice(0, 200);
+          bundle.mileageRatePercent = parseShopMileage(response);
+          if (bundle.mileageRatePercent === null) throw new Error('적립률을 확인하지 못했습니다.');
+        } catch (error) {
+          summary.pricingErrors.push(
+            `${name} (${bundle.label}): ${error instanceof Error ? error.message : error}`,
+          );
+        }
+      }
+      const pricing = {
+        checkedAt: new Date(now).toISOString(),
+        source: `https://mabinogi.nexon.com${path}`,
+        bundles,
+      };
+      const previous = await getMeta(db, shopKey(id));
+      if (!previous || JSON.stringify(JSON.parse(previous).bundles) !== JSON.stringify(bundles))
+        summary.priced.push(name);
+      await db.batch([
+        setMeta(db, shopKey(id), JSON.stringify(pricing)),
+        db
+          .prepare('UPDATE kits SET price = ? WHERE id = ?')
+          .bind(bundles.find((bundle) => bundle.units === 1).saleCash, id),
+      ]);
+    } catch (error) {
+      summary.pricingErrors.push(`${name}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+}
 
 /** 확률 정보 화면의 "확률형 이벤트 상품" 목록. [{ seq, name }] */
 export function parseKitList(html) {
@@ -236,7 +360,15 @@ export async function collectKits(env, now = Date.now(), options = {}) {
   const get = options.get ?? nexonPageClient();
   const nowSec = Math.floor(now / 1000);
   const date = kstDate(now);
-  const summary = { onSale: 0, added: [], changed: [], filled: [], errors: [] };
+  const summary = {
+    onSale: 0,
+    added: [],
+    changed: [],
+    filled: [],
+    errors: [],
+    priced: [],
+    pricingErrors: [],
+  };
 
   const list = parseKitList(await get(PROB_PATH));
   summary.onSale = list.length;
@@ -333,6 +465,8 @@ export async function collectKits(env, now = Date.now(), options = {}) {
     statements.push(setMeta(db, 'kits_updated', date));
   statements.push(setMeta(db, 'kits_at', nowSec));
   await db.batch(statements);
+  await collectShopPricing(db, list, get, now, summary);
+  if (summary.priced.length) await db.batch([setMeta(db, 'kits_updated', date)]);
   return summary;
 }
 
@@ -408,11 +542,12 @@ export async function kitById(db, id) {
   const row = await db.prepare(`SELECT ${KIT_COLUMNS} FROM kits WHERE id = ?`).bind(id).first();
   if (!row) return null;
   const kit = kitOut(row);
+  const pricing = await getMeta(db, shopKey(id));
   const all = await iconMap(db);
   const icons = {};
   for (const name of [kit.name, ...kit.items.map((item) => item.name)])
     if (all.has(name)) icons[name] = all.get(name);
-  return { ...kit, icons };
+  return { ...kit, ...(pricing ? { pricing: JSON.parse(pricing) } : {}), icons };
 }
 
 /** 기록 전체. 운영자 PC 가 그림 이름 표를 만들 때 키트와 보상 이름을 읽는다. */
@@ -422,7 +557,17 @@ export async function kitArchive(db) {
       .prepare(`SELECT ${KIT_COLUMNS} FROM kits ORDER BY COALESCE(start, first_seen) DESC, id DESC`)
       .all()
   ).results;
-  return { kits: (rows ?? []).map(kitOut), icons: Object.fromEntries(await iconMap(db)) };
+  const pricingRows =
+    (await db.prepare("SELECT key, value FROM news_meta WHERE key LIKE 'kit_shop:%'").all())
+      .results ?? [];
+  const prices = new Map(pricingRows.map(({ key, value }) => [key, JSON.parse(value)]));
+  return {
+    kits: (rows ?? []).map((row) => ({
+      ...kitOut(row),
+      ...(prices.has(shopKey(row.id)) ? { pricing: prices.get(shopKey(row.id)) } : {}),
+    })),
+    icons: Object.fromEntries(await iconMap(db)),
+  };
 }
 
 const isNullableString = (value) =>

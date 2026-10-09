@@ -14,6 +14,9 @@ import {
   parseKitList,
   parseKitTable,
   parseNotice,
+  parseShopProducts,
+  parseShopBundles,
+  parseShopMileage,
   replaceKitIcons,
 } from './kits.js';
 
@@ -62,9 +65,14 @@ const FANTASIA = [
   'C 등급\t29.7294%\t티아 풍선(5번)\t1.7488%\t\ttrue ',
 ];
 
-function probSite(entries) {
+function probSite(entries, shopPages = {}) {
   const list = entries.map(([seq, name, rows]) => kitEntry(seq, name, rows)).join('');
-  const pages = { '/ItemShop/prob.asp': `<ul>${list}</ul>` };
+  const pages = {
+    '/ItemShop/prob.asp': `<ul>${list}</ul>`,
+    '/ItemShop/item_list.asp':
+      '<li><a href="product_detail.asp?product_no=1"><div class="txt">다른 상품</div></a></li>',
+    ...shopPages,
+  };
   for (const [seq, name, rows] of entries)
     pages[`/ItemShop/prob.asp?seq=${seq}`] = kitEntry(seq, name, rows);
   const calls = [];
@@ -95,6 +103,106 @@ function addNotice(db, id, title, body, { postedAt = NOW_SEC - 86400, category =
 
 const SALE_NOTICE =
   '<img alt="나이트메어 판타지아 박스 / 판매 가격 : 1,200 캐시 / 판매 기간 : 2026. 10. 1(목) 점검 후 ~ 2026. 10. 14(수) 23:59:00">';
+
+const SHOP_NAME = '나이트메어 판타지아 박스';
+const SHOP_LIST = `<li><a href="product_detail.asp?product_no=630516"><div class="txt"><span>${SHOP_NAME}</span></div></a></li>`;
+const shopDetail = (sale = 22700) =>
+  [
+    ['630516', 1, 1200, 1200],
+    ['630519', 20, 24000, sale],
+  ]
+    .map(
+      ([id, units, regular, price]) =>
+        `<input value="${regular}" name="product_price${id}" type="hidden">
+   <input name="sale_price${id}" value="${price}" type="hidden">
+   <input type="radio" value="${id}" name="product_no"><label for="${id}">${units}개</label>`,
+    )
+    .join('');
+const shopPages = (sale) => ({
+  '/ItemShop/item_list.asp': SHOP_LIST,
+  '/ItemShop/product_detail.asp?product_no=630516': shopDetail(sale),
+  '/ItemShop/mileage.asp?nismsid=630516': '2%',
+  '/ItemShop/mileage.asp?nismsid=630519': '3%',
+});
+
+describe('공식 상점 가격·마일리지', () => {
+  it('구매 옵션 순서와 속성 순서에 의존하지 않고 가격을 읽는다', () => {
+    expect(parseShopProducts(SHOP_LIST)).toEqual([{ productId: '630516', name: SHOP_NAME }]);
+    expect(parseShopBundles(shopDetail())).toEqual([
+      { productId: '630516', label: '1개', units: 1, regularCash: 1200, saleCash: 1200 },
+      { productId: '630519', label: '20개', units: 20, regularCash: 24000, saleCash: 22700 },
+    ]);
+    expect(() => parseShopBundles(shopDetail().replace('20개', '알 수 없는 구성'))).toThrow();
+    expect(() => parseShopBundles('<h1>점검 중</h1>')).toThrow();
+    expect(parseShopMileage('<span>+2%</span>')).toBe(2);
+    expect(parseShopMileage('0%')).toBe(0);
+    expect(parseShopMileage('5 포인트')).toBeNull();
+    expect(parseShopMileage('점검 중')).toBeNull();
+  });
+
+  it('묶음마다 따로 적립률을 확인하고 확률표 변경 없이도 판매가를 갱신한다', async () => {
+    const db = fakeD1();
+    const site = probSite([[495, SHOP_NAME, FANTASIA]], shopPages());
+    const first = await collectKits({ NEWS: db }, NOW, { get: site.get });
+    expect(first).toMatchObject({ priced: [SHOP_NAME], pricingErrors: [] });
+    const pricing = (await kitById(db, 'official-495')).pricing;
+    expect(pricing.checkedAt).toBe(new Date(NOW).toISOString());
+    expect(pricing.bundles.map((bundle) => bundle.mileageRatePercent)).toEqual([2, 3]);
+    expect((await kitIndex(db)).kits[0].price).toBe(1200);
+    const changed = await collectKits({ NEWS: db }, NOW + 86400_000, {
+      get: probSite([[495, SHOP_NAME, FANTASIA]], shopPages(22000)).get,
+    });
+    expect(changed).toMatchObject({ changed: [], priced: [SHOP_NAME], pricingErrors: [] });
+    expect((await kitById(db, 'official-495')).pricing.bundles[1].saleCash).toBe(22000);
+    expect((await kitIndex(db)).updated).toBe('2026-10-09');
+  });
+
+  it('가격 조회 실패와 판매 종료에도 마지막 확인 날짜와 기록을 보존한다', async () => {
+    const db = fakeD1();
+    await collectKits({ NEWS: db }, NOW, {
+      get: probSite([[495, SHOP_NAME, FANTASIA]], shopPages()).get,
+    });
+    const before = (await kitById(db, 'official-495')).pricing;
+    const failed = await collectKits({ NEWS: db }, NOW + 3600_000, {
+      get: probSite([[495, SHOP_NAME, FANTASIA]], {
+        ...shopPages(),
+        '/ItemShop/product_detail.asp?product_no=630516': '<h1>점검 중</h1>',
+      }).get,
+    });
+    expect(failed.errors).toEqual([]);
+    expect(failed.pricingErrors).toHaveLength(1);
+    expect((await kitById(db, 'official-495')).pricing).toEqual(before);
+    await collectKits({ NEWS: db }, NOW + 7200_000, {
+      get: probSite([[496, '다음 박스', FANTASIA]]).get,
+    });
+    expect((await kitById(db, 'official-495')).pricing).toEqual(before);
+    expect((await kitById(db, 'official-496')).pricing).toBeUndefined();
+  });
+
+  it('묶음 적립률 조회 실패를 기본 상품의 비율로 대체하지 않는다', async () => {
+    const db = fakeD1();
+    const site = probSite([[495, SHOP_NAME, FANTASIA]], {
+      ...shopPages(),
+      '/ItemShop/mileage.asp?nismsid=630519': '<p>점검 중</p>',
+    });
+    const result = await collectKits({ NEWS: db }, NOW, { get: site.get });
+    expect(result.pricingErrors).toHaveLength(1);
+    expect((await kitById(db, 'official-495')).pricing.bundles[1]).toMatchObject({
+      saleCash: 22700,
+      mileageRatePercent: null,
+    });
+  });
+
+  it('같은 비교 이름의 다른 상품이 있으면 임의로 연결하지 않는다', async () => {
+    const db = fakeD1();
+    const site = probSite([[495, SHOP_NAME, FANTASIA]], {
+      '/ItemShop/item_list.asp': SHOP_LIST + SHOP_LIST.replace('630516', '630517'),
+    });
+    await collectKits({ NEWS: db }, NOW, { get: site.get });
+    expect((await kitById(db, 'official-495')).pricing).toBeUndefined();
+    expect(site.calls.some((path) => path.includes('product_detail'))).toBe(false);
+  });
+});
 
 describe('키트 확률표 읽기', () => {
   it('확률형 이벤트 상품 목록에서 번호와 이름을 읽는다', () => {
@@ -145,8 +253,12 @@ describe('키트 모으기', () => {
     const summary = await collectKits({ NEWS: db }, NOW, { get: site.get });
 
     expect(summary).toMatchObject({ onSale: 1, added: ['나이트메어 판타지아 박스'], errors: [] });
-    // 공지는 새소식 기록에서 찾으므로 공식 홈페이지에는 확률 화면만 묻는다.
-    expect(site.calls).toEqual(['/ItemShop/prob.asp', '/ItemShop/prob.asp?seq=495']);
+    // 공지는 이미 받아 둔 기록에서 읽고, 공식 상품 목록도 함께 확인한다.
+    expect(site.calls).toEqual([
+      '/ItemShop/prob.asp',
+      '/ItemShop/prob.asp?seq=495',
+      '/ItemShop/item_list.asp',
+    ]);
     const index = await kitIndex(db);
     expect(index).toEqual({
       updated: '2026-10-08',
@@ -409,12 +521,17 @@ describe('새소식 크론과 키트', () => {
   /** 공식 홈페이지 흉내. 경로마다 정해 둔 화면을 돌려주고 없는 경로는 500 이다. */
   const stubSite = (pages) => {
     const asked = [];
-    vi.stubGlobal('fetch', async (input) => {
-      const path = String(input).replace('https://mabinogi.nexon.com', '');
-      asked.push(path);
-      if (!(path in pages)) return new Response('', { status: 500 });
-      return new Response(pages[path], { headers: { 'content-type': 'text/html; charset=utf-8' } });
-    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input) => {
+        const path = String(input).replace('https://mabinogi.nexon.com', '');
+        asked.push(path);
+        if (!(path in pages)) return new Response('', { status: 500 });
+        return new Response(pages[path], {
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        });
+      }),
+    );
     return asked;
   };
 
@@ -438,6 +555,7 @@ describe('새소식 크론과 키트', () => {
       '/page/news/update_list.asp?page=2': EMPTY,
       '/ItemShop/prob.asp': `<ul>${kitEntry(495, name, FANTASIA)}</ul>`,
       '/ItemShop/prob.asp?seq=495': kitEntry(495, name, FANTASIA),
+      ...shopPages(),
     });
     // 지금 시각에서 한 시간 안에 이미 모은 기록이 있어도 키트 공지가 왔으니 확률 화면을 읽는다.
     db.sqlite
@@ -446,6 +564,17 @@ describe('새소식 크론과 키트', () => {
     await worker.scheduled({ cron: NEWS_CRON }, { NEWS: db });
 
     expect(asked).toContain('/ItemShop/prob.asp?seq=495');
+    const catalogRequest = vi
+      .mocked(fetch)
+      .mock.calls.find(([url]) => String(url).endsWith('/ItemShop/item_list.asp'));
+    expect(catalogRequest?.[1]).toMatchObject({
+      method: 'POST',
+      body: 'category_no=2302&orderby_type=0&id=',
+    });
+    expect((await kitById(db, 'official-495')).pricing.bundles[1]).toMatchObject({
+      saleCash: 22700,
+      mileageRatePercent: 3,
+    });
     // 가격과 기간은 방금 받은 공지에서 왔다.
     expect(await kitIndex(db)).toMatchObject({
       current: ['official-495'],

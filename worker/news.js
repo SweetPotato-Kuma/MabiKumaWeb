@@ -246,12 +246,15 @@ export function revisionHash(view) {
 export function nexonPageClient({ gapMs = GAP_MS, wait = sleep } = {}) {
   const decoders = new Map();
   let last = 0;
-  return async function get(path) {
+  return async function get(path, fields) {
     const pause = last + gapMs - Date.now();
     if (pause > 0) await wait(pause);
     try {
       const response = await fetch(NEWS_ORIGIN + path, {
-        headers: REQUEST_HEADERS,
+        headers: fields
+          ? { ...REQUEST_HEADERS, 'content-type': 'application/x-www-form-urlencoded' }
+          : REQUEST_HEADERS,
+        ...(fields ? { method: 'POST', body: new URLSearchParams(fields).toString() } : {}),
         redirect: 'manual',
       });
       if (response.status !== 200) throw new Error(`${path}: HTTP ${response.status}`);
