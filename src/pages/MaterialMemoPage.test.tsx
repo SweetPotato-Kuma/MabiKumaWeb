@@ -138,6 +138,33 @@ describe('목표 아이템 재료 메모 화면', () => {
     expect(screen.getAllByText('완료')).not.toHaveLength(0);
   });
 
+  it('전체 재료는 기본으로 접혀 있고, 펼치면 전체 개수와 가진 개수만 보인다', async () => {
+    renderPage();
+    addGoal('검', 2);
+    chooseMethod('검', '제작: 핸디크래프트 9랭크');
+    fireEvent.change(await screen.findByLabelText('철괴 가진 개수'), { target: { value: '4' } });
+
+    const header = screen.getByRole('button', { name: /전체 재료/ });
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('전체 개수')).not.toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    const panel = screen.getByText('전체 개수').closest('.ant-collapse') as HTMLElement;
+    // 검 2개 = 철괴 6개(4개 보유) + 가죽 2개. 시세 열은 없다.
+    const rows = within(panel).getAllByRole('row');
+    expect(within(rows[1]).getByText('철괴')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('6')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('4')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('가죽')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('2')).toBeInTheDocument();
+    expect(within(panel).queryByText('개당 최저가')).not.toBeInTheDocument();
+    expect(within(header).getByText('2종')).toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('목표의 현재 개수를 적으면 모자란 만큼만 값을 센다', async () => {
     renderPage();
     addGoal('오래된 지팡이', 3);

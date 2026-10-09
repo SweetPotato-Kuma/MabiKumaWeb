@@ -3,6 +3,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { DeleteIcon, ResetIcon } from '@/components/icons';
 import { GoalPicker } from '@/components/materialMemo/GoalPicker';
 import { GoalTable } from '@/components/materialMemo/GoalTable';
+import { MaterialSummary } from '@/components/materialMemo/MaterialSummary';
 import { useRecipeBookQuery, type RecipeBook } from '@/features/crafting/recipes';
 import { clearGoals, clearOwned, useMemoState } from '@/features/materialMemo/store';
 import { useMemoPlan } from '@/features/materialMemo/useMemoPlan';
@@ -80,7 +81,10 @@ function MemoBody({ base }: { base: RecipeBook }) {
       </Card>
 
       {hasGoals ? (
-        <GoalTable state={state} memo={memo} />
+        <>
+          <MaterialSummary book={memo.book} nodes={memo.plan.nodes} />
+          <GoalTable state={state} memo={memo} />
+        </>
       ) : (
         <Card>
           <EmptyState variant="search" description="목표 아이템을 추가하면 재료 트리가 나옵니다" />
