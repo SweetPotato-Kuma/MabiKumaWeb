@@ -39,7 +39,16 @@ const CATEGORY_WIDTH = 72;
  * 새소식 목록. 넓은 화면은 분류, 제목, 날짜를 한 줄에, 좁은 화면은 제목 아래로 분류와 날짜를 내린다.
  * 제목은 링크지만 줄마다 보라색이 늘어서면 목록이 시끄러워 본문 글자색으로 둔다. 밑줄은 hover 와 포커스에서 antd 가 그린다.
  */
-export function NewsPostList({ posts, wide }: { posts: NewsPost[]; wide: boolean }) {
+/** compact 면 줄 위아래 여백을 줄인다(첫 화면의 새소식 블록). */
+export function NewsPostList({
+  posts,
+  wide,
+  compact = false,
+}: {
+  posts: NewsPost[];
+  wide: boolean;
+  compact?: boolean;
+}) {
   const { token } = theme.useToken();
 
   return (
@@ -72,7 +81,9 @@ export function NewsPostList({ posts, wide }: { posts: NewsPost[]; wide: boolean
           </Text>
         );
         return (
-          <List.Item style={{ paddingInline: 0, display: 'block' }}>
+          <List.Item
+            style={{ paddingInline: 0, paddingBlock: compact ? 7 : undefined, display: 'block' }}
+          >
             {wide ? (
               <Flex align="center" gap={12}>
                 {category}

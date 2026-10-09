@@ -8,8 +8,13 @@ import { usePrefersReducedMotion } from '@/lib/reducedMotion';
 
 const { Text } = Typography;
 
-/** 공식 배너 그림의 크기(1920x580). 그림이 늦게 떠도 칸이 밀리지 않게 비율을 미리 잡는다. */
-const ASPECT = '1920 / 580';
+/**
+ * 배너 칸의 비율. 공식 그림은 1920x580 인데 그대로 두면 한 화면의 3분의 1 가까이를 차지해(1280px 폭에서 367px) 아래 새소식이
+ * 밀려난다. 위아래를 약 10% 씩 잘라 1920x460(같은 폭에서 291px)으로 쓴다. 공식 배너는 제목과 그림이 가운데 모여 있어 잘려도
+ * 읽힌다. 가장자리 가까이 적힌 작은 기간 글자만 일부 잘릴 수 있고, 그 정보는 글을 열면 있다. 그림이 늦게 떠도 칸이 밀리지
+ * 않게 비율을 미리 잡는다.
+ */
+const ASPECT = '1920 / 460';
 
 /** 공식 메인과 같다. 한 배너를 4초 보이고 0.5초에 걸쳐 넘긴다. */
 const AUTOPLAY_MS = 4000;
@@ -20,7 +25,7 @@ const labelOf = (banner: NewsBanner) =>
 
 /** 받아 둔 새소식 글이면 우리 기록으로, 아니면 공식 주소를 새 탭으로 연다. */
 function BannerLink({ banner, children }: { banner: NewsBanner; children: ReactNode }) {
-  const style = { display: 'block' } as const;
+  const style = { display: 'block', height: '100%' } as const;
   if (banner.postId !== null)
     return (
       <Link to={newsPostPath(banner.postId)} style={style} aria-label={labelOf(banner)}>
@@ -122,12 +127,17 @@ export function BannerCarousel() {
                       src={banner.image}
                       alt={labelOf(banner)}
                       width={1920}
-                      height={580}
+                      height={460}
                       draggable={false}
                       decoding="async"
                       // 첫 칸은 첫 화면의 가장 큰 그림이라 바로 받는다.
                       fetchPriority={index === 0 ? 'high' : 'auto'}
-                      style={{ display: 'block', width: '100%', height: 'auto' }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                      }}
                     />
                   </BannerLink>
                 ) : null}

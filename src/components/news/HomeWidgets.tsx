@@ -16,8 +16,8 @@ import { formatNumber } from '@/lib/format';
 
 const { Text } = Typography;
 
-/** 새소식 블록에 한 번에 보이는 글 수. 한 화면에 목록이 다 들어오는 수다. */
-const NEWS_ROWS = 8;
+/** 새소식 블록에 한 번에 보이는 글 수. 배너 아래에서 한 화면에 블록이 다 들어오는 수다. */
+const NEWS_ROWS = 6;
 /** 위젯마다 보이는 글 수. */
 const WIDGET_ROWS = 3;
 
@@ -47,9 +47,9 @@ export function NewsBlock({ wide }: { wide: boolean }) {
       size="small"
       title="새소식"
       extra={<MoreLink to={category ? `/news?c=${encodeURIComponent(category)}` : '/news'} />}
-      styles={{ body: { paddingBlock: 12 } }}
+      styles={{ body: { paddingBlock: 8 } }}
     >
-      <Flex vertical gap={8}>
+      <Flex vertical gap={4}>
         <Segmented
           aria-label="새소식 분류"
           value={tab}
@@ -74,7 +74,7 @@ export function NewsBlock({ wide }: { wide: boolean }) {
         ) : posts.length === 0 ? (
           <EmptyState size="small" description="이 분류에 받아 둔 글이 없습니다." />
         ) : (
-          <NewsPostList posts={posts} wide={wide} />
+          <NewsPostList posts={posts} wide={wide} compact />
         )}
       </Flex>
     </Card>
@@ -91,7 +91,7 @@ function WidgetCard({
   children: ReactNode;
 }) {
   return (
-    <Card size="small" title={title} extra={extra} styles={{ body: { paddingBlock: 12 } }}>
+    <Card size="small" title={title} extra={extra} styles={{ body: { paddingBlock: 8 } }}>
       {children}
     </Card>
   );
@@ -101,7 +101,7 @@ function WidgetCard({
 function PostRows({ posts }: { posts: NewsPost[] }) {
   const { token } = theme.useToken();
   return (
-    <Flex vertical gap={10}>
+    <Flex vertical gap={6}>
       {posts.map((post) => (
         <Flex key={post.id} justify="space-between" align="baseline" gap={12}>
           <Link
@@ -165,7 +165,7 @@ export function KitWidget() {
   if (onSale.length === 0) return null;
   return (
     <WidgetCard title="판매 중인 키트" extra={<MoreLink to="/kit-simulator" label="시뮬레이터" />}>
-      <Flex vertical gap={10}>
+      <Flex vertical gap={6}>
         {onSale.map((kit) => (
           <Flex key={kit.id} justify="space-between" align="baseline" gap={12}>
             <Link
