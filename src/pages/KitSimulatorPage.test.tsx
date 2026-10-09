@@ -4,7 +4,6 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import type { Kit, KitIndex } from '@/features/kits/kits';
-import { NIGHTMARE_PRICING } from '@/test/fixtures/kitPricing';
 import type * as Settings from '@/lib/settings';
 import { KitSimulatorPage } from '@/pages/KitSimulatorPage';
 
@@ -21,7 +20,6 @@ const KITS: Kit[] = [
     start: '2026-10-01',
     end: '2026-10-14',
     price: 1200,
-    pricing: NIGHTMARE_PRICING,
     grades: [
       { name: 'S 등급', chance: 0.1 },
       { name: 'C 등급', chance: 0.9 },
@@ -98,14 +96,13 @@ describe('키트 시뮬레이터', () => {
     vi.unstubAllGlobals();
   });
 
-  it('지금 파는 키트를 먼저 고르고, 열면 연 횟수와 구매 비용·마일리지가 쌓인다', async () => {
+  it('지금 파는 키트를 먼저 고르고, 열면 연 횟수와 쓴 캐시가 쌓인다', async () => {
     renderPage();
     const region = await screen.findByRole('region', { name: '키트 열기' });
     expect(within(region).getByText('판매 중')).toBeInTheDocument();
     fireEvent.click(within(region).getByRole('button', { name: /10번 열기/ }));
     expect(within(statistic('연 횟수')).getByText('10')).toBeInTheDocument();
-    expect(within(statistic('예상 구매 비용')).getByText('12,000')).toBeInTheDocument();
-    expect(within(statistic('예상 마일리지')).getByText('240')).toBeInTheDocument();
+    expect(within(statistic('쓴 캐시')).getByText('12,000')).toBeInTheDocument();
     // 결과 칸은 등급마다 확률대로라면 몇 번(기대), 실제로 몇 번 나왔는지 나란히 둔다.
     const result = within(region).getByRole('region', { name: '결과' });
     const rows = within(result).getAllByRole('row').slice(1);
@@ -118,20 +115,6 @@ describe('키트 시뮬레이터', () => {
     expect(actual[0] + actual[1]).toBe(10);
     // 지난 결과 줄을 따로 늘어놓지 않는다. 쌓인 것은 아래 얻은 아이템 표에 있다.
     expect(within(region).queryByRole('region', { name: '이번에 나온 아이템' })).toBeNull();
-  });
-
-  it('20개 묶음 할인을 적용하고, 개별 구매로 바꾸면 비용과 마일리지가 함께 바뀐다', async () => {
-    renderPage();
-    const region = await screen.findByRole('region', { name: '키트 열기' });
-    fireEvent.click(within(region).getByRole('button', { name: /10번 열기/ }));
-    fireEvent.click(within(region).getByRole('button', { name: /10번 열기/ }));
-    expect(within(statistic('예상 구매 비용')).getByText('22,700')).toBeInTheDocument();
-    expect(within(statistic('예상 마일리지')).getByText('454')).toBeInTheDocument();
-    expect(within(region).getByText('구매 조합: 20개 × 1')).toBeInTheDocument();
-    fireEvent.mouseDown(within(region).getByRole('combobox', { name: '가격 계산 방식' }));
-    fireEvent.click(await screen.findByText('개별 구매'));
-    expect(within(statistic('예상 구매 비용')).getByText('24,000')).toBeInTheDocument();
-    expect(within(statistic('예상 마일리지')).getByText('480')).toBeInTheDocument();
   });
 
   it('구성품 표에서 목표로 고르면 한 번에 나올 확률과 목표까지 열기가 생긴다', async () => {

@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { getProxyUrl } from '@/lib/settings';
-import type { KitPricing } from './pricing';
 
 /**
  * 키트(확률형 상품) 시뮬레이터.
@@ -38,8 +37,6 @@ export interface Kit {
   end: string | null;
   /** 한 번 여는 값(캐시). 모르면 null. */
   price: number | null;
-  /** 공식 상점에서 마지막으로 확인한 구매 옵션. 지난 키트에는 없을 수 있다. */
-  pricing?: KitPricing;
   /** 처음 모은 날. 시작일을 모를 때 대신 줄 세운다. */
   firstSeen?: string;
   grades: KitGrade[];
