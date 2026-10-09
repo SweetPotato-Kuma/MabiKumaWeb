@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, Card, Flex, Grid, InputNumber, Select, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DeleteIcon, ResetIcon } from '@/components/icons';
+import { CostCell, CostSummary } from '@/components/materialMemo/CostParts';
 import { MemoItem } from '@/components/materialMemo/MemoItem';
 import {
   DEFAULT_WORKS,
@@ -10,6 +11,7 @@ import {
   recipeTitle,
   type RecipeBook,
 } from '@/features/crafting/recipes';
+import { sumCosts, type ItemCost } from '@/features/materialMemo/cost';
 import { shortKinds, type Choice, type MemoNode, type MemoPlan } from '@/features/materialMemo/plan';
 import {
   MAX_COUNT,
@@ -44,10 +46,12 @@ interface TargetCardProps {
   book: RecipeBook;
   target: StoredTarget;
   plan: MemoPlan;
+  /** 재료 하나를 필요한 개수만큼 마련하는 값. 시세는 화면이 받아 둔다. */
+  costFor: (itemId: number, required: number) => ItemCost;
 }
 
 /** 목표 아이템 하나. 재료 트리에 가진 개수를 적으면 모자란 개수가 줄마다 나온다. */
-export function TargetCard({ book, target, plan }: TargetCardProps) {
+export function TargetCard({ book, target, plan, costFor }: TargetCardProps) {
   const screens = Grid.useBreakpoint();
   const compact = !screens.md;
   const [expanded, setExpanded] = useState<string[]>(() =>
@@ -56,6 +60,9 @@ export function TargetCard({ book, target, plan }: TargetCardProps) {
 
   const roots = book.recipesOf(target.itemId);
   const missing = shortKinds(plan.materials);
+  const total = sumCosts(
+    plan.materials.filter((row) => row.short > 0).map((row) => costFor(row.itemId, row.short)),
+  );
   const prepared = missing === 0;
 
   const choose = (node: MemoNode, choice: Choice) => {
@@ -128,6 +135,14 @@ export function TargetCard({ book, target, plan }: TargetCardProps) {
     );
   };
 
+  /** 구하기로 한 줄의 금액. 만들기로 한 줄은 아래 재료의 금액에 들어 있다. */
+  const costCell = (node: MemoNode) =>
+    node.children || node.short === 0 ? (
+      <Text type="secondary">-</Text>
+    ) : (
+      <CostCell cost={costFor(node.itemId, node.short)} />
+    );
+
   const nameCell = (node: MemoNode) => (
     <MemoItem
       book={book}
@@ -166,6 +181,13 @@ export function TargetCard({ book, target, plan }: TargetCardProps) {
           align: 'right',
           render: (_value, { node }) => shortCell(node),
         },
+        {
+          title: '금액',
+          key: 'cost',
+          width: 96,
+          align: 'right',
+          render: (_value, { node }) => costCell(node),
+        },
       ]
     : [
         { title: '재료', key: 'name', render: (_value, { node }) => nameCell(node) },
@@ -189,6 +211,13 @@ export function TargetCard({ book, target, plan }: TargetCardProps) {
           width: 90,
           align: 'right',
           render: (_value, { node }) => shortCell(node),
+        },
+        {
+          title: '금액',
+          key: 'cost',
+          width: 130,
+          align: 'right',
+          render: (_value, { node }) => costCell(node),
         },
         {
           title: '마련 방법',
@@ -285,6 +314,8 @@ export function TargetCard({ book, target, plan }: TargetCardProps) {
             </Button>
           </Flex>
         </Flex>
+
+        {plan.recipe ? <CostSummary label="필요 금액" total={total} /> : null}
 
         {plan.recipe ? (
           <Table<Row>
