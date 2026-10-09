@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import type * as Settings from '@/lib/settings';
 import type {
-  NewsEventsResponse,
+  NewsBannersResponse,
   NewsListResponse,
   NewsPost,
   NewsPostResponse,
@@ -79,28 +79,66 @@ const POST: NewsPostResponse = {
   source: 'https://mabinogi.nexon.com/page/news/notice_view.asp?id=4893864',
 };
 
-const EVENTS: NewsEventsResponse = {
-  eventsAt: POSTED,
-  events: [
+const BANNERS: NewsBannersResponse = {
+  updatedAt: POSTED,
+  banners: [
     {
+      id: '4893871',
+      title: '가갸날 잔치',
+      kind: '이벤트',
+      image: 'https://ssl.nexon.com/mainb_hangul.jpg',
       link: 'https://mabinogi.nexon.com/page/news/event_view.asp?id=4893871',
       postId: 4893871,
-      title: '가갸날 잔치',
-      summary: '가갸날 세움 100돌 맞이',
-      thumb: 'https://ssl.nexon.com/listb_hangul.jpg',
-      period: '2026.10.08 11:30:00~2026.10.21 23:59:00',
-      startsAt: Date.parse('2026-10-08T02:30:00Z') / 1000,
-      endsAt: Date.parse('2026-10-21T14:59:00Z') / 1000,
     },
     {
+      id: '4893844',
+      title: '달에게 소원을 이벤트',
+      kind: '업데이트',
+      image: 'https://ssl.nexon.com/mainb_moon.jpg',
+      link: 'https://mabinogi.nexon.com/page/event/2026/0922_moon/index.asp',
+      postId: null,
+    },
+    {
+      id: '4892915',
+      title: '에린 커넥트',
+      kind: '업데이트',
+      image: 'https://ssl.nexon.com/mainb_connect.jpg',
       link: 'https://connect.mabinogi.nexon.com/',
       postId: null,
-      title: '에린 커넥트',
-      summary: null,
-      thumb: null,
-      period: '상시진행',
-      startsAt: null,
-      endsAt: null,
+    },
+  ],
+};
+
+const DEV_NOTE: NewsPost = {
+  ...POSTS[0],
+  id: 4893721,
+  board: 'update',
+  category: '개발자 노트',
+  title: '[적용됨] RE:ACTION 2차 업데이트',
+  author: '칼룬',
+  revisions: 1,
+  editedAt: null,
+};
+
+const KIT_INDEX = {
+  updated: '2026-10-08',
+  current: ['official-495'],
+  kits: [
+    {
+      id: 'official-495',
+      name: '나이트메어 판타지아 박스',
+      start: '2026-10-01',
+      end: '2026-10-14',
+      price: 1200,
+      count: 148,
+    },
+    {
+      id: 'official-492',
+      name: '비단 운문 한복 상자',
+      start: '2026-09-10',
+      end: '2026-09-30',
+      price: 1200,
+      count: 189,
     },
   ],
 };
@@ -135,7 +173,20 @@ beforeEach(() => {
           ? new Response(JSON.stringify(POST))
           : new Response('{}', { status: 404 });
       }
-      if (url.pathname === '/news/events') return new Response(JSON.stringify(EVENTS));
+      if (url.pathname === '/news/banners') return new Response(JSON.stringify(BANNERS));
+      if (url.pathname === '/kits/index') return new Response(JSON.stringify(KIT_INDEX));
+      if (url.pathname === '/news/list') {
+        const category = url.searchParams.get('category');
+        // 고친 글은 아직 없다.
+        if (url.searchParams.get('edited') === '1')
+          return new Response(JSON.stringify({ ...LIST, posts: [], total: 0 }));
+        if (category === '개발자 노트')
+          return new Response(JSON.stringify({ ...LIST, posts: [DEV_NOTE], total: 1 }));
+        if (category) {
+          const posts = LIST.posts.filter((post) => post.category === category);
+          return new Response(JSON.stringify({ ...LIST, posts, total: posts.length }));
+        }
+      }
       return new Response(JSON.stringify(LIST));
     }),
   );
@@ -238,20 +289,71 @@ describe('새소식 글 한 편', () => {
   });
 });
 
-describe('첫 화면의 새소식', () => {
-  it('진행 중인 이벤트와 최근 새소식을 보여 준다', async () => {
+/**
+ * 첫 화면 시험은 역할 질의(getByRole)를 쓰지 않는다. 배너, 새소식, 위젯, 바로가기 스무 장이 한 DOM 에 있어 역할과 이름을
+ * 모두 계산하면 한 질의에 수 초가 걸린다. 또 페이드 캐러셀은 보이지 않는 칸에 aria-hidden 을 달아 역할 질의가 못 찾는다.
+ */
+describe('첫 화면', () => {
+  it('이벤트 배너를 공식 메인처럼 넘기고, 처음에는 첫째와 둘째 그림만 받는다', async () => {
     renderAt('/');
-    const event = await screen.findByText('가갸날 세움 100돌 맞이');
-    expect(event.closest('a')).toHaveAttribute('href', '/news?id=4893871');
-    expect(screen.getByText('10.08 ~ 10.21')).toBeInTheDocument();
-    expect(screen.getByText('상시진행')).toBeInTheDocument();
-    expect(screen.getByText('에린 커넥트').closest('a')).toHaveAttribute(
+    const first = await screen.findByAltText('[이벤트] 가갸날 잔치');
+    expect(first).toHaveAttribute('src', 'https://ssl.nexon.com/mainb_hangul.jpg');
+    // 받아 둔 새소식 글로 가는 배너는 우리 기록으로 잇는다.
+    expect(first.closest('a')).toHaveAttribute('href', '/news?id=4893871');
+    expect(screen.getByAltText('[업데이트] 달에게 소원을 이벤트').closest('a')).toHaveAttribute(
       'href',
-      'https://connect.mabinogi.nexon.com/',
+      'https://mabinogi.nexon.com/page/event/2026/0922_moon/index.asp',
     );
-    expect(
-      await screen.findByRole('link', { name: '10/8(목) 정식 서버 점검 안내' }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /전체 보기/ })).toHaveAttribute('href', '/news');
+    // 셋째는 아직 받지 않는다. 큰 그림을 한꺼번에 받지 않으려는 것이다.
+    expect(screen.queryByAltText('[업데이트] 에린 커넥트')).toBeNull();
+    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+    // 하단의 "모두 보기" 단추는 없다.
+    expect(screen.queryByText(/모두 보기/)).toBeNull();
+  });
+
+  it('다음 배너를 누르면 다음 그림을 받아 두고, 멈춤 단추로 자동 넘김을 끈다', async () => {
+    renderAt('/');
+    await screen.findByAltText('[이벤트] 가갸날 잔치');
+    fireEvent.click(screen.getByLabelText('다음 배너'));
+    // 둘째로 넘어가면 그 다음(셋째) 그림을 미리 받는다.
+    const third = await screen.findByAltText('[업데이트] 에린 커넥트');
+    expect(third.closest('a')).toHaveAttribute('target', '_blank');
+    expect(third.closest('a')).toHaveAttribute('href', 'https://connect.mabinogi.nexon.com/');
+    expect(screen.getByText('2 / 3')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('배너 자동 넘김 멈춤'));
+    expect(screen.getByLabelText('배너 자동 넘김 재생')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('새소식 블록은 분류 탭으로 가르고 글은 우리 기록으로 연다', async () => {
+    renderAt('/');
+    const head = await screen.findByText('새소식', { selector: '.ant-card-head-title' });
+    const block = head.closest('.ant-card') as HTMLElement;
+    const title = await within(block).findByText('10/8(목) 정식 서버 점검 안내');
+    expect(title.closest('a')).toHaveAttribute('href', '/news?id=4893864');
+
+    fireEvent.click(within(block).getByText('이벤트', { selector: '.ant-segmented-item-label' }));
+    await waitFor(() => expect(requests.at(-1)?.searchParams.get('category')).toBe('이벤트'));
+    await within(block).findByText('가갸날 잔치');
+    expect(within(block).queryByText('10/8(목) 정식 서버 점검 안내')).toBeNull();
+    expect(within(block).getByText('전체 보기', { exact: false }).closest('a')).toHaveAttribute(
+      'href',
+      '/news?c=%EC%9D%B4%EB%B2%A4%ED%8A%B8',
+    );
+  });
+
+  it('위젯은 판매 중인 키트와 개발자 노트를 보이고, 보일 것이 없는 고친 글은 그리지 않는다', async () => {
+    renderAt('/');
+    const kit = await screen.findByText('나이트메어 판타지아 박스');
+    expect(kit.closest('a')).toHaveAttribute('href', '/kit-simulator');
+    expect(screen.getByText('10.14까지, 1,200 캐시')).toBeInTheDocument();
+    // 판매가 끝난 키트는 위젯에 없다.
+    expect(screen.queryByText('비단 운문 한복 상자')).toBeNull();
+    const note = await screen.findByText('[적용됨] RE:ACTION 2차 업데이트');
+    expect(note.closest('a')).toHaveAttribute('href', '/news?id=4893721');
+    await waitFor(() =>
+      expect(requests.some((url) => url.searchParams.get('edited') === '1')).toBe(true),
+    );
+    expect(screen.queryByText('고친 글', { selector: '.ant-card-head-title' })).toBeNull();
   });
 });

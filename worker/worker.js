@@ -105,6 +105,7 @@ import {
   previewAdmin,
   previewRead,
 } from './previews.js';
+import { BANNERS_PATH, bannersRead } from './banners.js';
 import {
   SNAPSHOT_COLLECT_PATH,
   SNAPSHOT_PATH,
@@ -1569,6 +1570,14 @@ export default {
       if (url.pathname === NEWS_LIST_PATH) return newsList(request, url, env, cors);
       if (url.pathname === NEWS_POST_PATH) return newsPost(request, url, env, cors);
       return newsEvents(request, env, cors);
+    }
+
+    // 공식 메인의 이벤트 배너 목록.
+    if (url.pathname === BANNERS_PATH) {
+      if (request.method !== 'GET') {
+        return errorResponse('BANNERS_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
+      }
+      return bannersRead(request, env, cors);
     }
 
     // 공식 미리보기. 아이템 이름으로 찾는다.

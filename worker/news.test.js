@@ -20,7 +20,8 @@ import {
 /** D1 흉내. horn.test.js 와 같다. 표는 배포에 쓰는 마이그레이션 파일로 만든다. */
 function fakeD1() {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(readFileSync(new URL('./migrations-news/0001_news.sql', import.meta.url), 'utf8'));
+  for (const file of ['0001_news.sql', '0003_previews.sql', '0004_banners.sql'])
+    sqlite.exec(readFileSync(new URL('./migrations-news/' + file, import.meta.url), 'utf8'));
   return {
     sqlite,
     prepare(sql) {
@@ -109,6 +110,10 @@ function viewPage(title, date, body) {
 const MISSING_PAGE = `<html><body><div class="gnb_bg_box"></div><script>alert('게시물을 찾을 수 없습니다.');history.go(-1);</script></body></html>`;
 const MAINTENANCE_PAGE = '<html><body><h1>점검 중입니다</h1></body></html>';
 
+/** 공식 메인의 배너 부분을 줄인 것. */
+const MAIN_PAGE =
+  '<ul class="rolling"><li><div class="vis01" banner_id="4893871"><a href="/page/news/event_view.asp?id=4893871" target=""><img class="lazy" src="blit.gif" data-src="https://ssl.nexon.com/mainb.jpg" alt=""></a></div></li></ul><div class="banner_list"><ul><li><a href="/page/news/event_view.asp?id=4893871" target="">[이벤트]가갸날 잔치</a></li></ul></div>';
+
 const EVENT_PAGE = `<html><body>
   <div class="board_wrap02"><div class="board_event"><ul>
     <li class="first">
@@ -188,6 +193,7 @@ function basicSite() {
       '<p>노트</p>',
     ),
     '/page/news/event_list.asp': EVENT_PAGE,
+    '/page/main/index.asp': MAIN_PAGE,
     '/page/news/notice_list.asp?page=2': listPage(
       [noticeRow(4893249, '마비노기 복구 서비스 개편 안내')],
       [],

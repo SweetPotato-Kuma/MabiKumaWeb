@@ -16,6 +16,7 @@
  */
 
 import { rateLimited, withEdgeCache } from './market.js';
+import { collectBanners } from './banners.js';
 import { indexPreviews } from './previews.js';
 
 export const NEWS_LIST_PATH = '/news/list';
@@ -491,6 +492,7 @@ export async function collectNews(env, now = Date.now(), options = {}) {
     rechecked: 0,
     deleted: 0,
     events: null,
+    banners: null,
     backfill: {},
     errors: [],
   };
@@ -522,6 +524,13 @@ export async function collectNews(env, now = Date.now(), options = {}) {
     summary.events = await collectEvents(db, get, nowSec);
   } catch (error) {
     fail('events', error);
+  }
+
+  // 공식 메인의 이벤트 배너. 첫 화면의 배너가 넘기는 목록이다.
+  try {
+    summary.banners = await collectBanners(db, get, nowSec);
+  } catch (error) {
+    fail('banners', error);
   }
 
   try {

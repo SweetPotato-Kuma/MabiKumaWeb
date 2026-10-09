@@ -60,22 +60,25 @@ export interface NewsPostResponse {
   source: string;
 }
 
-export interface NewsEvent {
-  link: string;
-  /** 받아 둔 이벤트 글이면 그 글 번호 */
-  postId: number | null;
+/**
+ * 공식 메인 화면의 이벤트 배너 한 칸(worker/banners.js). 첫 화면의 배너가 순서대로 넘긴다.
+ * 받아 둔 새소식 글로 가는 배너는 postId 가 있어 우리 기록으로 잇고, 이벤트 페이지나 외부 주소는 link(공식 주소)로 보낸다.
+ */
+export interface NewsBanner {
+  id: string;
+  /** 말머리를 뗀 제목. 공식 목록에 제목이 없는 배너는 빈 글자다 */
   title: string;
-  summary: string | null;
-  thumb: string | null;
-  /** 목록에 적힌 기간 그대로("상시진행" 포함) */
-  period: string | null;
-  startsAt: number | null;
-  endsAt: number | null;
+  /** 이벤트, 샵, 업데이트 같은 말머리 */
+  kind: string | null;
+  /** 1920x580 배너 그림 */
+  image: string;
+  link: string;
+  postId: number | null;
 }
 
-export interface NewsEventsResponse {
-  events: NewsEvent[];
-  eventsAt: number | null;
+export interface NewsBannersResponse {
+  banners: NewsBanner[];
+  updatedAt: number | null;
 }
 
 export interface NewsListQuery {
@@ -138,10 +141,10 @@ export function useNewsPost(id: number | null) {
   });
 }
 
-export function useNewsEvents() {
+export function useNewsBanners() {
   return useQuery({
-    queryKey: ['news', 'events'],
-    queryFn: ({ signal }) => getJson<NewsEventsResponse>('/news/events', {}, signal),
+    queryKey: ['news', 'banners'],
+    queryFn: ({ signal }) => getJson<NewsBannersResponse>('/news/banners', {}, signal),
     enabled: canReadNews(),
     staleTime: 5 * 60 * 1000,
     retry: false,
@@ -179,16 +182,4 @@ export function formatNewsDate(seconds: number): string {
 export function formatNewsDateTime(seconds: number): string {
   const { year, month, day, hour, minute } = pieces(dateTimeFormatter, seconds);
   return `${year}.${month}.${day} ${hour}:${minute}`;
-}
-
-/** 이벤트 남은 날. 끝나는 시각이 없으면(상시진행) null. 오늘 끝나면 "오늘 끝". */
-export function eventRemaining(event: NewsEvent, now = Date.now()): string | null {
-  if (event.endsAt === null) return null;
-  const today = formatNewsDate(now / 1000);
-  const last = formatNewsDate(event.endsAt);
-  if (today === last) return '오늘 끝';
-  const days = Math.round(
-    (Date.parse(last.replaceAll('.', '-')) - Date.parse(today.replaceAll('.', '-'))) / 86_400_000,
-  );
-  return days > 0 ? `${days}일 남음` : null;
 }

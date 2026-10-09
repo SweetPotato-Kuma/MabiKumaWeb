@@ -18,7 +18,7 @@ import {
 /** D1 흉내. news.test.js 와 같다. 표는 배포에 쓰는 마이그레이션 파일로 만든다. */
 function fakeD1() {
   const sqlite = new DatabaseSync(':memory:');
-  for (const file of ['0001_news.sql', '0002_kits.sql', '0003_previews.sql'])
+  for (const file of ['0001_news.sql', '0002_kits.sql', '0003_previews.sql', '0004_banners.sql'])
     sqlite.exec(readFileSync(new URL(`./migrations-news/${file}`, import.meta.url), 'utf8'));
   return {
     sqlite,
@@ -319,6 +319,8 @@ describe('새소식 받기와 경로', () => {
     '/page/news/notice_list.asp': `<div class="board_common01"><ul><li><div class="type"><p>샵</p></div><dl><dt><a href="notice_view.asp?id=4893863">나이트메어 판타지아 박스</a></dt><dd>마비노기</dd></dl><p class="info_r"><span class="date">2026.10.07</span></p></li></ul></div>`,
     '/page/news/update_list.asp': '<div class="board_common01"><ul></ul></div>',
     '/page/news/event_list.asp': '<div class="board_event"><ul></ul></div>',
+    '/page/main/index.asp':
+      '<ul class="rolling"><li><div class="vis01" banner_id="4893871"><a href="/page/news/event_view.asp?id=4893871" target=""><img class="lazy" src="blit.gif" data-src="https://ssl.nexon.com/mainb.jpg" alt=""></a></div></li></ul><div class="banner_list"><ul><li><a href="/page/news/event_view.asp?id=4893871" target="">[이벤트]가갸날 잔치</a></li></ul></div>',
     '/page/news/notice_view.asp?id=4893863': `<div class="board_view01"><dl><dt>나이트메어 판타지아 박스</dt><dd class="view_info"><p class="fr"><span class="date">2026.10.07 11:00</span></p></dd><dd class="view_cont_wrap"><div class="view_cont">${body}</div></dd><dd class="link"></dd></dl></div><!-- //view -->`,
     '/page/news/notice_list.asp?page=2': '<div class="board_common01"><ul></ul></div>',
     '/page/news/update_list.asp?page=2': '<div class="board_common01"><ul></ul></div>',

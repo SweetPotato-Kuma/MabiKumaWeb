@@ -50,7 +50,10 @@ import storefrontSvg from '@material-symbols/svg-400/rounded/storefront.svg?raw'
 import tollSvg from '@material-symbols/svg-400/rounded/toll.svg?raw';
 import uploadSvg from '@material-symbols/svg-400/rounded/upload.svg?raw';
 import waterDropSvg from '@material-symbols/svg-400/rounded/water_drop.svg?raw';
+import chevronLeftSvg from '@material-symbols/svg-400/rounded/chevron_left.svg?raw';
 import newspaperSvg from '@material-symbols/svg-400/rounded/newspaper.svg?raw';
+import pauseSvg from '@material-symbols/svg-400/rounded/pause.svg?raw';
+import playArrowSvg from '@material-symbols/svg-400/rounded/play_arrow.svg?raw';
 import openInNewSvg from '@material-symbols/svg-400/rounded/open_in_new.svg?raw';
 
 /**
@@ -158,5 +161,8 @@ export const TrendingUpIcon = createIcon(trendingUpSvg, 'TrendingUpIcon');
 export const TollIcon = createIcon(tollSvg, 'TollIcon');
 export const UploadIcon = createIcon(uploadSvg, 'UploadIcon');
 export const WaterDropIcon = createIcon(waterDropSvg, 'WaterDropIcon');
+export const ChevronLeftIcon = createIcon(chevronLeftSvg, 'ChevronLeftIcon');
 export const NewsIcon = createIcon(newspaperSvg, 'NewsIcon');
+export const PauseIcon = createIcon(pauseSvg, 'PauseIcon');
+export const PlayIcon = createIcon(playArrowSvg, 'PlayIcon');
 export const OpenInNewIcon = createIcon(openInNewSvg, 'OpenInNewIcon');

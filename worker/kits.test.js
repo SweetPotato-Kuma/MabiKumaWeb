@@ -20,7 +20,7 @@ import {
 /** D1 흉내. news.test.js 와 같다. 표는 배포에 쓰는 마이그레이션 파일로 만든다. */
 function fakeD1() {
   const sqlite = new DatabaseSync(':memory:');
-  for (const file of ['0001_news.sql', '0002_kits.sql', '0003_previews.sql'])
+  for (const file of ['0001_news.sql', '0002_kits.sql', '0003_previews.sql', '0004_banners.sql'])
     sqlite.exec(readFileSync(new URL(`./migrations-news/${file}`, import.meta.url), 'utf8'));
   return {
     sqlite,

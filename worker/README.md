@@ -379,6 +379,20 @@ npx wrangler d1 migrations apply mabikuma-news --remote
 curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MABIKUMA_ADMIN_KEY"   "https://mabikuma-api.inbox7.workers.dev/news/collect?pages=10"
 ```
 
+## 이벤트 배너 (/news/banners)
+
+공식 메인 화면의 이벤트 배너(1920x580 큰 그림 열 장 안팎)를 순서 그대로 `main_banners` 표에 둔다. 새소식 크론이 10분마다 메인을 읽어
+통째로 바꾸고(`banners.js`), 첫 화면의 배너가 이걸 넘긴다. 메인은 쿠키(`introMovie=1`) 없이는 이벤트 홍보 화면으로 넘기므로 수집기가
+그 쿠키를 같이 보낸다. 메인에서 배너를 하나도 못 읽으면 앞 목록을 그대로 둔다. 그림은 사본을 두지 않고 공식 주소를 쓴다.
+
+| 경로 | 누가 | 하는 일 |
+| --- | --- | --- |
+| `GET /news/banners` | 공개 | 배너 목록 `{ banners: [{ id, title, kind, image, link, postId }], updatedAt }`. 받아 둔 새소식 글로 가는 배너만 `postId` 가 있다 |
+
+```bash
+npx wrangler d1 migrations apply mabikuma-news --remote
+```
+
 ## 공식 미리보기 (/news/preview)
 
 키트(샵)와 이벤트 글에는 "신규 아이템 미리보기" 갤러리가 있다. 이름 목록의 N 번째 줄이 N 번째 칸의 그림이나 영상이다.
