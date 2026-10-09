@@ -32,6 +32,7 @@ Thumbs.db
 
 # 게임 표는 .cache에서 생성해 R2에 게시한다. 배포본에 고정 자료를 다시 넣지 않는다.
 public/data/**/*.json
+/public/bag-dyes.json
 
 # wrangler dev 가 만드는 로컬 D1 과 캐시
 .wrangler/

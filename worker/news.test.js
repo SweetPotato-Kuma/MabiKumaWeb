@@ -396,9 +396,9 @@ describe('새소식 모으기', () => {
 
     const first = await collectNews({ NEWS: db }, NOW, {
       get: fakeSite(pages).get,
-      backfillPages: 2,
+      backfillPages: 3,
     });
-    expect(first.backfill).toEqual({ notice: 2 });
+    expect(first.backfill).toEqual({ notice: 2, update: 'done' });
     expect(first.errors).toEqual(['backfill notice: 3쪽에 목록 틀이 없습니다.']);
     expect((await getPost(db, 4880001))?.post.postedAt).toBe(parseKstTime('2012.05.24 14:10'));
 
@@ -407,7 +407,8 @@ describe('새소식 모으기', () => {
       get: fakeSite(pages).get,
       backfillPages: 5,
     });
-    expect(second.backfill).toEqual({ notice: 'done', update: 'done' });
+    expect(second.backfill).toEqual({ notice: 'done' });
+    expect((await listPosts(db)).backfill).toEqual({ notice: 'done', update: 'done' });
   });
 
   it('한 단계가 막혀도 다음 단계는 간다', async () => {
@@ -418,6 +419,60 @@ describe('새소식 모으기', () => {
     expect(summary.errors[0]).toContain('notice');
     expect(summary.events).toBe(3);
     expect((await listPosts(db)).posts.map((post) => post.id)).toEqual([4893721]);
+    expect(await listPosts(db)).toMatchObject({
+      collectedAt: null,
+      attemptedAt: NOW_SEC,
+      failedSteps: ['notice'],
+    });
+  });
+
+  it('한 쪽씩 수집해도 두 게시판을 번갈아 진행한다', async () => {
+    const db = fakeD1();
+    const pages = basicSite();
+    pages['/page/news/notice_list.asp?page=2'] = listPage([], [noticeRow(4880001, '옛 공지')]);
+    pages['/page/news/notice_view.asp?id=4880001'] = viewPage(
+      '옛 공지',
+      '2012.05.24 14:10',
+      '<p>공지</p>',
+    );
+    pages['/page/news/update_list.asp?page=2'] = listPage(
+      [],
+      [updateRow(4880002, '옛 개발자 노트')],
+    );
+    pages['/page/news/update_view.asp?id=4880002'] = viewPage(
+      '옛 개발자 노트',
+      '2012.05.24 14:10',
+      '<p>노트</p>',
+    );
+    expect(
+      (await collectNews({ NEWS: db }, NOW, { get: fakeSite(pages).get, backfillPages: 1 }))
+        .backfill,
+    ).toEqual({ notice: 2 });
+    expect(
+      (
+        await collectNews({ NEWS: db }, NOW + 600_000, {
+          get: fakeSite(pages).get,
+          backfillPages: 1,
+        })
+      ).backfill,
+    ).toEqual({ update: 2 });
+  });
+
+  it('실패한 실행은 성공 시각을 보존하고 다음 성공에서 실패 표시를 지운다', async () => {
+    const db = fakeD1();
+    const pages = basicSite();
+    await collectNews({ NEWS: db }, NOW, { get: fakeSite(pages).get });
+    const good = pages['/page/news/notice_list.asp'];
+    pages['/page/news/notice_list.asp'] = MAINTENANCE_PAGE;
+    await collectNews({ NEWS: db }, NOW + 600_000, { get: fakeSite(pages).get });
+    expect(await listPosts(db)).toMatchObject({
+      collectedAt: NOW_SEC,
+      attemptedAt: NOW_SEC + 600,
+      failedSteps: ['notice'],
+    });
+    pages['/page/news/notice_list.asp'] = good;
+    await collectNews({ NEWS: db }, NOW + 1200_000, { get: fakeSite(pages).get });
+    expect(await listPosts(db)).toMatchObject({ collectedAt: NOW_SEC + 1200, failedSteps: [] });
   });
 
   it('진행 중인 이벤트만 새것부터, 상시진행은 뒤에 두고 받아 둔 글과 잇는다', async () => {

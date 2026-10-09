@@ -40,6 +40,8 @@ export interface NewsListResponse {
   page: number;
   size: number;
   collectedAt: number | null;
+  attemptedAt?: number | null;
+  failedSteps?: string[];
   backfill: Record<'notice' | 'update', BackfillState>;
 }
 

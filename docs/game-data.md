@@ -82,6 +82,21 @@ node scripts/game-data/sync-all.mjs --setup-storage --setup-only
 `echostone.json`, `special-upgrades.json`, `game-images.json`도 같은 폴더에 있습니다.
 `comparison.json`과 `manifest.json`은 그 위 `.cache/game-data/`에 남깁니다.
 
+주머니 염색 지도도 같은 폴더의 `bag-dyes.json`으로 만들고 R2에서 읽습니다. `public/bag-dyes.json`은
+배포에서 제거했습니다. 통합 갱신에서 기존 캡처와 클라이언트 아이콘, 공식 API 표본을 사용하며 게임을 실행하지 않습니다.
+이번 상점에 없는 종류는 유지하고, 재현 검증에 실패한 지도는 게시하지 않습니다.
+
+경매장 이름은 공식 API의 카테고리 없는 전체 조회로 끝 페이지까지 수집합니다. 중단 지점은
+`.cache/game-data/auction-names-checkpoint.json`, 완료 여부와 추가 카테고리는 `auction-names-report.json`에 남깁니다.
+중간 실패는 실패 종료 코드로 전달하고 다음 실행에서 이어 읽습니다. 만료된 커서는 처음부터 다시 확인합니다.
+넥슨 API 키가 없으면 `.env`의 우리 API 워커(`VITE_PROXY_URL`)를 통해 같은 공식 API를 읽습니다.
+둘 다 없으면 건너뛴 사실을 `official-api-status.json`과 로그에 남깁니다.
+
+세공 상세 표는 같은 날짜의 정정도 반영하도록 하루마다 다시 확인하며, 공식 홈페이지 요청은 1초 이상 띄웁니다.
+첫 재확인은 약 3,000장의 캐시 때문에 오래 걸릴 수 있습니다. 수집 범위는 기존 도구 3종과 1랭크를 유지합니다.
+공식 보조 자료만 갱신할 때는 `sync-all.mjs --official-only`, 저장된 세공 상세 응답으로 산출물을 검증할 때만
+`--use-cached-official`을 추가합니다. 후자는 같은 날짜의 정정을 재확인하지 않습니다.
+
 `public/data`의 JSON은 저장소와 배포본에서 제거했습니다. `--refresh-public-data` 옵션은 폐지했습니다.
 캐시에 없는 표는 우리 Cloudflare 게시본에서만 준비하며, 갱신한 로컬 결과를 덮어쓰지 않습니다.
 사이트 빌드는 같은 공개 목록의 아이템 이름과 제작법을 `.cache/game-data/build`에 해시 검증 후 받아
@@ -130,7 +145,7 @@ JSON 공개 목록은 `https://icons.spkuma.com/game-data/manifest.json`, 실제
 - **게임 클라이언트**: 거의 전부. 다른 사람의 서버는 쓰지 않습니다.
 - **넥슨 공식 홈페이지**: 클라이언트에 없는 것만. 장인 개조 확률(확률 공개 페이지), 세공 도구 확률표. 받은 것은
   `.cache` 에 남기고 처음 보는 것만 1초 간격으로 묻습니다.
-- **넥슨 오픈 API**: 경매장 이름 사전. `NEXON_API_KEY`가 있으면 같은 `sync-all` 실행에서 수집합니다.
+- **넥슨 오픈 API**: 경매장 이름 사전과 주머니 염색 표본. 키 또는 우리 API 워커가 있으면 같은 `sync-all`에서 수집합니다.
   별도의 `harvest.yml` 및 사전 JSON을 자동 커밋하던 작업은 제거했습니다.
 
 ## 클라이언트만으로 정할 수 없어 적어 둔 것

@@ -494,8 +494,11 @@ export async function collectNews(env, now = Date.now(), options = {}) {
     errors: [],
   };
   const checked = new Set();
-  const fail = (step, error) =>
+  const failedSteps = [];
+  const fail = (step, error) => {
+    failedSteps.push(step);
     summary.errors.push(`${step}: ${error instanceof Error ? error.message : error}`);
+  };
 
   for (const board of BOARD_KEYS) {
     try {
@@ -548,31 +551,43 @@ export async function collectNews(env, now = Date.now(), options = {}) {
     0,
     Math.min(options.backfillPages ?? BACKFILL_PAGES_PER_RUN, BACKFILL_PAGES_MAX),
   );
-  for (const board of BOARD_KEYS) {
+  let nextBoard = Number(await getMeta(db, 'backfill_next_board')) || 0;
+  const inactive = new Set();
+  while (budget > 0 && inactive.size < BOARD_KEYS.length) {
+    const board = BOARD_KEYS[nextBoard % BOARD_KEYS.length];
+    nextBoard = (nextBoard + 1) % BOARD_KEYS.length;
+    if (inactive.has(board)) continue;
     try {
-      while (budget > 0) {
-        const state = await getMeta(db, `backfill:${board}`);
-        if (state === 'done') break;
-        const page = Number(state) || 2;
-        budget -= 1;
-        const { rows, hasBoard } = parseBoardList(await get(listPath(board, page)), board);
-        if (!hasBoard) throw new Error(`${page}쪽에 목록 틀이 없습니다.`);
-        const own = rows.filter((row) => !row.pinned);
-        if (own.length === 0) {
-          await setMeta(db, `backfill:${board}`, 'done').run();
-          summary.backfill[board] = 'done';
-          break;
-        }
-        await ingestRows(db, get, board, own, nowSec, summary, checked, false);
-        await setMeta(db, `backfill:${board}`, page + 1).run();
-        summary.backfill[board] = page;
+      const state = await getMeta(db, `backfill:${board}`);
+      if (state === 'done') {
+        inactive.add(board);
+        continue;
       }
+      const page = Number(state) || 2;
+      budget -= 1;
+      const { rows, hasBoard } = parseBoardList(await get(listPath(board, page)), board);
+      if (!hasBoard) throw new Error(`${page}쪽에 목록 틀이 없습니다.`);
+      const own = rows.filter((row) => !row.pinned);
+      if (own.length === 0) {
+        await setMeta(db, `backfill:${board}`, 'done').run();
+        summary.backfill[board] = 'done';
+        inactive.add(board);
+        continue;
+      }
+      await ingestRows(db, get, board, own, nowSec, summary, checked, false);
+      await setMeta(db, `backfill:${board}`, page + 1).run();
+      summary.backfill[board] = page;
     } catch (error) {
+      inactive.add(board);
       fail(`backfill ${board}`, error);
     }
   }
-
-  await setMeta(db, 'collected_at', nowSec).run();
+  await db.batch([
+    setMeta(db, 'backfill_next_board', nextBoard),
+    setMeta(db, 'attempted_at', nowSec),
+    setMeta(db, 'failed_steps', JSON.stringify(failedSteps)),
+    ...(summary.errors.length === 0 ? [setMeta(db, 'collected_at', nowSec)] : []),
+  ]);
   return summary;
 }
 
@@ -628,6 +643,8 @@ async function collectState(db) {
   );
   return {
     collectedAt: Number(meta.collected_at) || null,
+    attemptedAt: Number(meta.attempted_at) || null,
+    failedSteps: JSON.parse(meta.failed_steps || '[]'),
     eventsAt: Number(meta.events_at) || null,
     backfill,
   };

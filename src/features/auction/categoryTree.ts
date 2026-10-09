@@ -19,7 +19,17 @@ export interface CategoryGroup {
 export const CATEGORY_GROUPS: readonly CategoryGroup[] = [
   {
     name: '근거리 장비',
-    categories: ['한손 장비', '양손 장비', '검', '도끼', '둔기', '랜스', '핸들', '너클', '체인 블레이드'],
+    categories: [
+      '한손 장비',
+      '양손 장비',
+      '검',
+      '도끼',
+      '둔기',
+      '랜스',
+      '핸들',
+      '너클',
+      '체인 블레이드',
+    ],
   },
   {
     name: '원거리 장비',
@@ -88,7 +98,7 @@ export const CATEGORY_GROUPS: readonly CategoryGroup[] = [
   },
   {
     name: '토템',
-    categories: ['애뮬릿', '토템'],
+    categories: ['애뮬릿', '토템', '펫 토템'],
   },
   {
     name: '생활 재료',
@@ -96,12 +106,24 @@ export const CATEGORY_GROUPS: readonly CategoryGroup[] = [
   },
   {
     name: '기타',
-    categories: ['제스처', '말풍선 스티커', '피니 펫', '불타래', '퍼퓸', '분양 메달', '뷰티 쿠폰', '기타'],
+    categories: [
+      '제스처',
+      '말풍선 스티커',
+      '대미지 스킨',
+      '피니 펫',
+      '불타래',
+      '퍼퓸',
+      '분양 메달',
+      '뷰티 쿠폰',
+      '기타',
+    ],
   },
 ] as const;
 
 /** 묶음에 들어 있는 모든 잎. 검증과 목록 렌더에 쓴다. */
-export const GROUPED_CATEGORIES: readonly string[] = CATEGORY_GROUPS.flatMap((group) => group.categories);
+export const GROUPED_CATEGORIES: readonly string[] = CATEGORY_GROUPS.flatMap(
+  (group) => group.categories,
+);
 
 /**
  * 트리 노드 키.
@@ -130,7 +152,9 @@ export function groupNameOf(key: string): string | null {
 /** 묶음 키의 하위 카테고리. 묶음을 찾는 것은 이 잎들을 차례로 불러오는 것이다. 묶음 키가 아니면 null. */
 export function leavesOfGroupKey(key: string): readonly string[] | null {
   const name = groupNameOf(key);
-  return name === null ? null : (CATEGORY_GROUPS.find((group) => group.name === name)?.categories ?? null);
+  return name === null
+    ? null
+    : (CATEGORY_GROUPS.find((group) => group.name === name)?.categories ?? null);
 }
 
 /** 화면에 적는 이름. 묶음 키는 묶음 이름으로, 잎은 그대로. */

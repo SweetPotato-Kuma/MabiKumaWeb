@@ -7,7 +7,7 @@ import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   // .wrangler 는 wrangler dev 가 로컬에서 만드는 번들과 D1 이다. 우리 코드가 아니다.
-  { ignores: ['dist', 'coverage', 'node_modules', '**/.wrangler', '.cache/**'] },
+  { ignores: ['dist', 'coverage', 'node_modules', '**/.wrangler', '**/.cache/**'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

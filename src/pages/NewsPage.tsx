@@ -58,6 +58,9 @@ function CollectState({ data }: { data: NewsListResponse }) {
         <Text type="secondary">{formatNewsDateTime(data.collectedAt)} 모음</Text>
       ) : null}
       {filling ? <Text type="secondary">지난 글을 채우는 중</Text> : null}
+      {data.failedSteps?.length ? (
+        <Text type="warning">일부 갱신을 완료하지 못했습니다. 다음 수집에서 다시 시도합니다.</Text>
+      ) : null}
     </Flex>
   );
 }

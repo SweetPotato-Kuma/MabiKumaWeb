@@ -146,6 +146,16 @@ afterEach(() => {
 });
 
 describe('새소식 목록', () => {
+  it('일부 갱신 실패를 정상 수집으로 표시하지 않는다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ...LIST, failedSteps: ['notice'] }))),
+    );
+    renderAt('/news');
+    expect(
+      await screen.findByText('일부 갱신을 완료하지 못했습니다. 다음 수집에서 다시 시도합니다.'),
+    ).toBeInTheDocument();
+  });
   it('글마다 분류와 날짜, 고친 횟수를 보여 주고 지난 글을 채우는 중이라고 알린다', async () => {
     renderAt('/news');
     const title = await screen.findByRole('link', { name: '10/8(목) 정식 서버 점검 안내' });

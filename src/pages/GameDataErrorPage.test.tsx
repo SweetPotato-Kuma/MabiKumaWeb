@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { RootLayout } from '@/components/RootLayout';
 import { GAME_DATA_FAILURE_EVENT } from '@/lib/gameData';
@@ -13,7 +13,13 @@ function CurrentPage() {
   return <div>{location.pathname + location.search + location.hash}</div>;
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
 it('조회 실패는 오류 화면으로 이동하고 다시 조회는 검색 조건을 유지한다', async () => {
+  vi.stubEnv('BASE_URL', '/');
   vi.stubGlobal(
     'fetch',
     vi.fn(() => new Promise(() => {})),
