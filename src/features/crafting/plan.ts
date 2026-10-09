@@ -63,6 +63,10 @@ export interface PlanNode {
   /** 마무리 재료 칸인지. */
   finish: boolean;
   required: number;
+  /** 이미 가진 개수(PlanInput.owned). 가진 것이 없으면 0. */
+  owned: number;
+  /** 더 마련해야 하는 개수. 값과 하위 재료는 이 개수로 센다. 가진 것이 없으면 required 와 같다. */
+  short: number;
   depth: number;
   price: NodePrice;
   /** 필요한 개수를 샀을 때. 시세를 모르면 undefined. */
@@ -139,6 +143,16 @@ export interface PlanInput {
    * 없으면 기준 공정 수(DEFAULT_WORKS). 하위 재료의 제작법은 늘 기준 공정 수를 쓴다.
    */
   works?: number;
+  /**
+   * 맨 위 재료 칸의 자리 이름. 없으면 m0, m1, ... 칸 순서가 바뀌어도 자리가 같아야 하는 쪽
+   * (재료 메모의 목표 목록)이 넘긴다. 점(.)과 빗금(/)은 쓰지 않는다.
+   */
+  slotKeys?: readonly string[];
+  /**
+   * 줄의 자리(PlanNode.key) -> 이미 가진 개수. 가진 만큼은 사지도 만들지도 않는다. 만들기로 한 재료를
+   * 가졌다면 모자란 개수만큼만 하위 재료를 센다.
+   */
+  owned?: Readonly<Record<string, number>>;
   /** 아이템 번호로 시세를 찾는다. 모르는 아이템은 undefined(아직 묻지 않음). */
   priceOf: (itemId: number) => PriceState | undefined;
   methods: Readonly<Record<string, Method>>;
@@ -189,6 +203,8 @@ export function buildPlan(input: PlanInput): CraftPlan {
     npcPriceOf,
     preferNpc = false,
     beads,
+    slotKeys,
+    owned: ownedByKey,
   } = input;
   const needed = new Set<number>();
 
@@ -267,11 +283,11 @@ export function buildPlan(input: PlanInput): CraftPlan {
   };
 
   /** 제작법의 재료 칸. times 는 한 번 만들 때 그 칸을 몇 번 넣는지(작업 재료는 공정 수만큼). */
-  const slotsOf = (target: Recipe, workCount = worksOf(target)) => [
+  const slotsOf = (target: Recipe, workCount = worksOf(target), keys?: readonly string[]) => [
     ...target.materials.map((slot, index) => ({
       slot,
       finish: false,
-      id: `m${index}`,
+      id: keys?.[index] ?? `m${index}`,
       times: workCount,
     })),
     ...target.finish.map((slot, index) => ({ slot, finish: true, id: `f${index}`, times: 1 })),
@@ -290,6 +306,9 @@ export function buildPlan(input: PlanInput): CraftPlan {
   ): PlanNode => {
     const required = slot.count * multiplier * times;
     const itemId = pickSlotItem(slot, required);
+    const owned = Math.max(0, Math.floor(ownedByKey?.[key] ?? 0));
+    // 값과 하위 재료는 가진 만큼을 뺀 개수로 센다. 어느 아이템을 넣을지는 가진 개수와 상관없이 정한다.
+    const short = Math.max(0, required - owned);
     const tradable = book.isTradable(itemId);
     const npcUnit = npcPriceOf?.(itemId);
     const coinUnit = beads?.coinCostOf(itemId);
@@ -309,10 +328,10 @@ export function buildPlan(input: PlanInput): CraftPlan {
     // 코인으로 사도 경매장 값은 그대로 매겨 둔다. 코인으로 사면 얼마를 아끼는지 보이게 하려는 것이다.
     const source = chosenSource ?? defaultSource(itemId);
     const price = priceFor(itemId, source);
-    const quote = quoteFor(price, required);
-    const buyCost = buyCostOf(itemId, price, required, quote);
+    const quote = quoteFor(price, short);
+    const buyCost = short === 0 ? emptyCost() : buyCostOf(itemId, price, short, quote);
 
-    const buyable = price.status === 'loading' || (quote !== undefined && quote.filled >= required);
+    const buyable = price.status === 'loading' || (quote !== undefined && quote.filled >= short);
     // "구슬로 만들기" 를 켠 재료 아래에서는 고르지 않은 재료가 코인이면 코인으로 사고, 구슬로 만드는 재료면 만든다.
     const inheritsCoin = inheritBeads && !chosenSource && !chosenRecipe && coinUnit !== undefined;
     const beadable =
@@ -344,6 +363,8 @@ export function buildPlan(input: PlanInput): CraftPlan {
       tradable,
       npcUnit,
       method,
+      owned,
+      short,
       chosen: chosenSource !== undefined || chosenCoin || chosenRecipe !== undefined,
       ...(coinUnit !== undefined ? { coinUnit } : {}),
       byBeads,
@@ -372,7 +393,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
       ? (node.recipes.find((each) => each.index === node.method) ?? node.recipes[0])
       : node.recipes[0];
     node.yieldCount = target.yield;
-    node.crafts = Math.ceil(node.required / target.yield);
+    node.crafts = Math.ceil(node.short / target.yield);
     const nextAncestors = new Set(ancestors).add(node.itemId);
     const prefix = `${node.key}.${target.index}`;
     node.children = slotsOf(target).map(({ slot, finish, id, times }) => {
@@ -410,7 +431,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
   const crafts = Math.ceil(Math.max(1, quantity) / recipe.yield);
   const rootAncestors = new Set([recipe.item]);
   const rootWorks = hasWorks(recipe) && works !== undefined ? Math.max(1, works) : undefined;
-  const nodes = slotsOf(recipe, rootWorks).map(({ slot, finish, id, times }) => {
+  const nodes = slotsOf(recipe, rootWorks, slotKeys).map(({ slot, finish, id, times }) => {
     const node = buildNode(slot, finish, id, crafts, times, 0, rootAncestors, false);
     expand(node, rootAncestors);
     return node;
@@ -427,11 +448,13 @@ export function buildPlan(input: PlanInput): CraftPlan {
         node.children.forEach(collect);
         return;
       }
+      // 이미 다 가졌으면 살 것이 없다.
+      if (node.short === 0) return;
       const source = node.method === 'coin' ? 'coin' : node.price.status === 'npc' ? 'npc' : 'buy';
       const key = `${source}:${node.itemId}`;
       const entry = requiredByKey.get(key);
-      if (entry) entry.required += node.required;
-      else requiredByKey.set(key, { itemId: node.itemId, source, required: node.required });
+      if (entry) entry.required += node.short;
+      else requiredByKey.set(key, { itemId: node.itemId, source, required: node.short });
     };
     roots.forEach(collect);
 

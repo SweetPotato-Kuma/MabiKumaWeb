@@ -10,8 +10,8 @@ const taltinFarmCalculator: PageCalculatorDef = {
 
 const materialMemoCalculator: PageCalculatorDef = {
   id: 'materials',
-  title: '제작 재료 메모',
-  summary: '만들 아이템을 정하고 가진 재료를 적어 두면, 재료 트리에서 모자란 재료만 골라 보여 줍니다.',
+  title: '목표 아이템 재료 메모',
+  summary: '목표 아이템과 개수를 달아 두고 재료 트리에서 구하는 방법과 가진 개수를 적으면, 모자란 재료와 필요 금액, 필요한 구슬 개수를 보여 줍니다.',
   load: async () => ({ default: (await import('@/pages/MaterialMemoPage')).MaterialMemoPage }),
 };
 

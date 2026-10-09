@@ -1,11 +1,8 @@
 import {
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
-  type RefObject,
 } from 'react';
 import {
   Card,
@@ -19,23 +16,17 @@ import {
   Spin,
   Statistic,
   Table,
-  Tag,
   Typography,
   theme,
-  type TableColumnsType,
 } from 'antd';
-import type { ColumnType } from 'antd/es/table';
 import { CookingGuide } from '@/components/crafting/CookingGuide';
+import { treeColumns, treeRowsOf, useSlidingRows, type TreeRow } from '@/components/crafting/craftTree';
 import { RecipeInfo } from '@/components/crafting/RecipeInfo';
-import { ItemIcon } from '@/components/ItemIcon';
 import { useResolvedThemeMode } from '@/lib/themePreference';
 import { GAIN_LOSS_COLORS } from '@/app/theme';
-import { ItemInfoLink } from '@/components/ItemInfoLink';
-import { isCardStoreConfigured } from '@/features/itemcard/cards';
-import { isIconMapConfigured } from '@/features/itemcard/iconMap';
 import { useItemNameIndexQuery } from '@/features/auction/nameIndex';
 import { coinPurchasesOf } from '@/features/dungeonCoins/exchanges';
-import { beadsToMake, mainCoinOf, makesFromBeads } from '@/features/dungeonCoins/subBeads';
+import { mainCoinOf, makesFromBeads } from '@/features/dungeonCoins/subBeads';
 import { useMarketPrices } from '@/features/crafting/market';
 import { craftProfit, type CraftProfit } from '@/features/crafting/profit';
 import {
@@ -44,13 +35,21 @@ import {
   WEDNESDAY_DISCOUNT_PERCENT,
 } from '@/features/crafting/npcPrices';
 import {
+  clearSourceChoices,
+  NO_CHOICES,
+  allBeadsOn,
+  beadOptionsOf,
+  chooseMethod,
+  toggleAllBeads,
+  toggleBeads,
+  type TreeChoices,
+} from '@/features/crafting/treeChoices';
+import {
   buildPlan,
   isBuying,
   isComplete,
   type CostSum,
   type Method,
-  type NodePrice,
-  type PlanNode,
   type ShoppingRow,
 } from '@/features/crafting/plan';
 import {
@@ -63,7 +62,7 @@ import {
   type RecipeBook,
 } from '@/features/crafting/recipes';
 import { formatNumber } from '@/lib/format';
-import { useGoldFormatter, type GoldFormatter } from '@/lib/useGoldFormatter';
+import { useGoldFormatter } from '@/lib/useGoldFormatter';
 
 const { Text } = Typography;
 
@@ -74,7 +73,6 @@ const MAX_QUANTITY = 9999;
 const MAX_WORKS = 99;
 
 /** 재료 그림 칸. 표 한 줄 높이를 크게 늘리지 않으면서 알아볼 수 있는 크기. */
-const MATERIAL_ICON = 32;
 
 /** 트리 표의 칸 수. 합계 줄이 앞 칸들을 한 칸으로 묶을 때 쓴다. */
 const TREE_COLUMN_COUNT = 6;
@@ -177,10 +175,10 @@ function RecipeCost({
   /** 공정 수. 기준 공정 수로 시작하고 사용자가 고친다. */
   const workRecipe = hasWorks(recipe);
   const [works, setWorks] = useState(DEFAULT_WORKS);
-  const [methods, setMethods] = useState<Record<string, Method>>({});
+  /** 줄마다 고른 구하는 방법과 "코인으로 만들기" 를 직접 켠 줄. */
+  const [choices, setChoices] = useState<TreeChoices>(NO_CHOICES);
+  const { methods, beadChecked } = choices;
   const [expanded, setExpanded] = useState<string[]>([]);
-  /** "코인으로 만들기" 를 사용자가 직접 켠 줄의 key. 그 아래 줄은 함께 켜지므로 들어 있지 않다. */
-  const [beadChecked, setBeadChecked] = useState<string[]>([]);
 
   /**
    * 물어본 이름. 계산이 "이 시세가 필요하다" 고 하면 여기에 더한다. 빼지는 않는다.
@@ -253,24 +251,8 @@ function RecipeCost({
   // 렌더 중에 상태를 고치는 React 의 "이전 렌더에서 파생" 방식. 새 이름이 있을 때만 바뀌므로 멈춘다.
   if (missing.length > 0) setRequested([...requested, ...missing]);
 
-  /** 사는 줄 아래에서 코인을 고르면 값에 들어가도록 그 윗줄들을 제작으로 바꾼다. 윗줄의 체크 칸은 건드리지 않는다. */
-  const craftingAbove = (key: string): Record<string, Method> => {
-    const found: Record<string, Method> = {};
-    const walk = (nodes: PlanNode[]) => {
-      for (const node of nodes) {
-        if (!key.startsWith(`${node.key}.`)) continue;
-        if (isBuying(node.method)) found[node.key] = node.recipes[0].index;
-        if (node.children) walk(node.children);
-      }
-    };
-    walk(plan.nodes);
-    return found;
-  };
-
   const setMethod = (key: string, method: Method) => {
-    const above = method === 'coin' ? craftingAbove(key) : {};
-    setMethods((prev) => ({ ...prev, ...above, [key]: method }));
-    setBeadChecked((prev) => prev.filter((each) => each !== key));
+    setChoices((prev) => chooseMethod(prev, plan.nodes, key, method));
     // 제작으로 바꾸면 무엇이 들어가는지 바로 보이게 펼친다.
     if (!isBuying(method)) setExpanded((prev) => (prev.includes(key) ? prev : [...prev, key]));
   };
@@ -279,58 +261,18 @@ function RecipeCost({
    * "코인으로 만들기" 를 켜고 끈다. 그 아래 줄은 각자 고른 것을 지우고 같은 쪽으로 맞춘다.
    * off 로 끌 때 offMethod 를 남기는 것은 윗줄이 켜져 있어도 이 줄만 꺼진 채로 두기 위해서다.
    */
-  const setBeads = (key: string, on: boolean, offMethod: Method) => {
-    const below = (each: string) => each.startsWith(`${key}.`);
-    const above = on ? craftingAbove(key) : {};
-    setMethods((prev) => {
-      const next = Object.fromEntries(
-        Object.entries(prev).filter(([each]) => each !== key && !below(each)),
-      );
-      return on ? { ...next, ...above } : { ...next, [key]: offMethod };
-    });
-    setBeadChecked((prev) => {
-      const rest = prev.filter((each) => each !== key && !below(each));
-      return on ? [...rest, key] : rest;
-    });
-  };
+  const setBeads = (key: string, on: boolean, offMethod: Method) =>
+    setChoices((prev) => toggleBeads(prev, plan.nodes, key, on, offMethod));
 
   /** 맨 위 줄 가운데 코인으로 사거나 구슬로 만들 수 있는 것을 모두 켜거나 끈다. 트리는 펼치지 않는다. */
-  const beadOptions = plan.nodes.filter(
-    (node) => node.coinUnit !== undefined || node.beadCraftable,
-  );
-  const allBeadsOn =
-    beadOptions.length > 0 &&
-    beadOptions.every((node) =>
-      node.coinUnit !== undefined ? node.method === 'coin' : node.byBeads || node.beadsAll === true,
-    );
-  const setAllBeads = (on: boolean) => {
-    const keys = beadOptions.map((node) => node.key);
-    const under = (each: string) => keys.some((key) => each === key || each.startsWith(`${key}.`));
-    setMethods((prev) => {
-      const next = Object.fromEntries(Object.entries(prev).filter(([each]) => !under(each)));
-      if (on)
-        for (const node of beadOptions) if (node.coinUnit !== undefined) next[node.key] = 'coin';
-      return next;
-    });
-    setBeadChecked((prev) => {
-      const rest = prev.filter((each) => !under(each));
-      return on
-        ? [
-            ...rest,
-            ...beadOptions.filter((node) => node.coinUnit === undefined).map((node) => node.key),
-          ]
-        : rest;
-    });
-  };
+  const beadOptions = beadOptionsOf(plan.nodes);
+  const allBeadsChecked = allBeadsOn(beadOptions);
+  const setAllBeads = (on: boolean) => setChoices((prev) => toggleAllBeads(prev, beadOptions, on));
 
   /** 전체 기본값을 바꾸면 줄마다 고른 구매처는 지운다. 제작과 코인으로 사기를 고른 것은 그대로 둔다. */
   const changeUseNpc = (next: boolean) => {
     setUseNpc(next);
-    setMethods((prev) =>
-      Object.fromEntries(
-        Object.entries(prev).filter(([, method]) => method === 'coin' || !isBuying(method)),
-      ),
-    );
+    setChoices(clearSourceChoices);
   };
 
   const tableRef = useRef<HTMLDivElement>(null);
@@ -485,7 +427,7 @@ function RecipeCost({
               </Checkbox>
               {coin !== undefined && beadOptions.length > 0 ? (
                 <Checkbox
-                  checked={allBeadsOn}
+                  checked={allBeadsChecked}
                   onChange={(event) => setAllBeads(event.target.checked)}
                 >
                   {coin} 구매 전체 선택
@@ -515,7 +457,7 @@ function RecipeCost({
               setMethod,
               setBeads,
               categoryOf,
-              coin,
+              () => coin,
               { background: token.colorFillQuaternary },
               formatGold,
             )}
@@ -557,7 +499,7 @@ function RecipeCost({
 }
 
 /** 총액에 빠진 것. 모르는 값이 섞인 합은 실제보다 싸 보이므로 무엇이 빠졌는지 적는다. */
-function TotalNotes({
+export function TotalNotes({
   book,
   total,
   shopping,
@@ -588,425 +530,5 @@ function TotalNotes({
         </Text>
       ) : null}
     </>
-  );
-}
-
-/** 줄이 새 자리로 미끄러지는 시간. 눈에 걸리지 않을 만큼 짧게 둔다. */
-const ROW_MOVE_MS = 200;
-const ROW_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
-/** 이동 애니메이션의 이름. 나타나는 애니메이션과 갈라 이동만 새로 건다. */
-const ROW_MOVE_ID = 'row-move';
-
-const canAnimate = (element: HTMLElement) =>
-  typeof element.animate === 'function' &&
-  !(
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-
-/**
- * 트리 표의 줄을 새 자리로 미끄러뜨린다(FLIP).
- *
- * 재료를 펼치면 하위 줄이 끼어들고 그 아래 줄이 한 번에 밀려나 덜컹거린다. 시세가 들어와 줄 높이가
- * 바뀔 때도 그렇다. 그래서 그릴 때마다 줄의 자리를 적어 두고, 다음에 그렸을 때 자리가 바뀐 줄은
- * 예전 자리에서 새 자리로 옮겨 가게 한다. 새로 생긴 줄은 흐리게 시작해 나타난다.
- *
- * 높이를 움직이면 표 전체를 매 프레임 다시 재야 해서 transform 과 opacity 만 쓴다. 자리는 transform 을
- * 뺀 제자리로 적어, 움직이던 중에 다시 그려도 보이던 자리에서 이어 간다.
- * CSS 파일에 컴포넌트 스타일을 두지 않는 규칙이라 Web Animations API 로 건다. 움직임 줄이기 설정을 따른다.
- */
-/** 줄에 지금 걸린 세로 이동량. 움직이는 중이면 그 순간의 값이다. */
-function currentShiftY(row: HTMLElement): number {
-  const transform = getComputedStyle(row).transform;
-  if (!transform || transform === 'none' || typeof DOMMatrixReadOnly === 'undefined') return 0;
-  return new DOMMatrixReadOnly(transform).m42;
-}
-
-function useSlidingRows(containerRef: RefObject<HTMLDivElement | null>) {
-  const lastTops = useRef<Map<string, number> | null>(null);
-  useLayoutEffect(() => {
-    const table = containerRef.current?.querySelector('table');
-    if (!table) return;
-    const rows = [
-      ...table.querySelectorAll<HTMLTableRowElement>('tbody tr[data-row-key], tfoot tr'),
-    ];
-    const tableTop = table.getBoundingClientRect().top;
-    const previous = lastTops.current;
-    const next = new Map<string, number>();
-
-    let footOrder = 0;
-    rows.forEach((row) => {
-      // 합계 줄은 키가 없다. 몇 번째 줄인지로 부르되 본문 줄 수와 상관없게 tfoot 안에서만 센다.
-      const key = row.dataset.rowKey ?? `foot:${footOrder++}`;
-      // 보이는 자리에서 지금 걸린 transform 을 빼면 제자리다. offsetTop 은 합계 줄에서 기준이 tfoot 이라 못 쓴다.
-      const shown = row.getBoundingClientRect().top - tableTop;
-      const shift = currentShiftY(row);
-      const top = shown - shift;
-      next.set(key, top);
-      if (!previous || !canAnimate(row)) return;
-
-      const before = previous.get(key);
-      if (before === undefined) {
-        row.animate(
-          [
-            { opacity: 0, transform: 'translateY(-6px)' },
-            { opacity: 1, transform: 'none' },
-          ],
-          { id: 'row-enter', duration: ROW_MOVE_MS, easing: ROW_EASING },
-        );
-        return;
-      }
-      // 제자리가 그대로면 움직이던 것은 그대로 끝까지 가게 둔다. 시세만 들어와 다시 그린 경우다.
-      if (Math.abs(before - top) < 1) return;
-      // 지금 걸려 있는 transform 만큼 더해, 방금 보이던 자리에서 출발한다. 나타나는 중인 줄의
-      // 흐려짐은 그대로 두고 이동만 새로 건다.
-      const from = before + shift - top;
-      row
-        .getAnimations()
-        .filter((animation) => animation.id === ROW_MOVE_ID)
-        .forEach((animation) => animation.cancel());
-      row.animate([{ transform: `translateY(${from}px)` }, { transform: 'none' }], {
-        id: ROW_MOVE_ID,
-        duration: ROW_MOVE_MS,
-        easing: ROW_EASING,
-      });
-    });
-    lastTops.current = next;
-  });
-}
-
-interface ItemRow {
-  key: string;
-  node: PlanNode;
-  children?: ItemRow[];
-}
-
-/** 공정 재료와 마감 재료를 가르는 머리 줄. 그 구역의 소계를 금액 칸에 적는다. */
-interface SectionRow {
-  key: string;
-  section: { title: string; note: string; cost: CostSum };
-}
-
-type TreeRow = ItemRow | SectionRow;
-
-const isSection = (row: TreeRow): row is SectionRow => 'section' in row;
-
-/**
- * 표의 줄. 마감 재료가 있는 제작법은 공정 재료와 마감 재료를 구역으로 나누고, 구역마다 머리 줄을
- * 둔다. 같은 표 안에 두어야 칸이 어긋나지 않는다.
- */
-function treeRowsOf(
-  nodes: PlanNode[],
-  sections: { work: CostSum; finish: CostSum } | undefined,
-  works: number,
-): TreeRow[] {
-  if (!sections) return toTreeRows(nodes);
-  return [
-    {
-      key: 'section:work',
-      section: { title: '공정 재료', note: `${formatNumber(works)}공정`, cost: sections.work },
-    },
-    ...toTreeRows(nodes.filter((node) => !node.finish)),
-    {
-      key: 'section:finish',
-      section: { title: '마감 재료', note: '마감할 때 한 번', cost: sections.finish },
-    },
-    ...toTreeRows(nodes.filter((node) => node.finish)),
-  ];
-}
-
-/**
- * antd 트리 표의 줄. 만들 수 있는 재료는 하위 재료를 아직 계산하지 않았어도 빈 children 을 달아
- * 펼침 단추가 나오게 한다. 펼치면 계산이 하위 재료를 채운다.
- */
-function toTreeRows(nodes: PlanNode[]): ItemRow[] {
-  return nodes.map((node) => ({
-    key: node.key,
-    node,
-    ...(node.recipes.length > 0 ? { children: toTreeRows(node.children ?? []) } : {}),
-  }));
-}
-
-function priceStatusText(price: NodePrice): string {
-  switch (price.status) {
-    case 'untradable':
-      return '거래 불가';
-    case 'loading':
-      return '받는 중';
-    case 'error':
-      return '조회 실패';
-    case 'npc':
-    case 'coin':
-      return '';
-    default:
-      return price.price.offers.length === 0 ? '매물 없음' : '';
-  }
-}
-
-function treeColumns(
-  book: RecipeBook,
-  setMethod: (key: string, method: Method) => void,
-  setBeads: (key: string, on: boolean, offMethod: Method) => void,
-  categoryOf: (name: string) => string | undefined,
-  coin: string | undefined,
-  sectionStyle: CSSProperties,
-  formatGold: GoldFormatter,
-): TableColumnsType<TreeRow> {
-  const itemColumns: ColumnType<ItemRow>[] = [
-    {
-      title: '재료',
-      key: 'name',
-      width: 280,
-      render: (_value, { node }) => {
-        const name = book.itemName(node.itemId);
-        const category = categoryOf(name);
-        const file = book.iconOf(node.itemId);
-        return (
-          <Flex gap={8} align="center">
-            {category || file ? (
-              <ItemIcon category={category} name={name} file={file} size={MATERIAL_ICON} />
-            ) : (
-              <MaterialIconSlot />
-            )}
-            <Flex gap={6} align="center" wrap style={{ minWidth: 0 }}>
-              <ItemInfoLink name={name} category={category} />
-              {node.finish && node.depth > 0 ? <Tag>마감</Tag> : null}
-            </Flex>
-          </Flex>
-        );
-      },
-    },
-    {
-      title: '필요 개수',
-      key: 'required',
-      width: 100,
-      align: 'right',
-      render: (_value, { node }) => (
-        <Flex vertical align="flex-end">
-          <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-            {formatNumber(node.required)}
-          </Text>
-          {node.perWork !== undefined ? (
-            <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-              공정마다 {formatNumber(node.perWork)}개
-            </Text>
-          ) : null}
-          {!isBuying(node.method) && node.yieldCount > 1 ? (
-            <Text type="secondary" className="tnum" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-              {formatNumber(node.yieldCount)}개씩 {formatNumber(node.crafts)}번
-            </Text>
-          ) : null}
-        </Flex>
-      ),
-    },
-    {
-      title: '구매 방법',
-      key: 'method',
-      width: 470,
-      render: (_value, { node }) => {
-        const npcSold = node.npcUnit !== undefined;
-        const buyMethod = node.tradable ? 'buy' : npcSold ? 'npc' : undefined;
-        const byCoin = node.method === 'coin';
-        const coinCheckbox =
-          node.coinUnit !== undefined ? (
-            <Checkbox
-              checked={byCoin}
-              disabled={byCoin && buyMethod === undefined}
-              onChange={(event) =>
-                setMethod(node.key, event.target.checked ? 'coin' : (buyMethod ?? 'buy'))
-              }
-            >
-              <Text className="tnum" style={{ fontSize: 12 }}>
-                {coin} {formatNumber(node.coinUnit * node.required)}개로 구매
-              </Text>
-            </Checkbox>
-          ) : null;
-        if (node.recipes.length === 0 && !npcSold)
-          return (
-            <Flex gap={8} align="center" style={{ whiteSpace: 'nowrap' }}>
-              <Text type="secondary">
-                {byCoin ? '코인 구매' : node.tradable ? '경매장 구매' : '거래 불가'}
-              </Text>
-              {coinCheckbox}
-            </Flex>
-          );
-        const beads =
-          coin && node.recipes.length > 0 && makesFromBeads(book, coin, node.itemId)
-            ? beadsToMake(book, coin, node.itemId, node.required)
-            : 0;
-        return (
-          <Flex gap={8} align="center" style={{ whiteSpace: 'nowrap' }}>
-            <Select<Method>
-              size="small"
-              value={node.method}
-              onChange={(method) => setMethod(node.key, method)}
-              aria-label={`${book.itemName(node.itemId)} 구매 방법`}
-              popupMatchSelectWidth={false}
-              options={[
-                {
-                  value: 'buy',
-                  label: node.tradable ? '경매장 구매' : '경매장 구매 (거래 불가)',
-                  disabled: !node.tradable,
-                },
-                ...(npcSold
-                  ? [{ value: 'npc' as const, label: `NPC 구매 (${formatGold(node.npcUnit)})` }]
-                  : []),
-                ...(node.coinUnit !== undefined
-                  ? [{ value: 'coin' as const, label: '코인 구매' }]
-                  : []),
-                ...node.recipes.map((each) => ({
-                  value: each.index,
-                  label: `제작: ${recipeTitle(book, each)}`,
-                })),
-              ]}
-              style={{ minWidth: 150 }}
-            />
-            {beads > 0 ? (
-              <Checkbox
-                checked={node.byBeads || node.beadsAll === true}
-                onChange={(event) =>
-                  setBeads(node.key, event.target.checked, buyMethod ?? node.recipes[0].index)
-                }
-              >
-                <Text className="tnum" style={{ fontSize: 12 }}>
-                  {coin} {formatNumber(beads)}개로 만들기
-                </Text>
-              </Checkbox>
-            ) : null}
-            {coinCheckbox}
-          </Flex>
-        );
-      },
-    },
-    {
-      title: '매물',
-      key: 'supply',
-      width: 90,
-      align: 'right',
-      render: (_value, { node }) =>
-        node.price.status === 'npc' ? (
-          <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
-            NPC 판매
-          </Text>
-        ) : node.price.status === 'ok' && node.price.price.offers.length > 0 ? (
-          <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-            {formatNumber(node.price.price.supply)}개{node.price.price.complete ? '' : ' 이상'}
-          </Text>
-        ) : (
-          <Text type="secondary">-</Text>
-        ),
-    },
-    {
-      title: '개당 최저가',
-      key: 'lowest',
-      width: 110,
-      align: 'right',
-      render: (_value, { node }) => <LowestPrice price={node.price} lowest={node.quote?.lowest} />,
-    },
-    {
-      title: '금액',
-      key: 'cost',
-      width: 130,
-      align: 'right',
-      render: (_value, { node }) => {
-        const other =
-          node.method === 'coin'
-            ? isComplete(node.buyCost)
-              ? `경매장 ${formatGold(node.buyCost.gold)}`
-              : ''
-            : isBuying(node.method)
-              ? node.craftCost && isComplete(node.craftCost)
-                ? `제작 시 ${formatGold(node.craftCost.gold)}`
-                : ''
-              : isComplete(node.buyCost)
-                ? `구매 시 ${formatGold(node.buyCost.gold)}`
-                : '';
-        return (
-          <Flex vertical align="flex-end">
-            <CostText cost={node.cost} />
-            {other ? (
-              <Text
-                type="secondary"
-                className="tnum"
-                style={{ fontSize: 12, whiteSpace: 'nowrap' }}
-              >
-                {other}
-              </Text>
-            ) : null}
-          </Flex>
-        );
-      },
-    },
-  ];
-
-  // 구역 머리 줄은 재료 칸을 금액 앞까지 넓혀 제목을 적고, 금액 칸에 소계를 적는다.
-  const last = itemColumns.length - 1;
-  return itemColumns.map((column, index): ColumnType<TreeRow> => ({
-    ...(column as ColumnType<TreeRow>),
-    onCell: (row) =>
-      isSection(row)
-        ? { colSpan: index === 0 ? last : index === last ? 1 : 0, style: sectionStyle }
-        : {},
-    render: (value, row, rowIndex) => {
-      // 재료 줄의 칸은 모두 ReactNode 를 돌려준다(RenderedCell 을 쓰지 않는다).
-      if (!isSection(row)) return column.render?.(value, row, rowIndex) as ReactNode;
-      if (index === last) return <CostText cost={row.section.cost} strong />;
-      if (index > 0) return null;
-      return (
-        <Flex gap={8} align="baseline">
-          <Text strong>{row.section.title}</Text>
-          <Text type="secondary" className="tnum" style={{ fontSize: 13 }}>
-            {row.section.note}
-          </Text>
-        </Flex>
-      );
-    },
-  }));
-}
-
-function LowestPrice({ price, lowest }: { price: NodePrice; lowest?: number }): ReactNode {
-  const formatGold = useGoldFormatter();
-  if (price.status === 'loading') return <Spin size="small" />;
-  const status = priceStatusText(price);
-  if (status || lowest === undefined) return <Text type="secondary">{status || '-'}</Text>;
-  return (
-    <Text className="tnum" style={{ whiteSpace: 'nowrap' }}>
-      {formatGold(lowest)}
-    </Text>
-  );
-}
-
-/** 합이 온전하지 않으면 무엇이 빠졌는지 짧게 붙인다. 자세한 목록은 총액 아래에 있다. */
-function CostText({ cost, strong }: { cost: CostSum; strong?: boolean }) {
-  const formatGold = useGoldFormatter();
-  if (cost.pending > 0 && cost.gold === 0) return <Spin size="small" />;
-  const knownNothing = cost.gold === 0 && cost.unpriced.length > 0;
-  return (
-    <Flex vertical align="flex-end">
-      <Text
-        className="tnum"
-        strong={strong}
-        style={{ whiteSpace: 'nowrap' }}
-        type={knownNothing ? 'secondary' : undefined}
-      >
-        {knownNothing ? '값 모름' : formatGold(cost.gold)}
-      </Text>
-      {!knownNothing && (cost.unpriced.length > 0 || cost.short.length > 0) ? (
-        <Text type="warning" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-          {cost.unpriced.length > 0 ? '값 모르는 재료 빠짐' : '매물 부족'}
-        </Text>
-      ) : null}
-    </Flex>
-  );
-}
-
-/**
- * 그림을 찾을 수 없는 재료의 자리. 이름이 줄마다 다른 자리에서 시작하면 트리의 들여쓰기가 읽히지
- * 않으므로 칸은 비워 둔다. 그림 저장소가 없는 환경에서는 ItemIcon 처럼 자리도 두지 않는다.
- */
-function MaterialIconSlot() {
-  if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
-  return (
-    <div style={{ width: MATERIAL_ICON, height: MATERIAL_ICON, flex: `0 0 ${MATERIAL_ICON}px` }} />
   );
 }

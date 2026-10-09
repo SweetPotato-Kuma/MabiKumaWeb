@@ -89,6 +89,8 @@ export interface RecipeBook {
   /** 스킬 하나. 제작법에 나오지 않는 번호면 없다. */
   skillOf: (id: number) => CraftSkill | undefined;
   itemName: (id: number) => string;
+  /** 제작법 데이터에 나오는 아이템 이름 전부. 같은 이름은 한 번만. */
+  itemNames: readonly string[];
   isTradable: (id: number) => boolean;
   /** 아이템 그림 파일 이름(그림 저장소 기준). 올리지 못한 아이템은 없다. */
   iconOf: (id: number) => string | undefined;
@@ -167,6 +169,7 @@ export function buildRecipeBook(raw: RawRecipeData): RecipeBook {
     skillName: (id) => skillById.get(id)?.name ?? `스킬 ${id}`,
     skillOf: (id) => skillById.get(id),
     itemName: (id) => raw.items[id]?.[0] ?? `#${id}`,
+    itemNames: [...byName.keys()],
     isTradable: (id) => raw.items[id]?.[1] === 1,
     iconOf: (id) => raw.items[id]?.[2] || undefined,
     recipesOf: (itemId) => byItem.get(itemId) ?? none,

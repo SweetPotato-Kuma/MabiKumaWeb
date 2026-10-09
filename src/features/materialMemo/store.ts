@@ -1,33 +1,37 @@
 import { useSyncExternalStore } from 'react';
-import type { Choice } from './plan';
+import type { Method } from '@/features/crafting/plan';
+import { NO_CHOICES, type TreeChoices } from '@/features/crafting/treeChoices';
 
 /**
- * 재료 메모의 목표 목록.
+ * 재료 메모.
  *
- * 목표 아이템마다 개수, 줄별 가진 개수와 고른 방법을 담는다. 계정이 없으므로 이 브라우저에만 남긴다.
- * 저장이 막힌 환경(시크릿 창 등)에서는 이번 방문 동안만 기억한다.
+ * 목표 아이템(이름과 목표 개수)의 목록, 줄마다 가진 개수, 줄마다 고른 구하는 방법을 담는다. 줄의 자리 이름
+ * (PlanNode.key)은 목표 번호(Goal.id)로 시작하므로 목표를 지울 때 그 목표의 줄만 걷어 낼 수 있다.
+ * 계정이 없으므로 이 브라우저에만 남긴다. 저장이 막힌 환경(시크릿 창 등)에서는 이번 방문 동안만 기억한다.
  */
-export interface StoredTarget {
+export interface Goal {
+  /** 줄의 자리 이름이 되므로 점(.)과 빗금(/)이 없다. */
   id: string;
-  itemId: number;
-  count: number;
-  recipe?: number;
-  works?: number;
-  owned: Record<string, number>;
-  choices: Record<string, Choice>;
+  /** 아이템 이름. 제작 여부와 상관없이 아이템 사전에 있는 이름이면 된다. */
+  name: string;
+  /** 목표 개수. */
+  quantity: number;
 }
 
 export interface MemoState {
-  targets: readonly StoredTarget[];
+  goals: readonly Goal[];
+  /** 줄의 자리 이름 -> 가진 개수. 맨 위 줄은 그 목표의 현재 개수다. */
+  owned: Readonly<Record<string, number>>;
+  choices: TreeChoices;
 }
 
-const STORAGE_KEY = 'mabikuma:materialMemo';
+const STORAGE_KEY = 'mabikuma:materialMemo:v2';
 
 /** 목표 개수 상한. 저장값이 부풀지 않게 한다. */
-export const MAX_TARGETS = 30;
-export const MAX_COUNT = 99999;
+export const MAX_GOALS = 50;
+export const MAX_QUANTITY = 99999;
 
-const EMPTY: MemoState = Object.freeze({ targets: Object.freeze([]) as readonly StoredTarget[] });
+const EMPTY: MemoState = Object.freeze({ goals: [], owned: {}, choices: NO_CHOICES });
 
 type Listener = () => void;
 
@@ -38,51 +42,56 @@ let current: MemoState | null = null;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const wholeNumber = (value: unknown, max = MAX_COUNT) => {
+const wholeNumber = (value: unknown, max = MAX_QUANTITY) => {
   const number = Math.floor(Number(value));
   return Number.isFinite(number) ? Math.min(max, Math.max(0, number)) : 0;
 };
 
-/** 저장값은 믿지 않는다. 모양이 틀린 칸은 버리고 나머지를 살린다. */
-export function parseState(raw: unknown): MemoState {
-  if (!isRecord(raw) || !Array.isArray(raw.targets)) return EMPTY;
-  const targets: StoredTarget[] = [];
-  const seen = new Set<string>();
-  for (const entry of raw.targets) {
-    if (!isRecord(entry) || targets.length >= MAX_TARGETS) continue;
-    const id = typeof entry.id === 'string' ? entry.id : '';
-    const itemId = wholeNumber(entry.itemId, Number.MAX_SAFE_INTEGER);
-    if (!id || seen.has(id) || itemId <= 0) continue;
-    seen.add(id);
+/** 자리 이름이 이 목표의 줄인지. */
+const belongsTo = (key: string, id: string) => key === id || key.startsWith(`${id}.`);
 
-    const owned: Record<string, number> = {};
-    if (isRecord(entry.owned)) {
-      for (const [key, value] of Object.entries(entry.owned)) {
-        const count = wholeNumber(value);
-        if (count > 0) owned[key] = count;
-      }
-    }
-    const choices: Record<string, Choice> = {};
-    if (isRecord(entry.choices)) {
-      for (const [key, value] of Object.entries(entry.choices)) {
-        if (value === 'gather') choices[key] = 'gather';
-        else if (typeof value === 'number' && Number.isInteger(value) && value >= 0)
-          choices[key] = value;
-      }
-    }
-    const recipe = Number.isInteger(entry.recipe) && Number(entry.recipe) >= 0 ? Number(entry.recipe) : undefined;
-    const works = wholeNumber(entry.works, 99);
-    targets.push({
-      id,
-      itemId,
-      count: Math.max(1, wholeNumber(entry.count)),
-      ...(recipe !== undefined ? { recipe } : {}),
-      ...(works > 0 ? { works } : {}),
-      owned,
-      choices,
-    });
+/** 저장값은 믿지 않는다. 모양이 틀린 칸은 버리고 나머지를 살린다. 없는 목표의 줄은 버린다. */
+export function parseState(raw: unknown): MemoState {
+  if (!isRecord(raw) || !Array.isArray(raw.goals)) return EMPTY;
+  const goals: Goal[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw.goals) {
+    if (!isRecord(entry) || goals.length >= MAX_GOALS) continue;
+    const id = typeof entry.id === 'string' ? entry.id : '';
+    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+    if (!id || /[./]/.test(id) || !name || seen.has(id)) continue;
+    seen.add(id);
+    goals.push({ id, name, quantity: Math.max(1, wholeNumber(entry.quantity)) });
   }
-  return targets.length > 0 ? { targets } : EMPTY;
+  if (goals.length === 0) return EMPTY;
+
+  const known = (key: string) => goals.some((goal) => belongsTo(key, goal.id));
+
+  const owned: Record<string, number> = {};
+  if (isRecord(raw.owned)) {
+    for (const [key, value] of Object.entries(raw.owned)) {
+      const count = wholeNumber(value);
+      if (count > 0 && known(key)) owned[key] = count;
+    }
+  }
+
+  const methods: Record<string, Method> = {};
+  const beadChecked: string[] = [];
+  if (isRecord(raw.choices)) {
+    if (isRecord(raw.choices.methods)) {
+      for (const [key, value] of Object.entries(raw.choices.methods)) {
+        if (!known(key)) continue;
+        if (value === 'buy' || value === 'npc' || value === 'coin') methods[key] = value;
+        else if (typeof value === 'number' && Number.isInteger(value) && value >= 0)
+          methods[key] = value;
+      }
+    }
+    if (Array.isArray(raw.choices.beadChecked)) {
+      for (const key of raw.choices.beadChecked)
+        if (typeof key === 'string' && known(key)) beadChecked.push(key);
+    }
+  }
+  return { goals, owned, choices: { methods, beadChecked } };
 }
 
 function read(): MemoState {
@@ -121,56 +130,66 @@ export function useMemoState(): MemoState {
   return useSyncExternalStore(subscribe, read, () => EMPTY);
 }
 
-const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const newId = () => `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
-const update = (id: string, change: (target: StoredTarget) => StoredTarget) =>
-  write({ targets: read().targets.map((target) => (target.id === id ? change(target) : target)) });
-
-/** 같은 아이템이 이미 있으면 개수만 더한다. 가득 찼으면 false. */
-export function addTarget(itemId: number, count: number): boolean {
-  const { targets } = read();
-  const same = targets.find((target) => target.itemId === itemId);
+/** 목표를 더하고 그 목표의 번호를 돌려준다. 같은 이름이 이미 있으면 목표 개수만 더한다. 가득 찼으면 null. */
+export function addGoal(name: string, quantity: number): string | null {
+  const state = read();
+  const same = state.goals.find((goal) => goal.name === name);
   if (same) {
-    update(same.id, (target) => ({ ...target, count: Math.min(MAX_COUNT, target.count + count) }));
-    return true;
+    setQuantity(same.id, Math.min(MAX_QUANTITY, same.quantity + Math.max(1, quantity)));
+    return same.id;
   }
-  if (targets.length >= MAX_TARGETS) return false;
-  write({
-    targets: [
-      ...targets,
-      { id: newId(), itemId, count: Math.max(1, count), owned: {}, choices: {} },
-    ],
-  });
-  return true;
+  if (state.goals.length >= MAX_GOALS) return null;
+  const id = newId();
+  write({ ...state, goals: [...state.goals, { id, name, quantity: Math.max(1, quantity) }] });
+  return id;
 }
 
-export const removeTarget = (id: string) =>
-  write({ targets: read().targets.filter((target) => target.id !== id) });
-
-export const clearTargets = () => write(EMPTY);
-
-export const setTargetCount = (id: string, count: number) =>
-  update(id, (target) => ({ ...target, count: Math.max(1, count) }));
-
-export const setTargetWorks = (id: string, works: number | undefined) =>
-  update(id, (target) => ({ ...target, works }));
-
-/** 목표의 제작법을 바꾸면 줄의 자리가 모두 달라진다. 가진 개수와 고른 방법을 새로 시작한다. */
-export const setTargetRecipe = (id: string, recipe: number) =>
-  update(id, (target) => ({ ...target, recipe, owned: {}, choices: {} }));
-
-export const setOwned = (id: string, key: string, count: number) =>
-  update(id, (target) => {
-    const owned = { ...target.owned };
-    if (count > 0) owned[key] = count;
-    else delete owned[key];
-    return { ...target, owned };
+/** 목표와 그 목표의 가진 개수, 고른 방법을 함께 지운다. */
+export function removeGoal(id: string): void {
+  const state = read();
+  const keep = (key: string) => !belongsTo(key, id);
+  write({
+    goals: state.goals.filter((goal) => goal.id !== id),
+    owned: Object.fromEntries(Object.entries(state.owned).filter(([key]) => keep(key))),
+    choices: {
+      methods: Object.fromEntries(
+        Object.entries(state.choices.methods).filter(([key]) => keep(key)),
+      ),
+      beadChecked: state.choices.beadChecked.filter(keep),
+    },
   });
+}
 
-export const clearOwned = (id: string) => update(id, (target) => ({ ...target, owned: {} }));
+export const clearGoals = () => write(EMPTY);
 
-export const setChoice = (id: string, key: string, choice: Choice) =>
-  update(id, (target) => ({ ...target, choices: { ...target.choices, [key]: choice } }));
+export function setQuantity(id: string, quantity: number): void {
+  const state = read();
+  write({
+    ...state,
+    goals: state.goals.map((goal) =>
+      goal.id === id ? { ...goal, quantity: Math.max(1, quantity) } : goal,
+    ),
+  });
+}
+
+export function setOwned(key: string, count: number): void {
+  const state = read();
+  const owned = { ...state.owned };
+  if (count > 0) owned[key] = count;
+  else delete owned[key];
+  write({ ...state, owned });
+}
+
+/** 가진 개수를 모두 비운다. 고른 방법은 남긴다. */
+export const clearOwned = () => write({ ...read(), owned: {} });
+
+/** 고른 방법을 바꾼다. 인자에는 지금 고른 것이 들어오고, 새로 고른 것을 돌려준다. */
+export function updateChoices(change: (choices: TreeChoices) => TreeChoices): void {
+  const state = read();
+  write({ ...state, choices: change(state.choices) });
+}
 
 /** 테스트가 저장소를 비울 때. */
 export function resetMemoCache(): void {

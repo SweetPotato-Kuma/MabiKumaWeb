@@ -411,3 +411,69 @@ describe('공정', () => {
     expect(glovesNode.children?.map((child) => child.required)).toEqual([14, 1]);
   });
 });
+
+describe('가진 개수와 맨 위 자리 이름', () => {
+  const prices: Record<number, PriceState> = {
+    2: market([50, 100]),
+    3: market([400, 10]),
+    5: market([1, 1000]),
+  };
+  const run = (options: {
+    quantity?: number;
+    owned?: Record<string, number>;
+    methods?: Record<string, Method>;
+    slotKeys?: string[];
+  }) =>
+    buildPlan({
+      book,
+      recipe: sword,
+      works: 1,
+      quantity: options.quantity ?? 1,
+      priceOf: (id) => prices[id],
+      methods: options.methods ?? {},
+      expanded: new Set(),
+      owned: options.owned,
+      slotKeys: options.slotKeys,
+    });
+
+  it('가진 개수를 빼고 모자란 개수만 값을 매긴다', () => {
+    const result = run({ owned: { m0: 1 } });
+    const [ingot, leather] = result.nodes;
+    expect(ingot).toMatchObject({ required: 3, owned: 1, short: 2 });
+    expect(leather).toMatchObject({ required: 1, owned: 0, short: 1 });
+    // 철괴 2개 x 50 + 가죽 1개 x 400
+    expect(result.total.gold).toBe(500);
+    expect(result.shopping.find((row) => row.itemId === 2)?.required).toBe(2);
+  });
+
+  it('다 가진 재료는 살 것에도 시세 부족에도 오르지 않는다', () => {
+    const result = run({ owned: { m0: 5, m1: 1 } });
+    expect(result.total).toEqual({ gold: 0, unpriced: [], short: [], pending: 0 });
+    expect(result.shopping).toEqual([]);
+    expect(result.nodes[0]).toMatchObject({ owned: 5, short: 0 });
+  });
+
+  it('만들기로 한 재료를 가졌다면 모자란 만큼만 하위 재료를 센다', () => {
+    const ingotIndex = book.subRecipesOf(2)[0].index;
+    const result = run({ methods: { m0: ingotIndex }, owned: { m0: 1 } });
+    const ingot = result.nodes[0];
+    // 철괴 3개 중 1개를 가져서 2개를 만든다. 10개씩 나오니 한 번, 철광석은 2개.
+    expect(ingot).toMatchObject({ short: 2, crafts: 1 });
+    expect(ingot.children?.[0]).toMatchObject({ required: 2, short: 2 });
+  });
+
+  it('가진 개수가 많아도 하위 재료는 0 이다', () => {
+    const ingotIndex = book.subRecipesOf(2)[0].index;
+    const result = run({ methods: { m0: ingotIndex }, owned: { m0: 9 } });
+    expect(result.nodes[0]).toMatchObject({ short: 0, crafts: 0 });
+    expect(result.nodes[0].children?.[0]).toMatchObject({ required: 0, short: 0 });
+    expect(result.total.gold).toBe(400);
+  });
+
+  it('맨 위 자리 이름을 정하면 칸 순서와 상관없이 그 이름으로 가진 개수를 찾는다', () => {
+    const result = run({ slotKeys: ['a1', 'b2'], owned: { b2: 1 } });
+    expect(result.nodes.map((node) => node.key)).toEqual(['a1', 'b2']);
+    expect(result.nodes[1]).toMatchObject({ owned: 1, short: 0 });
+    expect(result.total.gold).toBe(150);
+  });
+});
