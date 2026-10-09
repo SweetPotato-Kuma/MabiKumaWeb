@@ -9,6 +9,7 @@ import {
   collectNews,
   getPost,
   listEvents,
+  PAGE_SIZE,
   listPosts,
   parseBoardList,
   parseEventList,
@@ -612,5 +613,30 @@ describe('키트 공지 표시', () => {
       get: fakeSite(pages).get,
     });
     expect(eventEdit).toMatchObject({ edited: 1, kitNotices: 1 });
+  });
+});
+
+describe('목록 쪽 나누기', () => {
+  it('한 쪽에 10개씩 담고 마지막 쪽에는 나머지를 담는다', async () => {
+    const db = fakeD1();
+    const add = db.sqlite.prepare(
+      `INSERT INTO news_posts (id, board, category, title, posted_at, first_seen, checked_at, revisions, body_hash)
+       VALUES (?, 'notice', '공지', ?, ?, 0, 0, 1, 'h')`,
+    );
+    for (let id = 1; id <= 25; id += 1) add.run(id, `글 ${id}`, 1000 + id);
+
+    expect(PAGE_SIZE).toBe(10);
+    const first = await listPosts(db, { page: 1 });
+    expect(first).toMatchObject({ total: 25, size: 10, page: 1 });
+    expect(first.posts).toHaveLength(10);
+    expect(first.posts[0].title).toBe('글 25');
+    expect((await listPosts(db, { page: 3 })).posts.map((post) => post.title)).toEqual([
+      '글 5',
+      '글 4',
+      '글 3',
+      '글 2',
+      '글 1',
+    ]);
+    expect((await listPosts(db, { page: 4 })).posts).toEqual([]);
   });
 });

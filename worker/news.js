@@ -68,7 +68,8 @@ const BACKFILL_PAGES_MAX = 30;
 /** 공식 홈페이지 요청 사이 간격. */
 export const GAP_MS = 1000;
 
-export const PAGE_SIZE = 20;
+/** 목록 한 쪽의 글 수. 새소식 화면이 스크롤 없이 한 화면에 들어오는 수다. */
+export const PAGE_SIZE = 10;
 const QUERY_MAX = 40;
 const CACHE_SECONDS = 60;
 const DAY_SECONDS = 86400;

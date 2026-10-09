@@ -64,6 +64,7 @@ export const isNavGroup = (entry: NavEntry): entry is NavGroup => 'sections' in 
  * 던전 코인은 코인으로 NPC 상점에서 살 수 있는 것의 값을 따지는 화면이라 NPC 상점 아래에 둔다.
  */
 export const NAV_TREE: NavEntry[] = [
+  { path: '/news', label: '새소식', icon: <NewsIcon />, keywords: '공지 공지사항 점검 이벤트 샵 개발자 노트 패치 수정' },
   { path: '/auction', label: '경매장', icon: <AuctionIcon />, keywords: '시세 가격 매물' },
   {
     path: '/items',
@@ -88,7 +89,6 @@ export const NAV_TREE: NavEntry[] = [
     ],
   },
   { path: '/horn', label: '뿔피리', icon: <HornIcon />, keywords: '거대한 외침 확성기 서버' },
-  { path: '/news', label: '새소식', icon: <NewsIcon />, keywords: '공지 공지사항 점검 이벤트 샵 개발자 노트 패치 수정' },
   {
     key: 'calculators',
     label: '계산기',

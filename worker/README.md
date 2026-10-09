@@ -364,7 +364,7 @@ curl -X POST -H "Origin: https://mabi.spkuma.com" -H "x-mabikuma-admin-key: $MAB
 
 | 경로 | 누가 | 하는 일 |
 | --- | --- | --- |
-| `GET /news/list?category=&q=&edited=1&page=` | 공개 | 글 목록(20개씩). 제목만 찾는다 |
+| `GET /news/list?category=&q=&edited=1&page=` | 공개 | 글 목록(10개씩). 제목만 찾는다 |
 | `GET /news/post?id=` | 공개 | 글 한 편과 모든 판의 본문 HTML |
 | `GET /news/events` | 공개 | 진행 중인 이벤트(그림, 기간) |
 | `POST /news/collect?pages=` | 운영자 | 크론을 기다리지 않고 지금 모으기. `pages` 만큼 지난 목록을 더 채운다(최대 30) |

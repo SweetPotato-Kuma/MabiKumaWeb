@@ -37,6 +37,12 @@ describe('메뉴 구조', () => {
     expect(selectedPathFor('/relic-simulator', entries)).toBe('/relic-simulator');
   });
 
+  it('새소식이 메뉴의 맨 앞이고 경매장보다 앞에 있다', () => {
+    const paths = navPages(NAV_TREE).map(({ leaf }) => leaf.path);
+    expect(paths[0]).toBe('/news');
+    expect(paths.indexOf('/news')).toBeLessThan(paths.indexOf('/auction'));
+  });
+
   it('첫 화면에서는 선택된 칸이 없다', () => {
     expect(selectedPathFor('/', entries)).toBe('');
   });
