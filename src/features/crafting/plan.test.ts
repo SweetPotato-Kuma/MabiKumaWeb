@@ -124,6 +124,40 @@ describe('rankLabel', () => {
   });
 });
 
+describe('맨 위 줄의 기본 구하는 방법', () => {
+  const prices: Record<number, PriceState> = { 2: market([50, 100]), 3: market([400, 10]) };
+  const run = (methods: Record<string, Method> = {}, craftRootsByDefault = true) =>
+    buildPlan({
+      book,
+      recipe: sword,
+      works: 1,
+      quantity: 1,
+      priceOf: (id) => prices[id],
+      methods,
+      expanded: new Set(),
+      craftRootsByDefault,
+    });
+
+  it('거래되는 맨 위 줄도 제작법이 있으면 만드는 것이 기본이고, 아래 줄은 그대로 사는 쪽이다', () => {
+    const result = run();
+    const [ingot, leather] = result.nodes;
+    expect(typeof ingot.method).toBe('number');
+    expect(ingot.children?.map((child) => [child.itemId, child.method])).toEqual([[5, 'buy']]);
+    // 제작법이 없는 줄은 만들 수 없으니 산다.
+    expect(leather.method).toBe('buy');
+  });
+
+  it('줄에서 산다고 고르면 산다', () => {
+    const [ingot] = run({ m0: 'buy' }).nodes;
+    expect(ingot.method).toBe('buy');
+    expect(ingot.children).toBeUndefined();
+  });
+
+  it('켜지 않으면 거래되는 줄은 사는 것이 기본이다', () => {
+    expect(run({}, false).nodes[0].method).toBe('buy');
+  });
+});
+
 describe('buildPlan', () => {
   it('처음에는 직접 재료의 시세만 묻는다', () => {
     const result = plan({});

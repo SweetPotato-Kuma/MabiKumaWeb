@@ -165,6 +165,11 @@ export interface PlanInput {
   /** 따로 고르지 않은 재료를 NPC 가 팔면 NPC 에서 사는 것을 기본으로 할지. */
   preferNpc?: boolean;
   /**
+   * 따로 고르지 않은 맨 위 줄을 제작법이 있으면 만드는 것으로 둘지. 기본은 거래되면 사는 쪽이다.
+   * 목표 아이템의 재료를 모으는 쪽(재료 메모)은 목표를 만드는 것이 기본이다.
+   */
+  craftRootsByDefault?: boolean;
+  /**
    * 코인(구슬) 계산. 이 물건이 쓰는 코인 하나만 다룬다.
    * coinCostOf 는 그 코인으로 파는 재료의 개당 코인 개수, craftable 은 만들 때 그 코인이 드는 재료인지.
    * checked 는 "구슬로 만들기" 를 켠 줄의 key. 켠 재료 아래에서는 코인으로 파는 재료를 고르지 않아도
@@ -202,6 +207,7 @@ export function buildPlan(input: PlanInput): CraftPlan {
     expanded,
     npcPriceOf,
     preferNpc = false,
+    craftRootsByDefault = false,
     beads,
     slotKeys,
     owned: ownedByKey,
@@ -346,6 +352,8 @@ export function buildPlan(input: PlanInput): CraftPlan {
     if (chosenRecipe) method = chosenRecipe.index;
     else if (chosenCoin || inheritsCoin) method = 'coin';
     else if (checkedHere) method = recipes[0].index;
+    else if (!chosenSource && depth === 0 && craftRootsByDefault && recipes.length > 0)
+      method = recipes[0].index;
     else if (!chosenSource && !buyable && recipes.length > 0) method = recipes[0].index;
 
     const byBeads = checkedHere && typeof method === 'number';

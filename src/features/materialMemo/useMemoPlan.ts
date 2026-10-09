@@ -53,6 +53,8 @@ export function useMemoPlan(base: RecipeBook, state: MemoState) {
       expanded: new Set(expanded),
       npcPriceOf: (id) => npcUnitPrice(book.itemName(id), wednesday),
       preferNpc: useNpc,
+      // 목표는 만드는 것이 기본이다. 살 거라면 줄에서 경매장 구매를 고른다.
+      craftRootsByDefault: true,
       beads: withBeads ? beads : undefined,
     });
   const plan = planWith(true);

@@ -18,7 +18,7 @@ const book = buildRecipeBook({
     { id: 10013, name: '핸디크래프트', count: 1 },
     { id: 10015, name: '제련', count: 1 },
   ],
-  items: { 1: ['검', 1], 2: ['철괴', 1], 3: ['가죽', 1], 5: ['철광석', 1] },
+  items: { 1: ['검', 1], 2: ['철괴', 1], 3: ['가죽', 1], 4: ['단검', 1], 5: ['철광석', 1] },
   recipes: [
     {
       item: 1,
@@ -31,6 +31,16 @@ const book = buildRecipeBook({
       ],
     },
     { item: 2, skill: 10015, rank: 1, yield: 10, materials: [[[5], 2]] },
+    {
+      item: 4,
+      skill: 10013,
+      rank: 7,
+      yield: 1,
+      materials: [
+        [[2], 2],
+        [[3], 1],
+      ],
+    },
   ],
 });
 
@@ -40,6 +50,7 @@ const nameIndex = buildNameIndex({
   categories: ['무기'],
   items: [
     ['검', 0],
+    ['단검', 0],
     ['오래된 지팡이', 0],
   ],
 });
@@ -121,14 +132,10 @@ describe('목표 아이템 재료 메모 화면', () => {
     expect(screen.queryByRole('button', { name: /펼치기|Expand row/i })).not.toBeInTheDocument();
   });
 
-  it('제작하는 아이템은 재료를 펼쳐 구하는 방법을 고르고, 가진 개수만큼 금액이 준다', async () => {
+  it('제작하는 아이템은 만드는 것이 기본이라 재료가 펼쳐 보이고, 가진 개수만큼 금액이 준다', async () => {
     renderPage();
     addGoal('검');
 
-    // 기본은 경매장 구매다. 검 최저가 700 G.
-    expect(await screen.findAllByText('700 G')).not.toHaveLength(0);
-
-    chooseMethod('검', '제작: 핸디크래프트 9랭크');
     // 철괴 3개 x 50 + 가죽 1개 x 400
     expect(await screen.findAllByText('550 G')).not.toHaveLength(0);
     expect(await screen.findByLabelText('철괴 가진 개수')).toBeInTheDocument();
@@ -138,10 +145,41 @@ describe('목표 아이템 재료 메모 화면', () => {
     expect(screen.getAllByText('완료')).not.toHaveLength(0);
   });
 
+  it('완성품을 살 거라면 줄에서 경매장 구매를 고른다', async () => {
+    renderPage();
+    addGoal('검');
+    await screen.findAllByText('550 G');
+
+    chooseMethod('검', '경매장 구매');
+    // 검 최저가 700 G.
+    expect(await screen.findAllByText('700 G')).not.toHaveLength(0);
+
+    // 사기로 하면 전체 재료에는 검 자체가 구할 것으로 오른다. 펼쳐 둔 재료 줄은 참고용이다.
+    fireEvent.click(screen.getByRole('button', { name: /전체 재료/ }));
+    const panel = screen.getByText('전체 개수').closest('.ant-collapse') as HTMLElement;
+    const rows = within(panel).getAllByRole('row');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[1]).getByText('검')).toBeInTheDocument();
+  });
+
+  it('목표가 여럿이면 전체 재료는 목표마다의 재료를 모두 합친다', async () => {
+    renderPage();
+    // 검 = 철괴 3 + 가죽 1, 단검 = 철괴 2 + 가죽 1. 둘 다 만드는 것이 기본이다.
+    addGoal('검');
+    addGoal('단검');
+
+    fireEvent.click(screen.getByRole('button', { name: /전체 재료/ }));
+    const panel = screen.getByText('전체 개수').closest('.ant-collapse') as HTMLElement;
+    const rows = within(panel).getAllByRole('row');
+    expect(within(rows[1]).getByText('철괴')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('5')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('가죽')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('2')).toBeInTheDocument();
+  });
+
   it('전체 재료는 기본으로 접혀 있고, 펼치면 전체 개수와 가진 개수만 보인다', async () => {
     renderPage();
     addGoal('검', 2);
-    chooseMethod('검', '제작: 핸디크래프트 9랭크');
     fireEvent.change(await screen.findByLabelText('철괴 가진 개수'), { target: { value: '4' } });
 
     const header = screen.getByRole('button', { name: /전체 재료/ });
