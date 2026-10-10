@@ -150,11 +150,11 @@ describe('홈 위젯 편집', () => {
     ).toBe('5');
     fireEvent.click(screen.getByRole('button', { name: '뿔피리 설정' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: '앞으로 이동' }));
-    expect(order()[4]).toBe('뿔피리');
+    expect(order()[3]).toBe('뿔피리');
     fireEvent.click(screen.getByRole('button', { name: '기본 배치' }));
     expect(
       screen.getByRole('region', { name: '뿔피리' }).style.getPropertyValue('--widget-columns'),
-    ).toBe('2');
+    ).toBe('3');
     act(() => switchPersonalAccount('11111111-1111-1111-1111-111111111111'));
     expect(screen.getAllByRole('region')).toHaveLength(7);
   });

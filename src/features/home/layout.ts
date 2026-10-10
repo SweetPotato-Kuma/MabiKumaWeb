@@ -7,8 +7,8 @@ export const WIDGETS = {
   news: { title: '공지사항 · 새소식', width: 3 },
   kits: { title: '판매 중인 키트', width: 2 },
   dev: { title: '개발자 노트', width: 2 },
+  horn: { title: '뿔피리', width: 3 },
   favorites: { title: '즐겨찾기 경매장 매물', width: 2 },
-  horn: { title: '뿔피리', width: 2 },
   memo: { title: '목표 아이템 메모', width: 5 },
 } as const;
 export type WidgetId = keyof typeof WIDGETS;
