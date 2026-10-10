@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Flex, Input, Modal, Popconfirm, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Descriptions,
+  Flex,
+  Input,
+  Modal,
+  Popconfirm,
+  Typography,
+} from 'antd';
 import { accountApi, ACCOUNT_CONSENT_VERSION, type Account } from '@/features/account/api';
 import { disableGoogleAutoSelect, mountGoogleLogin } from '@/features/account/google';
 import {
@@ -108,11 +118,25 @@ export function AccountPanel() {
             : '계정 저장 대기';
   return (
     <>
-      <Button type="text" onClick={() => setOpen(true)} aria-label="계정 및 저장" title={status}>
-        계정
+      <Button
+        type="text"
+        onClick={() => setOpen(true)}
+        aria-label={account ? '사용자 프로필' : '로그인'}
+        title={account?.profile ? `${account.profile.nickname} · ${status}` : '로그인'}
+      >
+        <span
+          style={{
+            maxWidth: 96,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {account?.profile?.nickname ?? (account ? '프로필 등록' : '로그인')}
+        </span>
       </Button>
       <Modal
-        title="계정 및 저장"
+        title={account?.profile ? '사용자 프로필' : account ? '프로필 등록' : '로그인'}
         open={open}
         onCancel={() => setOpen(false)}
         footer={null}
@@ -173,6 +197,16 @@ export function AccountPanel() {
             </>
           ) : (
             <>
+              <Descriptions
+                bordered
+                size="small"
+                column={1}
+                items={[
+                  { key: 'nickname', label: '닉네임', children: account.profile?.nickname },
+                  { key: 'provider', label: '연결된 로그인', children: 'Google' },
+                  { key: 'storage', label: '저장 상태', children: status },
+                ]}
+              />
               <Text>
                 {account.profile?.nickname}님의 계정에 자동 저장합니다. 서버 저장이 끝나기 전의
                 변경은 이 기기에 보관됩니다.

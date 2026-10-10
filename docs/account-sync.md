@@ -7,18 +7,24 @@
 
 ## 운영 설정
 
-기능은 기본 비활성 상태다. OAuth 설정과 계정 전용 D1이 모두 준비되었을 때 `/account/config`가 활성 상태를 반환한다.
+OAuth 설정과 계정 전용 D1이 모두 준비되었을 때 `/account/config`가 활성 상태를 반환한다.
 기존 조회·계산·로컬 저장은 이 설정 없이도 동작한다.
+
+2026-10-10 운영 준비 상태: 계정 전용 D1 `mabikuma-accounts`를 생성하고 `0001_accounts.sql`을 적용했다.
+Worker에는 `ACCOUNTS` 바인딩과 자체 도메인 `https://mabi-api.spkuma.com`을 연결했다.
+GitHub Actions Variable `VITE_ACCOUNT_API_URL`도 이 주소로 설정했다.
+현재 남은 필수 설정은 실제 Google OAuth 웹 클라이언트 ID다. ID가 없는 동안 로그인은 비활성 상태다.
 
 1. Google Cloud Console에서 OAuth 동의 화면과 **웹 애플리케이션 클라이언트**를 설정한다.
    승인된 JavaScript 출처에 `https://mabi.spkuma.com`을 추가한다. 개발 환경은 실제 사용하는 localhost 출처를 추가한다.
    팝업 버튼의 ID 토큰을 검증하는 방식이므로 클라이언트 비밀 키는 필요 없다.
 2. `worker/wrangler.toml`의 `GOOGLE_CLIENT_ID`에 실제 클라이언트 ID를 설정한다. 이 값은 공개 식별자이며 비밀 키가 아니다.
-3. Worker 디렉터리에서 `npx wrangler d1 create mabikuma-accounts`를 실행한다.
-   반환된 실제 ID로 `wrangler.toml`의 `ACCOUNTS` D1 예시를 활성화한다.
+   파일에 설정해야 이후 Worker 재배포에서도 값이 유지된다.
+3. 계정 전용 D1은 현재 생성·바인딩되어 있다. 새 Cloudflare 계정으로 이전할 때만
+   Worker 디렉터리에서 `npx wrangler d1 create mabikuma-accounts`를 실행하고 반환된 ID로 `ACCOUNTS` 바인딩을 바꾼다.
    Cloudflare 인증 오류가 나오면 먼저 `npx wrangler login`으로 CLI 인증을 다시 연결한다.
 4. `npx wrangler d1 migrations apply mabikuma-accounts --remote`로 `migrations-accounts`의 스키마를 적용한다.
-5. 인증 쿠키를 쓸 API를 `mabi-api.spkuma.com`처럼 프런트와 같은 사이트의 HTTPS 자체 도메인에 연결한다.
+5. 인증 쿠키를 쓸 API는 `mabi-api.spkuma.com` 자체 도메인에 연결되어 있다.
    `*.workers.dev`와 프런트는 다른 사이트다. 현재 `SameSite=Lax` 쿠키는 이 교차 사이트 구성에서 전송되지 않으므로,
    쿠키 정책을 느슨하게 바꾸는 대신 자체 도메인을 사용한다.
 6. `ALLOWED_ORIGINS`에 실제 프런트 출처를 명시하고 `npx wrangler deploy`한다.
@@ -31,6 +37,9 @@
 운영 설정을 바꿀 때 기존 다른 데이터용 Worker 바인딩과 시크릿을 보존한다.
 
 ## 저장 대상과 분리
+
+헤더는 비로그인일 때 `로그인`, 외부 인증 후 등록 전에는 `프로필 등록`, 등록 후에는 닉네임을 표시한다.
+닉네임을 누르면 사용자 프로필에서 닉네임, 연결된 로그인 제공자와 저장 상태를 볼 수 있다.
 
 `shared/personal-data.js`가 서버와 프런트 공통 허용 목록이다.
 재료 메모, 계산기의 `remember` 입력, 저장 검색, 가방 관심 조건, 던전 코인 보유 수량, 탈틴 농장 입력,

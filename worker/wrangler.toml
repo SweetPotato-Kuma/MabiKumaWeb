@@ -2,6 +2,11 @@ name = "mabikuma-api"
 main = "worker.js"
 compatibility_date = "2026-09-22"
 
+# 로그인 쿠키가 프런트와 같은 사이트에서 전송되도록 자체 API 도메인을 쓴다.
+# 기존 공개 조회 주소도 유지한다.
+workers_dev = true
+routes = [{ pattern = "mabi-api.spkuma.com", custom_domain = true }]
+
 # 대시보드에서 켜 두었던 설정. 여기 적어 두지 않으면 wrangler 로 배포할 때마다 꺼지거나 켜진다.
 preview_urls = false
 
@@ -103,10 +108,9 @@ type = "ratelimit"
 namespace_id = "1004"
 simple = { limit = 60, period = 60 }
 
-# 사용자 데이터는 공개 이미지 버킷과 분리한다. 생성한 실제 ID를 넣고 주석을 해제한다.
-# npx wrangler d1 create mabikuma-accounts
-# [[d1_databases]]
-# binding = "ACCOUNTS"
-# database_name = "mabikuma-accounts"
-# database_id = "실제로 생성한 데이터베이스 ID"
-# migrations_dir = "migrations-accounts"
+# 사용자 데이터는 공개 이미지 버킷과 분리한다.
+[[d1_databases]]
+binding = "ACCOUNTS"
+database_name = "mabikuma-accounts"
+database_id = "cc06b4a0-58c3-4052-b1bc-2a21526a05ba"
+migrations_dir = "migrations-accounts"

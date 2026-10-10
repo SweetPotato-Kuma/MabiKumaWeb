@@ -43,7 +43,9 @@ afterEach(() => {
 it('비로그인 손실 안내를 제공하고 외부 인증 후 동의·프로필 등록을 거쳐 기존 저장 내용을 가져온다', async () => {
   localStorage.setItem('mabikuma:userSettings', JSON.stringify({ server: '류트' }));
   render(<AccountPanel />);
-  fireEvent.click(screen.getByRole('button', { name: '계정 및 저장' }));
+  const login = screen.getByRole('button', { name: '로그인' });
+  expect(login).toHaveTextContent('로그인');
+  fireEvent.click(login);
   expect(
     await screen.findByText(/사이트 데이터를 지우거나 기기를 바꾸면 복구할 수 없습니다/),
   ).toBeInTheDocument();
@@ -58,4 +60,11 @@ it('비로그인 손실 안내를 제공하고 외부 인증 후 동의·프로�
   await waitFor(() => expect(getPersonalAccount()).toBe(ID));
   await waitFor(() => expect(readPersonal('mabikuma:userSettings')).toContain('류트'));
   expect(localStorage.getItem('mabikuma:userSettings')).toContain('류트');
+  const profile = screen.getByRole('button', { name: '사용자 프로필' });
+  expect(profile).toHaveTextContent('쿠마');
+  expect(screen.getByText('연결된 로그인')).toBeInTheDocument();
+  expect(screen.getByText('Google', { exact: true })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(profile);
+  expect(await screen.findByRole('dialog', { name: '사용자 프로필' })).toBeInTheDocument();
 });

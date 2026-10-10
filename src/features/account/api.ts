@@ -11,7 +11,7 @@ export interface RemoteDocument {
   entries: Record<string, string>;
   updatedAt: number | null;
 }
-const BASE = (import.meta.env.VITE_ACCOUNT_API_URL ?? getProxyUrl()).replace(/\/+$/, '');
+const BASE = (import.meta.env.VITE_ACCOUNT_API_URL?.trim() || getProxyUrl()).replace(/\/+$/, '');
 let expectedAccount: string | null = null;
 export function expectAccount(id: string | null): void {
   expectedAccount = id;
