@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Alert, Card, Flex, Grid, Typography } from 'antd';
 import { BannerCarousel } from '@/components/news/BannerCarousel';
-import { DevNoteWidget, EditedWidget, KitWidget, NewsBlock } from '@/components/news/HomeWidgets';
+import { DevNoteWidget, KitWidget, NewsBlock } from '@/components/news/HomeWidgets';
 import { FavoritesWidget, HornWidget, MemoWidget } from '@/components/home/PersonalWidgets';
 import { HomeWidgetCanvas } from '@/components/home/HomeWidgetCanvas';
 import { canReadNews } from '@/features/news/api';
@@ -30,7 +30,6 @@ export function HomePage() {
     ),
     kits: news ? <KitWidget persistent /> : unavailable,
     dev: news ? <DevNoteWidget persistent /> : unavailable,
-    edited: news ? <EditedWidget /> : unavailable,
     favorites: <FavoritesWidget />,
     horn: <HornWidget />,
     memo: <MemoWidget />,

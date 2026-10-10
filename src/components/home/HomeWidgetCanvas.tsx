@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import { App, Button, Card, Dropdown, Flex, Typography, type MenuProps } from 'antd';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -12,12 +12,31 @@ import {
 
 const DRAG_TYPE = 'application/x-mabikuma-widget';
 
+/** 끄는 동안 화면 위아래 이 거리 안으로 가면 스크롤한다(px). */
+const EDGE = 120;
+const MAX_SCROLL_STEP = 28;
+
+/** 놓을 곳. after 면 id 위젯의 뒤(오른쪽·아래), 아니면 앞(왼쪽·위)이다. */
+interface DropTarget {
+  id: WidgetId | 'end';
+  after: boolean;
+}
+
+/** 가로로 꽉 찬 위젯은 위·아래로, 나머지는 왼쪽·오른쪽으로 앞뒤를 가른다. */
+const isFullRow = (widget: WidgetLayout) => widget.width >= 5;
+
+function hintOf(widget: WidgetLayout, after: boolean): string {
+  const name = WIDGETS[widget.id].title;
+  if (isFullRow(widget)) return `'${name}' ${after ? '아래' : '위'}에 배치됩니다`;
+  return `'${name}' ${after ? '오른쪽' : '왼쪽'}에 배치됩니다`;
+}
+
 export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => ReactNode }) {
   const layout = useHomeLayout();
   const [params, setParams] = useSearchParams();
   const editing = params.get('editWidgets') === '1';
   const [dragging, setDragging] = useState<WidgetId | null>(null);
-  const [over, setOver] = useState<string | null>(null);
+  const [target, setTarget] = useState<DropTarget | null>(null);
   const { message } = App.useApp();
   function save(next: WidgetLayout[]) {
     try {
@@ -54,13 +73,61 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
   }
   function end() {
     setDragging(null);
-    setOver(null);
+    setTarget(null);
+  }
+  function after(event: DragEvent, widget: WidgetLayout): boolean {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return isFullRow(widget)
+      ? event.clientY > rect.top + rect.height / 2
+      : event.clientX > rect.left + rect.width / 2;
+  }
+  /** 위젯 뒤에 놓는다는 것은 화면에 보이는 다음 위젯 앞에 놓는다는 뜻이다. 다음이 없으면 맨 끝이다. */
+  function beforeOf(widget: WidgetLayout, behind: boolean): WidgetId | undefined {
+    if (!behind) return widget.id;
+    const order = layout.filter((item) => item.visible && item.id !== dragging);
+    return order[order.findIndex((item) => item.id === widget.id) + 1]?.id;
+  }
+  function hover(event: DragEvent, widget: WidgetLayout) {
+    if (!editing || !dragging) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (widget.id === dragging) {
+      setTarget(null);
+      return;
+    }
+    const behind = after(event, widget);
+    setTarget((prev) =>
+      prev?.id === widget.id && prev.after === behind ? prev : { id: widget.id, after: behind },
+    );
   }
   function drop(event: DragEvent, before?: WidgetId) {
     event.preventDefault();
     if (dragging && event.dataTransfer.getData(DRAG_TYPE) === dragging) place(dragging, before);
     end();
   }
+  // 끄는 동안 화면 위·아래 가장자리에 가면 스크롤한다. 브라우저 기본 자동 스크롤은 느리고 안 될 때가 많다.
+  useEffect(() => {
+    if (!dragging) return;
+    let pointerY: number | null = null;
+    const track = (event: globalThis.DragEvent) => {
+      // 끌기가 끝날 때 일부 브라우저가 좌표 0,0 으로 한 번 더 알린다.
+      pointerY = event.clientX === 0 && event.clientY === 0 ? null : event.clientY;
+    };
+    const timer = window.setInterval(() => {
+      if (pointerY === null) return;
+      const top = EDGE - pointerY;
+      const bottom = pointerY - (window.innerHeight - EDGE);
+      const depth = Math.max(top, bottom);
+      if (depth <= 0) return;
+      const step = Math.ceil((Math.min(depth, EDGE) / EDGE) * MAX_SCROLL_STEP);
+      window.scrollBy(0, top > 0 ? -step : step);
+    }, 16);
+    window.addEventListener('dragover', track);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('dragover', track);
+    };
+  }, [dragging]);
   function menu(widget: WidgetLayout): MenuProps {
     const visible = layout.filter((item) => item.visible);
     return {
@@ -115,8 +182,8 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
           }
         >
           <Typography.Paragraph type="secondary">
-            위젯의 이동 손잡이를 끌어 놓으세요. 우클릭 또는 ⋯ 메뉴에서 너비·순서·숨기기를 바꿀 수
-            있습니다. 변경은 자동 저장됩니다.
+            위젯의 이동 손잡이를 끌어 놓으세요. 놓을 자리가 표시선과 문구로 나타납니다. 우클릭 또는
+            ⋯ 메뉴에서 너비·순서·숨기기를 바꿀 수 있습니다. 변경은 자동 저장됩니다.
           </Typography.Paragraph>
           <div className="home-widget-palette" aria-label="추가할 위젯">
             {layout
@@ -153,11 +220,16 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
         {layout
           .filter((widget) => widget.visible)
           .map((widget) => {
+            const dropAt = target?.id === widget.id ? target : null;
             const content = (
               <section
                 key={widget.id}
                 aria-label={WIDGETS[widget.id].title}
-                className={`home-widget home-widget-${widget.id}${over === widget.id ? ' home-widget-drop-target' : ''}${dragging === widget.id ? ' home-widget-dragging' : ''}`}
+                className={`home-widget home-widget-${widget.id}${
+                  dropAt
+                    ? ` home-widget-drop-target home-widget-drop-${isFullRow(widget) ? 'v' : 'h'} home-widget-drop-${dropAt.after ? 'after' : 'before'}`
+                    : ''
+                }${dragging === widget.id ? ' home-widget-dragging' : ''}`}
                 style={
                   {
                     '--widget-columns': widget.width,
@@ -171,17 +243,16 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
                             : 2,
                   } as CSSProperties
                 }
-                onDragOver={(event) => {
-                  if (editing && dragging) {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                    setOver(widget.id);
-                  }
-                }}
+                onDragOver={(event) => hover(event, widget)}
                 onDrop={(event) => {
-                  if (editing && dragging) drop(event, widget.id);
+                  if (editing && dragging) drop(event, beforeOf(widget, after(event, widget)));
                 }}
               >
+                {dropAt && (
+                  <div className="home-widget-drop-hint" aria-hidden="true">
+                    {hintOf(widget, dropAt.after)}
+                  </div>
+                )}
                 {editing && (
                   <div className="home-widget-edit-bar">
                     <button
@@ -219,17 +290,19 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
           })}
         {editing && (
           <div
-            className={`home-widget-drop-end${over === 'end' ? ' home-widget-drop-target' : ''}`}
+            className={`home-widget-drop-end${target?.id === 'end' ? ' home-widget-drop-target' : ''}`}
             onDragOver={(event) => {
               if (dragging) {
                 event.preventDefault();
-                setOver('end');
+                setTarget((prev) => (prev?.id === 'end' ? prev : { id: 'end', after: true }));
               }
             }}
             onDrop={(event) => drop(event)}
             aria-label="마지막 위치에 위젯 놓기"
           >
-            여기에 끌어 놓아 마지막에 배치
+            {target?.id === 'end'
+              ? '여기에 놓으면 맨 끝에 배치됩니다'
+              : '여기에 끌어 놓아 마지막에 배치'}
           </div>
         )}
       </div>

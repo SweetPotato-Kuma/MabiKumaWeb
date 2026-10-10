@@ -10,7 +10,6 @@ export const WIDGETS = {
   favorites: { title: '즐겨찾기 경매장 매물', width: 2 },
   horn: { title: '뿔피리', width: 2 },
   memo: { title: '목표 아이템 메모', width: 5 },
-  edited: { title: '고친 글', width: 2 },
 } as const;
 export type WidgetId = keyof typeof WIDGETS;
 export interface WidgetLayout {
@@ -22,7 +21,7 @@ export const defaultLayout = (): WidgetLayout[] =>
   Object.entries(WIDGETS).map(([id, widget]) => ({
     id: id as WidgetId,
     width: widget.width,
-    visible: id !== 'edited',
+    visible: true,
   }));
 
 export function parseLayout(raw: unknown): WidgetLayout[] {

@@ -125,12 +125,6 @@ function PostRows({ posts }: { posts: NewsPost[] }) {
   );
 }
 
-/** 받는 동안과 못 받았을 때, 글이 없을 때는 위젯을 그리지 않는다. 첫 화면의 중심(배너와 새소식)을 흔들지 않으려는 것이다. */
-function useWidgetPosts(category: NewsCategory | '', edited: boolean): NewsPost[] {
-  const query = useNewsList({ category, q: '', edited, page: 1 });
-  return query.error ? [] : (query.data?.posts.slice(0, WIDGET_ROWS) ?? []);
-}
-
 /** 최근 개발자 노트. */
 export function DevNoteWidget({ persistent = false }: { persistent?: boolean }) {
   const query = useNewsList({ category: '개발자 노트', q: '', edited: false, page: 1 });
@@ -147,20 +141,6 @@ export function DevNoteWidget({ persistent = false }: { persistent?: boolean }) 
       ) : (
         <Text type="secondary">등록된 개발자 노트가 없습니다.</Text>
       )}
-    </WidgetCard>
-  );
-}
-
-/**
- * 올린 뒤에 고쳐진 글. 공식 홈페이지는 공지를 고쳐도 새 글을 올리지 않아 무엇이 바뀌었는지 알기 어렵다.
- * 고친 글이 아직 없으면 그리지 않는다.
- */
-export function EditedWidget() {
-  const posts = useWidgetPosts('', true);
-  if (posts.length === 0) return null;
-  return (
-    <WidgetCard title="고친 글" extra={<MoreLink to="/news?c=edited" />}>
-      <PostRows posts={posts} />
     </WidgetCard>
   );
 }

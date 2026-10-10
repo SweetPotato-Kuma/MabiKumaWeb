@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, cleanup, within } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen, cleanup, within } from '@testing-library/react';
 import { App } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +13,6 @@ vi.mock('@/components/news/HomeWidgets', () => ({
   NewsBlock: () => <div>공지 내용</div>,
   KitWidget: () => <div>키트 내용</div>,
   DevNoteWidget: () => <div>노트 내용</div>,
-  EditedWidget: () => null,
 }));
 vi.mock('@/components/home/PersonalWidgets', () => ({
   FavoritesWidget: () => <div>즐겨찾기 내용</div>,
@@ -69,18 +68,48 @@ describe('홈 위젯 편집', () => {
     fireEvent.dragOver(screen.getByRole('region', { name: '이벤트 배너' }), { dataTransfer });
     fireEvent.drop(screen.getByRole('region', { name: '이벤트 배너' }), { dataTransfer });
     expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)[0].id).toBe('memo');
-    fireEvent.dragStart(screen.getByRole('button', { name: '고친 글 추가' }), { dataTransfer });
+    fireEvent.contextMenu(screen.getByRole('region', { name: '뿔피리' }));
+    fireEvent.click(screen.getAllByRole('menuitem', { name: '위젯 숨기기' }).at(-1)!);
+    expect(screen.getAllByRole('region')).toHaveLength(6);
+    fireEvent.dragStart(screen.getByRole('button', { name: '뿔피리 추가' }), { dataTransfer });
     fireEvent.drop(screen.getByRole('region', { name: '목표 아이템 메모' }), { dataTransfer });
     expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)[0]).toMatchObject({
-      id: 'edited',
+      id: 'horn',
       visible: true,
     });
-    expect(screen.getAllByRole('region')).toHaveLength(8);
-    fireEvent.dragStart(screen.getByRole('button', { name: '고친 글 이동 손잡이' }), {
+    expect(screen.getAllByRole('region')).toHaveLength(7);
+    fireEvent.dragStart(screen.getByRole('button', { name: '뿔피리 이동 손잡이' }), {
       dataTransfer,
     });
     fireEvent.drop(screen.getByLabelText('마지막 위치에 위젯 놓기'), { dataTransfer });
-    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!).at(-1).id).toBe('edited');
+    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!).at(-1).id).toBe('horn');
+  });
+  it('끄는 동안 놓을 자리를 문구로 알리고 뒤쪽 절반에 놓으면 다음 위젯 앞에 배치한다', () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: '위젯 편집' }));
+    const data = new Map<string, string>();
+    const dataTransfer = {
+      setData: (key: string, value: string) => data.set(key, value),
+      getData: (key: string) => data.get(key),
+    };
+    fireEvent.dragStart(screen.getByRole('button', { name: '뿔피리 이동 손잡이' }), {
+      dataTransfer,
+    });
+    const banner = screen.getByRole('region', { name: '이벤트 배너' });
+    banner.getBoundingClientRect = () => ({ top: 0, height: 100, left: 0, width: 100 }) as DOMRect;
+    // jsdom 은 DragEvent 가 없어 좌표를 받지 못하므로 직접 붙인다.
+    const at = (kind: 'dragOver' | 'drop', clientY: number) => {
+      const event = createEvent[kind](banner, { dataTransfer });
+      Object.defineProperties(event, { clientX: { value: 50 }, clientY: { value: clientY } });
+      fireEvent(banner, event);
+    };
+    at('dragOver', 20);
+    expect(screen.getByText("'이벤트 배너' 위에 배치됩니다")).toBeInTheDocument();
+    at('dragOver', 80);
+    expect(screen.getByText("'이벤트 배너' 아래에 배치됩니다")).toBeInTheDocument();
+    at('drop', 80);
+    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)[1].id).toBe('horn');
+    expect(screen.queryByText(/배치됩니다/)).not.toBeInTheDocument();
   });
   it('터치·키보드용 메뉴로 크기와 순서를 바꾸고 기본 배치를 복원한다', async () => {
     draw();
