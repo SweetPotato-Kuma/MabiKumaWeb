@@ -107,6 +107,29 @@ export function useKitQuery(id: string | null) {
   });
 }
 
+/**
+ * 아이템 이름의 키트 그림 파일. 아이템 사전에 없는 키트 보상(의장 등)의 그림을 채우는 데 쓴다.
+ * 키트에 나온 적 없는 이름이 대부분이다. 없다는 답(404)은 오류가 아니라 null 이다.
+ */
+async function fetchKitIcon(name: string, signal?: AbortSignal): Promise<string | null> {
+  const url = new URL(`${getProxyUrl()}/kits/icon`);
+  url.searchParams.set('name', name);
+  const response = await fetch(url, { headers: { accept: 'application/json' }, signal });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`키트 그림을 받지 못했습니다. (HTTP ${response.status})`);
+  return ((await response.json()) as { file: string }).file;
+}
+
+export function useKitIcon(name: string) {
+  return useQuery({
+    queryKey: ['kits', 'icon', name],
+    queryFn: ({ signal }) => fetchKitIcon(name, signal),
+    enabled: getProxyUrl().length > 0 && name.length > 0,
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  }).data;
+}
+
 /** 이름의 그림 파일. 없으면 빈 글자. */
 export const kitIconOf = (kit: Kit, name: string) => kit.icons?.[name] ?? '';
 

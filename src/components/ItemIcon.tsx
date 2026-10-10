@@ -89,6 +89,8 @@ interface ItemIconProps {
    */
   file?: string;
   name?: string;
+  /** 사전에서 그림을 끝내 찾지 못했을 때만 대신 그릴 그림 파일(키트 그림 등). */
+  fallbackFile?: string;
   size: number;
   /** 경매장 매물의 파트별 색. 있으면 그 색으로 다시 칠한다(dye.ts). */
   colors?: DyeColors | null;
@@ -104,7 +106,7 @@ interface ItemIconProps {
  * 그림이 아직 없어도 **자리는 비워 둔다.** 칸이 늦게 생기면 이름이 옆으로 밀리며 표가 들썩인다.
  * 카드 저장소도 그림 목록도 없는 환경에서는 자리도 만들지 않는다. 영영 채워지지 않을 빈칸을 두지 않는다.
  */
-export function ItemIcon({ card, category, name, file, size, colors }: ItemIconProps) {
+export function ItemIcon({ card, category, name, file, fallbackFile, size, colors }: ItemIconProps) {
   if (!isCardStoreConfigured() && !isIconMapConfigured()) return null;
   if (file && isIconMapConfigured()) return <ItemImage src={iconFileUrl(file)} size={size} />;
   // 카테고리와 이름을 받은 칸만 목록을 본다. 카드만 넘기는 상세 창은 목록을 받을 이유가 없다.
@@ -114,6 +116,7 @@ export function ItemIcon({ card, category, name, file, size, colors }: ItemIconP
         card={card}
         category={cardCategoryOf(category)}
         name={canonicalItemName(name)}
+        fallbackFile={fallbackFile}
         size={size}
         colors={colors}
       />
@@ -127,6 +130,7 @@ function MappedItemIcon({
   card,
   category,
   name,
+  fallbackFile,
   size,
   colors,
 }: ItemIconProps & { category: string; name: string }) {
@@ -166,15 +170,11 @@ function MappedItemIcon({
     );
   // 목록에도 카드에도 그림이 없으면 기본 표시를 둔다. 뒤늦게 온 카드는 이 칸이 구독한다.
   if (src) return <ItemImage src={src} size={size} onError={onError} />;
-  return (
-    <IconSlot
-      src=""
-      missing={
-        (brief !== undefined || (failures.key === key && failures.sources.length > 0)) && !src
-      }
-      size={size}
-    />
-  );
+  const missing = brief !== undefined || (failures.key === key && failures.sources.length > 0);
+  // 사전에 그림이 없다고 확정된 뒤에만 대신 그림을 쓴다. 그 전에 쓰면 사전 그림이 오는 아이템은 그림이 바뀐다.
+  if (missing && fallbackFile && isIconMapConfigured())
+    return <ItemImage src={iconFileUrl(fallbackFile)} size={size} />;
+  return <IconSlot src="" missing={missing} size={size} />;
 }
 
 /**

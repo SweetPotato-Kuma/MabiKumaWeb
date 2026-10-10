@@ -414,6 +414,13 @@ describe('키트 경로', () => {
       body: JSON.stringify({ icons: { 박스: 'b.webp' } }),
     });
     expect(await icons.json()).toEqual({ icons: 1, skipped: 0 });
+
+    // 이름으로 키트 그림을 찾는다. 모르는 이름은 404, 이름이 없거나 너무 길면 400.
+    const found = await call(`/kits/icon?name=${encodeURIComponent('박스')}`);
+    expect(await found.json()).toEqual({ name: '박스', file: 'b.webp' });
+    expect((await call(`/kits/icon?name=${encodeURIComponent('없는 이름')}`)).status).toBe(404);
+    expect((await call('/kits/icon')).status).toBe(400);
+    expect((await call(`/kits/icon?name=${'가'.repeat(121)}`)).status).toBe(400);
   });
 });
 

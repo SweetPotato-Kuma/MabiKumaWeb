@@ -8,6 +8,7 @@ import {
   useItemCard,
   usePrefetchItemCards,
 } from '@/features/itemcard/cards';
+import { useKitIcon } from '@/features/kits/kits';
 import { EmptyState } from '@/components/EmptyState';
 import { SearchIcon } from '@/components/icons';
 
@@ -37,6 +38,8 @@ export function ItemInfoDetail({
   const keys = useMemo(() => [{ category: cardCategory, name: lookupName }], [cardCategory, lookupName]);
   usePrefetchItemCards(keys);
   const card = useItemCard(cardCategory, lookupName);
+  // 사전에 없는 키트 보상(의장 등)은 키트에 모아 둔 그림으로 채운다.
+  const kitIcon = useKitIcon(name);
 
   const configured = isCardStoreConfigured();
   const loading = configured && card === undefined;
@@ -45,7 +48,13 @@ export function ItemInfoDetail({
   return (
     <Card>
       <Flex vertical gap={20}>
-        <ItemCardSummary card={card} title={name} category={category} iconName={lookupName} />
+        <ItemCardSummary
+          card={card}
+          title={name}
+          category={category}
+          iconName={lookupName}
+          fallbackIcon={kitIcon ?? undefined}
+        />
 
         {loading ? <Skeleton active title={false} paragraph={{ rows: 3 }} /> : null}
 

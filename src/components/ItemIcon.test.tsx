@@ -158,6 +158,51 @@ describe('아이템 그림 복구', () => {
     );
   });
 
+  it('사전에 그림이 없는 아이템은 대신 줄 그림(키트 그림)을 그린다', async () => {
+    const queryClient = client();
+    queryClient.setQueryData(['itemIconMap', '음식'], new Map());
+    queryClient.setQueryData(['itemIconMap', '분류 없음'], new Map());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ cards: [] })),
+    );
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ItemIcon category="음식" name="새 의장" fallbackFile="kit.webp" size={40} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(
+        view.container.querySelector('img[src="https://icons.example/kit.webp"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  it('사전에 그림이 있으면 대신 줄 그림을 쓰지 않는다', async () => {
+    const queryClient = client();
+    queryClient.setQueryData(
+      ['itemIconMap', '음식'],
+      new Map([['새 음식', { icon: 'dict.webp', subtitle: '' }]]),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ cards: [] })),
+    );
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ItemIcon category="음식" name="새 음식" fallbackFile="kit.webp" size={40} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(
+        view.container.querySelector('img[src="https://icons.example/dict.webp"]'),
+      ).not.toBeNull(),
+    );
+    expect(view.container.querySelector('img[src="https://icons.example/kit.webp"]')).toBeNull();
+  });
+
   it('오래된 그림 주소가 실패하면 새 카드의 주소로 바꾸며 재시도를 반복하지 않는다', async () => {
     const queryClient = client();
     queryClient.setQueryData(

@@ -22,6 +22,7 @@ import { KIT_CATEGORIES, getMeta, nexonPageClient, setMeta } from './news.js';
 
 export const KITS_INDEX_PATH = '/kits/index';
 export const KITS_KIT_PATH = '/kits/kit';
+export const KITS_ICON_PATH = '/kits/icon';
 export const KITS_ARCHIVE_PATH = '/kits/archive';
 export const KITS_IMPORT_PATH = '/kits/import';
 export const KITS_ICONS_PATH = '/kits/icons';
@@ -44,6 +45,7 @@ const CACHE_SECONDS = 300;
 const BATCH = 50;
 const ID_PATTERN = /^[a-z0-9-]{1,80}$/;
 const ICON_FILE = /^[\w.-]{1,120}$/;
+const ICON_NAME_MAX = 120;
 
 const ENTITIES = { lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', amp: '&' };
 
@@ -550,6 +552,12 @@ export async function kitById(db, id) {
   return { ...kit, ...(pricing ? { pricing: JSON.parse(pricing) } : {}), icons };
 }
 
+/** 아이템 이름의 키트 그림 파일. 아이템 정보가 사전에 없는 의장 등의 그림을 채울 때 쓴다. 없으면 null. */
+export async function kitIconByName(db, name) {
+  const row = await db.prepare('SELECT file FROM kit_icons WHERE name = ?').bind(name).first();
+  return row ? { name, file: row.file } : null;
+}
+
 /** 기록 전체. 운영자 PC 가 그림 이름 표를 만들 때 키트와 보상 이름을 읽는다. */
 export async function kitArchive(db) {
   const rows = (
@@ -685,7 +693,7 @@ function json(body, cors, cacheSeconds = 0, hit = null) {
   });
 }
 
-/** GET /kits/index, GET /kits/kit?id= */
+/** GET /kits/index, GET /kits/kit?id=, GET /kits/icon?name= */
 export async function kitsRead(request, url, env, cors) {
   if (!env.NEWS) return kitsError('KITS_NOT_CONFIGURED', '키트 기록이 아직 없습니다.', 503, cors);
   if (await rateLimited(request, env)) {
@@ -697,6 +705,19 @@ export async function kitsRead(request, url, env, cors) {
       () => kitIndex(env.NEWS),
       CACHE_SECONDS,
     );
+    return json(body, cors, CACHE_SECONDS, hit);
+  }
+  if (url.pathname === KITS_ICON_PATH) {
+    const name = (url.searchParams.get('name') ?? '').trim();
+    if (!name || name.length > ICON_NAME_MAX)
+      return kitsError('KITS_BAD_NAME', '아이템 이름이 올바르지 않습니다.', 400, cors);
+    const { body, hit } = await withEdgeCache(
+      `https://kits.cache${KITS_ICON_PATH}?name=${encodeURIComponent(name)}`,
+      () => kitIconByName(env.NEWS, name),
+      CACHE_SECONDS,
+    );
+    if (body === 'null')
+      return kitsError('KITS_NO_ICON', '키트 그림이 없는 아이템입니다.', 404, cors);
     return json(body, cors, CACHE_SECONDS, hit);
   }
   const id = url.searchParams.get('id') ?? '';

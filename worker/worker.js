@@ -90,6 +90,7 @@ import {
   KITS_ARCHIVE_PATH,
   KITS_COLLECT_PATH,
   KITS_ICONS_PATH,
+  KITS_ICON_PATH,
   KITS_IMPORT_PATH,
   KITS_INDEX_PATH,
   KITS_KIT_PATH,
@@ -1607,7 +1608,11 @@ export default {
     }
 
     // 키트 확률표. 목록과 키트 하나.
-    if (url.pathname === KITS_INDEX_PATH || url.pathname === KITS_KIT_PATH) {
+    if (
+      url.pathname === KITS_INDEX_PATH ||
+      url.pathname === KITS_KIT_PATH ||
+      url.pathname === KITS_ICON_PATH
+    ) {
       if (request.method !== 'GET') {
         return errorResponse('KITS_METHOD_NOT_ALLOWED', 'GET 으로 보내 주세요.', 405, cors);
       }
