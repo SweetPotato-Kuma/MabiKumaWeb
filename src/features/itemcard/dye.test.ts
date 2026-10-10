@@ -50,6 +50,14 @@ describe('dyeColorsOf', () => {
     expect(colors).toEqual({ A: [77, 100, 96], D: [237, 98, 88] });
   });
 
+  it('염색 앰플의 색상 칸은 파트 A 색이다', () => {
+    const options = [{ option_type: '색상', option_value: '132,192,122' }];
+    expect(dyeColorsOf(options, '염색 앰플')).toEqual({ A: [132, 192, 122] });
+    // 앰플이 아닌 카테고리의 "색상" 칸은 그림과 이어지지 않는다.
+    expect(dyeColorsOf(options, '포션')).toBeNull();
+    expect(dyeColorsOf(options)).toBeNull();
+  });
+
   it('색이 없거나 값이 깨졌으면 null 이다', () => {
     expect(dyeColorsOf(undefined)).toBeNull();
     expect(dyeColorsOf([{ option_type: '아이템 색상', option_sub_type: '파트 A', option_value: '1,2' }])).toBeNull();

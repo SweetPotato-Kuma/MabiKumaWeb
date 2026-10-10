@@ -60,13 +60,20 @@ export function parseDye(raw: unknown): ItemDye | null {
   return { sheet, width: width as number, height: height as number, layers: parsed };
 }
 
-/** 매물 옵션의 "아이템 색상" 칸을 파트별 색으로 모은다. "파트 A" 와 "255,255,255" 로 온다. */
-export function dyeColorsOf(options: readonly ItemOption[] | undefined): DyeColors | null {
+/** 염색 앰플은 파트 없이 "색상" 한 칸으로 온다. 그림에서는 앰플 속 물감인 파트 A 다. */
+const AMPOULE_CATEGORY = '염색 앰플';
+
+/**
+ * 매물 옵션의 색을 파트별 색으로 모은다. 장비는 "아이템 색상" 칸에 "파트 A" 와 "255,255,255" 로 오고,
+ * 염색 앰플(category)은 "색상" 칸에 색만 온다.
+ */
+export function dyeColorsOf(options: readonly ItemOption[] | undefined, category?: string): DyeColors | null {
   const colors: DyeColors = {};
   let found = false;
   for (const option of options ?? []) {
-    if (!option.option_type.startsWith('아이템 색상')) continue;
-    const part = /파트\s*([A-F])/.exec(option.option_sub_type ?? '')?.[1] as DyePart | undefined;
+    const ampoule = category === AMPOULE_CATEGORY && option.option_type === '색상';
+    if (!ampoule && !option.option_type.startsWith('아이템 색상')) continue;
+    const part = ampoule ? 'A' : (/파트\s*([A-F])/.exec(option.option_sub_type ?? '')?.[1] as DyePart | undefined);
     const rgb = (option.option_value ?? '').split(',').map((v) => Number(v.trim()));
     if (!part || rgb.length !== 3 || rgb.some((v) => !Number.isInteger(v) || v < 0 || v > 255)) continue;
     colors[part] = [rgb[0], rgb[1], rgb[2]];

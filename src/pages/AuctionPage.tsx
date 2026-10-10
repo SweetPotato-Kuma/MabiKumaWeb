@@ -146,7 +146,7 @@ function ItemIconCell({
   const name = canonicalItemName(rawName);
   const card = useItemCard(category, name);
   // 매물의 파트 색으로 그림을 다시 칠한다. 색이 없는 매물은 사전 그림 그대로다.
-  const colors = useMemo(() => dyeColorsOf(options), [options]);
+  const colors = useMemo(() => dyeColorsOf(options, category), [options, category]);
   return <ItemIcon category={category} name={name} card={card} size={AUCTION_ICON_BOX} colors={colors} />;
 }
 

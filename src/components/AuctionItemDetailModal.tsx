@@ -202,7 +202,7 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
   usePrefetchItemCards(cardKeys);
   const card = useItemCard(cardCategory, cardName);
   // 표와 같은 길로 그림을 찾아 매물의 파트 색으로 칠한다.
-  const dyeColors = useMemo(() => dyeColorsOf(detail?.options), [detail?.options]);
+  const dyeColors = useMemo(() => dyeColorsOf(detail?.options, detail?.category), [detail?.options, detail?.category]);
 
   /**
    * 인챈트 스크롤이면 어떤 인챈트인지(이름, 접두/접미, 랭크)는 알려 주지만 효과는 옵션에 없다. 인챈트 이름이
