@@ -9,7 +9,7 @@ export const WIDGETS = {
   dev: { title: '개발자 노트', width: 2 },
   favorites: { title: '즐겨찾기 경매장 매물', width: 2 },
   horn: { title: '뿔피리', width: 2 },
-  memo: { title: '목표 아이템 메모', width: 1 },
+  memo: { title: '목표 아이템 메모', width: 5 },
   edited: { title: '고친 글', width: 2 },
 } as const;
 export type WidgetId = keyof typeof WIDGETS;

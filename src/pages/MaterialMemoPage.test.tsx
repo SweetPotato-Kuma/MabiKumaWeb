@@ -8,6 +8,7 @@ import { buildNameIndex, itemNameIndexQueryOptions } from '@/features/auction/na
 import { buildRecipeBook, recipeBookQueryOptions } from '@/features/crafting/recipes';
 import { resetMemoCache } from '@/features/materialMemo/store';
 import { MaterialMemoPage } from '@/pages/MaterialMemoPage';
+import { MemoWidget } from '@/components/home/PersonalWidgets';
 
 vi.mock('@/features/auction/api', () => ({ fetchAuctionList: vi.fn() }));
 
@@ -65,7 +66,7 @@ const LISTINGS: Record<string, [number, number][]> = {
   '빛바랜 에너지 회로': [[1000, 10]],
 };
 
-function renderPage(target = book, names = nameIndex) {
+function renderPage(target = book, names = nameIndex, widget = false) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(recipeBookQueryOptions.queryKey, target);
   queryClient.setQueryData(itemNameIndexQueryOptions.queryKey, names);
@@ -73,7 +74,7 @@ function renderPage(target = book, names = nameIndex) {
     <AppProviders>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/materials-calculator']}>
-          <MaterialMemoPage />
+          {widget ? <MemoWidget /> : <MaterialMemoPage />}
         </MemoryRouter>
       </QueryClientProvider>
     </AppProviders>,
@@ -94,6 +95,21 @@ function chooseMethod(itemName: string, option: string) {
 }
 
 describe('목표 아이템 재료 메모 화면', () => {
+  it('홈 위젯에서도 같은 추가 폼과 재료 트리·금액·보유 수량 입력을 제공한다', async () => {
+    renderPage(book, nameIndex, true);
+    await screen.findByLabelText('목표 아이템');
+    addGoal('검');
+    expect(await screen.findAllByText('550 G')).not.toHaveLength(0);
+    expect(screen.getByRole('columnheader', { name: '목표 / 재료' })).toBeInTheDocument();
+    expect(screen.getByLabelText('검 목표 개수')).toHaveValue('1');
+    expect(
+      screen.getByRole('checkbox', { name: 'NPC 판매 재료는 NPC 에서 사기' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '전체 화면' })).toHaveAttribute(
+      'href',
+      '/materials-calculator',
+    );
+  });
   beforeEach(() => {
     window.localStorage.clear();
     resetMemoCache();

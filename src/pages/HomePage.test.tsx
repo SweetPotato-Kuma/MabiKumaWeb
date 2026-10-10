@@ -1,10 +1,11 @@
-import { act, fireEvent, render, screen, cleanup } from '@testing-library/react';
+import { act, fireEvent, render, screen, cleanup, within } from '@testing-library/react';
 import { App } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from './HomePage';
 import { switchPersonalAccount } from '@/lib/personalStorage';
 import { HOME_LAYOUT_KEY } from '@/features/home/layout';
+import { HomeWidgetSettings } from '@/components/home/HomeWidgetSettings';
 
 vi.mock('@/features/news/api', () => ({ canReadNews: () => true }));
 vi.mock('@/components/news/BannerCarousel', () => ({ BannerCarousel: () => <div>배너 내용</div> }));
@@ -24,6 +25,7 @@ const draw = () =>
     <App>
       <MemoryRouter>
         <HomePage />
+        <HomeWidgetSettings />
       </MemoryRouter>
     </App>,
   );
@@ -36,28 +38,67 @@ afterEach(() => {
   switchPersonalAccount(null);
 });
 describe('홈 위젯 편집', () => {
-  it('7개 위젯을 표시하고 숨김과 순서를 저장하여 다시 방문해도 유지한다', () => {
+  it('설정에서 편집을 켜고 우클릭으로 숨긴 위젯을 팔레트에서 복원한다', async () => {
     const view = draw();
     expect(screen.getAllByRole('region')).toHaveLength(7);
+    expect(screen.queryByRole('button', { name: '편집 완료' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '위젯 편집' }));
-    fireEvent.click(screen.getByRole('switch', { name: '뿔피리 표시' }));
+    fireEvent.contextMenu(screen.getByRole('region', { name: '뿔피리' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '위젯 숨기기' }));
     expect(screen.queryByText('뿔피리 내용')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '목표 아이템 메모 앞으로' }));
-    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)[5].id).toBe('memo');
     view.unmount();
     draw();
     expect(screen.queryByText('뿔피리 내용')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '위젯 편집' }));
-    fireEvent.click(screen.getByRole('button', { name: '기본 배치' }));
+    fireEvent.click(screen.getByRole('button', { name: '뿔피리 추가' }));
     expect(screen.getByText('뿔피리 내용')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '편집 완료' }));
+    expect(screen.queryByRole('button', { name: '뿔피리 설정' })).not.toBeInTheDocument();
   });
-  it('모두 숨겨도 편집 진입과 복원을 제공한다', () => {
+  it('손잡이를 드래그해 순서를 저장하고 숨긴 위젯도 원하는 위치에 놓는다', () => {
     draw();
     fireEvent.click(screen.getByRole('button', { name: '위젯 편집' }));
-    for (const control of screen.getAllByRole('switch')) {
-      if (control.getAttribute('aria-checked') === 'true') fireEvent.click(control);
-    }
-    expect(screen.getByText('위젯 편집에서 홈에 표시할 위젯을 켜 주세요.')).toBeInTheDocument();
+    const data = new Map<string, string>();
+    const dataTransfer = {
+      setData: (key: string, value: string) => data.set(key, value),
+      getData: (key: string) => data.get(key),
+    };
+    fireEvent.dragStart(screen.getByRole('button', { name: '목표 아이템 메모 이동 손잡이' }), {
+      dataTransfer,
+    });
+    fireEvent.dragOver(screen.getByRole('region', { name: '이벤트 배너' }), { dataTransfer });
+    fireEvent.drop(screen.getByRole('region', { name: '이벤트 배너' }), { dataTransfer });
+    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)[0].id).toBe('memo');
+    fireEvent.dragStart(screen.getByRole('button', { name: '고친 글 추가' }), { dataTransfer });
+    fireEvent.drop(screen.getByRole('region', { name: '목표 아이템 메모' }), { dataTransfer });
+    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)[0]).toMatchObject({
+      id: 'edited',
+      visible: true,
+    });
+    expect(screen.getAllByRole('region')).toHaveLength(8);
+    fireEvent.dragStart(screen.getByRole('button', { name: '고친 글 이동 손잡이' }), {
+      dataTransfer,
+    });
+    fireEvent.drop(screen.getByLabelText('마지막 위치에 위젯 놓기'), { dataTransfer });
+    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!).at(-1).id).toBe('edited');
+  });
+  it('터치·키보드용 메뉴로 크기와 순서를 바꾸고 기본 배치를 복원한다', async () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: '위젯 편집' }));
+    fireEvent.click(screen.getByRole('button', { name: '뿔피리 설정' }));
+    const menu = await screen.findByRole('menu');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /^너비/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '5칸' }));
+    expect(
+      screen.getByRole('region', { name: '뿔피리' }).style.getPropertyValue('--widget-columns'),
+    ).toBe('5');
+    fireEvent.click(screen.getByRole('button', { name: '뿔피리 설정' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '앞으로 이동' }));
+    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)[4].id).toBe('horn');
+    fireEvent.click(screen.getByRole('button', { name: '기본 배치' }));
+    expect(
+      screen.getByRole('region', { name: '뿔피리' }).style.getPropertyValue('--widget-columns'),
+    ).toBe('2');
     act(() => switchPersonalAccount('11111111-1111-1111-1111-111111111111'));
     expect(screen.getAllByRole('region')).toHaveLength(7);
   });

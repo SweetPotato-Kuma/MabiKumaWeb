@@ -380,7 +380,7 @@ export function RootLayout() {
             <Text strong style={{ fontSize: 15 }}>
               설정
             </Text>
-            <SettingsPanel />
+            <SettingsPanel onWidgetEdit={() => setDrawerOpen(false)} />
             <IssueReportTrigger variant="text" />
           </Flex>
           {/* 좁은 화면은 헤더에 조회 상태 배지를 둘 자리가 없다. 서랍 아래에 옮겨 둔다. */}
@@ -408,11 +408,7 @@ export function RootLayout() {
         ) : null}
         {/* 나눠 받는 화면을 받는 동안 푸터가 화면 안으로 올라오지 않게 한 화면 높이를 비워 둔다. */}
         <Suspense fallback={<div style={{ minHeight: '100vh' }} />}>
-          {accountState.phase === 'loading' ? (
-            <Text>계정 데이터를 불러오는 중입니다.</Text>
-          ) : (
-            <Outlet key={accountState.generation} />
-          )}
+          <Outlet key={accountState.generation} />
         </Suspense>
       </Content>
 

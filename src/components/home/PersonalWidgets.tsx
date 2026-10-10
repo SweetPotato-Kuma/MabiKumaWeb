@@ -1,17 +1,6 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Alert,
-  Button,
-  Card,
-  Flex,
-  Input,
-  InputNumber,
-  Progress,
-  Select,
-  Skeleton,
-  Typography,
-} from 'antd';
+import { Alert, Button, Card, Flex, Input, Select, Skeleton, Typography } from 'antd';
 import { useSavedSearches, type SavedSearch } from '@/features/auction/savedSearches';
 import { searchParamsFor } from '@/features/auction/searchParams';
 import { parseFilter } from '@/features/auction/filterUrl';
@@ -31,7 +20,6 @@ import { useUserSettings } from '@/lib/userSettings';
 import { isSymbolItem, searchesSymbolItems } from '@/features/auction/symbolItems';
 import { canSearchHorns, useHornSearch } from '@/features/horn/api';
 import { SERVER_NAMES, type ServerName } from '@/features/servers/constants';
-import { MAX_QUANTITY, setOwned, useMemoState } from '@/features/materialMemo/store';
 
 const { Text } = Typography;
 const memoPath = '/materials-calculator';
@@ -155,6 +143,19 @@ function HornPosts({ server, keyword }: { server: ServerName; keyword: string })
   if (!query.data) return <Skeleton active title={false} paragraph={{ rows: 3 }} />;
   return (
     <Flex vertical gap={10} aria-live="polite">
+      <Flex justify="space-between" align="center" gap={8} wrap>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          최근 1일 · 1분마다 갱신
+        </Text>
+        <Button
+          size="small"
+          loading={query.isFetching}
+          onClick={() => void query.refetch()}
+          aria-label="뿔피리 새로고침"
+        >
+          새로고침
+        </Button>
+      </Flex>
       {!query.data.posts.length && (
         <Text type="secondary">최근 하루 동안 일치하는 뿔피리가 없습니다.</Text>
       )}
@@ -176,9 +177,6 @@ function HornPosts({ server, keyword }: { server: ServerName; keyword: string })
           </Typography.Paragraph>
         </div>
       ))}
-      <Text type="secondary" style={{ fontSize: 12 }}>
-        최근 1일 · 1분마다 갱신
-      </Text>
     </Flex>
   );
 }
@@ -223,45 +221,16 @@ export function HornWidget() {
   );
 }
 
+const MaterialMemoContent = lazy(async () => ({
+  default: (await import('@/pages/MaterialMemoPage')).MaterialMemoContent,
+}));
+
 export function MemoWidget() {
-  const state = useMemoState();
   return (
-    <Card size="small" title="목표 아이템 메모" extra={<Link to={memoPath}>편집</Link>}>
-      <Flex vertical gap={14}>
-        {!state.goals.length && (
-          <div className="home-widget-empty">
-            <Text type="secondary">모으고 싶은 아이템과 목표 수량을 기록해 보세요.</Text>
-            <br />
-            <Link to={memoPath}>목표 추가하기 →</Link>
-          </div>
-        )}
-        {state.goals.map((goal) => {
-          const owned = state.owned[goal.id] ?? 0;
-          return (
-            <div key={goal.id}>
-              <Link to={memoPath}>{goal.name}</Link>
-              <Progress
-                percent={Math.min(100, Math.floor((owned / goal.quantity) * 100))}
-                size="small"
-                showInfo={false}
-              />
-              <Flex gap={4} align="center" wrap>
-                <InputNumber
-                  size="small"
-                  aria-label={`${goal.name} 보유 수량`}
-                  min={0}
-                  max={MAX_QUANTITY}
-                  precision={0}
-                  value={owned}
-                  onChange={(value) => setOwned(goal.id, value ?? 0)}
-                  style={{ width: 76 }}
-                />
-                <Text type="secondary">/ {goal.quantity.toLocaleString()}개</Text>
-              </Flex>
-            </div>
-          );
-        })}
-      </Flex>
+    <Card size="small" title="목표 아이템 재료 메모" extra={<Link to={memoPath}>전체 화면</Link>}>
+      <Suspense fallback={<Skeleton active paragraph={{ rows: 4 }} />}>
+        <MaterialMemoContent />
+      </Suspense>
     </Card>
   );
 }

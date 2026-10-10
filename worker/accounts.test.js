@@ -88,6 +88,32 @@ function call(path, method = 'GET', payload, options = {}) {
 const save = (revision, entries = { 'mabikuma:userSettings': '{"server":"류트"}' }) =>
   call('/data', 'PUT', { version: 1, revision, entries });
 describe('계정 저장 API와 실제 SQLite 스키마', () => {
+  it('세션 복원 한 번으로 인증된 본인의 프로필과 데이터만 반환한다', async () => {
+    await save(0);
+    const response = await call('/session', 'GET', undefined, {
+      headers: { 'x-mabikuma-account': '' },
+    });
+    expect(response.status).toBe(200);
+    const session = await response.json();
+    expect(session.account).toEqual({ id: A, profile: { nickname: '쿠마' } });
+    expect(session.data.revision).toBe(1);
+    expect(session.data.entries).toHaveProperty('mabikuma:userSettings');
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(
+      (await call('/session', 'GET', undefined, { headers: { origin: 'https://evil.example' } }))
+        .status,
+    ).toBe(403);
+    expect((await call('/session', 'GET', undefined, { headers: { cookie: '' } })).status).toBe(
+      401,
+    );
+    expect(
+      (await call('/session', 'GET', undefined, { headers: { 'x-mabikuma-account': B } })).status,
+    ).toBe(401);
+    sql.prepare('UPDATE accounts SET nickname = NULL, registered_at = NULL WHERE id = ?').run(A);
+    const pending = await (await call('/session')).json();
+    expect(pending.account.profile).toBeNull();
+    expect(pending.data).toBeNull();
+  });
   it('본인 닉네임만 수정하고 저장 내용·동의·다른 계정은 유지한다', async () => {
     await save(0);
     const before = sql

@@ -54,12 +54,17 @@ export async function verifyGoogleToken(token, clientId, nonce, keys = googleKey
   return payload.sub;
 }
 
-async function sessionAccount(request, env) {
+async function sessionAccount(request, env, includeData = false) {
   const token = readCookie(request, SESSION_COOKIE);
   if (!/^[a-f0-9-]{72}$/.test(token)) return null;
   return env.ACCOUNTS.prepare(
-    `SELECT a.* FROM accounts a JOIN account_sessions s
-    ON s.account_id = a.id WHERE s.token_hash = ? AND s.expires_at > ?`,
+    includeData
+      ? `SELECT a.*, d.revision AS data_revision, d.entries AS data_entries, d.updated_at AS data_updated_at
+         FROM accounts a JOIN account_sessions s ON s.account_id = a.id
+         LEFT JOIN account_data d ON d.account_id = a.id AND a.registered_at IS NOT NULL
+         WHERE s.token_hash = ? AND s.expires_at > ?`
+      : `SELECT a.* FROM accounts a JOIN account_sessions s
+         ON s.account_id = a.id WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
     .bind(await hash(token), Date.now())
     .first();
@@ -184,7 +189,11 @@ export async function accountRequest(request, env, cors) {
         cookie(CHALLENGE_COOKIE, '', 0),
       ]);
     }
-    const account = await sessionAccount(request, env);
+    const account = await sessionAccount(
+      request,
+      env,
+      path === '/account/session' && request.method === 'GET',
+    );
     if (!account) return problem('UNAUTHENTICATED', '로그인이 필요합니다.', 401, cors);
     const expected = request.headers.get('x-mabikuma-account');
     if (expected && expected !== account.id)
@@ -196,6 +205,24 @@ export async function accountRequest(request, env, cors) {
       );
     if ((path === '/account/data' || path === '/account/history') && !expected)
       return problem('ACCOUNT_REQUIRED', '계정 연결을 다시 확인해 주세요.', 400, cors);
+    if (path === '/account/session' && request.method === 'GET') {
+      // 인증된 세션의 계정과 데이터만 한 응답으로 반환한다. 클라이언트 지정 ID는 쓰지 않는다.
+      return reply(
+        {
+          account: { id: account.id, profile: profile(account) },
+          data: account.registered_at
+            ? {
+                version: 1,
+                revision: account.data_revision || 0,
+                entries: account.data_entries ? JSON.parse(account.data_entries) : {},
+                updatedAt: account.data_updated_at || null,
+              }
+            : null,
+        },
+        200,
+        cors,
+      );
+    }
     if (path === '/account/me' && request.method === 'GET')
       return reply({ id: account.id, profile: profile(account) }, 200, cors);
     if (path === '/account/logout' && request.method === 'POST') {

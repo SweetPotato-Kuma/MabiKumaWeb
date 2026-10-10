@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Button, Checkbox, Flex, Popover, Segmented, Tooltip, Typography } from 'antd';
 import { SettingsIcon } from '@/components/icons';
+import { HomeWidgetSettings } from '@/components/home/HomeWidgetSettings';
 import { SERVER_NAMES } from '@/features/servers/constants';
 import { formatGoldWith } from '@/lib/format';
 import { useUserSettings, type PriceStyle } from '@/lib/userSettings';
@@ -20,7 +22,7 @@ const PRICE_SAMPLE = 1_149_001_234;
  * 방문자 설정. 헤더의 팝오버와 좁은 화면의 메뉴 서랍이 같은 내용을 쓴다.
  * 바꾸면 바로 저장되고 지금 보는 화면에도 곧장 반영된다(userSettings).
  */
-export function SettingsPanel() {
+export function SettingsPanel({ onWidgetEdit }: { onWidgetEdit?: () => void }) {
   const [settings, update] = useUserSettings();
   const korean = settings.priceStyle === 'korean';
 
@@ -54,7 +56,10 @@ export function SettingsPanel() {
           1만 미만 생략
         </Checkbox>
         <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>
-          {formatGoldWith(PRICE_SAMPLE, { style: settings.priceStyle, omitSmall: settings.omitSmall })}
+          {formatGoldWith(PRICE_SAMPLE, {
+            style: settings.priceStyle,
+            omitSmall: settings.omitSmall,
+          })}
         </Text>
       </Flex>
 
@@ -64,20 +69,24 @@ export function SettingsPanel() {
       >
         심볼·도면·옷본 제외
       </Checkbox>
+      <HomeWidgetSettings onOpen={onWidgetEdit} />
     </Flex>
   );
 }
 
 /** 헤더의 설정 단추. 누르면 설정 팝오버가 열린다. */
 export function SettingsButton() {
+  const [open, setOpen] = useState(false);
   return (
     <Popover
+      open={open}
+      onOpenChange={setOpen}
       trigger="click"
       placement="bottomRight"
       title="설정"
       content={
         <div style={{ width: 280, maxWidth: 'calc(100vw - 56px)' }}>
-          <SettingsPanel />
+          <SettingsPanel onWidgetEdit={() => setOpen(false)} />
         </div>
       }
     >

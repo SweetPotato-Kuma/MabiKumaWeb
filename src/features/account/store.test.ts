@@ -12,6 +12,8 @@ let putHook: (() => void) | null = null;
 let endpoint = false;
 let sessionStatus = 200;
 let stop: (() => void) | undefined;
+let readGate: Promise<void> | null = null;
+let sessionGate: Promise<void> | null = null;
 const requests: { path: string; method: string; body: unknown }[] = [];
 vi.mock('./api', () => {
   class AccountError extends Error {
@@ -34,11 +36,18 @@ vi.mock('./api', () => {
         requests.push({ path, method, body });
         if (fail) throw new Error('offline');
         if (path === '/config') return { enabled: true };
-        if (path === '/me') {
+        if (path === '/session') {
+          if (sessionGate) await sessionGate;
           if (sessionStatus !== 200) throw new AccountError('session expired', sessionStatus);
-          return { id: A, profile: { nickname: '쿠마' } };
+          return {
+            account: { id: A, profile: { nickname: '쿠마' } },
+            data: structuredClone(remote),
+          };
         }
-        if (path === '/data' && method === 'GET') return structuredClone(remote);
+        if (path === '/data' && method === 'GET') {
+          if (readGate) await readGate;
+          return structuredClone(remote);
+        }
         if (path === '/profile' && method === 'PATCH')
           return { id: A, profile: { nickname: body?.nickname } };
         if (path === '/data' && method === 'PUT') {
@@ -69,6 +78,8 @@ beforeEach(async () => {
   endpoint = false;
   sessionStatus = 200;
   stop = undefined;
+  readGate = null;
+  sessionGate = null;
   remote = { version: 1, revision: 0, entries: {}, updatedAt: null };
   localStorage.clear();
   storage = await import('@/lib/personalStorage');
@@ -82,6 +93,63 @@ afterEach(() => {
 });
 const login = () => store.acceptAccount({ id: A, profile: { nickname: '쿠마' } });
 describe('계정 동기화', () => {
+  it('데이터 응답 전부터 확인된 계정의 사본을 쓰고 대기 중 수정은 응답 후에도 보존한다', async () => {
+    remote = { ...remote, revision: 1, entries: { [KEY]: 'saved' } };
+    localStorage.setItem(
+      `mabikuma:account-data:${A}`,
+      JSON.stringify({
+        version: 1,
+        revision: 1,
+        base: remote.entries,
+        entries: remote.entries,
+        guestBase: {},
+      }),
+    );
+    let release!: () => void;
+    readGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stop = store.startAccountSync();
+    const connecting = login();
+    expect(storage.getPersonalAccount()).toBe(A);
+    expect(storage.readPersonal(KEY)).toBe('saved');
+    storage.writePersonal(KEY, 'edited while loading');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(requests.filter(({ method }) => method === 'PUT')).toHaveLength(0);
+    release();
+    await connecting;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(remote.entries[KEY]).toBe('edited while loading');
+  });
+  it('데이터 응답 전에 로그아웃하면 늦게 온 응답으로 계정이 다시 연결되지 않는다', async () => {
+    storage.writePersonal(KEY, 'guest');
+    let release!: () => void;
+    readGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const connecting = login();
+    await store.logoutAccount();
+    release();
+    await connecting;
+    expect(storage.getPersonalAccount()).toBeNull();
+    expect(storage.readPersonal(KEY)).toBe('guest');
+  });
+  it('세션 복원은 중복 요청하지 않고 도중의 다른 탭 세션 변경은 새로 확인한다', async () => {
+    endpoint = true;
+    let release!: () => void;
+    sessionGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stop = store.startAccountSync();
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'mabikuma:account-session-change' }));
+    expect(requests.filter(({ path }) => path === '/session')).toHaveLength(1);
+    release();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(requests.filter(({ path }) => path === '/session')).toHaveLength(2);
+    expect(storage.getPersonalAccount()).toBe(A);
+    expect(requests.some(({ path }) => path === '/config' || path === '/data')).toBe(false);
+  });
   it('닉네임 변경 중 미전송 입력을 유지하고 성공한 동기화 시점만 갱신한다', async () => {
     storage.writePersonal(KEY, 'guest');
     const { result } = renderHook(() => store.useAccountState());
@@ -169,7 +237,10 @@ describe('계정 동기화', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(storage.getPersonalAccount()).toBe(A);
     expect(storage.readPersonal(KEY)).toBe('account');
-    expect(requests.some(({ path }) => path === '/me')).toBe(true);
+    expect(requests.some(({ path }) => path === '/session')).toBe(true);
+    expect(
+      requests.some(({ path }) => path === '/config' || path === '/me' || path === '/data'),
+    ).toBe(false);
     expect(requests.some(({ path }) => path === '/challenge' || path === '/auth/google')).toBe(
       false,
     );
@@ -178,7 +249,7 @@ describe('계정 동기화', () => {
     sessionStatus = 401;
     await vi.advanceTimersByTimeAsync(30000);
     expect(storage.getPersonalAccount()).toBeNull();
-    expect(requests.filter(({ path }) => path === '/me')).toHaveLength(1);
+    expect(requests.filter(({ path }) => path === '/session')).toHaveLength(1);
   });
   it('오프라인으로 세션을 확인하지 못하면 연결 복구 시 자동 로그인과 저장을 재시도한다', async () => {
     endpoint = true;
@@ -208,7 +279,7 @@ describe('계정 동기화', () => {
     storage.writePersonal(KEY, 'guest');
     fail = true;
     await expect(login()).rejects.toThrow('offline');
-    expect(storage.getPersonalAccount()).toBeNull();
+    expect(storage.getPersonalAccount()).toBe(A);
     fail = false;
     endpoint = true;
     window.dispatchEvent(new Event('online'));

@@ -37,3 +37,15 @@ it('계정 전용 주소가 있으면 우선 사용하며 공백과 끝 슬래�
     }),
   );
 });
+
+it('세션 복원은 쿠키로 확인하고 이전 계정 헤더나 프리플라이트를 추가하지 않는다', async () => {
+  const fetch = vi.fn(async () => new Response('{}'));
+  vi.stubGlobal('fetch', fetch);
+  const { accountApi, expectAccount } = await import('./api');
+  expectAccount('previous-account');
+  await accountApi('/session');
+  expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining('/account/session'),
+    expect.objectContaining({ credentials: 'include', headers: {}, cache: 'no-store' }),
+  );
+});

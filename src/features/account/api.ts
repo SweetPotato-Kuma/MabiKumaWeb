@@ -11,6 +11,10 @@ export interface RemoteDocument {
   entries: Record<string, string>;
   updatedAt: number | null;
 }
+export interface AccountSession {
+  account: Account;
+  data: RemoteDocument | null;
+}
 const BASE = (import.meta.env.VITE_ACCOUNT_API_URL?.trim() || getProxyUrl()).replace(/\/+$/, '');
 let expectedAccount: string | null = null;
 export function expectAccount(id: string | null): void {
@@ -34,6 +38,7 @@ export async function accountApi<T>(path: string, method = 'GET', body?: unknown
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       ...(expectedAccount &&
       path !== '/me' &&
+      path !== '/session' &&
       !path.startsWith('/auth/') &&
       path !== '/challenge' &&
       path !== '/config'

@@ -18,6 +18,7 @@ import {
   hasAccountEndpoint,
   type Account,
   type RemoteDocument,
+  type AccountSession,
 } from './api';
 
 interface AccountState {
@@ -39,34 +40,35 @@ let state: AccountState = {
 const listeners = new Set<() => void>();
 const emit = (patch: Partial<AccountState>) => {
   state = { ...state, ...patch };
-  for (const listener of listeners) listener();
+  for (const listener of [...listeners]) listener();
 };
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 export function useAccountState(): AccountState {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    () => state,
-  );
+  return useSyncExternalStore(subscribe, () => state);
 }
 let busy = false;
 let epoch = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let started = false;
+let needsActivation = false;
 const pending = () =>
   JSON.stringify(getPersonalDocument().entries) !== JSON.stringify(getPersonalDocument().base);
 function scheduleSync() {
   if (timer) clearTimeout(timer);
   if (
     !state.account?.profile ||
+    needsActivation ||
     getPersonalAccount() !== state.account.id ||
     state.phase === 'conflict'
   )
     return;
-  if (pending()) emit({ phase: 'pending', message: '계정 저장 대기 중' });
+  if (!pending()) return;
+  emit({ phase: 'pending', message: '계정 저장 대기 중' });
   timer = setTimeout(() => {
     timer = undefined;
     void syncAccount();
@@ -89,12 +91,21 @@ function notifyOtherTabs() {
     /* 입력 데이터는 건드리지 않는다. */
   }
 }
-async function activate(account: Account): Promise<void> {
+async function activate(account: Account, supplied?: RemoteDocument): Promise<void> {
   const activation = ++epoch;
+  needsActivation = true;
   if (timer) clearTimeout(timer);
   expectAccount(account.id);
-  // 새 세션으로 전환하는 동안 이전 계정의 입력이나 전송 큐를 사용하지 않는다.
-  switchPersonalAccount(null);
+  // 서버가 계정을 확인한 뒤에만 그 계정의 사본을 즉시 표시한다.
+  // 다른 계정의 입력이나 전송 큐를 재사용하지 않는다.
+  const sameAccount = getPersonalAccount() === account.id;
+  if (!sameAccount) switchPersonalAccount(null);
+  const cached = account.profile
+    ? sameAccount
+      ? getPersonalDocument()
+      : loadPersonalDocument(account.id)
+    : undefined;
+  switchPersonalAccount(account.profile ? account.id : null, cached);
   emit({
     account,
     phase: 'loading',
@@ -103,6 +114,7 @@ async function activate(account: Account): Promise<void> {
     generation: state.generation + 1,
   });
   if (!account.profile) {
+    needsActivation = false;
     switchPersonalAccount(null);
     emit({
       account,
@@ -113,37 +125,39 @@ async function activate(account: Account): Promise<void> {
     });
     return;
   }
-  const remote = checkRemote(await accountApi<RemoteDocument>('/data'));
+  const remote = checkRemote(supplied ?? (await accountApi<RemoteDocument>('/data')));
   if (activation !== epoch) return;
-  const cached = loadPersonalDocument(account.id);
+  // 서버를 기다리는 동안 사용자가 바꾼 값도 합치기에 포함한다.
+  const current = getPersonalDocument();
   const guest = guestEntries();
   if (!validateEntries(guest)) throw new Error('기존 저장 내용의 형식이나 용량을 확인해 주세요.');
-  const local = { ...cached.entries };
+  const local = { ...current.entries };
   for (const [key, value] of Object.entries(guest)) {
-    if (cached.guestBase === undefined) {
+    if (current.guestBase === undefined) {
       // 처음 연결하는 브라우저에서는 계정의 기존 값이 우선이다.
       if (
         local[key] === undefined &&
-        cached.base[key] === undefined &&
+        current.base[key] === undefined &&
         remote.entries[key] === undefined
       )
         local[key] = value;
-    } else if (value !== cached.guestBase[key] && local[key] === cached.base[key]) {
+    } else if (value !== current.guestBase[key] && local[key] === current.base[key]) {
       // 로그아웃 후 바뀐 입력만 반영한다. 미전송 계정 입력은 별도로 보존한다.
       local[key] = value;
     }
   }
-  const merged = mergePersonal(cached.base, local, remote.entries);
+  const merged = mergePersonal(current.base, local, remote.entries);
   const entries = merged.conflicts.length ? local : merged.entries;
   if (!validateEntries(entries))
     throw new Error('로컬 내용과 계정 내용을 합치면 저장 가능한 용량을 초과합니다.');
   switchPersonalAccount(account.id, {
     version: 1,
-    revision: merged.conflicts.length ? cached.revision : remote.revision,
-    base: merged.conflicts.length ? cached.base : remote.entries,
+    revision: merged.conflicts.length ? current.revision : remote.revision,
+    base: merged.conflicts.length ? current.base : remote.entries,
     entries,
     guestBase: guest,
   });
+  needsActivation = false;
   emit({
     account,
     phase: merged.conflicts.length ? 'conflict' : pending() ? 'pending' : 'ready',
@@ -157,10 +171,13 @@ async function activate(account: Account): Promise<void> {
   if (!merged.conflicts.length) scheduleSync();
 }
 export async function acceptAccount(account: Account): Promise<void> {
+  const operation = epoch + 1;
   try {
     await activate(account);
+    if (operation !== epoch) return;
     notifyOtherTabs();
   } catch (error) {
+    if (operation !== epoch) return;
     emit({
       phase: 'error',
       message: error instanceof Error ? error.message : '계정 데이터를 확인하지 못했습니다.',
@@ -183,6 +200,7 @@ export async function syncAccount(): Promise<void> {
   const id = state.account?.id;
   if (
     busy ||
+    needsActivation ||
     !id ||
     !state.account?.profile ||
     getPersonalAccount() !== id ||
@@ -299,6 +317,7 @@ export async function logoutAccount(): Promise<void> {
   await accountApi('/logout', 'POST');
   if (operation !== epoch) return;
   ++epoch;
+  needsActivation = false;
   if (timer) clearTimeout(timer);
   switchPersonalAccount(null);
   expectAccount(null);
@@ -319,6 +338,7 @@ export async function deleteAccount(): Promise<void> {
   await accountApi('', 'DELETE');
   if (operation !== epoch) return;
   ++epoch;
+  needsActivation = false;
   if (timer) clearTimeout(timer);
   switchPersonalAccount(null);
   expectAccount(null);
@@ -336,26 +356,28 @@ export async function deleteAccount(): Promise<void> {
 export function startAccountSync(): () => void {
   if (started) return () => {};
   started = true;
+  let active = true;
   let retryRestore = false;
+  let restoring = false;
+  let restoreAgain = false;
   const restore = async () => {
-    if (!hasAccountEndpoint()) return;
+    if (!hasAccountEndpoint() || restoring) return;
+    restoring = true;
     let operation = epoch;
     try {
-      const config = await accountApi<{ enabled: boolean }>('/config');
-      if (!config.enabled) {
-        retryRestore = false;
-        return;
-      }
-      const account = await accountApi<Account>('/me');
-      if (operation !== epoch || !started) return;
+      const session = await accountApi<AccountSession>('/session');
+      if (operation !== epoch || !active) return;
+      if (session.account.profile && !session.data)
+        throw new Error('계정 데이터를 확인하지 못했습니다.');
       operation = epoch + 1;
-      await activate(account);
+      await activate(session.account, session.data ?? undefined);
       retryRestore = false;
     } catch (error) {
-      if (operation !== epoch || !started) return;
+      if (operation !== epoch || !active) return;
       if (error instanceof AccountError && error.status === 401) {
         retryRestore = false;
         ++epoch;
+        needsActivation = false;
         switchPersonalAccount(null);
         expectAccount(null);
         emit({
@@ -374,6 +396,12 @@ export function startAccountSync(): () => void {
             message: '계정 연결을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.',
           });
       }
+    } finally {
+      restoring = false;
+      if (restoreAgain && active) {
+        restoreAgain = false;
+        void restore();
+      }
     }
   };
   void restore();
@@ -381,10 +409,17 @@ export function startAccountSync(): () => void {
     scheduleSync();
   });
   const storage = (event: StorageEvent) => {
-    if (event.key === 'mabikuma:account-session-change') void restore();
+    if (event.key !== 'mabikuma:account-session-change') return;
+    ++epoch;
+    if (restoring) restoreAgain = true;
+    else void restore();
   };
   const online = () => {
-    if (retryRestore || (state.account?.profile && getPersonalAccount() !== state.account.id))
+    if (
+      retryRestore ||
+      needsActivation ||
+      (state.account?.profile && getPersonalAccount() !== state.account.id)
+    )
       void restore();
     else void syncAccount();
   };
@@ -407,6 +442,7 @@ export function startAccountSync(): () => void {
   document.addEventListener('visibilitychange', visibility);
   const interval = setInterval(online, 30000);
   return () => {
+    active = false;
     started = false;
     unsubscribe();
     clearInterval(interval);

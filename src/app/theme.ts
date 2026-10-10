@@ -169,6 +169,8 @@ export function applyThemeVariables(mode: ThemeMode): void {
 
   root.style.setProperty('--app-bg', surface.layout);
   root.style.setProperty('--app-text', surface.text);
+  root.style.setProperty('--app-border', surface.border);
+  root.style.setProperty('--app-text-secondary', surface.textSecondary);
   root.style.setProperty('--app-accent', mode === 'dark' ? ACCENT_DARK : ACCENT_LIGHT);
   root.style.setProperty('--app-font', FONT_FAMILY);
   root.style.colorScheme = mode;

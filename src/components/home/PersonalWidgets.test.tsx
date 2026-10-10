@@ -1,10 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { FavoritesWidget, HornWidget, MemoWidget } from './PersonalWidgets';
+import { FavoritesWidget, HornWidget } from './PersonalWidgets';
 import { addSavedSearch, resetSavedSearchesForTest } from '@/features/auction/savedSearches';
-import { addGoal, resetMemoCache } from '@/features/materialMemo/store';
-import { readPersonal, switchPersonalAccount } from '@/lib/personalStorage';
+
+import { switchPersonalAccount } from '@/lib/personalStorage';
 import { useAuctionItemsQuery } from '@/features/auction/hooks';
 
 vi.mock('@/lib/settings', () => ({ useCanQuery: () => true }));
@@ -31,15 +31,15 @@ vi.mock('@/features/auction/hooks', async (original) => ({
   useAuctionSnapshotQuery: () => ({ status: 'off' }),
   useAuctionScanQuery: () => ({}),
 }));
+const refetchHorns = vi.hoisted(() => vi.fn());
 vi.mock('@/features/horn/api', () => ({
   canSearchHorns: () => true,
-  useHornSearch: () => ({ data: { posts: [] } }),
+  useHornSearch: () => ({ data: { posts: [] }, refetch: refetchHorns, isFetching: false }),
 }));
 beforeEach(() => {
   localStorage.clear();
   switchPersonalAccount(null);
   resetSavedSearchesForTest();
-  resetMemoCache();
 });
 afterEach(() => {
   cleanup();
@@ -67,30 +67,14 @@ describe('홈 개인 위젯', () => {
       screen.getByRole('link', { name: '조건으로 전체 보기 →' }).getAttribute('href'),
     ).toContain('keyword=');
   });
-  it('기존 목표의 수량을 수정하며 계정 전환 때 이전 목표를 남기지 않는다', () => {
-    addGoal('테스트 목표', 4);
-    render(
-      <MemoryRouter>
-        <MemoWidget />
-      </MemoryRouter>,
-    );
-    fireEvent.change(screen.getByRole('spinbutton', { name: '테스트 목표 보유 수량' }), {
-      target: { value: '2' },
-    });
-    expect(Object.values(JSON.parse(readPersonal('mabikuma:materialMemo:v2')!).owned)).toEqual([2]);
-    act(() => switchPersonalAccount('11111111-1111-1111-1111-111111111111'));
-    expect(screen.queryByText('테스트 목표')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '목표 추가하기 →' })).toHaveAttribute(
-      'href',
-      '/materials-calculator',
-    );
-  });
   it('뿔피리 빈 결과를 알리고 검색 조건으로 전체 목록을 연결한다', () => {
     render(
       <MemoryRouter>
         <HornWidget />
       </MemoryRouter>,
     );
+    fireEvent.click(screen.getByRole('button', { name: '뿔피리 새로고침' }));
+    expect(refetchHorns).toHaveBeenCalledTimes(1);
     expect(screen.getByText('최근 하루 동안 일치하는 뿔피리가 없습니다.')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('searchbox', { name: '뿔피리 검색어' }), {
       target: { value: '광석' },

@@ -17,15 +17,23 @@ const { Title } = Typography;
  * 사는 값만 나온다. 목표와 가진 개수는 이 브라우저에 남긴다(features/materialMemo/store.ts).
  */
 export function MaterialMemoPage() {
-  const { data: book, isPending } = useRecipeBookQuery();
-  const canQuery = useCanQuery();
-
   return (
     <Flex vertical gap={16}>
       <Title level={3} style={{ margin: 0 }}>
         목표 아이템 재료 메모
       </Title>
+      <MaterialMemoContent />
+    </Flex>
+  );
+}
 
+/** 독립 화면과 홈 위젯이 목표 추가·재료 트리·시세·수량 입력을 그대로 공유한다. */
+export function MaterialMemoContent() {
+  const { data: book, isPending } = useRecipeBookQuery();
+  const canQuery = useCanQuery();
+
+  return (
+    <Flex vertical gap={16}>
       {!canQuery ? (
         <Alert
           type="warning"

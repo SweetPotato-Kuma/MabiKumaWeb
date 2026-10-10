@@ -1,3 +1,4 @@
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
@@ -14,11 +15,28 @@ afterEach(() => {
 });
 
 describe('설정 패널', () => {
+  it('설정에서 홈 편집 모드로 이동한다', () => {
+    function Location() {
+      return <output>{useLocation().search}</output>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/auction']}>
+        <AppProviders>
+          <SettingsPanel />
+          <Location />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '위젯 편집' }));
+    expect(screen.getByText('?editWidgets=1')).toBeInTheDocument();
+  });
   it('처음에는 류트, 숫자 표기이고 생략과 제외는 꺼져 있다', () => {
     render(
-      <AppProviders>
-        <SettingsPanel />
-      </AppProviders>,
+      <MemoryRouter>
+        <AppProviders>
+          <SettingsPanel />
+        </AppProviders>
+      </MemoryRouter>,
     );
 
     expect(screen.getByRole('radio', { name: '류트' })).toBeChecked();
@@ -31,22 +49,28 @@ describe('설정 패널', () => {
 
   it('기본 서버를 고르면 저장된다', () => {
     render(
-      <AppProviders>
-        <SettingsPanel />
-      </AppProviders>,
+      <MemoryRouter>
+        <AppProviders>
+          <SettingsPanel />
+        </AppProviders>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole('radio', { name: '하프' }));
 
     expect(getSettings().server).toBe('하프');
-    expect(JSON.parse(window.localStorage.getItem('mabikuma:userSettings') ?? '{}').server).toBe('하프');
+    expect(JSON.parse(window.localStorage.getItem('mabikuma:userSettings') ?? '{}').server).toBe(
+      '하프',
+    );
   });
 
   it('한글 표기를 고르면 예시가 바뀌고 1만 미만 생략을 쓸 수 있다', () => {
     render(
-      <AppProviders>
-        <SettingsPanel />
-      </AppProviders>,
+      <MemoryRouter>
+        <AppProviders>
+          <SettingsPanel />
+        </AppProviders>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole('radio', { name: '한글' }));
@@ -59,9 +83,11 @@ describe('설정 패널', () => {
 
   it('심볼·도면·옷본 제외를 켠다', () => {
     render(
-      <AppProviders>
-        <SettingsPanel />
-      </AppProviders>,
+      <MemoryRouter>
+        <AppProviders>
+          <SettingsPanel />
+        </AppProviders>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole('checkbox', { name: '심볼·도면·옷본 제외' }));
@@ -73,9 +99,11 @@ describe('설정 패널', () => {
 describe('헤더 설정 단추', () => {
   it('누르면 설정 팝오버가 열린다', async () => {
     render(
-      <AppProviders>
-        <SettingsButton />
-      </AppProviders>,
+      <MemoryRouter>
+        <AppProviders>
+          <SettingsButton />
+        </AppProviders>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
