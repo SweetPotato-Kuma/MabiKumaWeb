@@ -1,3 +1,9 @@
+import {
+  readPersonal,
+  writePersonal,
+  removePersonal,
+  subscribePersonalStorage,
+} from '@/lib/personalStorage';
 import { useCallback, useSyncExternalStore } from 'react';
 import type { ThemeMode } from '@/app/theme';
 
@@ -16,7 +22,7 @@ function isPreference(value: string | null): value is ThemePreference {
 
 function readStorage(): ThemePreference {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readPersonal(STORAGE_KEY);
     return isPreference(raw) ? raw : 'system';
   } catch {
     // 시크릿 모드 등 localStorage 접근이 막힌 환경
@@ -71,8 +77,8 @@ export function getThemePreference(): ThemePreference {
 export function setThemePreference(next: ThemePreference): void {
   preference = next;
   try {
-    if (next === 'system') window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, next);
+    if (next === 'system') removePersonal(STORAGE_KEY);
+    else writePersonal(STORAGE_KEY, next);
   } catch {
     // 저장 실패는 조용히 무시하고 메모리 값만 쓴다.
   }
@@ -96,3 +102,9 @@ export function useThemePreference(): readonly [ThemePreference, (next: ThemePre
   }, []);
   return [value, setValue] as const;
 }
+
+subscribePersonalStorage(({ key, external }) => {
+  if (!external || (key !== null && key !== STORAGE_KEY)) return;
+  preference = readStorage();
+  emit();
+});

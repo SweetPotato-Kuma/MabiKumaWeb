@@ -49,6 +49,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
+        // 인증 쿠키를 localhost에서도 같은 출처로 쓰기 위한 계정 전용 개발 프록시.
+        '/account-api': {
+          target: env.ACCOUNT_PROXY_TARGET || 'https://mabi-api.spkuma.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/account-api/, ''),
+        },
         // 개발 중에는 /nexon-api/... 로 호출하면 브라우저 CORS 없이 넥슨 API에 도달한다.
         '/nexon-api': {
           target: NEXON_API_ORIGIN,

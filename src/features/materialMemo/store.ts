@@ -1,3 +1,9 @@
+import {
+  readPersonal,
+  writePersonal,
+  removePersonal,
+  subscribePersonalStorage,
+} from '@/lib/personalStorage';
 import { useSyncExternalStore } from 'react';
 import type { Method } from '@/features/crafting/plan';
 import { NO_CHOICES, type TreeChoices } from '@/features/crafting/treeChoices';
@@ -7,7 +13,7 @@ import { NO_CHOICES, type TreeChoices } from '@/features/crafting/treeChoices';
  *
  * 목표 아이템(이름과 목표 개수)의 목록, 줄마다 가진 개수, 줄마다 고른 구하는 방법을 담는다. 줄의 자리 이름
  * (PlanNode.key)은 목표 번호(Goal.id)로 시작하므로 목표를 지울 때 그 목표의 줄만 걷어 낼 수 있다.
- * 계정이 없으므로 이 브라우저에만 남긴다. 저장이 막힌 환경(시크릿 창 등)에서는 이번 방문 동안만 기억한다.
+ * 비로그인은 이 브라우저에, 로그인하면 계정에도 동기화한다. 저장이 막힌 환경(시크릿 창 등)에서는 이번 방문 동안만 기억한다.
  */
 export interface Goal {
   /** 줄의 자리 이름이 되므로 점(.)과 빗금(/)이 없다. */
@@ -98,7 +104,7 @@ function read(): MemoState {
   if (current) return current;
   let state = EMPTY;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readPersonal(STORAGE_KEY);
     if (raw) state = parseState(JSON.parse(raw));
   } catch {
     // 저장이 막혔거나 망가진 값이다. 빈 것으로 시작한다.
@@ -111,8 +117,8 @@ function write(next: MemoState): void {
   const clean = parseState(next);
   current = clean;
   try {
-    if (clean === EMPTY) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+    if (clean === EMPTY) removePersonal(STORAGE_KEY);
+    else writePersonal(STORAGE_KEY, JSON.stringify(clean));
   } catch {
     // 저장이 막힌 환경. 메모리 값만 쓴다.
   }
@@ -195,3 +201,9 @@ export function updateChoices(change: (choices: TreeChoices) => TreeChoices): vo
 export function resetMemoCache(): void {
   current = null;
 }
+
+subscribePersonalStorage(({ key, external }) => {
+  if (!external || (key !== null && key !== STORAGE_KEY)) return;
+  current = null;
+  for (const listener of listeners) listener();
+});

@@ -1,3 +1,4 @@
+import { readPersonal, writePersonal, subscribePersonalStorage } from '@/lib/personalStorage';
 import { useCallback, useSyncExternalStore } from 'react';
 import { categoryLabel } from './categoryTree';
 import { parseFilter, serializeFilter } from './filterUrl';
@@ -35,7 +36,8 @@ export function hasSearchCondition(query: SavedSearchQuery): boolean {
   return query.keyword.trim() !== '' || query.category.trim() !== '' || query.filterKey !== '';
 }
 
-const text = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : '');
+const text = (value: unknown, max: number) =>
+  typeof value === 'string' ? value.slice(0, max) : '';
 
 /** 저장된 값을 믿지 않는다. 항목마다 검증하고 읽을 수 없는 것은 버린다. */
 export function parseSaved(raw: unknown): SavedSearch[] {
@@ -71,7 +73,7 @@ function serializeParsed(filterKey: string): string {
 
 function readStorage(): SavedSearch[] {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readPersonal(STORAGE_KEY);
     return raw ? parseSaved(JSON.parse(raw)) : [];
   } catch {
     // 시크릿 모드 등 localStorage 를 못 쓰거나 글자가 깨졌다. 빈 목록으로 시작한다.
@@ -81,7 +83,7 @@ function readStorage(): SavedSearch[] {
 
 function writeStorage(items: readonly SavedSearch[]): void {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    writePersonal(STORAGE_KEY, JSON.stringify(items));
   } catch {
     // 저장하지 못해도 이 탭 안에서는 바꾼 목록을 쓴다.
   }
@@ -123,7 +125,9 @@ export function findSavedSearch(query: SavedSearchQuery): SavedSearch | undefine
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 /** 새로 저장한다. 조건이 없거나, 이름이 비었거나, 가득 찼거나, 같은 조건이 이미 있으면 저장하지 않고 까닭을 돌려준다. */
-export function addSavedSearch(input: SavedSearchQuery & { name: string; description?: string }): SaveResult {
+export function addSavedSearch(
+  input: SavedSearchQuery & { name: string; description?: string },
+): SaveResult {
   const query: SavedSearchQuery = {
     keyword: input.keyword.trim(),
     category: input.category,
@@ -146,12 +150,17 @@ export function addSavedSearch(input: SavedSearchQuery & { name: string; descrip
 }
 
 /** 이름과 설명을 고친다. 검색 조건은 그대로다. 이름이 비면 고치지 않는다. */
-export function updateSavedSearch(id: string, changes: { name: string; description: string }): boolean {
+export function updateSavedSearch(
+  id: string,
+  changes: { name: string; description: string },
+): boolean {
   const name = changes.name.trim().slice(0, NAME_MAX);
   if (!name || !snapshot.some((item) => item.id === id)) return false;
   commit(
     snapshot.map((item) =>
-      item.id === id ? { ...item, name, description: changes.description.trim().slice(0, DESCRIPTION_MAX) } : item,
+      item.id === id
+        ? { ...item, name, description: changes.description.trim().slice(0, DESCRIPTION_MAX) }
+        : item,
     ),
   );
   return true;
@@ -164,8 +173,8 @@ export function removeSavedSearch(id: string): void {
 
 // 다른 탭에서 바꾸면 이 탭도 따라 바뀐다.
 if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key !== STORAGE_KEY) return;
+  subscribePersonalStorage(({ key, external }) => {
+    if (!external || (key !== null && key !== STORAGE_KEY)) return;
     snapshot = readStorage();
     for (const listener of listeners) listener();
   });

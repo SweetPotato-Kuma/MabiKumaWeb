@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_BASE_PATH?: string;
   readonly VITE_API_BASE_URL?: string;
   readonly VITE_PROXY_URL?: string;
+  /** 계정 API는 같은 사이트의 HTTPS 도메인을 쓴다. 인증 쿠키는 HttpOnly다. */
+  readonly VITE_ACCOUNT_API_URL?: string;
   /** 그림과 카테고리별 그림 목록이 나가는 CDN 주소. 워커의 ICON_BASE_URL 과 같다. */
   readonly VITE_ICON_BASE_URL?: string;
   readonly VITE_NEXON_API_KEY?: string;

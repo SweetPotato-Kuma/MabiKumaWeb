@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useState, type ReactNode } from 'reac
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Alert,
   Button,
   Drawer,
   Flex,
@@ -33,6 +34,8 @@ import { CommandPalette } from '@/components/CommandPalette';
 import { ErinnClockButton, ErinnClockDetail } from '@/components/ErinnClock';
 import { IssueReportModal, IssueReportTrigger } from '@/components/IssueReportButton';
 import { SettingsButton, SettingsPanel } from '@/components/SettingsPanel';
+import { AccountPanel } from '@/components/AccountPanel';
+import { useAccountState } from '@/features/account/store';
 import { prefetchRelicPrices } from '@/features/relics/priceFile';
 import { useHasAdminKey } from '@/lib/adminKey';
 import { GAME_DATA_FAILURE_EVENT } from '@/lib/gameData';
@@ -195,6 +198,7 @@ function ThemeToggle() {
 }
 
 export function RootLayout() {
+  const accountState = useAccountState();
   const location = useLocation();
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
@@ -334,6 +338,7 @@ export function RootLayout() {
               size={compactNav ? 'icon' : screens.xxl ? 'full' : 'iconWithHint'}
             />
             <ThemeToggle />
+            <AccountPanel />
             {/* 좁은 화면은 헤더가 좁아 설정을 메뉴 서랍 안에 둔다. */}
             {compactNav ? null : <SettingsButton />}
             {compactNav ? null : <IssueReportTrigger variant="icon" />}
@@ -390,9 +395,24 @@ export function RootLayout() {
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} entries={navEntries} />
 
       <Content style={{ ...containerStyle, paddingBlock: screens.md ? 32 : 20 }}>
+        {accountState.message &&
+        (accountState.phase === 'error' ||
+          accountState.phase === 'conflict' ||
+          accountState.phase === 'local') ? (
+          <Alert
+            type="warning"
+            title={accountState.message}
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
         {/* 나눠 받는 화면을 받는 동안 푸터가 화면 안으로 올라오지 않게 한 화면 높이를 비워 둔다. */}
         <Suspense fallback={<div style={{ minHeight: '100vh' }} />}>
-          <Outlet />
+          {accountState.phase === 'loading' ? (
+            <Text>계정 데이터를 불러오는 중입니다.</Text>
+          ) : (
+            <Outlet key={accountState.generation} />
+          )}
         </Suspense>
       </Content>
 
@@ -426,6 +446,8 @@ export function RootLayout() {
           </Link>
           {' · '}
           <IssueReportTrigger variant="link" />
+          <br />
+          비로그인 입력값은 이 브라우저에만 저장되며, 사이트 데이터를 지우면 복구할 수 없습니다.
         </Text>
       </Footer>
 

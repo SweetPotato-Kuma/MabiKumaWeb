@@ -1,3 +1,4 @@
+import { readPersonal, writePersonal, removePersonal } from '@/lib/personalStorage';
 import { readValues, writeValues } from './url';
 import type { Field, Values } from './schema';
 
@@ -18,7 +19,7 @@ const rememberedFields = (fields: readonly Field[]) => fields.filter((field) => 
 
 function readStored(id: string): URLSearchParams {
   try {
-    return new URLSearchParams(window.localStorage.getItem(storageKey(id)) ?? '');
+    return new URLSearchParams(readPersonal(storageKey(id)) ?? '');
   } catch {
     // 저장소가 막힌 브라우저(시크릿 모드 등)에서는 기억하지 않는다.
     return new URLSearchParams();
@@ -53,8 +54,8 @@ export function remember(id: string, fields: readonly Field[], values: Values): 
   if (remembered.length === 0) return;
   try {
     const text = writeValues(remembered, values).toString();
-    if (text === '') window.localStorage.removeItem(storageKey(id));
-    else window.localStorage.setItem(storageKey(id), text);
+    if (text === '') removePersonal(storageKey(id));
+    else writePersonal(storageKey(id), text);
   } catch {
     // 저장하지 못해도 이 화면에서는 그대로 쓴다.
   }
@@ -63,7 +64,7 @@ export function remember(id: string, fields: readonly Field[], values: Values): 
 /** 시험에서 저장값을 비운다. */
 export function forgetRememberedForTest(id: string): void {
   try {
-    window.localStorage.removeItem(storageKey(id));
+    removePersonal(storageKey(id));
   } catch {
     // 막혀 있으면 지울 것도 없다.
   }

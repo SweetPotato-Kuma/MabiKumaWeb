@@ -1,3 +1,9 @@
+import {
+  readPersonal,
+  writePersonal,
+  removePersonal,
+  subscribePersonalStorage,
+} from '@/lib/personalStorage';
 import { useCallback, useSyncExternalStore } from 'react';
 
 /**
@@ -36,7 +42,7 @@ function read(key: string): Inventory {
   if (cached) return cached;
   let inventory = EMPTY;
   try {
-    const raw = window.localStorage.getItem(STORAGE_PREFIX + key);
+    const raw = readPersonal(STORAGE_PREFIX + key);
     if (raw) inventory = sanitize(JSON.parse(raw));
   } catch {
     // 저장이 막혔거나 망가진 값이다. 빈 것으로 시작한다.
@@ -49,8 +55,8 @@ function write(key: string, inventory: Inventory): void {
   const clean = sanitize(inventory);
   cache.set(key, clean);
   try {
-    if (clean === EMPTY) window.localStorage.removeItem(STORAGE_PREFIX + key);
-    else window.localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(clean));
+    if (clean === EMPTY) removePersonal(STORAGE_PREFIX + key);
+    else writePersonal(STORAGE_PREFIX + key, JSON.stringify(clean));
   } catch {
     // 저장이 막힌 환경. 메모리 값만 쓴다.
   }
@@ -79,3 +85,9 @@ export function useInventory(key: string): [Inventory, (next: Inventory) => void
 export function resetInventoryCache(): void {
   cache.clear();
 }
+
+subscribePersonalStorage(({ key, external }) => {
+  if (!external || (key !== null && !key.startsWith(STORAGE_PREFIX))) return;
+  cache.clear();
+  for (const listener of listeners) listener();
+});

@@ -1,3 +1,9 @@
+import {
+  readPersonal,
+  writePersonal,
+  removePersonal,
+  subscribePersonalStorage,
+} from '@/lib/personalStorage';
 import { useSyncExternalStore } from 'react';
 import {
   COLOR_CHANNEL_KEYS,
@@ -72,7 +78,7 @@ export function parseWatches(raw: unknown): BagWatch[] {
 
 function readStorage(): BagWatch[] {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readPersonal(STORAGE_KEY);
     return raw ? parseWatches(JSON.parse(raw)) : [];
   } catch {
     // 시크릿 모드 등 localStorage 를 못 쓰거나 글자가 깨졌다. 빈 목록으로 시작한다.
@@ -82,7 +88,7 @@ function readStorage(): BagWatch[] {
 
 function writeStorage(items: readonly BagWatch[]): void {
   try {
-    window.localStorage.setItem(
+    writePersonal(
       STORAGE_KEY,
       JSON.stringify(
         items.map((item) => ({
@@ -178,7 +184,7 @@ export function removeBagWatch(id: string): void {
 export function resetBagWatchesForTest(): void {
   snapshot = [];
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
+    removePersonal(STORAGE_KEY);
   } catch {
     // 시험 환경에서만 부른다.
   }
@@ -186,8 +192,8 @@ export function resetBagWatchesForTest(): void {
 
 // 다른 탭에서 바꾸면 이 탭도 따라 바뀐다.
 if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key !== STORAGE_KEY) return;
+  subscribePersonalStorage(({ key, external }) => {
+    if (!external || (key !== null && key !== STORAGE_KEY)) return;
     snapshot = readStorage();
     for (const listener of listeners) listener();
   });

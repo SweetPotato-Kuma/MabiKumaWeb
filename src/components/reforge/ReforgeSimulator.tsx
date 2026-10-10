@@ -1,3 +1,4 @@
+import { readPersonal, writePersonal, removePersonal } from '@/lib/personalStorage';
 import {
   memo,
   useDeferredValue,
@@ -142,7 +143,7 @@ const tierOf = (line: ReforgeLine, normalMax: number | null) =>
 
 function readFxSetting(): boolean {
   try {
-    return window.localStorage.getItem(FX_STORAGE_KEY) !== 'off';
+    return readPersonal(FX_STORAGE_KEY) !== 'off';
   } catch {
     // 시크릿 모드 등 localStorage 접근이 막힌 환경
     return true;
@@ -151,13 +152,12 @@ function readFxSetting(): boolean {
 
 function writeFxSetting(on: boolean): void {
   try {
-    if (on) window.localStorage.removeItem(FX_STORAGE_KEY);
-    else window.localStorage.setItem(FX_STORAGE_KEY, 'off');
+    if (on) removePersonal(FX_STORAGE_KEY);
+    else writePersonal(FX_STORAGE_KEY, 'off');
   } catch {
     // 저장하지 못해도 이번 방문 동안은 고른 대로 간다.
   }
 }
-
 
 /** 장비 타입의 그림. 그 타입의 대표 아이템 그림을 쓴다. 대표가 없으면 그리지 않는다. */
 function TypeIcon({ name, size }: { name: string; size: number }) {
@@ -1174,11 +1174,7 @@ function SimulatorBody({ data, simulator }: { data: ReforgeData; simulator: Simu
             <Statistic title="세공" value={formatNumber(count)} suffix="번" styles={NUMERIC} />
           </Col>
           <Col xs={12} md={6}>
-            <Statistic
-              title="쓴 골드"
-              value={formatGold(spent)}
-              styles={NUMERIC}
-            />
+            <Statistic title="쓴 골드" value={formatGold(spent)} styles={NUMERIC} />
             <Flex gap={6} align="center">
               {pricesLoading ? <Spin size="small" /> : null}
               <Text type="secondary" className="tnum" style={{ fontSize: 12 }}>

@@ -1,3 +1,9 @@
+import {
+  readPersonal,
+  writePersonal,
+  removePersonal,
+  subscribePersonalStorage,
+} from '@/lib/personalStorage';
 import { useCallback, useSyncExternalStore } from 'react';
 import { FARM_ORDERS, MAX_REWARD_QTY, MAX_REWARD_SLOTS, REWARD_ITEMS } from './data';
 import type { RewardPick } from './value';
@@ -35,7 +41,9 @@ function sanitizePicks(raw: unknown): RewardPick[] {
     const { key, qty } = pick as { key?: unknown; qty?: unknown };
     const count = Math.floor(Number(qty));
     if (typeof key !== 'string' || !REWARD_KEYS.has(key)) return [];
-    return [{ key, qty: Number.isFinite(count) ? Math.min(MAX_REWARD_QTY, Math.max(0, count)) : 0 }];
+    return [
+      { key, qty: Number.isFinite(count) ? Math.min(MAX_REWARD_QTY, Math.max(0, count)) : 0 },
+    ];
   });
 }
 
@@ -50,7 +58,13 @@ export function sanitizeFarmState(raw: unknown): FarmState {
     }
   }
   const pinned = Array.isArray(source.pinned)
-    ? [...new Set(source.pinned.filter((name): name is string => typeof name === 'string' && ORDER_NAMES.has(name)))]
+    ? [
+        ...new Set(
+          source.pinned.filter(
+            (name): name is string => typeof name === 'string' && ORDER_NAMES.has(name),
+          ),
+        ),
+      ]
     : [];
   const rewardValues: Record<string, number> = {};
   if (source.rewardValues && typeof source.rewardValues === 'object') {
@@ -59,7 +73,12 @@ export function sanitizeFarmState(raw: unknown): FarmState {
       if (REWARD_KEYS.has(key) && Number.isFinite(gold) && gold >= 0) rewardValues[key] = gold;
     }
   }
-  if (Object.keys(rewards).length === 0 && pinned.length === 0 && Object.keys(rewardValues).length === 0) return EMPTY;
+  if (
+    Object.keys(rewards).length === 0 &&
+    pinned.length === 0 &&
+    Object.keys(rewardValues).length === 0
+  )
+    return EMPTY;
   return { rewards, pinned, rewardValues };
 }
 
@@ -67,7 +86,7 @@ function read(): FarmState {
   if (cache) return cache;
   let state = EMPTY;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readPersonal(STORAGE_KEY);
     if (raw) state = sanitizeFarmState(JSON.parse(raw));
   } catch {
     // 저장이 막혔거나 망가진 값이다. 빈 것으로 시작한다.
@@ -80,8 +99,8 @@ function write(next: FarmState): void {
   const clean = sanitizeFarmState(next);
   cache = clean;
   try {
-    if (clean === EMPTY) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+    if (clean === EMPTY) removePersonal(STORAGE_KEY);
+    else writePersonal(STORAGE_KEY, JSON.stringify(clean));
   } catch {
     // 저장이 막힌 환경. 메모리 값만 쓴다.
   }
@@ -98,7 +117,10 @@ function subscribe(listener: Listener): () => void {
 /** 내 입력과, 지금 값을 받아 다음 값을 돌려주는 함수로 고치는 함수. */
 export function useFarmState(): [FarmState, (update: (previous: FarmState) => FarmState) => void] {
   const state = useSyncExternalStore(subscribe, read, () => EMPTY);
-  const update = useCallback((change: (previous: FarmState) => FarmState) => write(change(read())), []);
+  const update = useCallback(
+    (change: (previous: FarmState) => FarmState) => write(change(read())),
+    [],
+  );
   return [state, update];
 }
 
@@ -106,3 +128,9 @@ export function useFarmState(): [FarmState, (update: (previous: FarmState) => Fa
 export function resetFarmStateCache(): void {
   cache = undefined;
 }
+
+subscribePersonalStorage(({ key, external }) => {
+  if (!external || (key !== null && key !== STORAGE_KEY)) return;
+  cache = undefined;
+  for (const listener of listeners) listener();
+});

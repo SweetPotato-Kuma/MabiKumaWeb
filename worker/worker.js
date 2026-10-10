@@ -106,6 +106,7 @@ import {
   previewRead,
 } from './previews.js';
 import { BANNERS_PATH, bannersRead } from './banners.js';
+import { accountRequest, cleanupAccounts } from './accounts.js';
 import {
   SNAPSHOT_COLLECT_PATH,
   SNAPSHOT_PATH,
@@ -1440,6 +1441,16 @@ export default {
       .filter(Boolean);
     const cors = corsHeaders(origin, allowList);
 
+    if (new URL(request.url).pathname === '/account' || new URL(request.url).pathname.startsWith('/account/')) {
+      if (request.method === 'OPTIONS') {
+        if (!origin || !allowList.includes(origin)) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { ...cors,
+          'Access-Control-Allow-Headers': 'content-type, x-mabikuma-account',
+          'Access-Control-Allow-Credentials': 'true' } });
+      }
+      return accountRequest(request, env, cors);
+    }
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors });
     }
@@ -1799,6 +1810,11 @@ export default {
    * 만든다. 요청 사이를 1초씩 띄우므로 1~2분 걸린다.
    */
   async scheduled(controller, env) {
+    // 기존 10분 크론에서 인증 임시 데이터만 정리한다.
+    if (controller?.cron === '*/10 * * * *') {
+      // 계정 DB의 일시 장애가 기존 시세 수집까지 중단시키지 않게 한다.
+      await cleanupAccounts(env).catch(() => console.error('Account cleanup failed'));
+    }
     const outcome = (result) => (result.status === 'fulfilled' ? result.value : String(result.reason));
     if (controller?.cron === NEWS_CRON) {
       // 키트는 판매 공지를 새소식 기록에서 찾으므로 새소식을 먼저 모은다.

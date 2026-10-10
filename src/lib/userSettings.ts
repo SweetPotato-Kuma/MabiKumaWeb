@@ -1,8 +1,9 @@
+import { readPersonal, writePersonal, subscribePersonalStorage } from '@/lib/personalStorage';
 import { useCallback, useSyncExternalStore } from 'react';
 import { SERVER_NAMES, type ServerName } from '@/features/servers/constants';
 
 /**
- * 방문자가 한 번 고르면 모든 화면이 따르는 설정. 로그인이 없으므로 이 브라우저의 localStorage 에만 남는다.
+ * 방문자가 한 번 고르면 모든 화면이 따르는 설정. 비로그인은 이 브라우저에, 로그인하면 계정에도 동기화한다.
  *
  * - server: 서버를 고르는 모든 화면의 처음 값. 화면에서 서버를 바꾸면 이 값도 따라 바뀐다.
  * - priceStyle: 가격을 `1,149,000,000 G`(number) 로 쓸지 `11억 4,900만 G`(korean) 로 쓸지.
@@ -44,7 +45,7 @@ export function parseSettings(raw: unknown): UserSettings {
 
 function readStorage(): UserSettings {
   try {
-    const text = window.localStorage.getItem(STORAGE_KEY);
+    const text = readPersonal(STORAGE_KEY);
     return parseSettings(text ? JSON.parse(text) : null);
   } catch {
     // 시크릿 모드 등 localStorage 를 못 쓰거나 글자가 깨졌다. 기본값으로 시작한다.
@@ -54,7 +55,7 @@ function readStorage(): UserSettings {
 
 function writeStorage(settings: UserSettings): void {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    writePersonal(STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // 저장하지 못해도 이 탭 안에서는 바꾼 값을 쓴다.
   }
@@ -74,7 +75,9 @@ function subscribe(listener: Listener): () => void {
 }
 
 function commit(next: UserSettings): void {
-  const same = (Object.keys(next) as (keyof UserSettings)[]).every((key) => next[key] === snapshot[key]);
+  const same = (Object.keys(next) as (keyof UserSettings)[]).every(
+    (key) => next[key] === snapshot[key],
+  );
   if (same) return;
   snapshot = next;
   writeStorage(next);
@@ -91,15 +94,18 @@ export function updateSettings(changes: Partial<UserSettings>): void {
 
 // 다른 탭에서 바꾸면 이 탭도 따라 바뀐다.
 if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key !== STORAGE_KEY) return;
+  subscribePersonalStorage(({ key, external }) => {
+    if (!external || (key !== null && key !== STORAGE_KEY)) return;
     snapshot = readStorage();
     for (const listener of listeners) listener();
   });
 }
 
 /** 설정을 읽고 고치는 훅. 어디서 바꿔도 이 훅을 쓰는 모든 화면이 바로 다시 그려진다. */
-export function useUserSettings(): readonly [UserSettings, (changes: Partial<UserSettings>) => void] {
+export function useUserSettings(): readonly [
+  UserSettings,
+  (changes: Partial<UserSettings>) => void,
+] {
   const settings = useSyncExternalStore(subscribe, getSettings, getSettings);
   const update = useCallback((changes: Partial<UserSettings>) => updateSettings(changes), []);
   return [settings, update] as const;

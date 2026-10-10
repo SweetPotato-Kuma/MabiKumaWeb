@@ -1,3 +1,4 @@
+import { readPersonal, writePersonal, removePersonal } from '@/lib/personalStorage';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   Button,
@@ -95,7 +96,7 @@ const STONE_CATEGORY = '에코스톤';
 
 function readFxSetting(): boolean {
   try {
-    return window.localStorage.getItem(FX_STORAGE_KEY) !== 'off';
+    return readPersonal(FX_STORAGE_KEY) !== 'off';
   } catch {
     // 시크릿 모드 등 localStorage 접근이 막힌 환경
     return true;
@@ -104,8 +105,8 @@ function readFxSetting(): boolean {
 
 function writeFxSetting(on: boolean): void {
   try {
-    if (on) window.localStorage.removeItem(FX_STORAGE_KEY);
-    else window.localStorage.setItem(FX_STORAGE_KEY, 'off');
+    if (on) removePersonal(FX_STORAGE_KEY);
+    else writePersonal(FX_STORAGE_KEY, 'off');
   } catch {
     // 저장하지 못해도 이번 방문 동안은 고른 대로 간다.
   }
