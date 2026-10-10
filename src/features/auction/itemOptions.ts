@@ -46,6 +46,7 @@ const GROUP_RULES: { title: string; prefixes: string[]; dense: boolean }[] = [
 ];
 
 const COLOR_PREFIX = '아이템 색상';
+const PLAIN_COLOR = '색상';
 const PROTECTION_PREFIX = '아이템 보호';
 
 /**
@@ -109,9 +110,12 @@ export function rgbToCss({ r, g, b }: Rgb): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-/** 색상 칸인지. 색상은 다섯 줄을 차지하므로 한 줄로 모아 따로 그린다. */
+/**
+ * 색상 칸인지. 색상은 다섯 줄을 차지하므로 한 줄로 모아 따로 그린다.
+ * 염색 앰플과 포션은 파트 없이 "색상" 한 칸으로 온다.
+ */
 export function isColorOption(option: ItemOption): boolean {
-  return option.option_type.startsWith(COLOR_PREFIX);
+  return option.option_type.startsWith(COLOR_PREFIX) || option.option_type === PLAIN_COLOR;
 }
 
 /**

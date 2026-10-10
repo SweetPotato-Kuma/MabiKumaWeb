@@ -143,6 +143,13 @@ describe('groupItemOptions', () => {
     expect(colors.map((item) => item.option_sub_type)).toEqual(['파트 A', '파트 D']);
   });
 
+  it('염색 앰플과 포션의 "색상" 칸도 색상으로 뺀다', () => {
+    const { colors, groups } = groupItemOptions([{ option_type: '색상', option_value: '96,78,46' }]);
+
+    expect(colors.map((item) => item.option_value)).toEqual(['96,78,46']);
+    expect(groups).toEqual([]);
+  });
+
   it('정해진 순서대로 묶는다', () => {
     const { groups } = groupItemOptions(OPTIONS);
 

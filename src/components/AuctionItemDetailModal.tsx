@@ -153,9 +153,12 @@ function ColorSwatches({ colors }: { colors: ItemOption[] }) {
                 {value}
               </Text>
             )}
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {colorPartLabel(color)}
-            </Text>
+            {/* 파트 없이 "색상" 한 칸뿐인 앰플은 네모 밑에 되풀이할 이름이 없다. */}
+            {color.option_sub_type ? (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {colorPartLabel(color)}
+              </Text>
+            ) : null}
           </Flex>
         );
       })}
