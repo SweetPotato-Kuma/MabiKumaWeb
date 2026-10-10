@@ -15,6 +15,7 @@ import { bundlePrice } from '@/features/auction/price';
 import { itemInfoPath } from '@/features/auction/dictionary';
 import { isEquipmentCategory } from '@/features/equipment/api';
 import { canonicalItemName, useItemCard, usePrefetchItemCards } from '@/features/itemcard/cards';
+import { dyeColorsOf } from '@/features/itemcard/dye';
 import { isRelicOption, parseRelicOption, RELIC_MAX_LEVEL } from '@/features/relics/murias';
 import type { ItemOption } from '@/features/auction/types';
 import { formatDateTime, formatNumber, formatRemaining } from '@/lib/format';
@@ -200,6 +201,8 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
   const cardKeys = useMemo(() => (cardName ? [{ category: cardCategory, name: cardName }] : []), [cardCategory, cardName]);
   usePrefetchItemCards(cardKeys);
   const card = useItemCard(cardCategory, cardName);
+  // 표와 같은 길로 그림을 찾아 매물의 파트 색으로 칠한다.
+  const dyeColors = useMemo(() => dyeColorsOf(detail?.options), [detail?.options]);
 
   /**
    * 인챈트 스크롤이면 어떤 인챈트인지(이름, 접두/접미, 랭크)는 알려 주지만 효과는 옵션에 없다. 인챈트 이름이
@@ -213,7 +216,13 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
     <Modal open={detail !== null} onCancel={onClose} footer={null} width={860} title={null} destroyOnHidden>
       {detail === null ? null : (
         <Flex vertical gap={20}>
-          <ItemCardSummary card={card} title={detail.displayName} category={detail.category} />
+          <ItemCardSummary
+            card={card}
+            title={detail.displayName}
+            category={detail.category}
+            iconName={cardName}
+            colors={dyeColors}
+          />
 
           {/*
             이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다.

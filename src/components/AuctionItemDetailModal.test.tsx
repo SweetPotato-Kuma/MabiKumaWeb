@@ -26,9 +26,11 @@ const DETAIL: AuctionItemDetail = {
 function renderModal(detail: AuctionItemDetail | null) {
   return render(
     <AppProviders>
-      <MemoryRouter>
-        <AuctionItemDetailModal detail={detail} onClose={vi.fn()} />
-      </MemoryRouter>
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <AuctionItemDetailModal detail={detail} onClose={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>
     </AppProviders>,
   );
 }

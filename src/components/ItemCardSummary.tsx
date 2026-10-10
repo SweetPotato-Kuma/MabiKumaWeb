@@ -1,6 +1,7 @@
 import { Flex, Tag, Typography } from 'antd';
 import { ItemIcon } from '@/components/ItemIcon';
 import type { ItemCard } from '@/features/itemcard/cards';
+import type { DyeColors } from '@/features/itemcard/dye';
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -17,6 +18,8 @@ interface ItemCardSummaryProps {
   category: string;
   /** 사전 이름이면 그림을 카테고리별 그림 목록(CDN)에서 바로 찾는다. 인챈트가 붙은 표시 이름은 넘기지 않는다. */
   iconName?: string;
+  /** 경매장 매물의 파트별 색. 표와 같은 색으로 그림을 칠한다. */
+  colors?: DyeColors | null;
 }
 
 /**
@@ -25,7 +28,7 @@ interface ItemCardSummaryProps {
  * 경매장 매물 상세와 사전 상세가 같은 모양이어야 한다. 한쪽에서 본 창을 다른 쪽에서
  * 다르게 읽을 이유가 없다. 그래서 두 창이 이 조각을 같이 쓴다.
  */
-export function ItemCardSummary({ card, title, category, iconName }: ItemCardSummaryProps) {
+export function ItemCardSummary({ card, title, category, iconName, colors }: ItemCardSummaryProps) {
   return (
     <>
       <Flex align="flex-start" gap={16}>
@@ -34,6 +37,7 @@ export function ItemCardSummary({ card, title, category, iconName }: ItemCardSum
           category={iconName ? category : undefined}
           name={iconName}
           size={SUMMARY_ICON_BOX}
+          colors={colors}
         />
         <Flex vertical gap={4} style={{ minWidth: 0 }}>
           <Title level={4} style={{ margin: 0 }}>
