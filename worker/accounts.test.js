@@ -88,6 +88,42 @@ function call(path, method = 'GET', payload, options = {}) {
 const save = (revision, entries = { 'mabikuma:userSettings': '{"server":"류트"}' }) =>
   call('/data', 'PUT', { version: 1, revision, entries });
 describe('계정 저장 API와 실제 SQLite 스키마', () => {
+  it('본인 닉네임만 수정하고 저장 내용·동의·다른 계정은 유지한다', async () => {
+    await save(0);
+    const before = sql
+      .prepare('SELECT consent_version, registered_at FROM accounts WHERE id = ?')
+      .get(A);
+    expect((await call('/profile', 'PATCH', { nickname: ' 새쿠마 ' })).status).toBe(200);
+    expect((await (await call('/me')).json()).profile.nickname).toBe('새쿠마');
+    expect(
+      sql.prepare('SELECT consent_version, registered_at FROM accounts WHERE id = ?').get(A),
+    ).toEqual(before);
+    expect((await (await call('/data')).json()).revision).toBe(1);
+    expect(sql.prepare('SELECT nickname FROM accounts WHERE id = ?').get(B).nickname).toBe('쿠마B');
+    expect((await call('/profile', 'PATCH', { nickname: '<invalid>' })).status).toBe(400);
+    expect(
+      (
+        await call(
+          '/profile',
+          'PATCH',
+          { nickname: '침범' },
+          { headers: { 'x-mabikuma-account': B } },
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await call(
+          '/profile',
+          'PATCH',
+          { nickname: '누락' },
+          { headers: { 'x-mabikuma-account': '' } },
+        )
+      ).status,
+    ).toBe(400);
+    sql.prepare('UPDATE accounts SET nickname = NULL, registered_at = NULL WHERE id = ?').run(A);
+    expect((await call('/profile', 'PATCH', { nickname: '등록우회' })).status).toBe(403);
+  });
   it('허용 Origin과 세션, 요청 계정을 모두 확인한다', async () => {
     expect(
       (await call('/data', 'GET', undefined, { headers: { origin: 'https://evil.example' } }))
@@ -177,6 +213,7 @@ describe('계정 저장 API와 실제 SQLite 스키마', () => {
     expect(response.status).toBe(204);
     expect(response.headers.get('access-control-allow-origin')).toBe(origin);
     expect(response.headers.get('access-control-allow-credentials')).toBe('true');
+    expect(response.headers.get('access-control-allow-methods')).toContain('PATCH');
   });
 });
 describe('외부 인증 검증', () => {

@@ -26,6 +26,7 @@ interface AccountState {
   message: string;
   generation: number;
   conflict: RemoteDocument | null;
+  lastSyncedAt: number | null;
 }
 let state: AccountState = {
   account: null,
@@ -33,6 +34,7 @@ let state: AccountState = {
   message: '',
   generation: 0,
   conflict: null,
+  lastSyncedAt: null,
 };
 const listeners = new Set<() => void>();
 const emit = (patch: Partial<AccountState>) => {
@@ -96,6 +98,7 @@ async function activate(account: Account): Promise<void> {
   emit({
     account,
     phase: 'loading',
+    lastSyncedAt: null,
     message: '계정 데이터를 불러오는 중',
     generation: state.generation + 1,
   });
@@ -146,6 +149,7 @@ async function activate(account: Account): Promise<void> {
     phase: merged.conflicts.length ? 'conflict' : pending() ? 'pending' : 'ready',
     generation: state.generation + 1,
     conflict: merged.conflicts.length ? remote : null,
+    lastSyncedAt: !merged.conflicts.length && !pending() ? Date.now() : null,
     message: merged.conflicts.length
       ? '이 기기와 계정의 수정 내용이 겹칩니다. 사용할 내용을 선택해 주세요.'
       : '',
@@ -163,6 +167,17 @@ export async function acceptAccount(account: Account): Promise<void> {
     });
     throw error;
   }
+}
+export async function updateNickname(nickname: string): Promise<void> {
+  const id = state.account?.id;
+  if (!id || !state.account?.profile) throw new Error('먼저 프로필을 등록해 주세요.');
+  const operation = epoch;
+  const account = await accountApi<Account>('/profile', 'PATCH', { nickname });
+  if (operation !== epoch) return;
+  if (account.id !== id || !account.profile) throw new Error('프로필 변경을 확인하지 못했습니다.');
+  // 프로필 수정은 입력 사본이나 전송 대기열을 다시 초기화하지 않는다.
+  emit({ account });
+  notifyOtherTabs();
 }
 export async function syncAccount(): Promise<void> {
   const id = state.account?.id;
@@ -198,7 +213,7 @@ export async function syncAccount(): Promise<void> {
     });
     if (refreshed) emit({ generation: state.generation + 1 });
     if (!pending()) {
-      emit({ phase: 'ready', message: '' });
+      emit({ phase: 'ready', message: '', lastSyncedAt: Date.now() });
       return;
     }
     const sent = getPersonalDocument();
@@ -216,7 +231,11 @@ export async function syncAccount(): Promise<void> {
       revision: saved.revision,
       base: sent.entries,
     });
-    emit({ phase: pending() ? 'pending' : 'ready', message: pending() ? '계정 저장 대기 중' : '' });
+    emit({
+      phase: pending() ? 'pending' : 'ready',
+      message: pending() ? '계정 저장 대기 중' : '',
+      lastSyncedAt: pending() ? state.lastSyncedAt : Date.now(),
+    });
   } catch (error) {
     if (operation !== epoch) return;
     if (error instanceof AccountError && error.status === 409) {
@@ -286,6 +305,7 @@ export async function logoutAccount(): Promise<void> {
   emit({
     account: null,
     phase: 'local',
+    lastSyncedAt: null,
     message: '',
     conflict: null,
     generation: state.generation + 1,
@@ -306,6 +326,7 @@ export async function deleteAccount(): Promise<void> {
   emit({
     account: null,
     phase: 'local',
+    lastSyncedAt: null,
     message: '',
     conflict: null,
     generation: state.generation + 1,
@@ -340,6 +361,7 @@ export function startAccountSync(): () => void {
         emit({
           account: null,
           phase: 'local',
+          lastSyncedAt: null,
           message: '',
           conflict: null,
           generation: state.generation + 1,

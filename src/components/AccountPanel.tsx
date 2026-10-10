@@ -18,25 +18,19 @@ import {
   acceptAccount,
   chooseConflict,
   deleteAccount,
-  importEntries,
+  updateNickname,
   logoutAccount,
   startAccountSync,
   useAccountState,
 } from '@/features/account/store';
-import { getPersonalAccount, type PersonalEntries } from '@/lib/personalStorage';
 
 const { Text, Link } = Typography;
 const failMessage = (error: unknown) =>
   error instanceof Error ? error.message : '처리하지 못했습니다.';
-interface Snapshot {
-  revision: number;
-  updatedAt: number;
-  entries: PersonalEntries;
-}
 
 export function AccountPanel() {
   const accountState = useAccountState();
-  const { account, phase, message } = accountState;
+  const { account, phase, message, lastSyncedAt } = accountState;
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -45,16 +39,17 @@ export function AccountPanel() {
   const [loginElement, setLoginElement] = useState<HTMLDivElement | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [loginAttempt, setLoginAttempt] = useState(0);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   useEffect(() => startAccountSync(), []);
   const needsProfile = Boolean(account && !account.profile);
   useEffect(() => {
     if (needsProfile) setOpen(true);
   }, [needsProfile]);
   useEffect(() => {
-    setSnapshots([]);
     setError('');
   }, [account?.id]);
+  useEffect(() => {
+    setNickname(account?.profile?.nickname ?? '');
+  }, [account?.id, account?.profile?.nickname]);
   async function act(action: () => Promise<void> | void) {
     setBusy(true);
     setError('');
@@ -107,23 +102,13 @@ export function AccountPanel() {
       await acceptAccount(next);
     });
   }
-  const status =
-    phase === 'ready'
-      ? '계정 저장 완료'
-      : phase === 'local'
-        ? ''
-        : phase === 'loading'
-          ? '계정 확인 중'
-          : phase === 'conflict'
-            ? '저장 내용 확인 필요'
-            : '계정 저장 대기';
   return (
     <>
       <Button
         type="text"
         onClick={() => setOpen(true)}
         aria-label={account ? '사용자 프로필' : '로그인'}
-        title={account?.profile ? `${account.profile.nickname} · ${status}` : '로그인'}
+        title={account?.profile?.nickname ?? '로그인'}
       >
         <span
           style={{
@@ -144,7 +129,7 @@ export function AccountPanel() {
         destroyOnHidden
       >
         <Flex vertical gap={16}>
-          {message ? (
+          {message && !['계정 저장 대기 중', '계정 데이터를 불러오는 중'].includes(message) ? (
             <Alert
               type={phase === 'error' || phase === 'conflict' ? 'warning' : 'info'}
               title={message}
@@ -194,20 +179,38 @@ export function AccountPanel() {
             </>
           ) : (
             <>
+              <Form layout="vertical" onFinish={() => void act(() => updateNickname(nickname))}>
+                <Form.Item label="닉네임" htmlFor="account-edit-nickname">
+                  <Input
+                    id="account-edit-nickname"
+                    value={nickname}
+                    maxLength={20}
+                    onChange={(event) => setNickname(event.target.value)}
+                  />
+                </Form.Item>
+                <Button
+                  htmlType="submit"
+                  loading={busy}
+                  disabled={
+                    nickname.trim().length < 2 || nickname.trim() === account.profile?.nickname
+                  }
+                >
+                  닉네임 변경
+                </Button>
+              </Form>
               <Descriptions
                 bordered
                 size="small"
                 column={1}
                 items={[
-                  { key: 'nickname', label: '닉네임', children: account.profile?.nickname },
                   { key: 'provider', label: '연결된 로그인', children: 'Google' },
-                  { key: 'storage', label: '저장 상태', children: status },
+                  {
+                    key: 'sync',
+                    label: '마지막 동기화',
+                    children: lastSyncedAt ? new Date(lastSyncedAt).toLocaleString('ko-KR') : '-',
+                  },
                 ]}
               />
-              <Text>
-                {account.profile?.nickname}님의 계정에 자동 저장합니다. 서버 저장이 끝나기 전의
-                변경은 이 기기에 보관됩니다.
-              </Text>
               {phase === 'conflict' && accountState.conflict ? (
                 <Flex gap={8} wrap>
                   <Popconfirm
@@ -225,36 +228,10 @@ export function AccountPanel() {
                   </Popconfirm>
                 </Flex>
               ) : null}
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    const id = account.id;
-                    const result = await accountApi<{ snapshots: Snapshot[] }>('/history');
-                    if (getPersonalAccount() === id) setSnapshots(result.snapshots);
-                  })
-                }
-              >
-                최근 복구본 보기
-              </Button>
-              {snapshots.map((snapshot) => (
-                <Flex key={snapshot.revision} justify="space-between" align="center">
-                  <Text>
-                    버전 {snapshot.revision} ·{' '}
-                    {new Date(snapshot.updatedAt).toLocaleString('ko-KR')}
-                  </Text>
-                  <Popconfirm
-                    title="이 복구본으로 현재 내용을 바꿀까요?"
-                    onConfirm={() => void act(() => importEntries(snapshot.entries))}
-                  >
-                    <Button size="small">복원</Button>
-                  </Popconfirm>
-                </Flex>
-              ))}
             </>
           )}
           {loginNeeded ? (
-            <Flex vertical gap={8}>
+            <Flex vertical align="center" gap={8}>
               {googleLoading ? <Spin aria-label="Google 로그인 불러오는 중" /> : null}
               <div ref={setLoginElement} />
               {error && !googleLoading ? (
@@ -273,20 +250,18 @@ export function AccountPanel() {
                   void act(async () => {
                     await logoutAccount();
                     disableGoogleAutoSelect();
-                    setSnapshots([]);
                   })
                 }
               >
                 <Button disabled={busy}>로그아웃</Button>
               </Popconfirm>
               <Popconfirm
-                title="프로필과 계정의 저장 내용·복구본을 모두 삭제할까요?"
+                title="프로필과 계정의 저장 내용을 모두 삭제할까요?"
                 description="이 작업은 되돌릴 수 없습니다. 비로그인 데이터는 유지됩니다."
                 onConfirm={() =>
                   void act(async () => {
                     await deleteAccount();
                     disableGoogleAutoSelect();
-                    setSnapshots([]);
                   })
                 }
               >

@@ -15,12 +15,12 @@ vi.mock('@/features/account/api', () => ({
   accountApi: vi.fn(
     async (
       path: string,
-      _method?: string,
+      method?: string,
       body?: { nickname?: string; consentVersion?: string },
     ) => {
       if (path === '/profile') {
-        if (!body?.consentVersion) throw new Error('동의 필요');
-        return { id: ID, profile: { nickname: body.nickname } };
+        if (method !== 'PATCH' && !body?.consentVersion) throw new Error('동의 필요');
+        return { id: ID, profile: { nickname: body?.nickname } };
       }
       if (path === '/data') return { version: 1, revision: 0, entries: {}, updatedAt: null };
       if (path === '/logout') return { ok: true };
@@ -73,6 +73,14 @@ it('비로그인 손실 안내를 제공하고 외부 인증 후 동의·프로�
   expect(profile).toHaveTextContent('쿠마');
   expect(screen.getByText('연결된 로그인')).toBeInTheDocument();
   expect(screen.getByText('Google', { exact: true })).toBeInTheDocument();
+  expect(screen.getByText('마지막 동기화')).toBeInTheDocument();
+  expect(screen.queryByText('저장 상태')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '최근 복구본 보기' })).not.toBeInTheDocument();
+  const edit = screen.getByRole('textbox', { name: '닉네임' });
+  fireEvent.change(edit, { target: { value: '새쿠마' } });
+  fireEvent.click(screen.getByRole('button', { name: '닉네임 변경' }));
+  await waitFor(() => expect(profile).toHaveTextContent('새쿠마'));
+  expect(readPersonal('mabikuma:userSettings')).toContain('류트');
   expect(
     screen.queryByRole('button', { name: /기존 로컬 내용 가져오기|저장 상태 다시 확인|파일/ }),
   ).not.toBeInTheDocument();

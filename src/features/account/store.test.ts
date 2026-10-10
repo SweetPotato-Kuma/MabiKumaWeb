@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import type { RemoteDocument } from './api';
 import type * as AccountStore from './store';
 import type * as PersonalStorage from '@/lib/personalStorage';
@@ -28,7 +29,7 @@ vi.mock('./api', () => {
       async (
         path: string,
         method = 'GET',
-        body?: { revision: number; entries: Record<string, string> },
+        body?: { revision: number; entries: Record<string, string>; nickname?: string },
       ) => {
         requests.push({ path, method, body });
         if (fail) throw new Error('offline');
@@ -38,6 +39,8 @@ vi.mock('./api', () => {
           return { id: A, profile: { nickname: '쿠마' } };
         }
         if (path === '/data' && method === 'GET') return structuredClone(remote);
+        if (path === '/profile' && method === 'PATCH')
+          return { id: A, profile: { nickname: body?.nickname } };
         if (path === '/data' && method === 'PUT') {
           if (body?.revision !== remote.revision) throw new AccountError('conflict', 409);
           putHook?.();
@@ -79,6 +82,27 @@ afterEach(() => {
 });
 const login = () => store.acceptAccount({ id: A, profile: { nickname: '쿠마' } });
 describe('계정 동기화', () => {
+  it('닉네임 변경 중 미전송 입력을 유지하고 성공한 동기화 시점만 갱신한다', async () => {
+    storage.writePersonal(KEY, 'guest');
+    const { result } = renderHook(() => store.useAccountState());
+    await act(() => login());
+    expect(result.current.lastSyncedAt).toBeNull();
+    await act(() => store.updateNickname('새쿠마'));
+    expect(result.current.account?.profile?.nickname).toBe('새쿠마');
+    expect(storage.readPersonal(KEY)).toBe('guest');
+    await act(() => store.syncAccount());
+    const synced = result.current.lastSyncedAt;
+    expect(synced).toBe(Date.now());
+    vi.setSystemTime(Date.now() + 1000);
+    storage.writePersonal(KEY, 'pending');
+    fail = true;
+    await act(() => store.syncAccount());
+    expect(result.current.lastSyncedAt).toBe(synced);
+    expect(storage.readPersonal(KEY)).toBe('pending');
+    fail = false;
+    await act(() => store.logoutAccount());
+    expect(result.current.lastSyncedAt).toBeNull();
+  });
   it('기존 비로그인 데이터와 이후 입력을 사용자 조작 없이 계정에 자동 저장한다', async () => {
     storage.writePersonal(KEY, 'guest');
     stop = store.startAccountSync();

@@ -477,7 +477,7 @@ const TIME_PATH = '/time';
 function corsHeaders(origin, allowList) {
   const headers = {
     Vary: 'Origin',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': `accept, content-type, ${ADMIN_HEADER}`,
     'Access-Control-Max-Age': '86400',
   };

@@ -233,6 +233,23 @@ export async function accountRequest(request, env, cors) {
     }
     if (!account.registered_at)
       return problem('PROFILE_REQUIRED', '먼저 프로필을 등록해 주세요.', 403, cors);
+    if (path === '/account/profile' && request.method === 'PATCH') {
+      if (!expected)
+        return problem('ACCOUNT_REQUIRED', '계정 연결을 다시 확인해 주세요.', 400, cors);
+      const payload = await body(request, 4096);
+      const nickname = typeof payload.nickname === 'string' ? payload.nickname.trim() : '';
+      if (!/^[\p{L}\p{N} _-]{2,20}$/u.test(nickname))
+        return problem(
+          'INVALID_PROFILE',
+          '닉네임은 문자·숫자·공백·밑줄·하이픈으로 2~20자 입력해 주세요.',
+          400,
+          cors,
+        );
+      await env.ACCOUNTS.prepare('UPDATE accounts SET nickname = ? WHERE id = ?')
+        .bind(nickname, account.id)
+        .run();
+      return reply({ id: account.id, profile: { nickname } }, 200, cors);
+    }
     if (path === '/account/data' && request.method === 'GET') {
       const row = await env.ACCOUNTS.prepare(
         'SELECT revision, entries, updated_at FROM account_data WHERE account_id = ?',
