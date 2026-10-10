@@ -32,18 +32,38 @@ function hintOf(widget: WidgetLayout, after: boolean): string {
 }
 
 export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => ReactNode }) {
-  const layout = useHomeLayout();
+  const stored = useHomeLayout();
   const [params, setParams] = useSearchParams();
   const editing = params.get('editWidgets') === '1';
+  // 편집 중의 변경은 '편집 완료' 를 눌러야 저장한다. 그 전까지는 이 초안에만 둔다.
+  const [draft, setDraft] = useState<WidgetLayout[] | null>(null);
+  const layout = editing ? (draft ?? stored) : stored;
+  useEffect(() => {
+    if (!editing) setDraft(null);
+  }, [editing]);
   const [dragging, setDragging] = useState<WidgetId | null>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
   const { message } = App.useApp();
   function save(next: WidgetLayout[]) {
-    try {
-      saveLayout(next);
-    } catch {
-      void message.error('위젯 구성을 저장하지 못했습니다. 다시 시도해 주세요.');
+    setDraft(next);
+  }
+  function leave() {
+    end();
+    setDraft(null);
+    const next = new URLSearchParams(params);
+    next.delete('editWidgets');
+    setParams(next, { replace: true });
+  }
+  function finish() {
+    if (draft) {
+      try {
+        saveLayout(draft);
+      } catch {
+        void message.error('위젯 구성을 저장하지 못했습니다. 다시 시도해 주세요.');
+        return;
+      }
     }
+    leave();
   }
   function update(id: WidgetId, change: Partial<WidgetLayout>) {
     save(layout.map((widget) => (widget.id === id ? { ...widget, ...change } : widget)));
@@ -166,16 +186,10 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
               <Button size="small" onClick={() => save(defaultLayout())}>
                 기본 배치
               </Button>
-              <Button
-                size="small"
-                type="primary"
-                onClick={() => {
-                  end();
-                  const next = new URLSearchParams(params);
-                  next.delete('editWidgets');
-                  setParams(next, { replace: true });
-                }}
-              >
+              <Button size="small" onClick={leave}>
+                취소
+              </Button>
+              <Button size="small" type="primary" onClick={finish}>
                 편집 완료
               </Button>
             </Flex>
@@ -183,7 +197,7 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
         >
           <Typography.Paragraph type="secondary">
             위젯의 이동 손잡이를 끌어 놓으세요. 놓을 자리가 표시선과 문구로 나타납니다. 우클릭 또는
-            ⋯ 메뉴에서 너비·순서·숨기기를 바꿀 수 있습니다. 변경은 자동 저장됩니다.
+            ⋯ 메뉴에서 너비·순서·숨기기를 바꿀 수 있습니다. 변경은 '편집 완료'를 눌러야 저장됩니다.
           </Typography.Paragraph>
           <div className="home-widget-palette" aria-label="추가할 위젯">
             {layout
