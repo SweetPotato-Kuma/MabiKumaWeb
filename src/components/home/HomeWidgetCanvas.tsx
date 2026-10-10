@@ -164,9 +164,11 @@ export function HomeWidgetCanvas({ children }: { children: (id: WidgetId) => Rea
                     '--widget-rows':
                       widget.id === 'memo'
                         ? 4
-                        : ['kits', 'dev', 'edited'].includes(widget.id)
-                          ? 1
-                          : 2,
+                        : widget.id === 'banner'
+                          ? 3
+                          : ['kits', 'dev', 'edited'].includes(widget.id)
+                            ? 1
+                            : 2,
                   } as CSSProperties
                 }
                 onDragOver={(event) => {

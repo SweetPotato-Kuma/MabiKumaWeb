@@ -211,7 +211,7 @@ body {
 }
 @media (min-width: 1200px) {
   .home-widget-banner .home-banner-image {
-    height: 274px;
+    height: 440px;
     aspect-ratio: auto !important;
   }
 }
