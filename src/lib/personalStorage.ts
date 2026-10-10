@@ -6,6 +6,8 @@ export interface PersonalDocument {
   revision: number;
   base: PersonalEntries;
   entries: PersonalEntries;
+  /** 마지막으로 확인한 비로그인 입력. 이미 가져온 값의 재업로드를 막는다. */
+  guestBase?: PersonalEntries;
 }
 type Change = { key: string | null; external: boolean };
 const listeners = new Set<(event: Change) => void>();
@@ -75,7 +77,8 @@ export function loadPersonalDocument(id: string): PersonalDocument {
     !Number.isSafeInteger(parsed.revision) ||
     parsed.revision < 0 ||
     !validateEntries(parsed.base) ||
-    !validateEntries(parsed.entries)
+    !validateEntries(parsed.entries) ||
+    (parsed.guestBase !== undefined && !validateEntries(parsed.guestBase))
   )
     throw new Error('저장된 계정 데이터가 손상되었습니다.');
   return parsed;
@@ -97,7 +100,11 @@ export function switchPersonalAccount(id: string | null, next?: PersonalDocument
   emit({ key: null, external: true });
 }
 export function updatePersonalDocument(next: PersonalDocument): void {
-  if (!validateEntries(next.entries) || !validateEntries(next.base))
+  if (
+    !validateEntries(next.entries) ||
+    !validateEntries(next.base) ||
+    (next.guestBase !== undefined && !validateEntries(next.guestBase))
+  )
     throw new Error('저장 가능한 용량을 초과했습니다.');
   const changed = JSON.stringify(next.entries) !== JSON.stringify(document.entries);
   persistDocument(next);

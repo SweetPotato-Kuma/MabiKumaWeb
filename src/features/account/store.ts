@@ -3,6 +3,7 @@ import { validateEntries } from '../../../shared/personal-data.js';
 import {
   getPersonalAccount,
   getPersonalDocument,
+  guestEntries,
   loadPersonalDocument,
   mergePersonal,
   subscribePersonalStorage,
@@ -112,12 +113,33 @@ async function activate(account: Account): Promise<void> {
   const remote = checkRemote(await accountApi<RemoteDocument>('/data'));
   if (activation !== epoch) return;
   const cached = loadPersonalDocument(account.id);
-  const merged = mergePersonal(cached.base, cached.entries, remote.entries);
+  const guest = guestEntries();
+  if (!validateEntries(guest)) throw new Error('기존 저장 내용의 형식이나 용량을 확인해 주세요.');
+  const local = { ...cached.entries };
+  for (const [key, value] of Object.entries(guest)) {
+    if (cached.guestBase === undefined) {
+      // 처음 연결하는 브라우저에서는 계정의 기존 값이 우선이다.
+      if (
+        local[key] === undefined &&
+        cached.base[key] === undefined &&
+        remote.entries[key] === undefined
+      )
+        local[key] = value;
+    } else if (value !== cached.guestBase[key] && local[key] === cached.base[key]) {
+      // 로그아웃 후 바뀐 입력만 반영한다. 미전송 계정 입력은 별도로 보존한다.
+      local[key] = value;
+    }
+  }
+  const merged = mergePersonal(cached.base, local, remote.entries);
+  const entries = merged.conflicts.length ? local : merged.entries;
+  if (!validateEntries(entries))
+    throw new Error('로컬 내용과 계정 내용을 합치면 저장 가능한 용량을 초과합니다.');
   switchPersonalAccount(account.id, {
     version: 1,
     revision: merged.conflicts.length ? cached.revision : remote.revision,
     base: merged.conflicts.length ? cached.base : remote.entries,
-    entries: merged.conflicts.length ? cached.entries : merged.entries,
+    entries,
+    guestBase: guest,
   });
   emit({
     account,
@@ -340,7 +362,8 @@ export function startAccountSync(): () => void {
     if (event.key === 'mabikuma:account-session-change') void restore();
   };
   const online = () => {
-    if (retryRestore) void restore();
+    if (retryRestore || (state.account?.profile && getPersonalAccount() !== state.account.id))
+      void restore();
     else void syncAccount();
   };
   const visibility = () => {
@@ -348,13 +371,13 @@ export function startAccountSync(): () => void {
   };
   const failed = () =>
     emit({
-      message: '브라우저 저장에 실패했습니다. 화면을 닫기 전에 데이터를 파일로 내보내 주세요.',
+      message:
+        '브라우저 저장에 실패했습니다. 저장 공간과 브라우저 설정을 확인해 주세요. 저장이 끝나기 전에는 화면을 닫지 마세요.',
     });
-  const conflict = () =>
-    emit({
-      phase: 'conflict',
-      message: '다른 탭의 수정 내용과 겹칩니다. 파일로 내보낸 뒤 다시 로그인해 비교해 주세요.',
-    });
+  const conflict = () => {
+    // 탭 사이 충돌도 서버 확인본과 비교한 뒤 사용할 내용을 선택하게 한다.
+    void syncAccount();
+  };
   window.addEventListener('storage', storage);
   window.addEventListener('online', online);
   window.addEventListener('mabikuma:personal-storage-failed', failed);

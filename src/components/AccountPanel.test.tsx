@@ -2,6 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AccountPanel } from './AccountPanel';
 import { getPersonalAccount, readPersonal, switchPersonalAccount } from '@/lib/personalStorage';
+import { mountGoogleLogin } from '@/features/account/google';
 
 const ID = '33333333-3333-3333-3333-333333333333';
 vi.mock('@/features/account/api', () => ({
@@ -29,8 +30,11 @@ vi.mock('@/features/account/api', () => ({
 }));
 vi.mock('@/features/account/google', () => ({
   disableGoogleAutoSelect: vi.fn(),
-  mountGoogleLogin: vi.fn(async (_element, onAccount) => {
-    await onAccount({ id: ID, profile: null });
+  mountGoogleLogin: vi.fn(async (element, onAccount) => {
+    const button = document.createElement('button');
+    button.textContent = 'Google 계정으로 로그인';
+    button.onclick = () => void onAccount({ id: ID, profile: null });
+    element.replaceChildren(button);
   }),
 }));
 beforeEach(() => {
@@ -45,11 +49,16 @@ it('비로그인 손실 안내를 제공하고 외부 인증 후 동의·프로�
   render(<AccountPanel />);
   const login = screen.getByRole('button', { name: '로그인' });
   expect(login).toHaveTextContent('로그인');
+  expect(mountGoogleLogin).not.toHaveBeenCalled();
   fireEvent.click(login);
   expect(
     await screen.findByText(/사이트 데이터를 지우거나 기기를 바꾸면 복구할 수 없습니다/),
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Google로 로그인' }));
+  const google = await screen.findByRole('button', { name: 'Google 계정으로 로그인' });
+  expect(screen.queryByRole('button', { name: 'Google로 로그인' })).not.toBeInTheDocument();
+  expect(screen.queryByText('이 브라우저에 저장', { exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /파일/ })).not.toBeInTheDocument();
+  fireEvent.click(google);
   const nickname = await screen.findByRole('textbox', { name: '닉네임' });
   fireEvent.change(nickname, { target: { value: '쿠마' } });
   const register = screen.getByRole('button', { name: '프로필 등록하고 시작' });
@@ -64,6 +73,9 @@ it('비로그인 손실 안내를 제공하고 외부 인증 후 동의·프로�
   expect(profile).toHaveTextContent('쿠마');
   expect(screen.getByText('연결된 로그인')).toBeInTheDocument();
   expect(screen.getByText('Google', { exact: true })).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: /기존 로컬 내용 가져오기|저장 상태 다시 확인|파일/ }),
+  ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   fireEvent.click(profile);
   expect(await screen.findByRole('dialog', { name: '사용자 프로필' })).toBeInTheDocument();

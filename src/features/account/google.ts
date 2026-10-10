@@ -51,17 +51,23 @@ export async function mountGoogleLogin(
   element: HTMLElement,
   onAccount: (account: Account) => Promise<void>,
   onError: (error: Error) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
+  const active = () => !signal?.aborted && element.isConnected;
   const config = await accountApi<{ enabled: boolean; clientId: string }>('/config');
+  if (!active()) return;
   if (!config.enabled)
     throw new Error('계정 저장 기능을 준비 중입니다. 지금은 이 브라우저에 저장됩니다.');
   const google = await loadGoogle();
+  if (!active()) return;
   const { nonce } = await accountApi<{ nonce: string }>('/challenge', 'POST');
+  if (!active()) return;
   google.initialize({
     client_id: config.clientId,
     nonce,
     auto_select: false,
     callback: (response) => {
+      if (!active()) return;
       void accountApi<Account>('/auth/google', 'POST', { credential: response.credential, nonce })
         .then(onAccount)
         .catch((error: unknown) =>
