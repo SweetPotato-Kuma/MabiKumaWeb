@@ -53,7 +53,7 @@ function BannerLink({ banner, children }: { banner: NewsBanner; children: ReactN
  *   - OS 의 움직임 줄이기가 켜져 있으면 자동으로 넘기지 않는다.
  *   - 제목은 그림 아래 띠에 적는다. 그림 위에 얹으면 그림의 글자와 겹친다.
  */
-export function BannerCarousel() {
+export function BannerCarousel({ persistent = false }: { persistent?: boolean }) {
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   const reduced = usePrefersReducedMotion();
@@ -81,7 +81,12 @@ export function BannerCarousel() {
       />
     );
   }
-  if (banners.length === 0) return null;
+  if (banners.length === 0)
+    return persistent ? (
+      <Card size="small" title="이벤트 배너">
+        <Text type="secondary">표시할 이벤트 배너가 없습니다.</Text>
+      </Card>
+    ) : null;
 
   const count = banners.length;
   const active = banners[Math.min(current, count - 1)];
@@ -120,7 +125,10 @@ export function BannerCarousel() {
               aria-roledescription="slide"
               aria-label={`${index + 1} / ${count}`}
             >
-              <div style={{ aspectRatio: ASPECT, background: token.colorFillTertiary }}>
+              <div
+                className="home-banner-image"
+                style={{ aspectRatio: ASPECT, background: token.colorFillTertiary }}
+              >
                 {wanted.has(index) ? (
                   <BannerLink banner={banner}>
                     <img
@@ -199,7 +207,7 @@ export function BannerCarousel() {
                   key={banner.id}
                   size="small"
                   type={index === current ? 'primary' : 'text'}
-                  className="tnum"
+                  className="tnum home-banner-page"
                   aria-label={`${index + 1}번 배너`}
                   aria-current={index === current ? 'true' : undefined}
                   onClick={() => ref.current?.goTo(index)}

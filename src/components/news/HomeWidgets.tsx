@@ -132,12 +132,21 @@ function useWidgetPosts(category: NewsCategory | '', edited: boolean): NewsPost[
 }
 
 /** 최근 개발자 노트. */
-export function DevNoteWidget() {
-  const posts = useWidgetPosts('개발자 노트', false);
-  if (posts.length === 0) return null;
+export function DevNoteWidget({ persistent = false }: { persistent?: boolean }) {
+  const query = useNewsList({ category: '개발자 노트', q: '', edited: false, page: 1 });
+  const posts = query.data?.posts.slice(0, WIDGET_ROWS) ?? [];
+  if (!persistent && posts.length === 0) return null;
   return (
     <WidgetCard title="개발자 노트" extra={<MoreLink to="/news?c=개발자%20노트" />}>
-      <PostRows posts={posts} />
+      {query.error ? (
+        <Text type="danger">개발자 노트를 불러오지 못했습니다.</Text>
+      ) : !query.data ? (
+        <Skeleton active title={false} paragraph={{ rows: 2 }} />
+      ) : posts.length ? (
+        <PostRows posts={posts} />
+      ) : (
+        <Text type="secondary">등록된 개발자 노트가 없습니다.</Text>
+      )}
     </WidgetCard>
   );
 }
@@ -157,15 +166,22 @@ export function EditedWidget() {
 }
 
 /** 지금 파는 키트. 이름을 누르면 키트 시뮬레이터로 간다. 파는 키트가 없으면 그리지 않는다. */
-export function KitWidget() {
+export function KitWidget({ persistent = false }: { persistent?: boolean }) {
   const { token } = theme.useToken();
   const query = useKitIndexQuery();
   const index = query.data;
   const onSale = index ? index.kits.filter((kit) => isOnSale(index, kit)) : [];
-  if (onSale.length === 0) return null;
+  if (!persistent && onSale.length === 0) return null;
   return (
     <WidgetCard title="판매 중인 키트" extra={<MoreLink to="/kit-simulator" label="시뮬레이터" />}>
       <Flex vertical gap={6}>
+        {query.error ? (
+          <Text type="danger">키트를 불러오지 못했습니다.</Text>
+        ) : !index ? (
+          <Skeleton active title={false} paragraph={{ rows: 2 }} />
+        ) : !onSale.length ? (
+          <Text type="secondary">현재 판매 중인 키트가 없습니다.</Text>
+        ) : null}
         {onSale.map((kit) => (
           <Flex key={kit.id} justify="space-between" align="baseline" gap={12}>
             <Link

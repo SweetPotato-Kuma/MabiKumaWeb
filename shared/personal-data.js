@@ -1,5 +1,6 @@
 /** 사용자 입력만 동기화한다. 인증 키, API 키, 조회 캐시는 이 목록에 넣지 않는다. */
 const KEYS = new Set([
+  'mabikuma:homeLayout:v1',
   'mabikuma:materialMemo:v2',
   'mabikuma:savedSearches',
   'mabikuma:bagWatches',

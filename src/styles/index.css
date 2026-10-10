@@ -108,3 +108,120 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* 홈은 데스크톱에서 5칸 단위로 배치하고 작은 화면에서는 읽기 순서대로 쌓는다. */
+.home-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.home-widget-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: 150px;
+  gap: 16px;
+}
+.home-widget {
+  min-width: 0;
+  grid-column: span var(--widget-columns);
+  grid-row: span var(--widget-rows);
+}
+.home-widget > .ant-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.home-widget .ant-card-head {
+  flex-shrink: 0;
+}
+.home-widget .ant-card-head-wrapper {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.home-widget .ant-card-head-title {
+  white-space: normal;
+}
+.home-widget > .ant-card > .ant-card-body {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+.home-widget .ant-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.home-widget-banner {
+  grid-column: span var(--widget-columns);
+}
+.home-widget-banner > .ant-card > .ant-card-body {
+  overflow: hidden;
+}
+.home-widget-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--app-border);
+}
+.home-widget-row > a {
+  min-width: 0;
+  flex: 1 1 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-widget-empty {
+  padding-block: 20px;
+  line-height: 1.8;
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .home-widget-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: auto;
+  }
+  .home-widget {
+    grid-column: span 1;
+    grid-row: auto;
+    max-height: 420px;
+  }
+  .home-widget-banner,
+  .home-widget-news {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 767px) {
+  .home-widget-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+    gap: 12px;
+  }
+  .home-widget {
+    grid-column: 1;
+    grid-row: auto;
+    max-height: 460px;
+  }
+}
+@media (min-width: 1200px) {
+  .home-widget-banner .home-banner-image {
+    height: 274px;
+    aspect-ratio: auto !important;
+  }
+}
+.home-widget-banner .ant-card-body > .ant-flex {
+  flex-wrap: wrap;
+}
+.home-widget {
+  container-type: inline-size;
+}
+@container (max-width: 500px) {
+  .home-banner-page {
+    display: none;
+  }
+}
