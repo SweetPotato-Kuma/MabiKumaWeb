@@ -13,7 +13,10 @@ OAuth 설정과 계정 전용 D1이 모두 준비되었을 때 `/account/config`
 2026-10-10 운영 준비 상태: 계정 전용 D1 `mabikuma-accounts`를 생성하고 `0001_accounts.sql`을 적용했다.
 Worker에는 `ACCOUNTS` 바인딩과 자체 도메인 `https://mabi-api.spkuma.com`을 연결했다.
 GitHub Actions Variable `VITE_ACCOUNT_API_URL`도 이 주소로 설정했다.
-현재 남은 필수 설정은 실제 Google OAuth 웹 클라이언트 ID다. ID가 없는 동안 로그인은 비활성 상태다.
+Google OAuth 웹 클라이언트 ID는 `733364928830-env2pp751gvusr6e28vg1uafji6rafb6.apps.googleusercontent.com`이며
+`worker/wrangler.toml`의 `GOOGLE_CLIENT_ID`에 설정한다. 이 ID는 공개 식별자이고 비밀 키가 아니다.
+운영에서 활성화 여부는 허용된 사이트 Origin으로 `/account/config`를 요청해 `enabled: true`인지 확인한다.
+다른 에이전트의 작업 방침은 `AGENTS.md`에 기록하며 `AGENT.md`에서도 이를 안내한다.
 
 1. Google Cloud Console에서 OAuth 동의 화면과 **웹 애플리케이션 클라이언트**를 설정한다.
    승인된 JavaScript 출처에 `https://mabi.spkuma.com`을 추가한다. 개발 환경은 실제 사용하는 localhost 출처를 추가한다.

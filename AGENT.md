@@ -67,3 +67,16 @@ antd 하나만 쓰고, 색과 반경은 `src/app/theme.ts` 에서만 나온다.
 ## 의존성
 
 새 라이브러리는 사용자 승인 없이 추가하지 않는다. 필요하면 설치 명령과 이유를 먼저 제시한다.
+
+## 로그인과 개인 데이터
+
+- 상세 방침은 [AGENTS.md](AGENTS.md)의 로그인과 개인 데이터 절과 [docs/account-sync.md](docs/account-sync.md)를 따른다.
+- Google OAuth 웹 클라이언트 ID는 `733364928830-env2pp751gvusr6e28vg1uafji6rafb6.apps.googleusercontent.com`이다.
+  공개 식별자이며 설정 원천은 `worker/wrangler.toml`의 `GOOGLE_CLIENT_ID`다. 재배포할 때 값을 비우지 않는다.
+- 계정 API는 `https://mabi-api.spkuma.com`이며 사용자 데이터는 비공개 D1 `mabikuma-accounts`에 저장한다.
+  공개 이미지 버킷이나 `workers.dev`로 계정 저장 경로를 바꾸지 않는다.
+- 비로그인은 로컬 저장, 로그인은 외부 인증 후 프로필 등록과 계정 동기화를 유지한다.
+  기존 계정 로그인 시 비로그인 데이터를 자동으로 계정에 업로드하지 않는다.
+- Search Console 서비스 계정 키와 PageSpeed API 키는 로그인용 자격 증명이 아니다.
+  개인 키·API 키·Google ID 토큰·세션 쿠키·사용자 저장 내용은 출력하거나 커밋하지 않는다.
+- Worker 변경은 검증 후 실제 Worker에 배포하고 활성 상태를 확인한다. 기존 시크릿과 다른 기능의 바인딩·크론을 보존한다.
