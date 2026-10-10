@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Flex, Image, Typography, theme } from 'antd';
 import { newsPostPath } from '@/features/news/api';
@@ -29,51 +29,72 @@ export function ItemPreview({ name, embedded = false }: { name: string; embedded
   const preview = query.data;
   if (!preview || broken) return null;
 
+  // 그림이나 영상은 틀 안의 가운데에 둔다. 틀은 칸 너비를 채워, 작은 그림도 왼쪽에 쏠리지 않는다.
+  const frame = (media: ReactNode) => (
+    <div
+      style={{
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'center',
+        padding: 8,
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        background: token.colorFillQuaternary,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: token.borderRadius,
+      }}
+    >
+      {media}
+    </div>
+  );
+
   const content = (
-    <Flex vertical gap={embedded ? 6 : 12} align="flex-start">
-      {preview.kind === 'video' ? (
-        <video
-          src={preview.url}
-          aria-label={`${preview.name} 공식 미리보기 영상`}
-          autoPlay
-          controls
-          loop
-          muted
-          playsInline
-          onError={() => setBroken(true)}
-          style={{ display: 'block', maxWidth: '100%', maxHeight: MAX_HEIGHT }}
-        />
-      ) : (
-        <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-          <Image
-            src={preview.url}
-            alt={`${preview.name} 공식 미리보기`}
-            onError={() => setBroken(true)}
-            style={{ display: 'block', maxWidth: '100%', maxHeight: MAX_HEIGHT, width: 'auto' }}
-          />
-          {/* 그림 위에 얹은 이름이라 누름은 그림으로 통과시킨다. 눌러 크게 보면 원본 그대로다. */}
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              inset: 'auto 0 0 0',
-              height: CAPTION_HEIGHT,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 12px',
-              color: token.colorTextLightSolid,
-              fontSize: 14,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              pointerEvents: 'none',
-            }}
-          >
-            {preview.name}
-          </span>
-        </div>
-      )}
+    <Flex vertical gap={embedded ? 6 : 12} align="center">
+      {preview.kind === 'video'
+        ? frame(
+            <video
+              src={preview.url}
+              aria-label={`${preview.name} 공식 미리보기 영상`}
+              autoPlay
+              controls
+              loop
+              muted
+              playsInline
+              onError={() => setBroken(true)}
+              style={{ display: 'block', maxWidth: '100%', maxHeight: MAX_HEIGHT }}
+            />,
+          )
+        : frame(
+            <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+              <Image
+                src={preview.url}
+                alt={`${preview.name} 공식 미리보기`}
+                onError={() => setBroken(true)}
+                style={{ display: 'block', maxWidth: '100%', maxHeight: MAX_HEIGHT, width: 'auto' }}
+              />
+              {/* 그림 위에 얹은 이름이라 누름은 그림으로 통과시킨다. 눌러 크게 보면 원본 그대로다. */}
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  inset: 'auto 0 0 0',
+                  height: CAPTION_HEIGHT,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 12px',
+                  color: token.colorTextLightSolid,
+                  fontSize: 14,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  pointerEvents: 'none',
+                }}
+              >
+                {preview.name}
+              </span>
+            </div>,
+          )}
       <Text type="secondary" style={{ fontSize: 13 }}>
         <Link to={newsPostPath(preview.postId)}>{preview.title}</Link>
       </Text>
