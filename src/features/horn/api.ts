@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { ServerName } from '@/features/servers/constants';
 import { getProxyUrl } from '@/lib/settings';
+import { decodeHornText } from './terms';
 
 /**
  * 거대한 외침의 뿔피리 찾기. 워커가 모아 둔 기록에서 찾는다(worker/horn.js).
@@ -83,7 +84,8 @@ export async function fetchHorns(search: HornSearch, signal?: AbortSignal): Prom
     throw new Error('조회가 잠시 몰렸습니다. 1분쯤 뒤에 다시 찾아 주세요.');
   }
   if (!response.ok) throw new Error(`뿔피리 기록을 받지 못했습니다. (HTTP ${response.status})`);
-  return (await response.json()) as HornSearchResponse;
+  const data = (await response.json()) as HornSearchResponse;
+  return { ...data, posts: data.posts.map((post) => ({ ...post, body: decodeHornText(post.body) })) };
 }
 
 /**

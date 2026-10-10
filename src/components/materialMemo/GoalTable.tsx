@@ -274,8 +274,6 @@ export function GoalTable({ state, memo }: GoalTableProps) {
             rowKey="key"
             size="small"
             pagination={false}
-            tableLayout="fixed"
-            scroll={{ x: 'max-content' }}
             onRow={(row) =>
               goalById.has(row.key) ? { style: { background: token.colorFillQuaternary } } : {}
             }

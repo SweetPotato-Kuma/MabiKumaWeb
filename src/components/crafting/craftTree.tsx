@@ -245,8 +245,8 @@ export function treeColumns(
           ) : null;
         if (node.recipes.length === 0 && !npcSold)
           return (
-            <Flex gap={8} align="center" style={{ whiteSpace: 'nowrap' }}>
-              <Text type="secondary">
+            <Flex gap={8} align="center" wrap>
+              <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
                 {byCoin ? '코인 구매' : node.tradable ? '경매장 구매' : '거래 불가'}
               </Text>
               {coinCheckbox}
@@ -257,7 +257,7 @@ export function treeColumns(
             ? beadsToMake(book, coin, node.itemId, node.short)
             : 0;
         return (
-          <Flex gap={8} align="center" style={{ whiteSpace: 'nowrap' }}>
+          <Flex gap={8} align="center" wrap>
             <Select<Method>
               size="small"
               value={node.method}

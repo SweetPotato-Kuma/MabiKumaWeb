@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  decodeHornText,
   formatHornTime,
   formatRepeats,
   highlightPattern,
@@ -44,5 +45,16 @@ describe('외친 시각', () => {
   it('여러 번 외친 글은 횟수와 처음 시각을 적는다', () => {
     expect(formatRepeats(1, seconds('2026-09-28T12:31:00.000Z'), NOW)).toBe('');
     expect(formatRepeats(1200, seconds('2026-09-28T12:31:00.000Z'), NOW)).toBe('21:31부터 1,200번 외침');
+  });
+});
+
+describe('게임 이스케이프', () => {
+  it('"&<" 와 "&>" 를 "<", ">" 로 푼다', () => {
+    expect(decodeHornText('&>&> Syrup &<&< 함께할 길원')).toBe('>> Syrup << 함께할 길원');
+    expect(decodeHornText('탈라&<-&>가흐')).toBe('탈라<->가흐');
+  });
+
+  it('그냥 "&" 는 그대로 둔다', () => {
+    expect(decodeHornText('A & B &c')).toBe('A & B &c');
   });
 });

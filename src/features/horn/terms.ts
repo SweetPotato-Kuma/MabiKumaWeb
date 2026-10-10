@@ -6,6 +6,14 @@
  * 여기서는 찾은 글에서 어디가 걸렸는지 칠할 때 쓴다. 거르는 것은 워커가 한다.
  */
 
+/**
+ * 게임이 글에 붙인 이스케이프를 푼다. "<" 와 ">" 를 "&<", "&>" 로 내려 보내므로 그대로 두면
+ * ">> Syrup <<" 이 "&>&> Syrup &<&<" 로 보인다. 앞에 아무것도 붙지 않은 "&" 는 글자 그대로다.
+ */
+export function decodeHornText(text: string): string {
+  return text.replace(/&([<>])/g, '$1');
+}
+
 /** 검색어에서 칠할 낱말. 묶음과 상관없이 모두 칠한다. */
 export function highlightTerms(query: string): string[] {
   const terms = query
