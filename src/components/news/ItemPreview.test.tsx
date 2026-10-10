@@ -75,14 +75,33 @@ describe('공식 미리보기', () => {
     expect(requests[0].searchParams.get('name')).toBe(IMAGE.name);
   });
 
-  it('영상은 자동으로 재생하지 않고 조작 막대를 둔다', async () => {
+  it('영상은 소리 없이 바로 반복 재생하고 조작 막대를 둔다', async () => {
     const { container } = renderPreview(VIDEO.name);
     await waitFor(() => expect(container.querySelector('video')).not.toBeNull());
     const video = container.querySelector('video')!;
     expect(video).toHaveAttribute('src', VIDEO.url);
     expect(video).toHaveAttribute('controls');
-    expect(video).not.toHaveAttribute('autoplay');
-    expect(video.getAttribute('preload')).toBe('metadata');
+    expect(video.autoplay).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.loop).toBe(true);
+  });
+
+  it('embedded 이면 카드 없이 내용만 그린다', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { container } = render(
+      <AppProviders>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ItemPreview name={IMAGE.name} embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AppProviders>,
+    );
+    await screen.findByRole('img', { name: `${IMAGE.name} 공식 미리보기` });
+    expect(container.querySelector('.ant-card')).toBeNull();
+    expect(screen.queryByText('공식 미리보기')).toBeNull();
   });
 
   it('미리보기가 없는 아이템에는 아무것도 그리지 않는다', async () => {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Flex, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import { ItemIcon } from '@/components/ItemIcon';
+import { ItemPreview } from '@/components/news/ItemPreview';
 import { enchantLabel, enchantRank, stripBrackets } from '@/features/equipment/enchant';
 import type { ErgSummary } from '@/features/equipment/erg';
 import { describeContribution, type ItemSetEffect } from '@/features/equipment/setEffects';
@@ -192,6 +193,9 @@ export function EquipmentPreview({
           </Flex>
         </Flex>
       </Flex>
+
+      {/* 키트나 이벤트 글에 공식 미리보기가 있는 장비면 능력치 위에 그림이나 영상. 없으면 아무것도 그리지 않는다. */}
+      <ItemPreview key={name} name={name} embedded />
 
       <Table<StatRow>
         size="small"
