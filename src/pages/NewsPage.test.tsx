@@ -342,7 +342,7 @@ describe('첫 화면', () => {
     );
   });
 
-  it('위젯은 판매 중인 키트와 개발자 노트를 보이고, 보일 것이 없는 고친 글은 그리지 않는다', async () => {
+  it('위젯은 판매 중인 키트와 개발자 노트를 보이고, 기본으로 꺼 둔 고친 글은 그리지 않는다', async () => {
     renderAt('/');
     const kit = await screen.findByText('나이트메어 판타지아 박스');
     expect(kit.closest('a')).toHaveAttribute('href', '/kit-simulator');
@@ -351,9 +351,8 @@ describe('첫 화면', () => {
     expect(screen.queryByText('비단 운문 한복 상자')).toBeNull();
     const note = await screen.findByText('[적용됨] RE:ACTION 2차 업데이트');
     expect(note.closest('a')).toHaveAttribute('href', '/news?id=4893721');
-    await waitFor(() =>
-      expect(requests.some((url) => url.searchParams.get('edited') === '1')).toBe(true),
-    );
+    // 고친 글 위젯은 기본 배치에서 꺼져 있어 목록을 묻지도 않는다.
+    expect(requests.some((url) => url.searchParams.get('edited') === '1')).toBe(false);
     expect(screen.queryByText('고친 글', { selector: '.ant-card-head-title' })).toBeNull();
   });
 });
