@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Descriptions, Flex, Modal, Statistic, Tag, Tooltip, Typography, theme } from 'antd';
 import { ItemCardSummary } from '@/components/ItemCardSummary';
+import { ItemPreview } from '@/components/news/ItemPreview';
 import {
   colorPartLabel,
   formatOptionValue,
@@ -226,6 +227,9 @@ export function AuctionItemDetailModal({ detail, onClose }: Props) {
             iconName={cardName}
             colors={dyeColors}
           />
+
+          {/* 키트나 이벤트 글에 공식 미리보기가 있는 아이템이면 설명 아래에 그림이나 영상. 없으면 아무것도 그리지 않는다. 인챈트를 뗀 이름으로 찾는다. */}
+          <ItemPreview key={cardName} name={cardName} embedded maxHeight={280} />
 
           {/*
             이 매물을 살지 말지 가르는 값들. 나머지보다 크게 둔다.

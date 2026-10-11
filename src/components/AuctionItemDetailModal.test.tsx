@@ -4,6 +4,15 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppProviders } from '@/app/AppProviders';
 import { AuctionItemDetailModal, type AuctionItemDetail } from '@/components/AuctionItemDetailModal';
+import type * as Settings from '@/lib/settings';
+
+// 대부분의 시험은 워커가 없는 환경이다. 미리보기 시험만 주소를 둔다.
+const proxy = vi.hoisted(() => ({ url: '' }));
+
+vi.mock('@/lib/settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof Settings>()),
+  getProxyUrl: () => proxy.url,
+}));
 
 const DETAIL: AuctionItemDetail = {
   displayName: '글라디우스',
@@ -217,5 +226,37 @@ describe('인챈트 스크롤 매물', () => {
     const { container } = renderModal(DETAIL);
 
     expect(container.ownerDocument.querySelector('.ant-skeleton')).toBeNull();
+  });
+});
+
+describe('매물 상세의 공식 미리보기', () => {
+  afterEach(() => {
+    proxy.url = '';
+  });
+
+  it('인챈트를 뗀 이름으로 미리보기를 찾아 설명 아래에 둔다', async () => {
+    proxy.url = 'https://w.example';
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: URL | string) => {
+        const url = new URL(String(input));
+        if (url.pathname !== '/news/preview') return new Response('{}', { status: 404 });
+        asked.push(url.searchParams.get('name') ?? '');
+        return Response.json({
+          name: '글라디우스',
+          kind: 'image',
+          url: 'https://icons.example/previews/a.webp',
+          postId: 1,
+          title: '박스',
+        });
+      }),
+    );
+    renderModal({ ...DETAIL, displayName: '[접두] 글라디우스' });
+
+    const image = await screen.findByRole('img', { name: '글라디우스 공식 미리보기' });
+    expect(asked).toEqual(['글라디우스']);
+    const price = screen.getByText('가격');
+    expect(image.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

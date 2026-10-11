@@ -22,7 +22,16 @@ const CAPTION_HEIGHT = '13%';
  *
  * embedded 이면 카드 없이 내용만 그린다. 장비 미리보기 안에 끼울 때 쓴다.
  */
-export function ItemPreview({ name, embedded = false }: { name: string; embedded?: boolean }) {
+export function ItemPreview({
+  name,
+  embedded = false,
+  maxHeight = MAX_HEIGHT,
+}: {
+  name: string;
+  embedded?: boolean;
+  /** 그림이나 영상의 가장 큰 높이. 좁은 창에서는 줄인다. */
+  maxHeight?: number;
+}) {
   const { token } = theme.useToken();
   const query = useItemPreview(name);
   const [broken, setBroken] = useState(false);
@@ -61,7 +70,7 @@ export function ItemPreview({ name, embedded = false }: { name: string; embedded
               muted
               playsInline
               onError={() => setBroken(true)}
-              style={{ display: 'block', maxWidth: '100%', maxHeight: MAX_HEIGHT }}
+              style={{ display: 'block', maxWidth: '100%', maxHeight }}
             />,
           )
         : frame(
@@ -70,7 +79,7 @@ export function ItemPreview({ name, embedded = false }: { name: string; embedded
                 src={preview.url}
                 alt={`${preview.name} 공식 미리보기`}
                 onError={() => setBroken(true)}
-                style={{ display: 'block', maxWidth: '100%', maxHeight: MAX_HEIGHT, width: 'auto' }}
+                style={{ display: 'block', maxWidth: '100%', maxHeight, width: 'auto' }}
               />
               {/* 그림 위에 얹은 이름이라 누름은 그림으로 통과시킨다. 눌러 크게 보면 원본 그대로다. */}
               <span
