@@ -33,7 +33,6 @@ import { EnchantScrollSpec } from '@/components/EnchantScrollSpec';
 import { SelectableScrolls } from '@/components/SelectableScrolls';
 import { ItemInfoDetail } from '@/components/ItemInfoDetail';
 import { MarketHistoryCard } from '@/components/market/MarketHistoryCard';
-import { ItemPreview } from '@/components/news/ItemPreview';
 import { PetSpeciesSection } from '@/components/PetSpeciesSection';
 import { QueryState } from '@/components/QueryState';
 import {
@@ -207,10 +206,6 @@ export function ItemsPage() {
               ]}
             />
           </Flex>
-          {/* 키트나 이벤트 글에 공식 미리보기가 올라온 아이템이면 맨 위에 그림이나 영상. 없으면 아무것도 그리지 않는다. 장비는 장비 미리보기 안에 있다. */}
-          {!resolvingCategory && !isEquipmentCategory(category) ? (
-            <ItemPreview key={detailName} name={detailName} />
-          ) : null}
           {/* 다른 아이템으로 넘어가면 받아 둔 것과 고른 것을 새로 시작한다. */}
           {resolvingCategory ? (
             <Card aria-busy="true" style={{ minHeight: '100vh' }}>

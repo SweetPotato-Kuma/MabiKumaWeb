@@ -10,6 +10,7 @@ import {
 } from '@/features/itemcard/cards';
 import { useKitIcon } from '@/features/kits/kits';
 import { EmptyState } from '@/components/EmptyState';
+import { ItemPreview } from '@/components/news/ItemPreview';
 import { SearchIcon } from '@/components/icons';
 
 /**
@@ -64,6 +65,9 @@ export function ItemInfoDetail({
             description="이 아이템은 아직 설명이 없습니다. 게임 데이터에 없거나 새로 들어온 아이템입니다."
           />
         ) : null}
+
+        {/* 키트나 이벤트 글에 공식 미리보기가 올라온 아이템이면 설명 아래에 그림이나 영상. 없으면 아무것도 그리지 않는다. 장비는 장비 미리보기 안에 있다. */}
+        <ItemPreview name={name} embedded />
 
         {children}
 

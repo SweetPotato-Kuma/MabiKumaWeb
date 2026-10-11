@@ -47,6 +47,19 @@ export function previewKey(name) {
     .trim();
 }
 
+/**
+ * 찾을 열쇠 후보. 이름 그대로가 먼저고, 없으면 "(1회 거래 가능)" 을 뗀 것, 그다음 "뷰티 쿠폰" 까지 뗀 것이다.
+ * 뷰티 쿠폰 아이템("슈가 팝 트윈 테일 헤어 뷰티 쿠폰(여성용)")은 공지의 갤러리에 쿠폰이라는 말 없이
+ * "슈가 팝 트윈 테일 헤어(여성용)" 로 적혀 있고, 해에 따라 쿠폰이라는 말이 붙은 글도 있다.
+ */
+export function previewKeys(name) {
+  const keys = [previewKey(name)];
+  const untraded = previewKey(String(name ?? '').replace(/\((?:1회 )?거래 ?가능\)/g, ''));
+  const plain = previewKey(untraded.replace(/\s*뷰티 ?쿠폰\s*/, ''));
+  for (const key of [untraded, plain]) if (key && !keys.includes(key)) keys.push(key);
+  return keys;
+}
+
 const ENTITIES = { lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', amp: '&' };
 
 function decode(text) {
@@ -322,10 +335,18 @@ export async function importPreviews(db, body) {
 
 /** 이름으로 찾는다. 화면이 쓰는 모양으로 돌려준다. 없으면 null. */
 export async function findPreview(db, name, imageBase = '') {
-  const row = await db
-    .prepare('SELECT name, kind, src, mirror, post_id, title FROM item_previews WHERE key = ?')
-    .bind(previewKey(name))
-    .first();
+  const keys = previewKeys(name);
+  const rows =
+    (
+      await db
+        .prepare(
+          `SELECT key, name, kind, src, mirror, post_id, title FROM item_previews
+           WHERE key IN (${keys.map(() => '?').join(',')})`,
+        )
+        .bind(...keys)
+        .all()
+    ).results ?? [];
+  const row = keys.map((key) => rows.find((each) => each.key === key)).find(Boolean);
   if (!row) return null;
   const base = String(imageBase ?? '').replace(/\/+$/, '');
   return {

@@ -12,6 +12,7 @@ import {
   mirrorPreviews,
   parseGallery,
   previewKey,
+  previewKeys,
   rebuildPreviews,
   splitNames,
 } from './previews.js';
@@ -311,6 +312,57 @@ describe('그림 사본', () => {
     expect(await mirrorPreviews({ NEWS: fakeD1() })).toEqual({
       skipped: 'NEWS 나 ICONS 바인딩이 없습니다.',
     });
+  });
+});
+
+describe('뷰티 쿠폰 이름', () => {
+  it('거래 가능 표시와 "뷰티 쿠폰" 을 뗀 이름까지 후보로 둔다', () => {
+    expect(previewKeys('슈가 팝 트윈 테일 헤어 뷰티 쿠폰(여성용)(1회 거래 가능)')).toEqual([
+      '슈가 팝 트윈 테일 헤어 뷰티 쿠폰(여성용)(1회 거래 가능)',
+      '슈가 팝 트윈 테일 헤어 뷰티 쿠폰(여성용)',
+      '슈가 팝 트윈 테일 헤어(여성용)',
+    ]);
+    expect(previewKeys('견습 마녀의 눈(오드아이) 뷰티 쿠폰')).toEqual([
+      '견습 마녀의 눈(오드아이) 뷰티 쿠폰',
+      '견습 마녀의 눈(오드아이)',
+    ]);
+    expect(previewKeys('숏 소드')).toEqual(['숏 소드']);
+  });
+
+  it('갤러리에 쿠폰이라는 말 없이 적힌 이름도 쿠폰 아이템으로 찾는다', async () => {
+    const db = fakeD1();
+    await importPreviews(db, {
+      items: [
+        {
+          name: '슈가 팝 트윈 테일 헤어(여성용)',
+          file: 'a.webp',
+          src: 'https://x.example/1#1',
+          postId: 1,
+          title: '겟잇 뷰티 박스 2026',
+          postedAt: 100,
+        },
+      ],
+    });
+    expect(
+      (await findPreview(db, '슈가 팝 트윈 테일 헤어 뷰티 쿠폰(여성용)(1회 거래 가능)', 'https://i'))
+        ?.url,
+    ).toBe('https://i/a.webp');
+    // 이름 그대로 있는 것이 먼저다.
+    await importPreviews(db, {
+      items: [
+        {
+          name: '슈가 팝 트윈 테일 헤어 뷰티 쿠폰(여성용)',
+          file: 'b.webp',
+          src: 'https://x.example/2#1',
+          postId: 2,
+          title: '겟잇 뷰티 박스 2025',
+          postedAt: 200,
+        },
+      ],
+    });
+    expect((await findPreview(db, '슈가 팝 트윈 테일 헤어 뷰티 쿠폰(여성용)', 'https://i'))?.url).toBe(
+      'https://i/b.webp',
+    );
   });
 });
 
