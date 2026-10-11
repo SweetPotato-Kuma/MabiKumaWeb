@@ -8,6 +8,8 @@
  *   - 새 글과 고친 글은 본문을 받을 때마다 색인한다(indexPreviews). 이 기능 전의 글은 운영자가 한 번 훑는다(rebuildPreviews).
  *   - 그림(평균 170KB)은 크론이 조금씩 R2 에 사본을 만든다(mirrorPreviews). 공식 쪽이 지워도 남기려는 것이다.
  *     영상(평균 6.6MB, 전체 10GB 안팎)은 사본을 두지 않고 공식 주소로 재생한다.
+ *   - 옛 글(2022년 초 이전)에는 갤러리가 없고 구성품 이미지 한 장에 칸이 이어 붙어 있다. 운영자 PC 가 칸을 잘라 R2 에
+ *     올리고 이름과 짝지어 한 번 올린다(POST /news/previews/import). 이미 있는 이름은 건드리지 않는다.
  *   - 한 칸에 이름 둘이 묶인 줄("A(남성용), B(여성용)")은 이름마다 같은 그림으로 색인한다.
  *
  * 표는 migrations-news/0003_previews.sql 에 있다.
@@ -21,6 +23,7 @@ const GAP_MS = 1000;
 export const PREVIEW_PATH = '/news/preview';
 export const PREVIEW_REBUILD_PATH = '/news/previews/rebuild';
 export const PREVIEW_MIRROR_PATH = '/news/previews/mirror';
+export const PREVIEW_IMPORT_PATH = '/news/previews/import';
 
 const SITE = 'https://mabinogi.nexon.com';
 
@@ -264,6 +267,59 @@ export async function mirrorPreviews(
   return { ...summary, left: left?.n ?? 0 };
 }
 
+const IMPORT_FILE = /^[\w.-]{1,120}$/;
+const IMPORT_MAX = 200;
+
+/**
+ * 옛 글에서 잘라 낸 그림을 올린다. { items: [{ name, file, src, postId, title, postedAt }] }. file 은 R2 에 이미 올린
+ * 그림 파일 이름이다. 이미 있는 이름(더 최근 글의 갤러리 포함)은 건드리지 않는다(더하기만).
+ */
+export async function importPreviews(db, body) {
+  const items = Array.isArray(body?.items) ? body.items : null;
+  if (!items || items.length === 0 || items.length > IMPORT_MAX)
+    throw new Error(`items 는 1~${IMPORT_MAX}개여야 합니다.`);
+  const bad = items.filter(
+    (item) =>
+      typeof item?.name !== 'string' ||
+      !previewKey(item.name) ||
+      item.name.length > NAME_MAX ||
+      typeof item.file !== 'string' ||
+      !IMPORT_FILE.test(item.file) ||
+      typeof item.src !== 'string' ||
+      !item.src ||
+      !Number.isInteger(item.postId) ||
+      typeof item.title !== 'string' ||
+      !Number.isInteger(item.postedAt),
+  );
+  if (bad.length)
+    throw new Error(
+      `모양이 맞지 않는 항목: ${bad
+        .slice(0, 3)
+        .map((item) => item?.name)
+        .join(', ')}`,
+    );
+  const before = (await db.prepare('SELECT COUNT(*) AS n FROM item_previews').first())?.n ?? 0;
+  const statements = items.map((item) =>
+    db
+      .prepare(
+        `INSERT INTO item_previews (key, name, kind, src, mirror, post_id, title, posted_at)
+         VALUES (?, ?, 'image', ?, ?, ?, ?, ?) ON CONFLICT(key) DO NOTHING`,
+      )
+      .bind(
+        previewKey(item.name),
+        item.name,
+        item.src,
+        item.file,
+        item.postId,
+        item.title,
+        item.postedAt,
+      ),
+  );
+  for (let at = 0; at < statements.length; at += 50) await db.batch(statements.slice(at, at + 50));
+  const after = (await db.prepare('SELECT COUNT(*) AS n FROM item_previews').first())?.n ?? 0;
+  return { received: items.length, added: after - before };
+}
+
 /** 이름으로 찾는다. 화면이 쓰는 모양으로 돌려준다. 없으면 null. */
 export async function findPreview(db, name, imageBase = '') {
   const row = await db
@@ -318,12 +374,31 @@ export async function previewRead(request, url, env, cors) {
   });
 }
 
-/** 운영자 경로. POST /news/previews/rebuild?after= , POST /news/previews/mirror?n= */
+/** 운영자 경로. POST /news/previews/rebuild?after= , POST /news/previews/mirror?n= , POST /news/previews/import */
 export async function previewAdmin(request, url, env, cors) {
   if (!env.NEWS)
     return previewError('PREVIEW_NOT_CONFIGURED', '미리보기 기록이 아직 없습니다.', 503, cors);
   if (request.method !== 'POST')
     return previewError('PREVIEW_METHOD_NOT_ALLOWED', 'POST 로 보내 주세요.', 405, cors);
+  if (url.pathname === PREVIEW_IMPORT_PATH) {
+    try {
+      const result = await importPreviews(env.NEWS, await request.json().catch(() => null));
+      return new Response(JSON.stringify(result), {
+        headers: {
+          ...cors,
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        },
+      });
+    } catch (error) {
+      return previewError(
+        'PREVIEW_BAD_REQUEST',
+        error instanceof Error ? error.message : String(error),
+        400,
+        cors,
+      );
+    }
+  }
   const number = (key, fallback) => {
     const value = Number(url.searchParams.get(key));
     return Number.isInteger(value) && value >= 0 ? value : fallback;

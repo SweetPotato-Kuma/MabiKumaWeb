@@ -99,6 +99,7 @@ import {
   kitsRead,
 } from './kits.js';
 import {
+  PREVIEW_IMPORT_PATH,
   PREVIEW_MIRROR_PATH,
   PREVIEW_PATH,
   PREVIEW_REBUILD_PATH,
@@ -1601,7 +1602,11 @@ export default {
     }
 
     // 미리보기 다시 훑기와 그림 사본 만들기는 운영자만.
-    if (url.pathname === PREVIEW_REBUILD_PATH || url.pathname === PREVIEW_MIRROR_PATH) {
+    if (
+      url.pathname === PREVIEW_REBUILD_PATH ||
+      url.pathname === PREVIEW_MIRROR_PATH ||
+      url.pathname === PREVIEW_IMPORT_PATH
+    ) {
       const problem = adminProblem(request, env, cors);
       if (problem) return problem;
       return previewAdmin(request, url, env, cors);

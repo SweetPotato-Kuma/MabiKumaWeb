@@ -7,6 +7,7 @@ import { collectNews } from './news.js';
 import {
   MAX_ATTEMPTS,
   findPreview,
+  importPreviews,
   indexPreviews,
   mirrorPreviews,
   parseGallery,
@@ -313,6 +314,56 @@ describe('그림 사본', () => {
   });
 });
 
+describe('옛 글에서 잘라 낸 그림 올리기', () => {
+  const item = (name, file) => ({
+    name,
+    file,
+    src: 'https://file.example/old.jpg#panel-1',
+    postId: 4888517,
+    title: '엘레노아 뉴룩 박스 판매 안내',
+    postedAt: 1604544000,
+  });
+
+  it('그림 사본이 있는 항목으로 올라가고 공개 조회가 R2 주소를 준다', async () => {
+    const db = fakeD1();
+    const result = await importPreviews(db, {
+      items: [item('엘레노아 뉴룩 날개', 'a.webp'), item('[트렌드] 엘레노아 뉴룩 수트', 'b.webp')],
+    });
+    expect(result).toEqual({ received: 2, added: 2 });
+    expect(await findPreview(db, '엘레노아 뉴룩 날개', 'https://icons.example')).toEqual({
+      name: '엘레노아 뉴룩 날개',
+      kind: 'image',
+      url: 'https://icons.example/a.webp',
+      postId: 4888517,
+      title: '엘레노아 뉴룩 박스 판매 안내',
+    });
+    expect((await findPreview(db, '엘레노아 뉴룩 수트', 'https://icons.example'))?.url).toBe(
+      'https://icons.example/b.webp',
+    );
+  });
+
+  it('이미 있는 이름은 건드리지 않는다', async () => {
+    const db = fakeD1();
+    await importPreviews(db, { items: [item('엘레노아 뉴룩 날개', 'a.webp')] });
+    const again = await importPreviews(db, {
+      items: [item('엘레노아 뉴룩 날개', 'other.webp'), item('목화 가지', 'c.webp')],
+    });
+    expect(again).toEqual({ received: 2, added: 1 });
+    expect((await findPreview(db, '엘레노아 뉴룩 날개', 'https://icons.example'))?.url).toBe(
+      'https://icons.example/a.webp',
+    );
+  });
+
+  it('모양이 맞지 않으면 하나도 올리지 않는다', async () => {
+    const db = fakeD1();
+    await expect(
+      importPreviews(db, { items: [item('좋은 이름', 'a.webp'), item('나쁜 파일', '../x')] }),
+    ).rejects.toThrow('나쁜 파일');
+    await expect(importPreviews(db, { items: [] })).rejects.toThrow('items');
+    expect(await findPreview(db, '좋은 이름')).toBeNull();
+  });
+});
+
 describe('새소식 받기와 경로', () => {
   /** 공식 홈페이지 흉내. 목록 한 줄과 갤러리가 있는 본문 하나. */
   const site = (body) => ({
@@ -392,6 +443,7 @@ describe('새소식 받기와 경로', () => {
 
     expect((await call('/news/previews/rebuild', { method: 'POST' })).status).toBe(401);
     expect((await call('/news/previews/mirror', { method: 'POST' })).status).toBe(401);
+    expect((await call('/news/previews/import', { method: 'POST', body: '{}' })).status).toBe(401);
     const admin = { 'x-mabikuma-admin-key': 'secret' };
     expect(
       await (
